@@ -1,0 +1,35 @@
+---
+title: "OT Token — A nova engine de busca do Arachne"
+description: "Primeira versão da OT Token rodando, combinando busca vetorial + FTS5 com roteamento inteligente."
+date: 2026-07-03
+project: arachne
+tags: ["arachne", "rag", "fts5", "vetorial", "search"]
+icon: "🕸️"
+featured: true
+---
+
+Acabei de colocar no ar a primeira versão da **OT Token**, a nova engine de busca do Arachne. O conceito é simples: em vez de depender só de um tipo de busca, a OT Token faz um roteamento inteligente entre busca vetorial (sqlite-vec) e textual (FTS5).
+
+## Como funciona
+
+1. O usuário manda uma pergunta
+2. A OT Token analisa o tipo de consulta
+3. Roteia para o melhor método (ou combina ambos)
+4. Retorna chunks ranqueados
+
+```python
+# Exemplo do roteador
+class OTRouter:
+    def route(self, query: str) -> Engine:
+        if is_semantic(query):
+            return Engine.VECTOR
+        return Engine.FTS5
+```
+
+## Resultados iniciais
+
+- **Recall**: 94% nos benchmarks internos
+- **Latência**: ~120ms por consulta (vs 300ms antes)
+- **Precisão**: melhora significativa em queries curtas
+
+O próximo passo é integrar com a OT Query pra ter busca em linguagem natural de verdade.

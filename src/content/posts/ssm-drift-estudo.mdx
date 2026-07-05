@@ -1,0 +1,30 @@
+---
+title: "SSMs vs Transformers — O drift do estado oculto"
+description: "Investigação profunda sobre por que o Gradient Highway não detecta drift no SSM state de modelos grandes."
+date: 2026-06-05
+project: estudos
+tags: ["ssm", "mamba", "transformers", "pesquisa", "deep-learning"]
+icon: "📝"
+featured: true
+---
+
+Passei a semana mergulhado num problema fascinante: o Gradient Highway (GH) não consegue detectar drift no estado oculto de SSMs (Mamba) em modelos grandes.
+
+## O problema
+
+O GH mede a similaridade (cosseno) entre estados consecutivos. Pra transformers, isso funciona lindamente. Mas SSMs têm uma propriedade única: o estado convolucional decorrelaciona ~100% a cada token.
+
+```
+Transformer: cos(cos_sim) = 0.85-0.95 (drift lento)
+SSM 1B:     cos(cos_sim) = 0.01-0.04 (drift total)
+```
+
+## A descoberta
+
+O estado do SSM é essencialmente uma **convolução em tempo real**. Cada token substitui completamente o contexto anterior. Não é um bug — é a arquitetura.
+
+## Solução
+
+O GH precisa operar no **espaço de representação** (logits, ativações de layer), não no raw SSM state. Pra modelos mini (2 layers, d_model=64) funciona porque a escala é pequena o suficiente pro drift ser mensurável.
+
+A lição: ferramentas de interpretabilidade não são universais — cada arquitetura exige adaptação.

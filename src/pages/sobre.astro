@@ -1,0 +1,65 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const posts = await getCollection('posts');
+const totalPosts = posts.length;
+const projects = [...new Set(posts.map(p => p.data.project))].length;
+const firstDate = posts.reduce((earliest, p) => 
+  p.data.date < earliest ? p.data.date : earliest, new Date());
+---
+
+<BaseLayout title="Sobre" description="Sobre o LifeLog">
+  <article class="max-w-2xl mx-auto">
+    <h1 class="text-3xl font-extrabold mb-6" style="color: #fff">📖 Sobre o LifeLog</h1>
+
+    <div class="prose max-w-none" style="color: var(--color-text)">
+      <p>
+        O <strong>LifeLog</strong> é meu diário de bordo digital. Aqui registro minha 
+        jornada como desenvolvedor — projetos, descobertas, bugs épicos, e tudo que 
+        aprendo no caminho.
+      </p>
+
+      <p>
+        Cada post tem um <strong>tema visual único</strong> dependendo do projeto. 
+        Se tô falando do <strong>Arachne</strong>, você vê a teia roxa. Se é sobre 
+        o <strong>Dogwalk</strong>, verde e natureza. Cada post não é só conteúdo — 
+        é uma experiência.
+      </p>
+
+      <hr style="border-color: var(--color-border); margin: 2rem 0;" />
+
+      <h2 class="text-xl font-bold" style="color: #fff">📊 Estatísticas</h2>
+      <div class="grid grid-cols-3 gap-4 my-6">
+        <div class="p-4 rounded-xl text-center" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
+          <p class="text-2xl font-bold" style="color: var(--color-accent)">{totalPosts}</p>
+          <p class="text-xs" style="color: var(--color-text-muted)">Posts</p>
+        </div>
+        <div class="p-4 rounded-xl text-center" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
+          <p class="text-2xl font-bold" style="color: var(--color-accent)">{projects}</p>
+          <p class="text-xs" style="color: var(--color-text-muted)">Projetos</p>
+        </div>
+        <div class="p-4 rounded-xl text-center" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
+          <p class="text-2xl font-bold" style="color: var(--color-accent)">{firstDate.getFullYear()}</p>
+          <p class="text-xs" style="color: var(--color-text-muted)">Desde</p>
+        </div>
+      </div>
+
+      <hr style="border-color: var(--color-border); margin: 2rem 0;" />
+
+      <h2 class="text-xl font-bold" style="color: #fff">📎 Links</h2>
+      <ul style="list-style: none; padding: 0;">
+        <li class="mb-2">
+          <a href="https://samuelmedeiros.vercel.app" target="_blank" rel="noopener" style="color: var(--color-accent)">
+            🚀 Portfólio
+          </a>
+        </li>
+        <li class="mb-2">
+          <a href="/rss.xml" style="color: var(--color-accent)">
+            📡 RSS Feed
+          </a>
+        </li>
+      </ul>
+    </div>
+  </article>
+</BaseLayout>

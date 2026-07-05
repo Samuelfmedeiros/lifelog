@@ -1,0 +1,49 @@
+---
+import ProjectIcon from './ProjectIcon.astro';
+
+export interface Props {
+  title: string;
+  description: string;
+  date: Date;
+  project: string;
+  tags: string[];
+  slug: string;
+  icon?: string;
+}
+
+const { title, description, date, project, tags, slug, icon } = Astro.props;
+const formattedDate = date.toLocaleDateString('pt-BR', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+---
+
+<article class="post-card" data-project={project}>
+  <a href={`/post/${slug}`} class="no-underline! block">
+    <div class="flex items-start gap-4">
+      <ProjectIcon project={project} emoji={icon} />
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-accent)">
+            {project}
+          </span>
+          <span class="text-xs" data-date style="color: var(--color-text-muted)">
+            {formattedDate}
+          </span>
+        </div>
+        <h2 class="text-lg font-bold mb-1.5 leading-snug" style="color: #fff">
+          {title}
+        </h2>
+        <p class="text-sm leading-relaxed" style="color: var(--color-text-muted)">
+          {description}
+        </p>
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          {tags.slice(0, 4).map((tag) => (
+            <span class="tag">{tag}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </a>
+</article>

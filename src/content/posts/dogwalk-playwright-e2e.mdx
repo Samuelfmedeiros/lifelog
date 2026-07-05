@@ -1,0 +1,29 @@
+---
+title: "Dogwalk v2 — Testes E2E com Playwright"
+description: "Implementei testes E2E no Dogwalk cobrindo o fluxo completo de agendamento de passeios."
+date: 2026-06-28
+project: dogwalk
+tags: ["dogwalk", "testes", "playwright", "e2e"]
+icon: "🦮"
+featured: true
+---
+
+Finalmente fechei a suíte de testes E2E do Dogwalk! Usei o Playwright 1.61 com parallel sharding pra rodar em < 2 minutos.
+
+## Cobertura
+
+- **8 specs** de fluxo de passeio
+- **1253 testes** no total (unitários + E2E)
+- **< 2 min** de execução com sharding
+- Zero flakiness após tratar timeouts
+
+```
+Specs:   8 passed, 8 of 8 completed
+Avg:     ~12s/spec
+```
+
+## O que aprendi
+
+O segredo pra testes E2E robustos é **isolar o estado**. Cada spec cria seu próprio cenário — usuário, dog, walk — e limpa depois. Sem fixture compartilhada = sem teste quebrado por estado residual.
+
+Bora pra próxima feature!

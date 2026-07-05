@@ -1,0 +1,12 @@
+---
+const { date } = Astro.props;
+const formatted = date.toLocaleDateString('pt-BR', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+}).toUpperCase();
+---
+
+<div class="date-separator my-8 first:mt-0">
+  {formatted}
+</div>

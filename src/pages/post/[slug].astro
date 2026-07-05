@@ -1,0 +1,143 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectIcon from '../../components/ProjectIcon.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+const projectIcons: Record<string, string> = {
+  arachne: '🕷️', dogwalk: '🐕', portfolio: '💼', capivara: '🦫', estudos: '📚', descobertas: '💎',
+};
+---
+
+<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project}>
+  <article data-project={post.data.project}>
+    <div class="max-w-3xl mx-auto px-4 py-12">
+      <!-- Header -->
+      <header class="mb-12">
+        <div class="flex items-center gap-2 text-sm mb-4">
+          <ProjectIcon project={post.data.project} emoji={projectIcons[post.data.project]} size="sm" />
+          <a href="/" class="theme-link hover:opacity-80 transition-opacity">timeline</a>
+          <span class="opacity-40">/</span>
+          <span class="opacity-60">{post.data.project}</span>
+        </div>
+
+        <h1 class="text-4xl font-bold mb-4">{post.data.title}</h1>
+
+        <div class="flex flex-wrap items-center gap-3 text-sm opacity-70 mb-6">
+          <time datetime={post.data.date.toISOString()}>
+            {post.data.date.toLocaleDateString('pt-BR', {
+              day: '2-digit', month: 'long', year: 'numeric',
+            })}
+          </time>
+          <span class="w-1 h-1 rounded-full bg-current" />
+          <span>{Math.ceil((headings?.length || 0) * 0.5 + 3)} min de leitura</span>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          {post.data.tags.map((tag) => (
+            <a
+              href={`/?tag=${tag}`}
+              class="px-3 py-1 text-xs rounded-full border border-current/20 hover:border-current/60 transition-colors"
+            >#{tag}</a>
+          ))}
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div class="prose prose-lg max-w-none">
+        <Content />
+      </div>
+
+      <!-- Footer -->
+      <footer class="mt-16 pt-8 border-t border-current/10">
+        <a href="/" class="theme-link hover:opacity-80 transition-opacity">
+          ← Voltar para timeline
+        </a>
+      </footer>
+    </div>
+  </article>
+</BaseLayout>
+
+<style is:global>
+  /* Estilização do conteúdo do post */
+  article[data-project] .prose h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--theme-border);
+  }
+  article[data-project] .prose h3 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+  article[data-project] .prose p {
+    line-height: 1.8;
+    margin-bottom: 1.25rem;
+  }
+  article[data-project] .prose code {
+    font-size: 0.875rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    background: var(--theme-code-bg);
+    color: var(--theme-code);
+    border: 1px solid var(--theme-border);
+  }
+  article[data-project] .prose pre {
+    padding: 1.25rem;
+    border-radius: 8px;
+    background: var(--theme-card-bg);
+    border: 1px solid var(--theme-border);
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+  }
+  article[data-project] .prose pre code {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  article[data-project] .prose a {
+    color: var(--theme-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  article[data-project] .prose a:hover {
+    opacity: 0.8;
+  }
+  article[data-project] .prose ul, article[data-project] .prose ol {
+    margin-bottom: 1.25rem;
+    padding-left: 1.5rem;
+  }
+  article[data-project] .prose li {
+    margin-bottom: 0.5rem;
+    line-height: 1.7;
+  }
+  article[data-project] .prose blockquote {
+    border-left: 3px solid var(--theme-accent);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    font-style: italic;
+    opacity: 0.8;
+  }
+  article[data-project] .prose img {
+    border-radius: 8px;
+    margin: 1.5rem auto;
+    border: 1px solid var(--theme-border);
+  }
+  article[data-project] .prose hr {
+    border-color: var(--theme-border);
+    margin: 2rem 0;
+  }
+</style>
