@@ -1,0 +1,25 @@
+{
+  "name": "lifelog",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "test": "playwright test --config e2e/playwright.config.ts",
+    "test:headed": "playwright test --headed --config e2e/playwright.config.ts",
+    "test:debug": "playwright test --debug --config e2e/playwright.config.ts"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^7.0.2",
+    "@astrojs/rss": "^4.0.19",
+    "@tailwindcss/vite": "^4.0.0",
+    "astro": "^7.0.0",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}

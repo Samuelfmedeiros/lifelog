@@ -1,0 +1,140 @@
+---
+// Client-side: posts from all rendered PostCard elements
+const projects = [
+  { id: 'all', label: 'Todos', icon: '📋' },
+  { id: 'arachne', label: 'Arachne', icon: '🕷️' },
+  { id: 'dogwalk', label: 'Dogwalk', icon: '🐶' },
+  { id: 'portfolio', label: 'Portfólio', icon: '🚀' },
+  { id: 'capivara', label: 'Capivara', icon: '🐷' },
+  { id: 'estudos', label: 'Estudos', icon: '📚' },
+  { id: 'descobertas', label: 'Descobertas', icon: '💡' },
+  { id: 'dev', label: 'Dev', icon: '🛠️' },
+];
+const years = Astro.props.years as string[];
+---
+
+<div id="filter-bar" class="mb-8 space-y-4">
+  <!-- Search -->
+  <div class="relative">
+    <input
+      id="filter-search"
+      type="text"
+      placeholder="Buscar posts..."
+      class="w-full px-4 py-2.5 pl-10 rounded-xl text-sm outline-none transition"
+      style="
+        background: var(--color-bg-card);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+      "
+    />
+    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style="color: var(--color-text-muted)">🔎</span>
+  </div>
+
+  <!-- Project filter -->
+  <div class="flex flex-wrap gap-2">
+    {projects.map((p) => (
+      <button
+        class="filter-btn"
+        data-filter-project={p.id}
+        data-active={p.id === 'all' ? 'true' : 'false'}
+      >
+        {p.icon} {p.label}
+      </button>
+    ))}
+  </div>
+
+  <!-- Year filter -->
+  <div class="flex flex-wrap gap-2">
+    <button class="filter-btn" data-filter-year="all" data-active="true">Todos os anos</button>
+    {years.map((y) => (
+      <button class="filter-btn" data-filter-year={y} data-active="false">{y}</button>
+    ))}
+  </div>
+</div>
+
+<script is:inline>
+(function() {
+  const searchInput = document.getElementById('filter-search');
+  const projectBtns = document.querySelectorAll('[data-filter-project]');
+  const yearBtns = document.querySelectorAll('[data-filter-year]');
+  let activeProject = 'all';
+  let activeYear = 'all';
+  let activeSearch = '';
+
+  function filterPosts() {
+    const posts = document.querySelectorAll('.post-card');
+    const searchLower = activeSearch.toLowerCase();
+
+    posts.forEach((post) => {
+      const project = post.getAttribute('data-project');
+      const title = post.querySelector('h2')?.textContent?.toLowerCase() || '';
+      const desc = post.querySelector('p')?.textContent?.toLowerCase() || '';
+      const tags = Array.from(post.querySelectorAll('.tag')).map(t => t.textContent?.toLowerCase() || '');
+      const dateEl = post.querySelector('[data-date]');
+      const dateText = dateEl?.textContent || '';
+      const yearMatch = dateText.match(/\d{4}/);
+      const year = yearMatch ? yearMatch[0] : '';
+
+      const matchProject = activeProject === 'all' || project === activeProject;
+      const matchYear = activeYear === 'all' || year === activeYear;
+      const matchSearch = !searchLower || 
+        title.includes(searchLower) || 
+        desc.includes(searchLower) || 
+        tags.some(t => t.includes(searchLower)) ||
+        project?.includes(searchLower);
+
+      const visible = matchProject && matchYear && matchSearch;
+      post.style.display = visible ? '' : 'none';
+    });
+
+    // Hide empty separator groups
+    // Recalculate visibility of separators
+    const allSeparators = document.querySelectorAll('.date-separator');
+    allSeparators.forEach(sep => {
+      let next = sep.nextElementSibling;
+      let hasVisible = false;
+      while (next && !next.classList.contains('date-separator')) {
+        if (next.classList.contains('post-card') && next.style.display !== 'none') {
+          hasVisible = true;
+          break;
+        }
+        next = next.nextElementSibling;
+      }
+      sep.style.display = hasVisible ? '' : 'none';
+    });
+
+    // Show empty state if nothing visible
+    const emptyEl = document.getElementById('empty-state');
+    const visiblePosts = Array.from(posts).filter(p => p.style.display !== 'none');
+    if (emptyEl) {
+      emptyEl.style.display = visiblePosts.length === 0 ? '' : 'none';
+    }
+  }
+
+  // Project buttons
+  projectBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      projectBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeProject = btn.getAttribute('data-filter-project');
+      filterPosts();
+    });
+  });
+
+  // Year buttons
+  yearBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      yearBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeYear = btn.getAttribute('data-filter-year');
+      filterPosts();
+    });
+  });
+
+  // Search
+  searchInput.addEventListener('input', () => {
+    activeSearch = searchInput.value;
+    filterPosts();
+  });
+})();
+</script>

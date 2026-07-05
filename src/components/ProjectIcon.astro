@@ -1,0 +1,33 @@
+---
+const { emoji } = Astro.props;
+const accentColor = {
+  arachne: '#7c3aed',
+  dogwalk: '#22c55e',
+  portfolio: '#00d4ff',
+  capivara: '#f59e0b',
+  estudos: '#3b82f6',
+  descobertas: '#ec4899',
+  dev: '#848d97',
+};
+const defaultEmojis: Record<string, string> = {
+  arachne: '🕷️',
+  dogwalk: '🐶',
+  portfolio: '🚀',
+  capivara: '🐷',
+  estudos: '📚',
+  descobertas: '💡',
+  dev: '🛠️',
+};
+---
+
+<span
+  class="project-icon"
+  style={{
+    background: `${accentColor[Astro.props.project as keyof typeof accentColor] || accentColor.dev}1a`,
+    borderColor: `${accentColor[Astro.props.project as keyof typeof accentColor] || accentColor.dev}40`,
+    color: accentColor[Astro.props.project as keyof typeof accentColor] || accentColor.dev,
+  }}
+  aria-label={Astro.props.project}
+>
+  {emoji || defaultEmojis[Astro.props.project as keyof typeof defaultEmojis] || '📝'}
+</span>

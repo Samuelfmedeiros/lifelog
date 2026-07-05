@@ -1,0 +1,28 @@
+---
+title: "Capivara — MVP do gerenciador financeiro"
+description: "Primeira versão funcional do Capivara com categorização automática de gastos via IA."
+date: 2026-06-10
+project: capivara
+tags: ["capivara", "financas", "mvp", "ia", "fastapi"]
+icon: "🐷"
+---
+
+Depois de meses prototipando, saiu o MVP do **Capivara** — meu gerenciador financeiro pessoal. A ideia é simples: conectar as contas, categorizar automaticamente, e mostrar onde o dinheiro tá indo.
+
+## Stack
+
+- **Backend**: FastAPI + SQLModel
+- **Categorização**: LLM local (via Arachne)
+- **Frontend**: React + Tailwind
+- **Banco**: SQLite (prototipação)
+
+## Funcionalidades v1
+
+- [x] Importação de extrato CSV
+- [x] Categorização automática por IA
+- [x] Dashboard mensal
+- [x] Alertas de gastos atípicos
+
+A cereja do bolo: a categorização acerta ~85% das transações sem treinamento prévio. Com feedback manual, chega a 95%.
+
+> "Gastar é fácil. Saber onde foi que é difícil."

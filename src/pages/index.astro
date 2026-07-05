@@ -1,0 +1,81 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostCard from '../components/PostCard.astro';
+import DateSeparator from '../components/DateSeparator.astro';
+import FilterBar from '../components/FilterBar.astro';
+import { getCollection } from 'astro:content';
+
+const posts = await getCollection('posts');
+posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+// Group by date for timeline
+const grouped: { date: Date; posts: typeof posts }[] = [];
+const dateMap = new Map<string, typeof posts>();
+
+for (const post of posts) {
+  const dateKey = post.data.date.toISOString().split('T')[0];
+  if (!dateMap.has(dateKey)) {
+    dateMap.set(dateKey, []);
+  }
+  dateMap.get(dateKey)!.push(post);
+}
+
+for (const [dateKey, dayPosts] of dateMap) {
+  grouped.push({
+    date: dayPosts[0].data.date,
+    posts: dayPosts,
+  });
+}
+
+// Get unique years for filter
+const years = [...new Set(posts.map(p => p.data.date.getFullYear().toString()))].sort().reverse();
+---
+
+<BaseLayout title="Início" description="Jornada de aprendizado de Samuel Medeiros">
+  <!-- Header -->
+  <section class="mb-12 text-center">
+    <h1 class="text-4xl font-extrabold mb-3 leading-tight" style="color: #fff">
+      📖 LifeLog
+    </h1>
+    <p class="text-lg" style="color: var(--color-text-muted)">
+      A jornada de aprendizado de <strong style="color: var(--color-accent)">Samuel Medeiros</strong>
+    </p>
+    <p class="text-sm mt-2" style="color: var(--color-text-muted)">
+      Dev · Cibersegurança · Projetos · Descobertas
+    </p>
+  </section>
+
+  <!-- Filters -->
+  <FilterBar years={years} />
+
+  <!-- Timeline -->
+  <div class="timeline">
+    {grouped.length === 0 && (
+      <div id="empty-state" class="text-center py-20">
+        <p class="text-lg" style="color: var(--color-text-muted)">Nenhum post encontrado 😢</p>
+        <p class="text-sm mt-2" style="color: var(--color-text-muted)">Tenta mudar os filtros</p>
+      </div>
+    )}
+
+    {
+      grouped.map((group) => (
+        <>
+          <DateSeparator date={group.date} />
+          <div class="space-y-4">
+            {group.posts.map((post) => (
+              <PostCard
+                title={post.data.title}
+                description={post.data.description}
+                date={post.data.date}
+                project={post.data.project}
+                tags={post.data.tags}
+                slug={post.id}
+                icon={post.data.icon}
+              />
+            ))}
+          </div>
+        </>
+      ))
+    }
+  </div>
+</BaseLayout>

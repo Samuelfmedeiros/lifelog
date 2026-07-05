@@ -1,0 +1,205 @@
+/* ========================================
+   LifeLog — Temas por Projeto
+   Cada projeto vira um tema visual único
+   ======================================== */
+
+:root {
+  /* Default / base theme */
+  --color-bg: #0a0a0f;
+  --color-bg-card: #13131a;
+  --color-text: #e1e4e8;
+  --color-text-muted: #8b949e;
+  --color-border: #21262d;
+  --color-accent: #00d4ff;
+  --color-accent-soft: rgba(0, 212, 255, 0.08);
+  --color-glow: 0 0 30px rgba(0, 212, 255, 0.1);
+  --font-accent: 'Inter', system-ui, sans-serif;
+  --pattern-url: none;
+  --pattern-opacity: 0.03;
+  --hover-scale: 1.00;
+  --card-radius: 16px;
+  --card-border: 1px solid #21262d;
+  --entry-animation: fadeIn 0.5s ease-out;
+  --bg-gradient: linear-gradient(180deg, #0a0a0f 0%, #0d1117 100%);
+}
+
+/* ========================================
+   🕷️  ARACHNE — Hacker / Cyberpunk
+   ======================================== */
+[data-project="arachne"] {
+  --color-accent: #7c3aed;
+  --color-accent-soft: rgba(124, 58, 237, 0.1);
+  --color-glow: 0 0 30px rgba(124, 58, 237, 0.15);
+  --pattern-url: url('/patterns/webs.svg');
+  --pattern-opacity: 0.05;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(124, 58, 237, 0.3);
+  --bg-gradient: linear-gradient(135deg, #0f0a1a 0%, #1a0f2e 50%, #0f0a1a 100%);
+}
+
+/* ========================================
+   🐶  DOGWALK — Nature / Tech
+   ======================================== */
+[data-project="dogwalk"] {
+  --color-accent: #22c55e;
+  --color-accent-soft: rgba(34, 197, 94, 0.1);
+  --color-glow: 0 0 30px rgba(34, 197, 94, 0.12);
+  --pattern-url: url('/patterns/paws.svg');
+  --pattern-opacity: 0.04;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(34, 197, 94, 0.3);
+  --bg-gradient: linear-gradient(135deg, #0a1408 0%, #0f1f0d 50%, #0a1408 100%);
+}
+
+/* ========================================
+   🚀  PORTFOLIO — Sci-fi / Cockpit
+   ======================================== */
+[data-project="portfolio"] {
+  --color-accent: #00d4ff;
+  --color-accent-soft: rgba(0, 212, 255, 0.08);
+  --color-glow: 0 0 30px rgba(0, 212, 255, 0.12);
+  --pattern-url: url('/patterns/grid.svg');
+  --pattern-opacity: 0.04;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(0, 212, 255, 0.25);
+  --bg-gradient: linear-gradient(135deg, #0a0e14 0%, #0d1520 50%, #0a0e14 100%);
+}
+
+/* ========================================
+   🐷  CAPIVARA — Tropical / Fun
+   ======================================== */
+[data-project="capivara"] {
+  --color-accent: #f59e0b;
+  --color-accent-soft: rgba(245, 158, 11, 0.1);
+  --color-glow: 0 0 30px rgba(245, 158, 11, 0.12);
+  --pattern-url: url('/patterns/waves.svg');
+  --pattern-opacity: 0.04;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(245, 158, 11, 0.3);
+  --bg-gradient: linear-gradient(135deg, #141008 0%, #1f180d 50%, #141008 100%);
+}
+
+/* ========================================
+   📚  ESTUDOS — Notebook / Study
+   ======================================== */
+[data-project="estudos"] {
+  --color-accent: #3b82f6;
+  --color-accent-soft: rgba(59, 130, 246, 0.1);
+  --color-glow: 0 0 30px rgba(59, 130, 246, 0.1);
+  --pattern-url: url('/patterns/notebook.svg');
+  --pattern-opacity: 0.03;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(59, 130, 246, 0.25);
+  --bg-gradient: linear-gradient(135deg, #0a0e17 0%, #0d1525 50%, #0a0e17 100%);
+}
+
+/* ========================================
+   💡  DESCOBERTAS — Spark / Discovery
+   ======================================== */
+[data-project="descobertas"] {
+  --color-accent: #ec4899;
+  --color-accent-soft: rgba(236, 72, 153, 0.1);
+  --color-glow: 0 0 30px rgba(236, 72, 153, 0.12);
+  --pattern-url: url('/patterns/sparkles.svg');
+  --pattern-opacity: 0.04;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(236, 72, 153, 0.3);
+  --bg-gradient: linear-gradient(135deg, #140a12 0%, #1f0d1a 50%, #140a12 100%);
+}
+
+/* ========================================
+   🛠️  DEV / Outros — Tech neutral
+   ======================================== */
+[data-project="dev"] {
+  --color-accent: #848d97;
+  --color-accent-soft: rgba(132, 141, 151, 0.08);
+  --color-glow: 0 0 20px rgba(132, 141, 151, 0.08);
+  --pattern-url: none;
+  --pattern-opacity: 0;
+  --hover-scale: 1.01;
+  --card-border: 1px solid #21262d;
+  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #101015 50%, #0a0a0f 100%);
+}
+
+/* ========================================
+   Animações por Tema
+   ======================================== */
+
+/* Arachne — pulso de radar, teia vibra */
+[data-project="arachne"] .post-card {
+  animation: spiderPulse 6s ease-in-out infinite;
+}
+[data-project="arachne"] .post-card:hover {
+  animation: spiderWeb 1.5s ease-in-out;
+}
+
+@keyframes spiderPulse {
+  0%, 100% { box-shadow: var(--color-glow); }
+  50% { box-shadow: 0 0 40px rgba(124, 58, 237, 0.2), 0 0 80px rgba(124, 58, 237, 0.05); }
+}
+@keyframes spiderWeb {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1.02); }
+}
+
+/* Dogwalk — ondas suaves */
+[data-project="dogwalk"] .post-card {
+  animation: dogWaves 4s ease-in-out infinite;
+}
+@keyframes dogWaves {
+  0%, 100% { border-color: rgba(34, 197, 94, 0.3); }
+  50% { border-color: rgba(34, 197, 94, 0.6); }
+}
+
+/* Portfolio — circuito pulsando */
+[data-project="portfolio"] .post-card {
+  animation: circuitPulse 5s ease-in-out infinite;
+}
+[data-project="portfolio"] .post-card:hover {
+  animation: scanLine 1s linear infinite;
+}
+@keyframes circuitPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}
+@keyframes scanLine {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* Capivara — bolhas subindo */
+[data-project="capivara"] .post-card {
+  animation: bubbleFloat 3s ease-in-out infinite;
+}
+@keyframes bubbleFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Estudos — destaque suave */
+[data-project="estudos"] .post-card {
+  transition: all 0.3s ease;
+}
+[data-project="estudos"] .post-card:hover {
+  background-position: 0 0;
+}
+
+/* Descobertas — brilho cintilante */
+[data-project="descobertas"] .post-card {
+  animation: sparkle 4s ease-in-out infinite;
+}
+@keyframes sparkle {
+  0%, 100% { box-shadow: var(--color-glow); }
+  50% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.2), 0 0 40px rgba(236, 72, 153, 0.05); }
+}
+
+/* Entry animation — todo post ao aparecer na tela */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.post-card {
+  animation: fadeIn 0.5s ease-out;
+}
