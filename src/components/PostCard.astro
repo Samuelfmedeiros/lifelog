@@ -17,6 +17,14 @@ const formattedDate = date.toLocaleDateString('pt-BR', {
   month: 'short',
   year: 'numeric',
 });
+const projectLabels: Record<string, string> = {
+  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio',
+  capivara: 'Capivara', estudos: 'Estudos', descobertas: 'Descobertas',
+};
+const projectIcons: Record<string, string> = {
+  arachne: '🕷️', dogwalk: '🐶', portfolio: '🚀',
+  capivara: '🐷', estudos: '📚', descobertas: '💡',
+};
 ---
 
 <article class="post-card" data-project={project}>
@@ -24,24 +32,29 @@ const formattedDate = date.toLocaleDateString('pt-BR', {
     <div class="flex items-start gap-4">
       <ProjectIcon project={project} emoji={icon} />
       <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 mb-1 flex-wrap">
-          <span class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-accent)">
-            {project}
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <span class="flex items-center gap-1 text-xs font-medium uppercase tracking-wider" style="color: var(--color-accent)">
+            {projectIcons[project] || '📝'} {projectLabels[project] || project}
           </span>
+          <span class="text-xs opacity-50">·</span>
           <span class="text-xs" data-date style="color: var(--color-text-muted)">
             {formattedDate}
           </span>
         </div>
-        <h2 class="text-lg font-bold mb-1.5 leading-snug" style="color: #fff">
+        <h2 class="text-lg font-bold mb-2 leading-snug" style="color: #fff">
           {title}
         </h2>
-        <p class="text-sm leading-relaxed" style="color: var(--color-text-muted)">
+        <p class="text-sm leading-relaxed mb-3" style="color: var(--color-text-muted)">
           {description}
         </p>
-        <div class="flex items-center gap-2 mt-3 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
           {tags.slice(0, 4).map((tag) => (
             <span class="tag">{tag}</span>
           ))}
+        </div>
+        <div class="mt-4 flex items-center gap-1 text-xs font-medium tracking-wide uppercase" style="color: var(--color-accent)">
+          Continuar lendo
+          <span class="inline-block transition-transform duration-200">→</span>
         </div>
       </div>
     </div>

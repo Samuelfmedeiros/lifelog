@@ -10,6 +10,7 @@ const posts = defineCollection({
     project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara', 'estudos', 'descobertas']),
     tags: z.array(z.string()),
     icon: z.string().optional(),
+    cover: z.string().optional(),
     featured: z.boolean().optional().default(false),
   }),
 });

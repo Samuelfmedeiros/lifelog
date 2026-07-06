@@ -11,9 +11,11 @@ const POSTS = [
   { slug: 'dogwalk-playwright-e2e', title: 'Dogwalk v2 — Testes E2E com Playwright', project: 'dogwalk' },
   { slug: 'ssm-drift-estudo', title: 'SSMs vs Transformers — O drift do estado oculto', project: 'estudos' },
   { slug: 'vhs-antiguidades', title: 'Feira de antiguidades — Fitas VHS lacradas', project: 'descobertas' },
+  { slug: 'por-dentro-do-pipeline-rag-do-arachne-fts5-e-busca-vetorial', title: 'Por dentro do pipeline RAG do Arachne — FTS5 e busca vetorial', project: 'arachne' },
+  { slug: 'por-que-escolhi-playwright-para-testes-e2e-no-dogwalk', title: 'Por que Escolhi Playwright para Testes E2E no Dogwalk', project: 'dogwalk' },
 ];
 
-const PROJECT_BUTTONS = 8; // Todos + 7 projetos (including "dev")
+const CATEGORY_BUTTONS = 4; // Tudo + 3 categorias (Projetos, Estudos, Descobertas)
 const NAV = ['Início', 'Arquivo', 'Sobre'];
 
 // Helper: count visible post cards (posts hidden via style.display)
@@ -50,13 +52,13 @@ test.describe('Homepage', () => {
     await expect(page).toHaveTitle(/LifeLog/);
     await expect(page.locator('h1')).toContainText('LifeLog');
     await expect(page.locator('h1 + p strong', { hasText: 'Samuel Medeiros' })).toBeVisible();
-    await expect(page.locator('h1 + p + p')).toContainText('Dev · Cibersegurança · Projetos · Descobertas');
+    await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 6 posts na timeline', async ({ page }) => {
+  test('deve exibir todos os 8 posts na timeline', async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(6);
+    await expect(cards).toHaveCount(8);
 
     // Verificar que tem date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -66,7 +68,7 @@ test.describe('Homepage', () => {
   test('deve ter filtros: busca, projeto e ano', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#filter-search')).toBeVisible();
-    await expect(page.locator('[data-filter-project]')).toHaveCount(PROJECT_BUTTONS);
+    await expect(page.locator('[data-filter-group]')).toHaveCount(CATEGORY_BUTTONS);
     const yearBtns = page.locator('[data-filter-year]');
     expect(await yearBtns.count()).toBeGreaterThanOrEqual(2); // all + 2026
   });
@@ -129,7 +131,7 @@ test.describe('Arquivo', () => {
   test('mostra total de posts e cards de projeto', async ({ page }) => {
     await page.goto('/arquivo');
     await expect(page.locator('h1')).toContainText('Arquivo');
-    await expect(page.locator('text=6 posts')).toBeVisible();
+    await expect(page.locator('text=8 posts')).toBeVisible();
 
     // Cards de stats
     const statCards = page.locator('div.grid.grid-cols-2 > div');
@@ -157,7 +159,7 @@ test.describe('Arquivo', () => {
    ============================================= */
 
 test.describe('Sobre', () => {
-  test('mostra estatísticas: Posts=6, Projetos=6, Desde=2026', async ({ page }) => {
+  test('mostra estatísticas: Posts=8, Projetos=6, Desde=2026', async ({ page }) => {
     await page.goto('/sobre');
     await expect(page.locator('h1')).toContainText('Sobre o LifeLog');
 
@@ -172,7 +174,7 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '6' && v.label === 'Posts')).toBeTruthy();
+    expect(values.find(v => v.number === '8' && v.label === 'Posts')).toBeTruthy();
     expect(values.find(v => v.number === '6' && v.label === 'Projetos')).toBeTruthy();
     expect(values.find(v => v.number === '2026')).toBeTruthy();
   });
@@ -200,7 +202,7 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com 6 posts', async ({ page }) => {
+  test('XML válido com 8 posts', async ({ page }) => {
     const response = await page.goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
@@ -211,7 +213,7 @@ test.describe('RSS Feed', () => {
     expect(text).toContain('<channel>');
 
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(6);
+    expect(items).toBe(8);
 
     // Todos os slugs e títulos presentes
     for (const post of POSTS) {
@@ -233,7 +235,7 @@ test.describe('Filtros', () => {
   test('busca textual filtra posts', async ({ page }) => {
     await page.locator('#filter-search').fill('Dogwalk');
     await page.waitForTimeout(100); // JS filter processing
-    expect(await visiblePosts(page)).toBe(1);
+    expect(await visiblePosts(page)).toBe(2);
 
     const titles = await visiblePostTitles(page);
     expect(titles[0]).toContain('Dogwalk');
@@ -245,40 +247,40 @@ test.describe('Filtros', () => {
     expect(await visiblePosts(page)).toBe(1); // só o post "estudos" via project?.includes("estudo")
   });
 
-  test('filtro de projeto "estudos" mostra 1 post', async ({ page }) => {
-    await page.locator('[data-filter-project="estudos"]').click();
+  test('filtro de grupo "estudos" mostra 1 post', async ({ page }) => {
+    await page.locator('[data-filter-group="estudos"]').click();
     await page.waitForTimeout(100);
     expect(await visiblePosts(page)).toBe(1);
   });
 
-  test('filtro de projeto "portfolio" mostra 1 post', async ({ page }) => {
-    await page.locator('[data-filter-project="portfolio"]').click();
+  test('filtro de grupo "Projetos" mostra 6 posts', async ({ page }) => {
+    await page.locator('[data-filter-group="projetos"]').click();
     await page.waitForTimeout(100);
-    expect(await visiblePosts(page)).toBe(1);
+    expect(await visiblePosts(page)).toBe(6);
   });
 
-  test('filtro de projeto + busca combinados', async ({ page }) => {
-    await page.locator('[data-filter-project="estudos"]').click();
+  test('filtro de grupo + busca combinados', async ({ page }) => {
+    await page.locator('[data-filter-group="estudos"]').click();
     await page.waitForTimeout(50);
     await page.locator('#filter-search').fill('Token');
     await page.waitForTimeout(100);
     expect(await visiblePosts(page)).toBe(0); // "Token" não está em posts de estudos
   });
 
-  test('"Todos" reset mostra todos os 6 posts', async ({ page }) => {
-    await page.locator('[data-filter-project="capivara"]').click();
-    await page.waitForTimeout(50);
-    expect(await visiblePosts(page)).toBe(1);
-
-    await page.locator('[data-filter-project="all"]').click();
+  test('"Todos" reset mostra todos os 8 posts', async ({ page }) => {
+    await page.locator('[data-filter-group="projetos"]').click();
     await page.waitForTimeout(50);
     expect(await visiblePosts(page)).toBe(6);
+
+    await page.locator('[data-filter-group="all"]').click();
+    await page.waitForTimeout(50);
+    expect(await visiblePosts(page)).toBe(8);
   });
 
-  test('filtro de ano mostra 6 posts (só tem 2026)', async ({ page }) => {
+  test('filtro de ano mostra 8 posts (só tem 2026)', async ({ page }) => {
     await page.locator('[data-filter-year="2026"]').click();
     await page.waitForTimeout(100);
-    expect(await visiblePosts(page)).toBe(6);
+    expect(await visiblePosts(page)).toBe(8);
   });
 
   test('botão de ano mantém classe active', async ({ page }) => {
@@ -357,7 +359,7 @@ test.describe('Responsivo (Mobile)', () => {
   test('homepage legível', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1')).toBeVisible();
-    expect(await page.locator('.post-card').count()).toBe(6);
+    expect(await page.locator('.post-card').count()).toBe(8);
     // Cards ocupam largura quase total
     const w = await page.locator('.post-card').first().evaluate(el => el.offsetWidth);
     expect(w).toBeGreaterThan(300);

@@ -1,0 +1,335 @@
+---
+// TerminalWidget — Mini terminal interativo estilo dev
+---
+
+<div id="terminal-widget" class="terminal-widget">
+  <div class="terminal-header">
+    <span class="terminal-dot" style="background: #ff5f56;"></span>
+    <span class="terminal-dot" style="background: #ffbd2e;"></span>
+    <span class="terminal-dot" style="background: #27c93f;"></span>
+    <span class="terminal-title">~/lifelog — bash</span>
+  </div>
+  <div class="terminal-body" id="terminal-body">
+    <div class="terminal-line">
+      <span class="terminal-prompt">$</span>
+      <span class="terminal-command">cat about.txt</span>
+    </div>
+    <div class="terminal-output">
+      <pre>
+╔══════════════════════════════════════╗
+║  Samuel Medeiros                    ║
+║  Senior Software Engineer           ║
+║  Stack: Python · TypeScript · Rust  ║
+║  Projetos: Arachne, Dogwalk,        ║
+║            Capivara, TatuEngine      ║
+╚══════════════════════════════════════╝
+      </pre>
+    </div>
+    <div class="terminal-line">
+      <span class="terminal-prompt">$</span>
+      <span class="terminal-input" contenteditable="true" id="terminal-input" spellcheck="false"></span>
+      <span class="terminal-cursor"></span>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+(function() {
+  const widget = document.getElementById('terminal-widget');
+  if (!widget) return;
+
+  const body = document.getElementById('terminal-body');
+  const input = document.getElementById('terminal-input');
+  let cmdHistory = [];
+  let historyIdx = -1;
+
+  const COMMANDS = {
+    whoami: () => 'samuelmedeiros — Senior Software Engineer',
+    help: () => `Comandos disponíveis:
+
+  whoami       → Quem sou eu
+  ls           → Listar projetos
+  skills       → Minhas skills
+  contact      → Contato
+  projects     → Detalhes dos projetos
+  cat about    → Sobre mim
+  date         → Data/hora atual
+  uptime       → Há quanto tempo o LifeLog existe
+  clear        → Limpar terminal
+  help         → Esta ajuda`,
+    ls: () => `📁 projetos/
+  🕷️  arachne/       — Plataforma de extração inteligente
+  🐶 dogwalk/       — App de passeios para pets
+  🐷 capivara/      — Hub pessoal de ferramentas
+  🚀 portfolio/      — Site pessoal sci-fi
+  🧠 tatuengine/     — Motor de linguagem SSM
+
+📁 estudos/
+  📚 fts5/           — Full-text search na prática
+  🔬 ssm/            — State Space Models
+
+📄 posts (8 entradas)`,
+    skills: () => `🧰 Stack Principal
+  Python • TypeScript • Rust • React • Vue
+  FastAPI • Next.js • Astro • Tailwind
+
+🗄️ Infra & Dados
+  SQLite • Supabase • Cloudflare • Docker
+  SQLAlchemy • Redis • git
+
+🤖 AI/ML
+  LLMs • RAG • Mamba • SSM • Whisper
+  Fine-tuning • Embeddings • Busca vetorial`,
+    contact: () => `📬 Onde me encontrar:
+
+  GitHub:  github.com/Samuelfmedeiros
+  LinkedIn: linkedin.com/in/samuelandrademedeiros
+  Site:     samuelmedeiros.vercel.app
+  Email:    [via formulário no site]`,
+    projects: () => `📦 PROJETOS EM DESTAQUE
+
+  🕷️  Arachne     — Scraping + RAG + MCP Server
+  🐶  Dogwalk     — Plataforma de passeios (Stripe Connect)
+  🐷  Capivara    — Hub pessoal com finanças
+  🚀  Portfolio   — Site sci-fi com 5 mini-games
+  🧠  TatuEngine  — Motor SSM com GoalHamiltonian`,
+    'cat about': () => `Samuel Medeiros
+
+Desenvolvedor senior brasileiro, trabalho com 
+engenharia de software há mais de 10 anos.
+Especialista em sistemas distribuídos, 
+extração de dados e AI/ML.
+
+Atualmente focado em:
+• Arachne — plataforma de inteligência de dados
+• TatuEngine — agentes autopoiéticos com SSM
+• LifeLog — este diário de aprendizado`,
+    date: () => new Date().toLocaleString('pt-BR'),
+    uptime: () => {
+      const start = new Date('2026-05-31');
+      const now = new Date();
+      const days = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+      return `☝️ LifeLog no ar há ${days} dias (desde 31/05/2026)`;
+    },
+    clear: () => null,
+  };
+
+  // Default commands
+  const ALIASES = {
+    '?': 'help',
+    'ls -la': 'ls',
+    ll: 'ls',
+    'cat about.txt': 'cat about',
+    bio: 'whoami',
+    email: 'contact',
+    github: 'contact',
+    linkedin: 'contact',
+  };
+
+  function executeCommand(cmd) {
+    const trimmed = cmd.trim().toLowerCase();
+    const resolved = ALIASES[trimmed] || trimmed;
+    const handler = COMMANDS[resolved];
+    
+    if (resolved === 'clear') return null;
+    
+    if (handler) return handler();
+    return `❌ Comando não encontrado: "${cmd}". Digite "help" para ver os comandos disponíveis.`;
+  }
+
+  function addOutput(text, isCmd = false) {
+    if (text === null) return;
+    
+    const line = document.createElement('div');
+    if (isCmd) {
+      line.className = 'terminal-line';
+      line.innerHTML = `<span class="terminal-prompt">$</span> <span class="terminal-command">${text}</span>`;
+    } else {
+      line.className = 'terminal-output';
+      line.innerHTML = `<pre>${text}</pre>`;
+    }
+    body.insertBefore(line, body.lastElementChild);
+  }
+
+  function clearTerminal() {
+    const lines = body.querySelectorAll('.terminal-line, .terminal-output');
+    lines.forEach(l => l.remove());
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const cmd = input.textContent.trim();
+      if (!cmd) return;
+
+      addOutput(cmd, true);
+      cmdHistory.push(cmd);
+      historyIdx = cmdHistory.length;
+      input.textContent = '';
+
+      const result = executeCommand(cmd);
+      if (cmd.trim().toLowerCase() === 'clear') {
+        clearTerminal();
+      } else if (result !== undefined) {
+        addOutput(result);
+      }
+
+      // Scroll to bottom
+      body.scrollTop = body.scrollHeight;
+    }
+
+    // History navigation
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdHistory.length > 0) {
+        historyIdx = Math.max(0, historyIdx - 1);
+        input.textContent = cmdHistory[historyIdx];
+        // Move cursor to end
+        const range = document.createRange();
+        const sel = window.getSelection();
+        if (input.childNodes.length) {
+          range.setStartAfter(input.lastChild);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIdx < cmdHistory.length - 1) {
+        historyIdx++;
+        input.textContent = cmdHistory[historyIdx];
+      } else {
+        historyIdx = cmdHistory.length;
+        input.textContent = '';
+      }
+    }
+
+    // Tab: auto-complete (simple)
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const partial = input.textContent.trim().toLowerCase();
+      const matches = Object.keys(COMMANDS).filter(c => c.startsWith(partial));
+      if (matches.length === 1) {
+        input.textContent = matches[0];
+      }
+    }
+  });
+
+  // Focus input when clicking terminal
+  widget.addEventListener('click', () => input.focus());
+})();
+</script>
+
+<style>
+  .terminal-widget {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: #0d1117;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin-top: 2rem;
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+  }
+
+  .terminal-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .terminal-title {
+    margin-left: 8px;
+    font-size: 0.75rem;
+    color: #8b949e;
+  }
+
+  .terminal-body {
+    padding: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    cursor: text;
+  }
+
+  .terminal-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .terminal-body::-webkit-scrollbar-track {
+    background: #0d1117;
+  }
+  .terminal-body::-webkit-scrollbar-thumb {
+    background: #21262d;
+    border-radius: 3px;
+  }
+
+  .terminal-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .terminal-prompt {
+    color: #22c55e;
+    font-weight: 700;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .terminal-command {
+    color: #e1e4e8;
+  }
+
+  .terminal-input {
+    color: #e1e4e8;
+    outline: none;
+    min-width: 100px;
+    flex: 1;
+    white-space: pre;
+  }
+  .terminal-input:empty::before {
+    content: '';
+  }
+
+  .terminal-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 1.1em;
+    background: #22c55e;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+    margin-left: -4px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .terminal-output {
+    margin: 4px 0 12px 0;
+    padding-left: 0;
+  }
+
+  .terminal-output pre {
+    color: #7c3aed;
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: inherit;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .terminal-output pre:has(> .error) { color: #f85149; }
+</style>

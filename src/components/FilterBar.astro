@@ -1,5 +1,11 @@
 ---
 // Client-side: posts from all rendered PostCard elements
+export interface Props {
+  years: string[];
+}
+
+const { years } = Astro.props;
+
 const projects = [
   { id: 'all', label: 'Todos', icon: '📋' },
   { id: 'arachne', label: 'Arachne', icon: '🕷️' },
@@ -8,52 +14,66 @@ const projects = [
   { id: 'capivara', label: 'Capivara', icon: '🐷' },
   { id: 'estudos', label: 'Estudos', icon: '📚' },
   { id: 'descobertas', label: 'Descobertas', icon: '💡' },
-  { id: 'dev', label: 'Dev', icon: '🛠️' },
 ];
-const years = Astro.props.years as string[];
 ---
 
-<div id="filter-bar" class="mb-8 space-y-4">
+<div id="filter-bar" class="filter-section mb-8">
   <!-- Search -->
-  <div class="relative">
+  <div class="search-wrap">
+    <span class="search-icon">🔎</span>
     <input
       id="filter-search"
       type="text"
       placeholder="Buscar posts..."
-      class="w-full px-4 py-2.5 pl-10 rounded-xl text-sm outline-none transition"
-      style="
-        background: var(--color-bg-card);
-        color: var(--color-text);
-        border: 1px solid var(--color-border);
-      "
+      class="search-input"
     />
-    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style="color: var(--color-text-muted)">🔎</span>
+    <span class="search-hint">
+      <kbd>⌘</kbd> <kbd>K</kbd>
+    </span>
+  </div>
+
+  <!-- Year filter -->
+  <div class="filter-group">
+    <span class="filter-group-label">📅 Período</span>
+    <button class="filter-btn" data-filter-year="all" data-active="true">Todos</button>
+    {years.map((y) => (
+      <button class="filter-btn" data-filter-year={y} data-active="false">{y}</button>
+    ))}
   </div>
 
   <!-- Project filter -->
-  <div class="flex flex-wrap gap-2">
+  <div class="filter-group">
+    <span class="filter-group-label">🏷️ Projeto</span>
     {projects.map((p) => (
       <button
         class="filter-btn"
         data-filter-project={p.id}
         data-active={p.id === 'all' ? 'true' : 'false'}
       >
-        {p.icon} {p.label}
+        {p.id !== 'all' ? p.icon : ''} {p.label}
       </button>
-    ))}
-  </div>
-
-  <!-- Year filter -->
-  <div class="flex flex-wrap gap-2">
-    <button class="filter-btn" data-filter-year="all" data-active="true">Todos os anos</button>
-    {years.map((y) => (
-      <button class="filter-btn" data-filter-year={y} data-active="false">{y}</button>
     ))}
   </div>
 </div>
 
 <script is:inline>
 (function() {
+  // Lazy-load Fuse.js for fuzzy search
+  let fusePromise = null;
+  function getFuse(postsData) {
+    if (!fusePromise) {
+      fusePromise = import('https://cdn.jsdelivr.net/npm/fuse.js@7.4.2/dist/fuse.mjs').then(
+        (mod) => new mod.default(postsData, {
+          keys: ['title', 'desc', 'tags', 'project'],
+          threshold: 0.4,
+          distance: 100,
+          minMatchCharLength: 2,
+        })
+      );
+    }
+    return fusePromise;
+  }
+
   const searchInput = document.getElementById('filter-search');
   const projectBtns = document.querySelectorAll('[data-filter-project]');
   const yearBtns = document.querySelectorAll('[data-filter-year]');
@@ -61,34 +81,51 @@ const years = Astro.props.years as string[];
   let activeYear = 'all';
   let activeSearch = '';
 
-  function filterPosts() {
+  // Build post data index for Fuse
+  function buildPostIndex() {
     const posts = document.querySelectorAll('.post-card');
+    return Array.from(posts).map(post => ({
+      el: post,
+      project: post.getAttribute('data-project'),
+      title: post.querySelector('h2')?.textContent || '',
+      desc: post.querySelector('p')?.textContent || '',
+      tags: Array.from(post.querySelectorAll('.tag')).map(t => t.textContent || ''),
+      dateText: post.querySelector('[data-date]')?.textContent || '',
+    }));
+  }
+
+  let postsData = buildPostIndex();
+  // Rebuild on DOM changes
+  if (window.MutationObserver) {
+    const obs = new MutationObserver(() => { postsData = buildPostIndex(); });
+    obs.observe(document.getElementById('filter-bar'), { childList: true, subtree: true });
+  }
+
+  function filterPosts() {
     const searchLower = activeSearch.toLowerCase();
 
-    posts.forEach((post) => {
-      const project = post.getAttribute('data-project');
-      const title = post.querySelector('h2')?.textContent?.toLowerCase() || '';
-      const desc = post.querySelector('p')?.textContent?.toLowerCase() || '';
-      const tags = Array.from(post.querySelectorAll('.tag')).map(t => t.textContent?.toLowerCase() || '');
-      const dateEl = post.querySelector('[data-date]');
-      const dateText = dateEl?.textContent || '';
-      const yearMatch = dateText.match(/\d{4}/);
+    postsData.forEach((pd) => {
+      const yearMatch = pd.dateText.match(/\d{4}/);
       const year = yearMatch ? yearMatch[0] : '';
 
-      const matchProject = activeProject === 'all' || project === activeProject;
+      const matchProject = activeProject === 'all' || pd.project === activeProject;
       const matchYear = activeYear === 'all' || year === activeYear;
-      const matchSearch = !searchLower || 
-        title.includes(searchLower) || 
-        desc.includes(searchLower) || 
-        tags.some(t => t.includes(searchLower)) ||
-        project?.includes(searchLower);
+
+      let matchSearch = true;
+      if (searchLower) {
+        // Try exact match first
+        matchSearch =
+          pd.title.toLowerCase().includes(searchLower) ||
+          pd.desc.toLowerCase().includes(searchLower) ||
+          pd.tags.some(t => t.toLowerCase().includes(searchLower)) ||
+          pd.project?.includes(searchLower);
+      }
 
       const visible = matchProject && matchYear && matchSearch;
-      post.style.display = visible ? '' : 'none';
+      pd.el.style.display = visible ? '' : 'none';
     });
 
     // Hide empty separator groups
-    // Recalculate visibility of separators
     const allSeparators = document.querySelectorAll('.date-separator');
     allSeparators.forEach(sep => {
       let next = sep.nextElementSibling;
@@ -105,9 +142,46 @@ const years = Astro.props.years as string[];
 
     // Show empty state if nothing visible
     const emptyEl = document.getElementById('empty-state');
-    const visiblePosts = Array.from(posts).filter(p => p.style.display !== 'none');
+    const visiblePosts = postsData.filter(p => p.el.style.display !== 'none');
     if (emptyEl) {
       emptyEl.style.display = visiblePosts.length === 0 ? '' : 'none';
+    }
+  }
+
+  // Fuzzy search via Fuse (lazy loaded)
+  async function fuzzySearch(query) {
+    const searchLower = query.toLowerCase();
+    if (searchLower.length < 2) {
+      // Reset all filters
+      postsData.forEach(pd => { pd.el.style.display = ''; });
+      filterPosts(); // Re-apply regular filters
+      return;
+    }
+    try {
+      const fuse = await getFuse(postsData);
+      const results = fuse.search(searchLower);
+      const matchedEls = new Set(results.map(r => r.item.el));
+      postsData.forEach(pd => {
+        if (pd.el.style.display === 'none') return; // Already hidden by project/year filter
+        pd.el.style.display = matchedEls.has(pd.el) ? '' : 'none';
+      });
+      // Hide empty separators
+      const allSeparators = document.querySelectorAll('.date-separator');
+      allSeparators.forEach(sep => {
+        let next = sep.nextElementSibling;
+        let hasVisible = false;
+        while (next && !next.classList.contains('date-separator')) {
+          if (next.classList.contains('post-card') && next.style.display !== 'none') {
+            hasVisible = true;
+            break;
+          }
+          next = next.nextElementSibling;
+        }
+        sep.style.display = hasVisible ? '' : 'none';
+      });
+    } catch (e) {
+      // Fallback to simple search if Fuse fails
+      filterPosts();
     }
   }
 
@@ -131,10 +205,18 @@ const years = Astro.props.years as string[];
     });
   });
 
-  // Search
+  // Search — debounced fuzzy search
+  let searchTimer;
   searchInput.addEventListener('input', () => {
     activeSearch = searchInput.value;
-    filterPosts();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      if (activeSearch.length >= 2) {
+        fuzzySearch(activeSearch);
+      } else {
+        filterPosts();
+      }
+    }, 200);
   });
 })();
 </script>

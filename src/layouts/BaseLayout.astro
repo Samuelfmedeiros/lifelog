@@ -1,4 +1,8 @@
 ---
+import '../styles/global.css';
+import '../styles/themes.css';
+import PalettePicker from '../components/PalettePicker.astro';
+
 export interface Props {
   title: string;
   description?: string;
@@ -12,10 +16,35 @@ const themeAttr = theme || 'dev';
 ---
 
 <!DOCTYPE html>
-<html lang="pt-BR" data-project={themeAttr}>
+<html lang="pt-BR" data-project={themeAttr} data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script is:inline>
+    (function(){
+      // Define theme/palette BEFORE first paint — no flash
+      try {
+        var savedTheme = localStorage.getItem('lifelog-theme') || 'dark'
+        document.documentElement.setAttribute('data-theme', savedTheme)
+        var isDark = savedTheme !== 'light'
+        var savedPalette = localStorage.getItem('lifelog-palette') || 'purple'
+        var PALETTES = {
+          purple: {aD:'#a78bfa', aL:'#7c3aed'},
+          cyan: {aD:'#22d3ee', aL:'#0891b2'},
+          emerald: {aD:'#34d399', aL:'#059669'},
+          amber: {aD:'#fbbf24', aL:'#d97706'},
+          rose: {aD:'#fb7185', aL:'#e11d48'},
+          blue: {aD:'#60a5fa', aL:'#2563eb'},
+        }
+        var p = PALETTES[savedPalette] || PALETTES.purple
+        var accent = isDark ? p.aD : p.aL
+        var root = document.documentElement
+        root.style.setProperty('--color-accent', accent)
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark')
+      }
+    })();
+    </script>
     <meta name="description" content={pageDesc} />
     <title>{pageTitle}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -23,24 +52,22 @@ const themeAttr = theme || 'dev';
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/src/styles/global.css" />
   </head>
   <body>
-    <header class="sticky top-0 z-50 glass">
-      <nav class="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2 font-bold text-lg no-underline! hover:opacity-80 transition">
-          <span class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--color-accent-soft); border: 1px solid var(--color-accent); font-size: 1.1rem">
-            📖
-          </span>
-          <span style="color: var(--color-accent)">LifeLog</span>
+    <header class="navbar">
+      <nav class="navbar-inner">
+        <a href="/" class="navbar-logo">
+          <span class="navbar-logo-icon">📖</span>
+          <span>LifeLog</span>
+          <span class="navbar-brand-sep">·</span>
+          <span class="navbar-brand-name">Samuel Medeiros</span>
         </a>
-        <div class="flex items-center gap-4 text-sm">
-          <a href="/" class="hover:opacity-80 transition" style="color: var(--color-text-muted)">Início</a>
-          <a href="/arquivo" class="hover:opacity-80 transition" style="color: var(--color-text-muted)">Arquivo</a>
-          <a href="/sobre" class="hover:opacity-80 transition" style="color: var(--color-text-muted)">Sobre</a>
-          <a href="https://samuelmedeiros.vercel.app" target="_blank" rel="noopener" class="flex items-center gap-1 px-3 py-1.5 rounded-full border transition" style="border-color: var(--color-accent); color: var(--color-accent); font-size: 0.75rem;">
-            🚀 Portfólio
-          </a>
+        <div class="navbar-links">
+          <a href="/" class="navbar-link">Início</a>
+          <a href="/arquivo" class="navbar-link">📚 Arquivo</a>
+          <a href="/sobre" class="navbar-link">ℹ️ Sobre</a>
+          <PalettePicker />
+          <a href="https://samuelmedeiros.vercel.app" target="_blank" rel="noopener" class="navbar-link cta">🚀 Portfólio</a>
         </div>
       </nav>
     </header>
@@ -55,5 +82,190 @@ const themeAttr = theme || 'dev';
         <a href="/rss.xml" class="hover:underline" style="color: var(--color-accent)">RSS</a>
       </p>
     </footer>
-  </body>
+
+  <!-- Particle Background -->
+  <canvas id="particle-canvas" style="position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5;"></canvas>
+
+  <script is:inline>
+  (function() {
+    // ========== SCROLL REVEAL ==========
+    function observeScroll() {
+      const cards = document.querySelectorAll('.post-card');
+      if (!cards.length) return;
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+      cards.forEach(card => observer.observe(card));
+    }
+
+    // Run after paint
+    if (document.readyState === 'complete') observeScroll();
+    else window.addEventListener('load', observeScroll);
+  })();
+  </script>
+  <script is:inline>
+  (function() {
+    const canvas = document.getElementById('particle-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    let mouse = { x: null, y: null, radius: 120 };
+    let w, h;
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function getVars() {
+      const style = getComputedStyle(document.documentElement);
+      const theme = document.documentElement.getAttribute('data-theme');
+      const isLight = theme === 'light';
+      return {
+        particleColor: style.getPropertyValue('--particle-color').trim() || (isLight ? 'rgba(210,160,60,0.35)' : 'rgba(200,210,255,0.4)'),
+        accentColor: style.getPropertyValue('--color-accent').trim() || '#a78bfa',
+        isLight,
+        // Light mode: warm golden dust, slow drift
+        // Dark mode: sharp stars, gentle twinkle
+        speed: isLight ? 0.2 : 0.5,
+        sizeMin: isLight ? 1.5 : 0.8,
+        sizeMax: isLight ? 3.5 : 2.2,
+        connectionOpacity: isLight ? 0.08 : 0.15,
+        alpha: isLight ? 0.4 : 0.6,
+        count: isLight ? 40 : 60,
+      };
+    }
+
+    let vars = getVars();
+    function initParticles() {
+      vars = getVars();
+      particles = [];
+      for (let i = 0; i < vars.count; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * vars.speed,
+          vy: (Math.random() - 0.5) * vars.speed - (vars.isLight ? Math.random() * 0.08 : 0),
+          r: Math.random() * (vars.sizeMax - vars.sizeMin) + vars.sizeMin,
+          // Track original speed for consistency across theme changes
+          baseVx: 0,
+          baseVy: 0,
+          phase: Math.random() * Math.PI * 2, // for twinkling
+        });
+      }
+    }
+    initParticles();
+
+    // Re-init on theme change
+    const obs = new MutationObserver(() => {
+      initParticles();
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    document.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+    document.addEventListener('mouseleave', () => {
+      mouse.x = null;
+      mouse.y = null;
+    });
+
+    function animate() {
+      ctx.clearRect(0, 0, w, h);
+      const cur = getVars();
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+
+        // Gentle floating motion
+        p.vx += (Math.random() - 0.5) * 0.02;
+        p.vy += (Math.random() - 0.5) * 0.02;
+
+        // Damping
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        // Speed cap
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (spd > cur.speed) {
+          p.vx = (p.vx / spd) * cur.speed;
+          p.vy = (p.vy / spd) * cur.speed;
+        }
+
+        // Mouse interaction
+        if (mouse.x !== null && mouse.y !== null) {
+          const dx = mouse.x - p.x;
+          const dy = mouse.y - p.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < mouse.radius) {
+            const force = (mouse.radius - dist) / mouse.radius;
+            // Push away from mouse
+            p.vx -= (dx / dist) * force * 0.04;
+            p.vy -= (dy / dist) * force * 0.04;
+          }
+        }
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Wrap around
+        if (p.x < -10) p.x = w + 10;
+        if (p.x > w + 10) p.x = -10;
+        if (p.y < -10) p.y = h + 10;
+        if (p.y > h + 10) p.y = -10;
+
+        // Draw connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 150) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = `rgba(124, 58, 237, ${(1 - dist / 150) * cur.connectionOpacity})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+
+        // Twinkle effect
+        const twinkle = cur.isLight
+          ? 0.8 + 0.2 * Math.sin(p.phase + Date.now() * 0.001)
+          : 0.6 + 0.4 * Math.sin(p.phase + Date.now() * 0.002);
+
+        // Draw particle
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = cur.particleColor;
+        ctx.globalAlpha = cur.alpha * twinkle;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Light mode: subtle glow on each particle (dust motes catch light)
+        if (cur.isLight && p.r > 2.5) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(251,191,36,0.04)';
+          ctx.fill();
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+    animate();
+  })();
+  </script>
+</body>
 </html>

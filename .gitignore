@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 
+# Astro cache
+.cache/
+.astro/
+
 # Playwright
 test-results/
 playwright-report/
@@ -23,6 +27,20 @@ playwright-report/
 .DS_Store
 Thumbs.db
 
-# Python (if any)
+# Python
 __pycache__/
 *.py[cod]
+
+# Demo videos & frames
+demo*.mp4
+demo*.webm
+*.webm
+.tmp_frames/
+
+# Generated test assets
+public/demo-*.mp4
+public/demo-*.webm
+public/page-*.webm
+public/*-test*.png
+public/light_*.png
+public/test-light*.png
