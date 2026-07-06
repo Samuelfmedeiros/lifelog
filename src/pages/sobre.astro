@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import TerminalWidget from '../components/TerminalWidget.astro';
 import { getCollection } from 'astro:content';
 
 const posts = await getCollection('posts');
@@ -61,5 +62,7 @@ const firstDate = posts.reduce((earliest, p) =>
         </li>
       </ul>
     </div>
+
+    <TerminalWidget />
   </article>
 </BaseLayout>

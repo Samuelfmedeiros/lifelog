@@ -12,7 +12,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm astro preview --port 4321',
     port: 4321,
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 15000,
   },
   projects: [

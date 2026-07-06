@@ -1,0 +1,449 @@
+---
+// PalettePicker — Theme Control
+// Botão compacto que abre popover com paletas + toggle de tema
+import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
+---
+
+<div id="theme-rail" class="theme-rail">
+  <!-- Botão toggle — pill compacto com vidro -->
+  <button id="rail-toggle" class="rail-toggle" aria-label="Personalizar tema" title="Personalizar tema">
+    <span class="rail-toggle-inner">
+      <span id="rail-indicator" class="rail-indicator" style="background: #a78bfa"></span>
+      <span class="rail-toggle-icon">🎨</span>
+    </span>
+  </button>
+
+  <!-- Popover -->
+  <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização de tema">
+    <!-- Paletas -->
+    <div class="rail-palettes" role="radiogroup" aria-label="Paletas de cor">
+      {PALETTES.map(p => (
+        <button
+          class="rail-dot"
+          data-palette={p.id}
+          title={p.name}
+          role="radio"
+          aria-checked={p.id === DEFAULT_PALETTE}
+          style={`--dot-bg: ${p.accentDark}`}
+        >{p.icon}</button>
+      ))}
+    </div>
+
+    <div class="rail-divider"></div>
+
+    <!-- Toggle de tema — switch slide -->
+    <div class="rail-theme-row">
+      <span class="rail-theme-label">Tema</span>
+      <button id="rail-theme" class="rail-theme-switch" aria-label="Alternar tema claro/escuro" title="Alternar tema">
+        <span class="rail-theme-track">
+          <span class="rail-theme-thumb">
+            <span class="rail-theme-icon">🌙</span>
+          </span>
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+(function() {
+  const PALETTES = [
+    {id:"purple",name:"Roxo",icon:"🟣",accentDark:"#a78bfa",accentLight:"#7c3aed",tagBg:"rgba(167,139,250,0.12)",borderDark:"rgba(167,139,250,0.25)",borderLight:"rgba(124,58,237,0.2)",glowDark:"0 0 30px rgba(167,139,250,0.15)",glowLight:"0 4px 24px rgba(124,58,237,0.12)",particleDark:"rgba(200,180,255,0.6)",particleLight:"rgba(139,92,246,0.18)",auraDark:"radial-gradient(ellipse 700px 500px at 30% 20%, rgba(167,139,250,0.08) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(139,92,246,0.28) 0%, rgba(139,92,246,0.12) 20%, rgba(139,92,246,0.05) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 40% 85%, rgba(167,139,250,0.08) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(167,139,250,0.06)",shadowLight:"0 4px 16px rgba(124,58,237,0.06)"},
+    {id:"cyan",name:"Ciano",icon:"🩵",accentDark:"#22d3ee",accentLight:"#0891b2",tagBg:"rgba(34,211,238,0.12)",borderDark:"rgba(34,211,238,0.25)",borderLight:"rgba(8,145,178,0.2)",glowDark:"0 0 30px rgba(34,211,238,0.15)",glowLight:"0 4px 24px rgba(8,145,178,0.12)",particleDark:"rgba(150,230,255,0.6)",particleLight:"rgba(6,182,212,0.16)",auraDark:"radial-gradient(ellipse 700px 500px at 20% 30%, rgba(34,211,238,0.08) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(6,182,212,0.25) 0%, rgba(6,182,212,0.10) 20%, rgba(6,182,212,0.04) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 45% 85%, rgba(34,211,238,0.07) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(34,211,238,0.06)",shadowLight:"0 4px 16px rgba(8,145,178,0.06)"},
+    {id:"emerald",name:"Verde",icon:"🟢",accentDark:"#34d399",accentLight:"#059669",tagBg:"rgba(52,211,153,0.12)",borderDark:"rgba(52,211,153,0.25)",borderLight:"rgba(5,150,105,0.2)",glowDark:"0 0 30px rgba(52,211,153,0.15)",glowLight:"0 4px 24px rgba(5,150,105,0.12)",particleDark:"rgba(150,240,200,0.6)",particleLight:"rgba(16,185,129,0.16)",auraDark:"radial-gradient(ellipse 700px 500px at 40% 20%, rgba(52,211,153,0.07) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(16,185,129,0.25) 0%, rgba(16,185,129,0.10) 20%, rgba(16,185,129,0.04) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 35% 85%, rgba(52,211,153,0.07) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(52,211,153,0.06)",shadowLight:"0 4px 16px rgba(5,150,105,0.06)"},
+    {id:"amber",name:"Âmbar",icon:"🟡",accentDark:"#fbbf24",accentLight:"#d97706",tagBg:"rgba(251,191,36,0.12)",borderDark:"rgba(251,191,36,0.25)",borderLight:"rgba(217,119,6,0.2)",glowDark:"0 0 30px rgba(251,191,36,0.15)",glowLight:"0 4px 24px rgba(217,119,6,0.12)",particleDark:"rgba(255,220,150,0.6)",particleLight:"rgba(251,191,36,0.22)",auraDark:"radial-gradient(ellipse 700px 500px at 50% 30%, rgba(251,191,36,0.07) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1100px 800px at 82% 6%, rgba(251,191,36,0.35) 0%, rgba(251,146,60,0.15) 20%, rgba(251,191,36,0.06) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 40% 85%, rgba(251,191,36,0.10) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(251,191,36,0.06)",shadowLight:"0 4px 16px rgba(217,119,6,0.06)"},
+    {id:"rose",name:"Rosa",icon:"🩷",accentDark:"#fb7185",accentLight:"#e11d48",tagBg:"rgba(251,113,133,0.12)",borderDark:"rgba(251,113,133,0.25)",borderLight:"rgba(225,29,72,0.2)",glowDark:"0 0 30px rgba(251,113,133,0.15)",glowLight:"0 4px 24px rgba(225,29,72,0.12)",particleDark:"rgba(255,180,200,0.6)",particleLight:"rgba(225,29,72,0.14)",auraDark:"radial-gradient(ellipse 700px 500px at 30% 40%, rgba(251,113,133,0.07) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(244,63,94,0.25) 0%, rgba(244,63,94,0.10) 20%, rgba(244,63,94,0.04) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 55% 85%, rgba(251,113,133,0.07) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(251,113,133,0.06)",shadowLight:"0 4px 16px rgba(225,29,72,0.06)"},
+    {id:"blue",name:"Azul",icon:"🔵",accentDark:"#60a5fa",accentLight:"#2563eb",tagBg:"rgba(96,165,250,0.12)",borderDark:"rgba(96,165,250,0.25)",borderLight:"rgba(37,99,235,0.2)",glowDark:"0 0 30px rgba(96,165,250,0.15)",glowLight:"0 4px 24px rgba(37,99,235,0.12)",particleDark:"rgba(160,200,255,0.6)",particleLight:"rgba(37,99,235,0.16)",auraDark:"radial-gradient(ellipse 700px 500px at 25% 25%, rgba(96,165,250,0.07) 0%, transparent 60%)",auraLight:"radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(96,165,250,0.25) 0%, rgba(96,165,250,0.10) 20%, rgba(96,165,250,0.04) 40%, transparent 58%), radial-gradient(ellipse 600px 400px at 30% 85%, rgba(96,165,250,0.07) 0%, transparent 50%)",shadowDark:"0 8px 32px rgba(96,165,250,0.06)",shadowLight:"0 4px 16px rgba(37,99,235,0.06)"},
+  ]
+  const STORAGE_KEY = 'lifelog-palette'
+  const THEME_KEY = 'lifelog-theme'
+  const DEFAULT = 'purple'
+
+  let railOpen = false
+
+  /* ─── Paletas ─── */
+  function getSavedPalette() {
+    try { const s = localStorage.getItem(STORAGE_KEY); if (s && PALETTES.some(p => p.id === s)) return s } catch {}
+    return DEFAULT
+  }
+
+  function setPalette(id, save = true) {
+    const p = PALETTES.find(p => p.id === id)
+    if (!p) return
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light'
+    const root = document.documentElement
+    const accent = isDark ? p.accentDark : p.accentLight
+
+    root.style.setProperty('--color-accent', accent)
+    root.style.setProperty('--color-accent-soft', p.tagBg)
+    root.style.setProperty('--color-glow', isDark ? p.glowDark : p.glowLight)
+    root.style.setProperty('--color-border', isDark ? p.borderDark : p.borderLight)
+    root.style.setProperty('--particle-color', isDark ? p.particleDark : p.particleLight)
+    root.style.setProperty('--aura-gradient', isDark ? p.auraDark : p.auraLight)
+    root.style.setProperty('--card-shadow', isDark ? p.shadowDark : p.shadowLight)
+
+    // Indicador no toggle
+    const indicator = document.getElementById('rail-indicator')
+    if (indicator) indicator.style.background = p.accentDark
+
+    if (save) try { localStorage.setItem(STORAGE_KEY, id) } catch {}
+
+    document.querySelectorAll('.rail-dot').forEach(el => {
+      el.setAttribute('aria-checked', el.dataset.palette === id ? 'true' : 'false')
+    })
+  }
+
+  /* ─── Tema ─── */
+  function getSavedTheme() {
+    try { return localStorage.getItem(THEME_KEY) } catch { return null }
+  }
+
+  function setTheme(theme, save = true) {
+    document.documentElement.setAttribute('data-theme', theme)
+    if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
+    // Ícone do toggle switch
+    const icon = document.querySelector('.rail-theme-icon')
+    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
+    // Reaplicar paleta pro tema correto
+    setPalette(getSavedPalette(), false)
+  }
+
+  /** Troca tema com animação Circle-Wipe */
+  function toggleTheme(event) {
+    const current = document.documentElement.getAttribute('data-theme')
+    const newTheme = current === 'light' ? 'dark' : 'light'
+
+    // View Transitions API
+    if (document.startViewTransition) {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setTheme(newTheme); return
+      }
+      const x = event?.clientX ?? innerWidth / 2
+      const y = event?.clientY ?? innerHeight / 2
+      const t = document.startViewTransition(() => setTheme(newTheme))
+      t.ready.then(() => {
+        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' },
+        )
+      })
+      return
+    }
+
+    // Fallback CSS overlay
+    if (event && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const overlay = document.createElement('div')
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        pointer-events: none;
+        clip-path: circle(0px at ${event.clientX}px ${event.clientY}px);
+        background: ${newTheme === 'light' ? '#f7f6f3' : '#0a0a0f'};
+        transition: clip-path 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      `
+      document.body.appendChild(overlay)
+      overlay.offsetHeight
+      const endR = Math.hypot(Math.max(event.clientX, innerWidth - event.clientX), Math.max(event.clientY, innerHeight - event.clientY))
+      overlay.style.clipPath = `circle(${endR}px at ${event.clientX}px ${event.clientY}px)`
+      setTimeout(() => setTheme(newTheme), 200)
+      setTimeout(() => overlay.remove(), 550)
+    } else {
+      setTheme(newTheme)
+    }
+  }
+
+  /* ─── Init ─── */
+  const savedTheme = getSavedTheme() || 'dark'
+  setTheme(savedTheme, false)
+  setPalette(getSavedPalette(), false)
+
+  /* ─── Eventos ─── */
+  document.addEventListener('click', (e) => {
+    // Toggle do popover
+    const toggle = e.target.closest('#rail-toggle')
+    if (toggle) {
+      railOpen = !railOpen
+      document.getElementById('theme-rail')?.classList.toggle('open', railOpen)
+      return
+    }
+
+    // Selecionar paleta
+    const dot = e.target.closest('.rail-dot')
+    if (dot) {
+      setPalette(dot.dataset.palette)
+      return
+    }
+
+    // Toggle de tema (clique no switch)
+    const themeBtn = e.target.closest('#rail-theme')
+    if (themeBtn) {
+      toggleTheme(e)
+      return
+    }
+
+    // Fechar popover ao clicar fora
+    const rail = document.getElementById('theme-rail')
+    if (railOpen && rail && !rail.contains(e.target)) {
+      railOpen = false
+      rail.classList.remove('open')
+    }
+  })
+})()
+</script>
+
+<style>
+  /* ═══════════════════════════════════
+     Theme Rail — Container
+     ═══════════════════════════════════ */
+  .theme-rail {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ═══════════════════════════════════
+     Botão Toggle — Glass Pill
+     ═══════════════════════════════════ */
+  .rail-toggle {
+    all: unset;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: all 0.2s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .rail-toggle:hover {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+  .rail-toggle:active {
+    transform: scale(0.94);
+  }
+  [data-theme="light"] .rail-toggle {
+    background: rgba(0,0,0,0.03);
+    border-color: rgba(0,0,0,0.06);
+  }
+  [data-theme="light"] .rail-toggle:hover {
+    background: rgba(99,102,241,0.06);
+    border-color: #6366f1;
+    box-shadow: 0 0 16px rgba(99,102,241,0.15);
+  }
+
+  .rail-toggle-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+  }
+
+  .rail-indicator {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    transition: background 0.3s ease;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  .rail-toggle-icon {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  /* ═══════════════════════════════════
+     Popover — Glass Flutuante
+     ═══════════════════════════════════ */
+  .rail-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 100;
+    min-width: 210px;
+    padding: 10px;
+    border-radius: 14px;
+    background: rgba(18, 18, 24, 0.92);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+      0 8px 40px rgba(0,0,0,0.4),
+      0 2px 8px rgba(0,0,0,0.2),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+
+    /* Animação GPU */
+    opacity: 0;
+    transform: scale(0.92) translateY(-6px);
+    pointer-events: none;
+    transition:
+      opacity 0.18s ease,
+      transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: top right;
+  }
+  [data-theme="light"] .rail-popover {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(0,0,0,0.08);
+    box-shadow:
+      0 8px 40px rgba(0,0,0,0.10),
+      0 2px 8px rgba(0,0,0,0.04),
+      inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .theme-rail.open .rail-popover {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+  }
+
+  /* ═══════════════════════════════════
+     Paletas
+     ═══════════════════════════════════ */
+  .rail-palettes {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .rail-dot {
+    all: unset;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    line-height: 1;
+    background: var(--dot-bg);
+    filter: saturate(0.65);
+    opacity: 0.7;
+    transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+  }
+  .rail-dot:hover {
+    transform: scale(1.2);
+    filter: saturate(1);
+    opacity: 1;
+  }
+  .rail-dot[aria-checked="true"] {
+    opacity: 1;
+    filter: saturate(1);
+    transform: scale(1.12);
+    box-shadow: 0 0 16px var(--dot-bg);
+  }
+  .rail-dot[aria-checked="true"]::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid var(--color-text, #e1e4e8);
+    opacity: 0.5;
+  }
+  [data-theme="light"] .rail-dot[aria-checked="true"]::after {
+    border-color: #1a1a2e;
+    opacity: 0.4;
+  }
+
+  /* ═══════════════════════════════════
+     Divisor
+     ═══════════════════════════════════ */
+  .rail-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: 7px 4px 8px;
+    opacity: 0.25;
+  }
+
+  /* ═══════════════════════════════════
+     Toggle de Tema — Switch iOS-like
+     ═══════════════════════════════════ */
+  .rail-theme-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2px;
+  }
+
+  .rail-theme-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    letter-spacing: 0.01em;
+  }
+  [data-theme="light"] .rail-theme-label {
+    color: #78787d;
+  }
+
+  .rail-theme-switch {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    line-height: 1;
+  }
+
+  .rail-theme-track {
+    width: 50px;
+    height: 28px;
+    border-radius: 14px;
+    background: #25252e;
+    position: relative;
+    transition: background 0.35s ease;
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+  }
+  [data-theme="light"] .rail-theme-track {
+    background: #dad9d4;
+    border-color: rgba(0,0,0,0.06);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .rail-theme-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    transition:
+      transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
+      background 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  [data-theme="light"] .rail-theme-thumb {
+    transform: translateX(22px);
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.10),
+      inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+
+  .rail-theme-switch:hover .rail-theme-thumb {
+    filter: brightness(1.15);
+  }
+  .rail-theme-switch:active .rail-theme-thumb {
+    transform: scale(0.9);
+  }
+  [data-theme="light"] .rail-theme-switch:active .rail-theme-thumb {
+    transform: translateX(22px) scale(0.9);
+  }
+
+  .rail-theme-icon {
+    font-size: 0.7rem;
+    line-height: 1;
+    transition: transform 0.3s ease;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.2));
+  }
+</style>
