@@ -1,5 +1,7 @@
 ---
-// Client-side: posts from all rendered PostCard elements
+// FilterBar — Minimalist single-row search + project filter + year filter
+// When a project is selected, the bar adopts that project's accent color
+
 export interface Props {
   years: string[];
 }
@@ -7,7 +9,7 @@ export interface Props {
 const { years } = Astro.props;
 
 const projects = [
-  { id: 'all', label: 'Todos', icon: '📋' },
+  { id: 'all', label: 'Todos' },
   { id: 'arachne', label: 'Arachne', icon: '🕷️' },
   { id: 'dogwalk', label: 'Dogwalk', icon: '🐶' },
   { id: 'portfolio', label: 'Portfólio', icon: '🚀' },
@@ -15,54 +17,97 @@ const projects = [
   { id: 'estudos', label: 'Estudos', icon: '📚' },
   { id: 'descobertas', label: 'Descobertas', icon: '💡' },
 ];
+
+const projectColors: Record<string, string> = {
+  all: '#848d97',
+  arachne: '#a78bfa',
+  dogwalk: '#34d399',
+  portfolio: '#22d3ee',
+  capivara: '#fbbf24',
+  estudos: '#60a5fa',
+  descobertas: '#fb7185',
+};
+
+const currentYear = new Date().getFullYear().toString();
 ---
 
-<div id="filter-bar" class="filter-section mb-8">
-  <!-- Search -->
-  <div class="search-wrap">
-    <span class="search-icon">🔎</span>
-    <input
-      id="filter-search"
-      type="text"
-      placeholder="Buscar posts..."
-      class="search-input"
-    />
-    <span class="search-hint">
-      <kbd>⌘</kbd> <kbd>K</kbd>
-    </span>
-  </div>
+<div
+  id="filter-bar"
+  class="filter-bar"
+  style="--bar-accent: #848d97; --bar-accent-soft: rgba(132, 141, 151, 0.1);"
+>
+  <div class="filter-row">
+    <!-- Search -->
+    <div class="search-wrap">
+      <span class="search-icon">🔎</span>
+      <input
+        id="filter-search"
+        type="text"
+        placeholder="Buscar..."
+        class="search-input"
+        aria-label="Buscar posts"
+      />
+      <span class="search-hint"><kbd>⌘</kbd><kbd>K</kbd></span>
+    </div>
 
-  <!-- Year filter -->
-  <div class="filter-group">
-    <span class="filter-group-label">📅 Período</span>
-    <button class="filter-btn" data-filter-year="all" data-active="true">Todos</button>
-    {years.map((y) => (
-      <button class="filter-btn" data-filter-year={y} data-active="false">{y}</button>
-    ))}
-  </div>
+    <!-- Project pills -->
+    <div class="filter-pills" role="radiogroup" aria-label="Filtrar por projeto">
+      {projects.map((p) => (
+        <button
+          class="pill"
+          data-filter-project={p.id}
+          data-active={p.id === 'all'}
+          aria-checked={p.id === 'all'}
+          role="radio"
+          style={p.id !== 'all' ? `--pill-color: ${projectColors[p.id]}` : ''}
+        >
+          {p.icon && <span class="pill-icon">{p.icon}</span>}
+          <span class="pill-label">{p.label}</span>
+        </button>
+      ))}
+    </div>
 
-  <!-- Project filter -->
-  <div class="filter-group">
-    <span class="filter-group-label">🏷️ Projeto</span>
-    {projects.map((p) => (
-      <button
-        class="filter-btn"
-        data-filter-project={p.id}
-        data-active={p.id === 'all' ? 'true' : 'false'}
-      >
-        {p.id !== 'all' ? p.icon : ''} {p.label}
-      </button>
-    ))}
+    <!-- Year selector (tiny) -->
+    {years.length > 1 && (
+      <div class="filter-year-wrap">
+        <select id="filter-year" class="year-select" aria-label="Filtrar por ano">
+          <option value="all">📅 Todos</option>
+          {years.map((y) => (
+            <option value={y}>{y}</option>
+          ))}
+        </select>
+      </div>
+    )}
   </div>
 </div>
 
 <script is:inline>
 (function() {
-  // Lazy-load Fuse.js for fuzzy search
+  const bar = document.getElementById('filter-bar');
+  const searchInput = document.getElementById('filter-search');
+  const yearSelect = document.getElementById('filter-year');
+  const pills = document.querySelectorAll('[data-filter-project]');
+
+  // ===== Project colors (match Astro const) =====
+  const COLORS = {
+    all: '#848d97',
+    arachne: '#a78bfa',
+    dogwalk: '#34d399',
+    portfolio: '#22d3ee',
+    capivara: '#fbbf24',
+    estudos: '#60a5fa',
+    descobertas: '#fb7185',
+  };
+
+  let activeProject = 'all';
+  let activeYear = 'all';
+  let activeSearch = '';
+
+  // ===== Fuse.js (self-hosted) =====
   let fusePromise = null;
   function getFuse(postsData) {
     if (!fusePromise) {
-      fusePromise = import('https://cdn.jsdelivr.net/npm/fuse.js@7.4.2/dist/fuse.mjs').then(
+      fusePromise = import('/vendor/fuse.mjs').then(
         (mod) => new mod.default(postsData, {
           keys: ['title', 'desc', 'tags', 'project'],
           threshold: 0.4,
@@ -74,33 +119,94 @@ const projects = [
     return fusePromise;
   }
 
-  const searchInput = document.getElementById('filter-search');
-  const projectBtns = document.querySelectorAll('[data-filter-project]');
-  const yearBtns = document.querySelectorAll('[data-filter-year]');
-  let activeProject = 'all';
-  let activeYear = 'all';
-  let activeSearch = '';
-
-  // Build post data index for Fuse
+  // ===== Build post index from DOM =====
   function buildPostIndex() {
     const posts = document.querySelectorAll('.post-card');
     return Array.from(posts).map(post => ({
       el: post,
       project: post.getAttribute('data-project'),
       title: post.querySelector('h2')?.textContent || '',
-      desc: post.querySelector('p')?.textContent || '',
+      desc: post.querySelector('.card-desc')?.textContent || '',
       tags: Array.from(post.querySelectorAll('.tag')).map(t => t.textContent || ''),
       dateText: post.querySelector('[data-date]')?.textContent || '',
     }));
   }
 
   let postsData = buildPostIndex();
+
   // Rebuild on DOM changes
   if (window.MutationObserver) {
     const obs = new MutationObserver(() => { postsData = buildPostIndex(); });
-    obs.observe(document.getElementById('filter-bar'), { childList: true, subtree: true });
+    const target = document.getElementById('filter-bar');
+    if (target) obs.observe(target, { childList: true, subtree: true });
   }
 
+  // ===== Update bar accent =====
+  function setBarAccent(projectId) {
+    const color = COLORS[projectId] || COLORS.all;
+    bar.style.setProperty('--bar-accent', color);
+    bar.style.setProperty('--bar-accent-soft', `${color}1a`);
+  }
+
+  // ===== Pill click =====
+  pills.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const project = btn.getAttribute('data-filter-project');
+      if (!project) return;
+
+      // Update active state
+      pills.forEach(b => {
+        b.setAttribute('data-active', 'false');
+        b.ariaChecked = 'false';
+      });
+      btn.setAttribute('data-active', 'true');
+      btn.ariaChecked = 'true';
+
+      activeProject = project;
+      setBarAccent(project);
+      filterPosts();
+    });
+  });
+
+  // ===== Year change =====
+  if (yearSelect) {
+    yearSelect.addEventListener('change', () => {
+      activeYear = yearSelect.value;
+      filterPosts();
+    });
+  }
+
+  // ===== Search =====
+  searchInput.addEventListener('input', () => {
+    activeSearch = searchInput.value.trim();
+    if (activeSearch.length < 2) {
+      postsData.forEach(pd => { pd.el.style.display = ''; });
+      filterPosts();
+      return;
+    }
+    fuzzySearch(activeSearch);
+  });
+
+  // Keyboard shortcut ⌘K / Ctrl+K
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.blur();
+      searchInput.value = '';
+      activeSearch = '';
+      postsData.forEach(pd => { pd.el.style.display = ''; });
+      filterPosts();
+    }
+  });
+
+  // Global ⌘K listener
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  // ===== Filter logic =====
   function filterPosts() {
     const searchLower = activeSearch.toLowerCase();
 
@@ -113,7 +219,6 @@ const projects = [
 
       let matchSearch = true;
       if (searchLower) {
-        // Try exact match first
         matchSearch =
           pd.title.toLowerCase().includes(searchLower) ||
           pd.desc.toLowerCase().includes(searchLower) ||
@@ -126,8 +231,7 @@ const projects = [
     });
 
     // Hide empty separator groups
-    const allSeparators = document.querySelectorAll('.date-separator');
-    allSeparators.forEach(sep => {
+    document.querySelectorAll('.date-separator').forEach(sep => {
       let next = sep.nextElementSibling;
       let hasVisible = false;
       while (next && !next.classList.contains('date-separator')) {
@@ -140,34 +244,31 @@ const projects = [
       sep.style.display = hasVisible ? '' : 'none';
     });
 
-    // Show empty state if nothing visible
+    // Show/hide empty state
     const emptyEl = document.getElementById('empty-state');
-    const visiblePosts = postsData.filter(p => p.el.style.display !== 'none');
+    const visibleCount = postsData.filter(p => p.el.style.display !== 'none').length;
     if (emptyEl) {
-      emptyEl.style.display = visiblePosts.length === 0 ? '' : 'none';
+      emptyEl.style.display = visibleCount === 0 ? '' : 'none';
     }
   }
 
-  // Fuzzy search via Fuse (lazy loaded)
+  // ===== Fuzzy search =====
   async function fuzzySearch(query) {
-    const searchLower = query.toLowerCase();
-    if (searchLower.length < 2) {
-      // Reset all filters
-      postsData.forEach(pd => { pd.el.style.display = ''; });
-      filterPosts(); // Re-apply regular filters
-      return;
-    }
+    const q = query.toLowerCase();
+    if (q.length < 2) return filterPosts();
+
     try {
       const fuse = await getFuse(postsData);
-      const results = fuse.search(searchLower);
+      const results = fuse.search(q);
       const matchedEls = new Set(results.map(r => r.item.el));
+
       postsData.forEach(pd => {
-        if (pd.el.style.display === 'none') return; // Already hidden by project/year filter
+        if (pd.el.style.display === 'none') return;
         pd.el.style.display = matchedEls.has(pd.el) ? '' : 'none';
       });
-      // Hide empty separators
-      const allSeparators = document.querySelectorAll('.date-separator');
-      allSeparators.forEach(sep => {
+
+      // Empty separators
+      document.querySelectorAll('.date-separator').forEach(sep => {
         let next = sep.nextElementSibling;
         let hasVisible = false;
         while (next && !next.classList.contains('date-separator')) {
@@ -179,44 +280,158 @@ const projects = [
         }
         sep.style.display = hasVisible ? '' : 'none';
       });
+
+      const emptyEl = document.getElementById('empty-state');
+      const visiblePosts = postsData.filter(p => p.el.style.display !== 'none').length;
+      if (emptyEl) emptyEl.style.display = visiblePosts === 0 ? '' : 'none';
     } catch (e) {
-      // Fallback to simple search if Fuse fails
       filterPosts();
     }
   }
 
-  // Project buttons
-  projectBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      projectBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeProject = btn.getAttribute('data-filter-project');
-      filterPosts();
-    });
-  });
-
-  // Year buttons
-  yearBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      yearBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeYear = btn.getAttribute('data-filter-year');
-      filterPosts();
-    });
-  });
-
-  // Search — debounced fuzzy search
-  let searchTimer;
-  searchInput.addEventListener('input', () => {
-    activeSearch = searchInput.value;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      if (activeSearch.length >= 2) {
-        fuzzySearch(activeSearch);
-      } else {
-        filterPosts();
-      }
-    }, 200);
-  });
+  // ===== Init =====
+  setBarAccent('all');
 })();
 </script>
+
+<style>
+  .filter-bar {
+    margin-bottom: 2rem;
+    border-radius: 14px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-card);
+    transition: border-color 0.4s ease, box-shadow 0.4s ease, background 0.4s ease;
+    border-left: 3px solid var(--bar-accent, var(--color-border));
+    box-shadow: 0 0 20px color-mix(in srgb, var(--bar-accent, transparent) 6%, transparent);
+  }
+
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    flex-wrap: nowrap;
+  }
+
+  /* Search */
+  .search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+    min-width: 140px;
+  }
+
+  .search-icon { font-size: 0.85rem; opacity: 0.5; flex-shrink: 0; }
+
+  .search-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--color-text);
+    font-size: 0.875rem;
+    width: 100%;
+    min-width: 80px;
+    font-family: inherit;
+  }
+  .search-input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
+
+  .search-hint {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .search-hint kbd {
+    font-size: 0.65rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--color-border);
+    background: rgba(255,255,255,0.04);
+    color: var(--color-text-muted);
+    font-family: inherit;
+  }
+  @media (min-width: 640px) {
+    .search-hint { display: inline-flex; }
+  }
+
+  /* Pills */
+  .filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    justify-content: center;
+  }
+  .filter-pills::-webkit-scrollbar { display: none; }
+
+  .pill {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0.3rem 0.5rem;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .pill-icon { font-size: 0.8rem; }
+  .pill-label { display: none; }
+
+  @media (min-width: 480px) {
+    .pill { padding: 0.3rem 0.6rem; }
+    .pill-label { display: inline; }
+  }
+
+  .pill:hover {
+    color: var(--pill-color, var(--color-text));
+    background: color-mix(in srgb, var(--pill-color, currentColor) 8%, transparent);
+  }
+
+  .pill[data-active="true"] {
+    color: #fff;
+    background: var(--pill-color, var(--bar-accent));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--pill-color, var(--bar-accent)) 30%, transparent);
+  }
+  .pill[data-active="true"]:hover {
+    opacity: 0.9;
+  }
+
+  /* Year select */
+  .filter-year-wrap { flex-shrink: 0; }
+
+  .year-select {
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color 0.25s ease, color 0.25s ease;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b949e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 8px;
+    padding-right: 20px;
+  }
+  .year-select:hover {
+    border-color: var(--bar-accent);
+    color: var(--bar-accent);
+  }
+  .year-select:focus {
+    outline: none;
+    border-color: var(--bar-accent);
+  }
+</style>

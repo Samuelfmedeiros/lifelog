@@ -10,9 +10,10 @@ export interface Props {
   slug: string;
   icon?: string;
   cover?: string;
+  index?: number;
 }
 
-const { title, description, date, project, tags, slug, icon, cover } = Astro.props;
+const { title, description, date, project, tags, slug, icon, cover, index } = Astro.props;
 const formattedDate = date.toLocaleDateString('pt-BR', {
   day: '2-digit',
   month: 'short',
@@ -28,7 +29,7 @@ const projectIcons: Record<string, string> = {
 };
 ---
 
-<article class="post-card group" data-project={project}>
+<article class="post-card group" data-project={project} style={index !== undefined ? `--card-index: ${index}` : ''}>
   <a href={`/post/${slug}`} class="no-underline! block">
     <!-- Cover thumbnail -->
     <div class="cover-wrap">
@@ -174,4 +175,22 @@ const projectIcons: Record<string, string> = {
     text-transform: uppercase;
     color: var(--color-accent);
   }
+}
+
+/* Fade-in on scroll */
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.post-card {
+  animation: cardFadeIn 0.5s ease-out both;
+  animation-delay: calc(var(--card-index, 0) * 60ms);
+}
 </style>
