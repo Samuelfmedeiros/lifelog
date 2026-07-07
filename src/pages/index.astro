@@ -61,7 +61,7 @@ const years = [...new Set(posts.map(p => p.data.date.getFullYear().toString()))]
       grouped.map((group) => (
         <>
           <DateSeparator date={group.date} />
-          <div class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {group.posts.map((post) => (
               <PostCard
                 title={post.data.title}
@@ -71,6 +71,7 @@ const years = [...new Set(posts.map(p => p.data.date.getFullYear().toString()))]
                 tags={post.data.tags}
                 slug={post.id}
                 icon={post.data.icon}
+                cover={post.data.cover}
               />
             ))}
           </div>

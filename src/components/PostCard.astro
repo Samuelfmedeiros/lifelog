@@ -9,9 +9,10 @@ export interface Props {
   tags: string[];
   slug: string;
   icon?: string;
+  cover?: string;
 }
 
-const { title, description, date, project, tags, slug, icon } = Astro.props;
+const { title, description, date, project, tags, slug, icon, cover } = Astro.props;
 const formattedDate = date.toLocaleDateString('pt-BR', {
   day: '2-digit',
   month: 'short',
@@ -27,36 +28,150 @@ const projectIcons: Record<string, string> = {
 };
 ---
 
-<article class="post-card" data-project={project}>
+<article class="post-card group" data-project={project}>
   <a href={`/post/${slug}`} class="no-underline! block">
-    <div class="flex items-start gap-4">
-      <ProjectIcon project={project} emoji={icon} />
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 mb-2 flex-wrap">
-          <span class="flex items-center gap-1 text-xs font-medium uppercase tracking-wider" style="color: var(--color-accent)">
-            {projectIcons[project] || '📝'} {projectLabels[project] || project}
-          </span>
-          <span class="text-xs opacity-50">·</span>
-          <span class="text-xs" data-date style="color: var(--color-text-muted)">
-            {formattedDate}
-          </span>
+    <!-- Cover thumbnail -->
+    <div class="cover-wrap">
+      {cover ? (
+        <img
+          src={cover}
+          alt={title}
+          loading="lazy"
+          class="cover-img"
+        />
+      ) : (
+        <div class="cover-placeholder">
+          <span class="placeholder-icon">{icon || projectIcons[project] || '📝'}</span>
         </div>
-        <h2 class="text-lg font-bold mb-2 leading-snug" style="color: #fff">
-          {title}
-        </h2>
-        <p class="text-sm leading-relaxed mb-3" style="color: var(--color-text-muted)">
-          {description}
-        </p>
-        <div class="flex items-center gap-2 flex-wrap">
-          {tags.slice(0, 4).map((tag) => (
-            <span class="tag">{tag}</span>
-          ))}
-        </div>
-        <div class="mt-4 flex items-center gap-1 text-xs font-medium tracking-wide uppercase" style="color: var(--color-accent)">
-          Continuar lendo
-          <span class="inline-block transition-transform duration-200">→</span>
-        </div>
+      )}
+      <!-- Project badge overlaid -->
+      <div class="cover-badge">
+        {projectIcons[project] || '📝'} {projectLabels[project] || project}
+      </div>
+    </div>
+
+    <!-- Card body -->
+    <div class="card-body">
+      <div class="flex items-center gap-2 text-xs mb-2" style="color: var(--color-text-muted);">
+        <span data-date>{formattedDate}</span>
+      </div>
+
+      <h2 class="card-title">
+        {title}
+      </h2>
+
+      <p class="card-desc">
+        {description}
+      </p>
+
+      <div class="flex items-center gap-2 flex-wrap mt-3">
+        {tags.slice(0, 3).map((tag) => (
+          <span class="tag">{tag}</span>
+        ))}
+      </div>
+
+      <div class="card-readmore">
+        Continuar lendo <span class="inline-block transition-transform duration-200 group-hover:translate-x-1">→</span>
       </div>
     </div>
   </a>
 </article>
+
+<style>
+  .post-card {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-card);
+    transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+
+  .post-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-accent);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3), var(--color-glow);
+  }
+
+  .cover-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 21/9;
+    overflow: hidden;
+    background: var(--bg-gradient);
+  }
+
+  .cover-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+  }
+
+  .post-card:hover .cover-img {
+    transform: scale(1.05);
+  }
+
+  .cover-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-gradient);
+  }
+
+  .placeholder-icon {
+    font-size: 3rem;
+    opacity: 0.5;
+    filter: drop-shadow(0 0 20px var(--color-accent));
+  }
+
+  .cover-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .card-body {
+    padding: 16px;
+  }
+
+  .card-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    color: #fff;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-desc {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-readmore {
+    margin-top: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+</style>

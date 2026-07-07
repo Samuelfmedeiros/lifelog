@@ -31,11 +31,22 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 
+# Scripts temporários (demo, captura, geração)
+scripts/
+
+# Screenshots e capturas na raiz
+*.png
+*.webm
+*.mp4
+
 # Demo videos & frames
 demo*.mp4
 demo*.webm
 *.webm
 .tmp_frames/
+
+# Draft queue
+src/content/drafts/queue.json
 
 # Generated test assets
 public/demo-*.mp4

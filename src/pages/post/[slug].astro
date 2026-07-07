@@ -45,6 +45,10 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
     <div class="max-w-3xl mx-auto px-4 py-8">
       <!-- Cover Image -->
       <div class="relative w-full aspect-[21/9] mb-10 rounded-2xl overflow-hidden border" style="border-color: var(--color-accent); box-shadow: var(--color-glow);">
+        {coverImage ? (
+          <img src={coverImage} alt={post.data.title} class="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <>
         <div class="absolute inset-0" style="background: var(--bg-gradient);"></div>
         <div class="absolute inset-0" style="background-image: var(--pattern-url); background-size: 120px; opacity: var(--pattern-opacity); background-blend-mode: var(--pattern-blend);"></div>
         <div class="absolute inset-0 flex items-center justify-center">
@@ -52,6 +56,8 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
             {projectIcons[post.data.project] || '📝'}
           </span>
         </div>
+        </>
+        )}
         <!-- Accent glow line -->
         <div class="absolute bottom-0 left-0 right-0 h-1" style="background: linear-gradient(90deg, transparent, var(--color-accent), transparent);"></div>
       </div>
@@ -227,5 +233,26 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
     margin: 1.5rem 0;
     color: var(--color-accent);
     font-weight: 500;
+  }
+
+  /* 📱 Post page responsive */
+  @media (max-width: 768px) {
+    article[data-project] h1 {
+      font-size: 1.5rem !important;
+    }
+    article[data-project] .prose h2 {
+      font-size: 1.35rem !important;
+    }
+    article[data-project] .prose h3 {
+      font-size: 1.1rem !important;
+    }
+    article[data-project] .prose p,
+    article[data-project] .prose li {
+      font-size: 0.9375rem;
+    }
+    article[data-project] .prose pre {
+      padding: 0.875rem !important;
+      font-size: 0.8125rem;
+    }
   }
 </style>
