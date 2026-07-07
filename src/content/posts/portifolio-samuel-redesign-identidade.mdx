@@ -1,0 +1,58 @@
+---
+title: Portifolio Samuel — o redesign que buscou identidade
+description: "Depois de construir ferramentas para os outros, resolvi dedicar tempo ao meu próprio espaço. Um portfólio que fosse mais que um currículo."
+date: 2026-06-25
+project: portfolio
+tags:
+  - portfolio
+  - redesign
+  - nextjs
+  - frontend
+  - identidade
+icon: 🚀
+featured: false
+---
+
+Construí sistema de scraping, dashboard financeiro, app de passeio de cachorro — tudo para os outros usarem. Mas meu próprio espaço digital? Um site estático esquecido num canto.
+
+25 de junho. Decidi que era hora de dar atenção ao Portifolio Samuel.
+
+## A busca por identidade
+
+Eu não queria mais um template de portfólio. Queria algo que refletisse *quem eu sou* — um desenvolvedor que ama sci-fi, sistemas complexos, e interfaces que conversam com o usuário.
+
+A identidade visual que busquei: sci-fi, mas não fria. Tecnológica, mas humana. Algo que misturasse o senso de urgência de um centro de controle com a calma de um espaço pessoal.
+
+## Primeiro commit: i18n
+
+O primeiro commit do redesign foi `fix: i18n cookie banner`. Antes de qualquer componente bonito, a base precisava estar sólida — e internacionalização era prioridade.
+
+```typescript
+// next-i18next.config.js
+module.exports = {
+  i18n: {
+    defaultLocale: 'pt',
+    locales: ['pt', 'en'],
+    localeDetection: true,
+  },
+};
+```
+
+Queria que o portfólio falasse português e inglês naturalmente. Sem gambiarras de rota, sem redirecionamentos estranhos. Next.js com i18n resolveu elegantemente.
+
+## Por que Next.js?
+
+Escolhi Next.js por algumas razões práticas:
+
+1. **SSR/SSG**: Performance boa sem sacrificar SEO
+2. **i18n nativo**: Suporte a múltiplos idiomas sem bibliotecas extras
+3. **App Router**: A nova arquitetura que organiza melhor o código
+4. **Ecosystem**: Vercel, Tailwind, e todo o ecossistema React
+
+Mas a decisão mais importante não foi técnica — foi de identidade. O portfólio precisava ser rápido, bonito, e acima de tudo, *meu*.
+
+## O que viria depois
+
+O redesign de junho foi o alicerce. Em 1º de julho, o portfólio ganharia integração com Stripe + Mercado Pago — features de monetização que eu queria testar. Mas isso é uma história pra frente.
+
+Por enquanto, o que importava era ter um espaço que eu tivesse orgulho de mostrar. Um canto da internet que dissesse: "aqui é o Samuel, e é assim que ele constrói."

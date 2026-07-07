@@ -1,0 +1,79 @@
+---
+title: O ecossistema toma forma — backups, segurança e automatização
+description: "Com 3 projetos rodando, a infraestrutura precisava ser robusta. Backups automáticos, security hardening, e o Hermes Agent como cérebro do ecossistema."
+date: 2026-06-30
+project: descobertas
+tags:
+  - infra
+  - backup
+  - segurança
+  - automação
+  - hermes
+icon: 💡
+featured: false
+---
+
+30 de junho. Três projetos ativos — Arachne, Dogwalk, Capivara — cada um com seu repositório, seu banco de dados, seus segredos. Manter tudo funcionando manualmente já não era mais viável.
+
+Junho terminou com uma constatação: projetos sem infraestrutura são passivos, não ativos. Se um servidor cai, se um banco corrompe, se uma chave vaza — o problema não é do projeto, é meu.
+
+## O sistema de backups
+
+A primeira prioridade foi óbvia: backup automatizado de tudo.
+
+```bash
+#!/bin/bash
+# backup.sh — roda no cron每晚 às 3h
+DATE=$(date +%Y-%m-%d)
+BACKUP_DIR="/mnt/f/backups/$DATE"
+mkdir -p "$BACKUP_DIR"
+
+# Projetos
+for project in arachne dogwalk capivara; do
+    sqlite3 "/home/samuel/$project/data/$project.db" \
+        ".backup '$BACKUP_DIR/${project}_$(date +%H%M).db'"
+done
+
+# Sincronizar com M: (backup secundário)
+rsync -avz /mnt/f/backups/ /mnt/m/backups/
+```
+
+A estrutura era simples mas sólida: banco SQLite → backup local (F:) → rsync pro drive secundário (M:). Dois pontos de falha cobertos, zero custo de serviços externos.
+
+## Security hardening
+
+Com dados reais rodando, segurança deixou de ser opcional. Cada projeto recebeu:
+
+- **Variáveis de ambiente**: Nada de secrets hardcoded
+- **Firewall básico**: ufw configurado por serviço
+- **Health checks**: Endpoints que eu podia consultar pra saber se estava tudo vivo
+- **Rotação de logs**: Pra não encher o disco
+
+O Hermes Agent entrou como cérebro do ecossistema — monitorando logs, disparando alertas, e até sugerindo correções quando algo saía do esperado.
+
+## Cloudflare Tunnel
+
+Em vez de expor portas diretamente (e lidar com ataques de bot), usei Cloudflare Tunnel. Cada projeto ganhou seu subdomínio com proxy reverso, SSL automático, e proteção DDoS de brinde:
+
+```
+arachne.seusite.com → Tunnel → localhost:8000
+dogwalk.seusite.com → Tunnel → localhost:3000
+capivara.seusite.com → Tunnel → localhost:8001
+```
+
+Simples, seguro, e de graça.
+
+## O ecossistema em pé
+
+Quando o relógio bateu meia-noite de 1º de julho, o ecossistema estava assim:
+
+| Projeto | Status | Backup | CI |
+|---------|--------|--------|----|
+| Arachne | Pipeline multi-engine rodando | Automático | ✅ |
+| Dogwalk | Testes E2E + CI | Automático | ✅ |
+| Capivara | Dashboard financeiro em construção | Automático | 🔄 |
+| Portifolio | Redesign começando | Estático | 🔄 |
+
+Não era perfeito. Mas era robusto. E era meu.
+
+Junho de 2026 foi o mês em que parei de construir projetos soltos e comecei a construir um *ecossistema*.
