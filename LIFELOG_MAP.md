@@ -12,7 +12,7 @@
 | Framework | **Astro 7** | SSG nativo, zero JS no build, MDX integrado |
 | Estilo | **Tailwind 4** (Vite plugin) | Utilitário, temas via CSS custom properties |
 | Conteúdo | **MDX + content collections** | Schema validado com Zod, tipagem forte |
-| Busca | **Fuse.js 7.4** (CDN lazy) | Fuzzy search client-side, sem backend |
+| Busca | **Fuse.js 7.4** (self-hosted /vendor/) | Fuzzy search, zero dependência externa |
 | Fonte | **Inter** (Google Fonts) | Limpa, boa legibilidade técnica |
 | Deploy | **Vercel** (GitHub auto) | CI/CD grátis, preview deployments |
 | Capas AI | **Cloudflare Workers AI** (FLUX.1 Schnell) | Grátis, sem texto na imagem |
@@ -182,11 +182,13 @@ localStorage: lifelog-theme | lifelog-palette
 - **CTA:** "Continuar lendo →"
 
 ### FilterBar.astro
+- **Layout:** Single row minimalista: [busca | pills projeto | ano]
 - **Search:** Input com ícone 🔎 + atalho ⌘K
-- **Período:** Botões de ano (dinâmico dos posts)
-- **Projeto:** 7 botões (Todos + 6 projetos)
-- **Fuse.js:** Lazy load do CDN, fallback pra busca simples
-- **Mutação:** MutationObserver recalcula índice
+- **Projetos:** 7 pills compactas (emoji + label)
+- **Cor dinâmica:** Ao selecionar projeto, a barra inteira adota a cor do projeto (borda esquerda + glow)
+- **Ano:** Dropdown minimalista
+- **Fuse.js:** Self-hosted em `/vendor/fuse.mjs` (sem CDN)
+- **Interação:** Tudo JS puro sem framework
 
 ### PalettePicker.astro
 - **Toggle:** Pill compacto com indicador de cor ativa
@@ -287,24 +289,26 @@ src/content/drafts/queue.json
 
 ---
 
-## 9. Pontos de Melhoria Identificados
+## 9. Changelog — v1.1.0 (07/07/2026)
 
-### 🔧 Alta Prioridade
-- [ ] **Sitemap.xml** — SEO, essencial pra indexação
-- [ ] **OpenGraph tags** dinâmicas por post (imagem, descrição)
-- [ ] **CoverImage no PostCard** — confirmar que `cover` tá renderizando (bug conhecido)
+### ✅ Realizado
+- [x] **Sitemap.xml** — SEO gerado automaticamente com todas as URLs
+- [x] **OpenGraph dinâmico** — og:title, og:description, og:type, og:url, og:site_name + Twitter Cards por página
+- [x] **Cover como OG Image** — posts com capa compartilham a imagem no link preview
+- [x] **Fuse.js self-hosted** — `/vendor/fuse.mjs`, sem dependência de CDN
+- [x] **FilterBar redesign** — single row minimalista com busca + pills projeto + ano
+- [x] **Cor dinâmica** — barra muda de cor ao selecionar projeto (borda + glow)
+- [x] **Fade-in cards** — animação com stagger delay nos posts
+- [x] **Página 404** — customizada com tema do LifeLog
+- [x] **Backup automático** — cron diário 02:00 BRT (script lifelog-backup.sh)
 
-### 🔧 Média Prioridade
-- [ ] **CSS in global.css** tem código que poderia ir pra themes.css
-- [ ] **Hardcoded project list** em FilterBar.astro vs schema — manter sync
-- [ ] **Fuse.js CDN** — considerar self-hosted pra 100% offline
-- [ ] **Loading state** da busca (Fuse.js pode demorar em rede lenta)
-
-### 🔧 Baixa Prioridade
-- [ ] **Animação de entrada** nos cards (fade-in ao scroll)
-- [ ] **Página 404** customizada
-- [ ] **Tags clickáveis** na home (via URL params)
+### 🔧 Ideias para Próximas Versões
+- [ ] **Pipeline de postagem automática** — LLM gera MDX, worker cria capa, commit + push
+- [ ] **Loading state** na busca (Fuse.js import pode ser lento)
 - [ ] **Tema por post** via data-project no layout (já funciona)
+- [ ] **Tags clickáveis** na home (via URL params)
+- [ ] **Animações de entrada** mais sofisticadas (intersection observer)
+- [ ] **Modo de visualização** (grid/lista)
 
 ---
 
