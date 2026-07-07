@@ -1,0 +1,64 @@
+---
+title: Primeiros passos — infraestrutura e as primeiras linhas de código
+description: "Depois da ideia, veio a parte mais difícil: colocar a mão na massa. Como escolhi React, Vite e FastAPI para construir o Dogwalk."
+date: 2026-05-28
+project: dogwalk
+tags:
+  - dogwalk
+  - react
+  - fastapi
+  - infra
+  - tecnologia
+icon: 🐶
+featured: false
+---
+
+Ter a ideia foi fácil. Colocar ela de pé foi outra história.
+
+Quatro dias depois do estalo inicial, eu estava pronto para começar a codar de verdade. Mas antes precisava responder uma pergunta crucial: qual stack usar?
+
+## A escolha da stack
+
+React 19 tinha acabado de sair, Vite 8 prometia build imediato, e FastAPI era a escolha óbvia para o backend — performance boa, tipagem nativa com Pydantic, e documentação automática.
+
+```bash
+# O comando que deu início a tudo
+npm create vite@latest dogwalk -- --template react-ts
+cd dogwalk
+npm install
+```
+
+Parece simples agora, mas na época enfrentei uns bons perrengues. Configuração de ESLint com React 19 deu briga, o Vite 8 tinha acabado de sair com algumas breaking changes, e o Stripe me fez perder uma tarde inteira porque esqueci de configurar o webhook no ambiente de desenvolvimento.
+
+## As primeiras lutas
+
+Olhando hoje o `deploy-workflow.sh`, parece um script de boa. Mas ele nasceu de um sábado inteiro tentando entender por que o build quebrava em produção mas não em dev.
+
+```bash
+#!/bin/bash
+# deploy-workflow.sh — versão 0.1, 28/05/2026
+echo "🐶 Buildando Dogwalk..."
+npm run build && echo "✅ Build OK" || echo "❌ Build falhou"
+```
+
+Sim, era literalmente isso no começo. Cresceu com condicionais, health checks, logs, e hoje tem umas 80 linhas. Mas todo script grande começa pequeno.
+
+## PostgreSQL e a primeira migration
+
+A escolha do banco foi PostgreSQL rodando em Docker. Nada de ORM complexo no começo — SQL puro mesmo, com asyncpg no FastAPI.
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT CHECK (role IN ('tutor', 'passeador')) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+Essa foi literalmente a primeira tabela. Ela existe até hoje, com algumas colunas a mais e um punhado de índices.
+
+## O que aprendi
+
+Que setup de projeto é traiçoeiro — parece que você tá progredindo quando na verdade só tá configurando ferramentas. Mas sem essa base, o resto desmorona. Cada hora gasta na infra no começo economizou dias de dor de cabeça depois.

@@ -32,7 +32,7 @@ __pycache__/
 *.py[cod]
 
 # Scripts temporários (demo, captura, geração)
-scripts/
+# scripts/  -- removed: scripts/generate-cover.py é mantido
 
 # Screenshots e capturas na raiz
 *.png
