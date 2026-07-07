@@ -354,9 +354,9 @@
    💡  DESCOBERTAS — Spark / Discovery
    ======================================== */
 [data-project="descobertas"] {
-  --color-accent: #ec4899;
-  --color-accent-soft: rgba(236, 72, 153, 0.1);
-  --color-glow: 0 0 30px rgba(236, 72, 153, 0.12);
+  --color-accent: #38bdf8;
+  --color-accent-soft: rgba(56, 189, 248, 0.1);
+  --color-glow: 0 0 30px rgba(56, 189, 248, 0.12);
   --pattern-url: url('/patterns/sparkles.svg');
   --pattern-opacity: 0.04;
   --hover-scale: 1.02;

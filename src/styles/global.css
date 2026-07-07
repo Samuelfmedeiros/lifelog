@@ -542,3 +542,224 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ========================================
+   📱 Responsivo — Mobile First
+   ======================================== */
+
+/* Tablet e abaixo */
+@media (max-width: 768px) {
+  /* Navbar — esconde nome do autor, links mais compactos */
+  .navbar-inner {
+    padding: 0 1rem;
+    height: auto;
+    min-height: 3.75rem;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .navbar-logo {
+    font-size: 1.1rem;
+    gap: 0.5rem;
+  }
+
+  .navbar-logo-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1.1rem;
+  }
+
+  .navbar-brand-name {
+    display: none;
+  }
+
+  .navbar-brand-sep {
+    display: none;
+  }
+
+  .navbar-links {
+    gap: 0.125rem;
+  }
+
+  .navbar-link {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .navbar-link.cta {
+    margin-left: 0.25rem;
+    font-size: 0.8125rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  /* Hero */
+  .hero-title {
+    font-size: 2rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem;
+  }
+
+  /* Filter section */
+  .filter-section {
+    padding: 1rem;
+  }
+
+  .filter-btn {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.75rem;
+  }
+
+  .search-hint {
+    display: none;
+  }
+
+  .search-input {
+    padding: 0.75rem 0.875rem 0.75rem 2.5rem;
+    font-size: 0.875rem;
+  }
+
+  /* Post cards */
+  .post-card {
+    padding: 1.25rem;
+  }
+
+  .post-card h2 {
+    font-size: 1.1rem;
+  }
+
+  /* Date separator */
+  .date-separator {
+    font-size: 0.6875rem;
+    gap: 0.5rem;
+  }
+
+  /* Post content */
+  .post-content h1 { font-size: 1.5rem; }
+  .post-content h2 { font-size: 1.25rem; }
+  .post-content h3 { font-size: 1.1rem; }
+  .post-content pre {
+    padding: 1rem;
+    font-size: 0.8125rem;
+  }
+  .post-content blockquote {
+    padding-left: 0.875rem;
+  }
+
+  /* Post cover/banner — aspect ratio fix inline */
+  article[data-project] > div > div.relative.w-full {
+    aspect-ratio: 16/9 !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  /* Prev/Next nav — empilha em mobile */
+  nav div.grid.grid-cols-2 {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Cover icon */
+  article[data-project] > div > div.relative.w-full span[style*="font-size: 5rem"] {
+    font-size: 3rem !important;
+  }
+
+  /* Project icon */
+  .project-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+
+  /* Tags — wrap */
+  .flex.flex-wrap.gap-2 a[href*="?tag="] {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+  }
+
+  /* Footer */
+  footer {
+    padding: 1.5rem 1rem;
+  }
+
+  /* Main padding */
+  main.max-w-4xl {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Particle canvas — reduce count for performance */
+  #particle-canvas {
+    opacity: 0.3;
+  }
+
+  /* Prev/Next nav */
+  .prev-next-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
+/* Celular pequeno */
+@media (max-width: 480px) {
+  .navbar-inner {
+    flex-direction: column;
+    padding: 0.5rem 0.75rem;
+    height: auto;
+  }
+
+  .navbar-links {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .navbar-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .hero-title {
+    font-size: 1.65rem;
+  }
+
+  .filter-group {
+    gap: 0.25rem;
+  }
+
+  .filter-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.6875rem;
+  }
+
+  .post-card {
+    padding: 1rem;
+  }
+
+  .post-card h2 {
+    font-size: 1rem;
+  }
+
+  .post-card p {
+    font-size: 0.875rem;
+  }
+
+  .filter-section {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .search-input {
+    padding: 0.625rem 0.75rem 0.625rem 2rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Touch-friendly: bigger tap targets for filter buttons */
+@media (pointer: coarse) {
+  .filter-btn,
+  .navbar-link,
+  .rail-dot {
+    min-height: 36px;
+  }
+}

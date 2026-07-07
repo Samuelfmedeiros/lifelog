@@ -1,59 +1,10 @@
 ---
 title: Por que Escolhi Playwright para Testes E2E no Dogwalk
-description: Descubra como a escolha do Playwright transformou nossa abordagem de testes em E2E no projeto Dogwalk, oferecendo robustez e eficiência.
+description: "Descubra como a escolha do Playwright transformou nossa abordagem de testes em E2E no projeto Dogwalk, oferecendo robustez e eficiência."
 date: 2026-07-04
 project: dogwalk
-tags:
-- Testes Automatizados
-- Playwright
-- Desenvolvimento Ágil
-icon: "🐶"
+tags: [Playwright, Testes E2E, Dogwalk]
+icon: 🐶
+cover: /covers/por-que-escolhi-playwright-para-testes-e2e-no-dogwalk.webp
 ---
-
-## Olá, devs!
-
-Quando a gente estava na fase de decisão do stack de testes para o projeto Dogwalk, tinha muitas opções à mesa. Mas entre todas as possibilidades, o Playwright acabou sendo nosso escolhido. E olha que não foi uma decisão qualquer. Vou te contar por quê.
-
-### Porque Playwright é a Parada Certa
-
-#### Compatibilidade Cross-Browser
-
-> "A gente sempre teve problemas com testes que funcionavam no Chrome, mas falhavam no Firefox ou Edge."
-
-Quando começamos a mexer com o Playwright, descobrimos que ele suporta todos os principais navegadores de maneira nativa. Isso significa menos dor de cabeça pra garantir compatibilidade cross-browser sem ter que rodar testes separados em cada um deles.
-
-#### Controle Total do Ambiente
-
-O Playwright dá a gente controle total sobre o ambiente de execução dos testes. É possível simular diferentes cenários, como variações de rede e geolocalização, o que é uma mão na roda pra garantir que o Dogwalk vai funcionar bem para todos os nossos usuários.
-
-#### Integração Simples
-
-A integração com pipelines CI/CD foi um passeio de mãos dadas. Com ele, a gente consegue rodar testes paralelamente em diferentes ambientes sem esforço extra, garantindo que o desenvolvimento continue fluído e rápido.
-
-#### Documentação e Suporte da Comunidade
-
-A documentação do Playwright é top demais, bem clara e cheia de exemplos. Além disso, a comunidade está super ativa, então quando tem um problema ou dúvida, a gente consegue ajuda rapidinho.
-
-### Exemplo Prático: Configurando Testes Básicos
-
-Aqui vai um trecho de código que usamos para configurar nossos testes básicos no Playwright:
-
-```javascript
-const { test, expect } = require('@playwright/test');
-
-test('Verifica o título da página inicial', async ({ page }) => {
-  await page.goto('https://dogwalk.com');
-  const title = await page.title();
-  expect(title).toBe('DogWalk - O Melhor Amigo do Homem');
-});
-```
-
-Com esse bloco de código, a gente consegue garantir que o título da página inicial está correto. É uma maneira simples e eficaz de começar a garantir qualidade.
-
-### Conclusão
-
-Escolher o Playwright foi uma das melhores decisões para o projeto Dogwalk. Ele simplificou nosso trampo em testes E2E, aumentou nossa confiança no produto e ajudou a manter a qualidade lá nas alturas. Se você ainda não deu um rolê com o Playwright, recomendo que dê uma chance. Acredito que vai surpreender tanto quanto nos surpreendeu.
-
----
-
 Tags: Testes Automatizados, Playwright, Desenvolvimento Ágil
