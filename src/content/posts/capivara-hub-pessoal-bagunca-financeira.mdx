@@ -1,0 +1,70 @@
+---
+title: Capivara — o hub pessoal que nasceu de uma bagunça financeira
+description: "Precisava organizar minhas finanças e centralizar o controle dos meus projetos. O Capivara nasceu como um dashboard e virou o hub central do ecossistema."
+date: 2026-06-13
+project: capivara
+tags:
+  - capivara
+  - dashboard
+  - finanças
+  - hub
+  - fastapi
+icon: 🐷
+featured: false
+---
+
+No meio de junho, enquanto o Dogwalk engrenava e o Arachne começava a tomar forma, uma verdade incômoda bateu na porta: eu tinha perdido o controle das finanças.
+
+Não era uma crise — era bagunça. Cartões de crédito, assinaturas de serviços, custos de infraestrutura dos projetos, e um monte de números espalhados em planilhas, apps de banco, e anotações soltas. Cada projeto gerava gastos diferentes (VPS, domínios, APIs de terceiros), e eu não tinha uma visão unificada de nada.
+
+## O estalo (de novo)
+
+13 de junho. Eu estava somando manualmente os custos do mês quando pensei: *"Isso é ridículo. Eu construo sistemas de extração de dados, por que não construir um dashboard pro meu próprio bolso?"*
+
+O nome veio antes do código. Capivara — o animal calmo que todo mundo gosta, mas que também sabe se impor. Queria um hub pessoal que fosse acolhedor, mas sério. Que organizasse minha vida digital sem parecer um sistema corporativo.
+
+## Primeiro commit
+
+O primeiro commit foi documental: `docs: descricao detalhada do projeto no AGENTS.md`. Antes de escrever uma linha de código, documentei exatamente o que o Capivara precisava ser.
+
+```markdown
+# Capivara
+Hub pessoal para controle financeiro e gerenciamento de projetos.
+
+Stack: FastAPI + React 19 + SQLite
+
+Funcionalidades planejadas:
+- Dashboard financeiro com categorização automática
+- Controle de assinaturas e gastos recorrentes
+- Visão consolidada de todos os projetos
+- Modo escuro porque sim
+```
+
+## O primeiro endpoint
+
+Horas depois veio o código de verdade. O endpoint mais simples possível — um `/health` que serviria de termômetro pro sistema:
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="Capivara", version="0.1.0")
+
+
+@app.get("/health")
+async def health():
+    return JSONResponse(
+        content={"status": "ok", "version": "0.1.0", "project": "capivara"},
+        status_code=200,
+    )
+```
+
+Simples, quase bobo. Mas todo grande sistema começa com um endpoint que responde "ok". O Capivara estava vivo.
+
+## De "Mission Control" a "Capivara"
+
+Antes do nome final, o projeto se chamava "Mission Control" — uma referência a centro de controle de missões espaciais. O nome era legal, mas não tinha personalidade. "Capivara" veio da vontade de ter algo mais brasileiro, mais próximo, menos genérico.
+
+E fez sentido. Capivaras são animais gregários, que vivem em grupos, são adaptáveis — exatamente o que eu queria pro hub que centralizaria todos os meus projetos.
+
+O Capivara que nasceu em junho da bagunça financeira se tornaria, nos meses seguintes, o cérebro administrativo de todo o ecossistema Samuel. Mas isso é história pra outro post.

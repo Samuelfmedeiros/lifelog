@@ -1,0 +1,78 @@
+---
+title: Dogwalk amadurece — testes E2E com Playwright e CI
+description: "Com o app funcionando, chegou a hora de garantir que nada quebrasse. Playwright, testes E2E e CI entraram no fluxo."
+date: 2026-06-16
+project: dogwalk
+tags:
+  - dogwalk
+  - playwright
+  - testes
+  - e2e
+  - ci
+icon: 🐶
+featured: false
+---
+
+O Dogwalk já estava de pé. Login funcionando, componentes de autenticação no lugar, mapa de passeadores desenhado. Mas uma sensação incômoda não passava: *e se eu quebrar tudo no próximo deploy?*
+
+Até então os testes eram manuais — eu abria o navegador, clicava, olhava, torcia. Funcionava pra um projeto pequeno, mas o Dogwalk já tinha usuários reais testando. Qualquer erro no frontend significava perder confiança.
+
+## A virada de chave
+
+16 de junho. Decidi que era hora de profissionalizar o processo. Já conhecia Playwright de outros projetos, mas nunca tinha montado uma suíte E2E completa do zero. O objetivo era claro: cobrir os fluxos críticos antes que o app crescesse demais.
+
+A estrutura de testes ficou assim:
+
+```
+e2e/
+├── auth.spec.ts        # Login, registro, recovery
+├── walk.spec.ts        # Agendamento e ciclo de passeio
+├── profile.spec.ts     # Edição de perfil do passeador
+└── setup.ts            # Setup global (banco de testes)
+```
+
+## O primeiro teste E2E
+
+O primeiro teste que escrevi foi o mais básico possível — verificar se a página de login carregava e mostrava o formulário:
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test('página de login deve ter campos de email e senha', async ({ page }) => {
+  await page.goto('/login');
+
+  await expect(page.locator('input[name="email"]')).toBeVisible();
+  await expect(page.locator('input[name="password"]')).toBeVisible();
+  await expect(page.locator('button[type="submit"]')).toBeVisible();
+  await expect(page.locator('text=Entrar')).toBeVisible();
+});
+```
+
+Parece simples? É. Mas esse teste, rodando em segundos, substituía minutos de verificação manual. E o melhor: rodava automaticamente a cada push.
+
+## O CI entra em cena
+
+Com os testes locais funcionando, o próximo passo foi integrar no CI. GitHub Actions com um workflow que instalava dependências, rodava os testes em headless mode, e reportava falhas:
+
+```yaml
+name: E2E Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: npm run test:e2e
+```
+
+Os primeiros 100+ testes começaram a rodar de verdade. Cada PR passava a ter um escudo verde (ou vermelho, quando eu cometia alguma burrice).
+
+## Além dos testes
+
+O investimento em testes teve um efeito colateral inesperado: o código ficou melhor. Saber que algo seria testado me fazia escrever componentes mais modulares, com responsabilidades mais claras. Funções que eram bolas de neve de 200 linhas viraram funções pequenas e testáveis.
+
+O Dogwalk não era mais um protótipo. Era um aplicativo de verdade.
