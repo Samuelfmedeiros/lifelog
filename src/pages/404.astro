@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="404 — Não Encontrado" description="Página não encontrada">
+  <div class="flex flex-col items-center justify-center text-center py-24">
+    <div class="text-6xl mb-6 opacity-60" style="filter: drop-shadow(0 0 40px var(--color-accent));">
+      🔭
+    </div>
+    <h1 class="text-4xl font-extrabold mb-3" style="color: #fff">
+      404
+    </h1>
+    <p class="text-lg mb-8" style="color: var(--color-text-muted)">
+      Essa página não foi encontrada no espaço-tempo
+    </p>
+    <a
+      href="/"
+      class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300"
+      style="
+        background: var(--color-accent);
+        color: #000;
+        box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 25%, transparent);
+      "
+      onmouseover="this.style.opacity='0.85'"
+      onmouseout="this.style.opacity='1'"
+    >
+      ← Voltar para timeline
+    </a>
+  </div>
+</BaseLayout>
+
+<style>
+  a:hover {
+    transform: translateY(-1px);
+  }
+</style>

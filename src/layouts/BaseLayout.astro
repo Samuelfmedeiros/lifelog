@@ -7,12 +7,18 @@ export interface Props {
   title: string;
   description?: string;
   theme?: string;
+  image?: string;
+  type?: string;
 }
 
-const { title, description, theme } = Astro.props;
+const { title, description, theme, image, type } = Astro.props;
 const pageTitle = `${title} — LifeLog`;
 const pageDesc = description || 'Jornada de aprendizado de Samuel Medeiros';
 const themeAttr = theme || 'dev';
+const ogType = type || 'website';
+const ogImage = image || undefined;
+const ogUrl = Astro.url;
+const SITE_URL = 'https://lifelog-sepia.vercel.app';
 ---
 
 <!DOCTYPE html>
@@ -47,6 +53,21 @@ const themeAttr = theme || 'dev';
     </script>
     <meta name="description" content={pageDesc} />
     <title>{pageTitle}</title>
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={pageDesc} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={ogUrl} />
+    <meta property="og:site_name" content="LifeLog" />
+    {ogImage && <meta property="og:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={pageDesc} />
+    {ogImage && <meta name="twitter:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate" type="application/rss+xml" title="LifeLog RSS" href="/rss.xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

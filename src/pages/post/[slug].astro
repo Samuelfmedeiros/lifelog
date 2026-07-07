@@ -40,7 +40,7 @@ const coverImage = post.data.cover;
 const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project}>
+<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article">
   <article data-project={post.data.project}>
     <div class="max-w-3xl mx-auto px-4 py-8">
       <!-- Cover Image -->
