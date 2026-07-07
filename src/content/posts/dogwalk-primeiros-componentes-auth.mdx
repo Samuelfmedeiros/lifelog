@@ -1,0 +1,90 @@
+---
+title: Dogwalk ganha forma — primeiros componentes e autenticação
+description: Com a base definida, comecei a construir as telas de verdade. Autenticação, cadastro de pets, e o primeiro esboço do agendamento.
+date: 2026-06-04
+project: dogwalk
+tags:
+  - dogwalk
+  - react
+  - autenticação
+  - componentes
+  - frontend
+icon: 🐶
+featured: false
+---
+
+Com a infra no lugar e o banco rodando, chegou a hora de construir o que as pessoas realmente iam ver: as telas.
+
+4 de junho foi um dia produtivo. Eu tinha a stack decidida, o PostgreSQL rodando em Docker, e uma vontade danada de ver algo funcionando de verdade no navegador.
+
+## O primeiro componente
+
+O primeiro componente que escrevi (fora o Hello World do Vite) foi o formulário de cadastro. Nada especial, mas foi o marco zero do frontend.
+
+```tsx
+// Primeira versão do formulário de tutor
+export function TutorSignUp() {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // Na época isso chamava a API direto
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, name, role: "tutor" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) console.log("Usuário criado!");
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
+      <button type="submit">Cadastrar</button>
+    </form>
+  );
+}
+```
+
+Olhando hoje, é um componente feio e sem validação. Mas ele funcionava, e mais importante: ele existia.
+
+## Autenticação com JWT
+
+A escolha de fazer auth com JWT em vez de depender de serviços externos foi intencional. Eu queria controle total sobre o fluxo, mesmo sabendo que teria mais trabalho.
+
+```python
+# O guardião do login — primeira versão
+async def criar_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.utcnow() + timedelta(days=7),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+```
+
+Simples, direto, e com um segredo hardcoded que depois virou variável de ambiente. Todo mundo começa assim, né?
+
+## O cadastro de pets
+
+Depois da autenticação, veio a parte divertida: o cadastro dos pets. Foto, nome, raça, porte — informações básicas que hoje estão num formulário bonito com upload de imagem e preview.
+
+Na primeira versão era só um input de texto para "nome" e um select para "porte". Cresceu junto com o projeto.
+
+## deploy-workflow.sh
+
+Foi nessa época também que nasceu o `deploy-workflow.sh`. Um script simples que rodava `npm run build`, copiava os arquivos, e reiniciava o servidor.
+
+```bash
+#!/bin/bash
+echo "🚀 Deployando Dogwalk..."
+npm run build && rsync -avz dist/ servidor:/var/www/dogwalk/
+ssh servidor "systemctl restart dogwalk-api"
+```
+
+Esse script existe até hoje, só que agora com notificação no Telegram, rollback automático, e health check pós-deploy.
+
+## O sentimento
+
+No final do dia 4 de junho, eu tinha um formulário de cadastro, login funcionando, e um esboço de agendamento. Parecia pouco, mas era o primeiro passo real de algo que funcionava de ponta a ponta. Ver aquilo no navegador deu a confiança que precisei para continuar.

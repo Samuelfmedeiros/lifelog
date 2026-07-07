@@ -1,0 +1,63 @@
+---
+title: O Arachne nasceu de uma frustração — scrapers quebrados e dados perdidos
+description: Cansado de scrapers que quebravam do nada e serviços caros de terceiros, resolvi construir minha própria plataforma de extração de dados.
+date: 2026-06-03
+project: arachne
+tags:
+  - arachne
+  - scraping
+  - web scraping
+  - python
+  - origem
+icon: 🕷️
+featured: false
+---
+
+Se o Dogwalk nasceu de uma necessidade, o Arachne nasceu de uma frustração profunda com ferramentas quebradas.
+
+Eu estava cansado de manter scrapers que paravam de funcionar do nada. Um site mudava uma classe CSS, e pronto — dia de dados perdido. Serviços como ScrapingBee e Crawlbase resolviam parte do problema, mas custavam caro e não me davam controle fino sobre o processo.
+
+## O estalo
+
+3 de junho de 2026. Eu estava debugando um scraper que quebrou pela terceira vez na mesma semana quando pensei: *"Vou fazer meu próprio sistema de extração."*
+
+Na época parecia loucura. Construir uma plataforma de scraping do zero? Mas eu já tinha experiência com Crawl4AI, conhecia as limitações de cada abordagem (Trafilatura, Playwright, requests puro), e sabia exatamente o que um bom sistema precisava ter.
+
+## O primeiro arquivo
+
+Curiosamente, o primeiro arquivo do projeto Arachne não foi um scraper. Foi um `__init__.py` vazio em `tests/`.
+
+```python
+# tests/__init__.py — o primeiro arquivo do Arachne
+# 03/06/2026, 22:47
+# Ainda não tinha nada para testar, mas já sabia que precisaria
+```
+
+Parece bobo, mas abrir o projeto com um diretório de testes definiu o tom: esse projeto seria feito com disciplina. Não era um experimento de fim de semana — era uma plataforma que eu pretendia usar de verdade.
+
+## A arquitetura inicial
+
+O plano era simples em teoria, complexo na prática:
+
+1. **Camada de extração**: Crawl4AI como engine principal, Trafilatura como fallback leve
+2. **Cache inteligente**: Evitar re-buscar páginas já processadas
+3. **Saída estruturada**: Markdown limpo, não HTML cheio de lixo
+
+```python
+# A primeira versão do extrator (simplificada)
+async def extrair(url: str) -> str | None:
+    try:
+        resultado = await crawl4ai.extract(url)
+        return resultado.markdown
+    except Exception:
+        # Fallback pra Trafilatura se Crawl4AI falhar
+        return await trafilatura.extract(url)
+```
+
+Essa lógica de fallback, que hoje é automática e tem 4 camadas, começou exatamente assim: um try/except simples.
+
+## Por que "Arachne"?
+
+Aranha que tece teias. Fazia sentido — scrapers são como aranhas digitais, percorrendo a web atrás de informação. O nome ficou e virou identidade do projeto.
+
+A frustração de junho se transformou no que hoje é uma plataforma com pipeline multi-engine, cache em SQLite, indexação FTS5, e integração com RAG. Tudo porque um scraper quebrou na hora errada.
