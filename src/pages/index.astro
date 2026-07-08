@@ -61,7 +61,7 @@ const years = [...new Set(posts.map(p => p.data.date.getFullYear().toString()))]
       grouped.map((group) => (
         <>
           <DateSeparator date={group.date} />
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex flex-wrap justify-center gap-4">
             {group.posts.map((post, i) => (
               <PostCard
                 title={post.data.title}
