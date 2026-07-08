@@ -257,29 +257,6 @@
 }
 [data-theme="light"] .terminal-output pre { color: #a78bfa; }
 
-/* 💥 Força o light theme sobre QUALQUER data-project */
-[data-theme="light"][data-project] {
-  --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
-  --rays-gradient: repeating-conic-gradient(
-    from 35deg at 82% 6%,
-    transparent 0deg,
-    rgba(251,191,36,0.018) 4deg,
-    transparent 8deg,
-    transparent 18deg,
-    rgba(251,191,36,0.010) 22deg,
-    transparent 26deg
-  );
-  --aura-gradient: radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(139,92,246,0.12) 0%, transparent 50%);
-  --pattern-opacity: 0.012;
-  --pattern-blend: soft-light;
-  --pattern-url: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.3' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --color-bg: #f5f2eb;
-  --color-bg-card: #ffffff;
-  --color-text: #1a1a2e;
-  --color-text-muted: #78787d;
-  --color-border: #e5e4df;
-}
-
 /* ========================================
    🕷️  ARACHNE — Hacker / Cyberpunk
    ======================================== */
@@ -381,6 +358,29 @@
 /* ========================================
    Animações por Tema
    ======================================== */
+
+/* 💥 Força o light theme sobre QUALQUER data-project — no FINAL pra ganhar cascade */
+[data-theme="light"][data-project] {
+  --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
+  --rays-gradient: repeating-conic-gradient(
+    from 35deg at 82% 6%,
+    transparent 0deg,
+    rgba(251,191,36,0.018) 4deg,
+    transparent 8deg,
+    transparent 18deg,
+    rgba(251,191,36,0.010) 22deg,
+    transparent 26deg
+  );
+  --aura-gradient: radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(139,92,246,0.12) 0%, transparent 50%);
+  --pattern-opacity: 0.012;
+  --pattern-blend: soft-light;
+  --pattern-url: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.3' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --color-bg: #f5f2eb;
+  --color-bg-card: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-muted: #78787d;
+  --color-border: #e5e4df;
+}
 
 /* Arachne — pulso de radar, teia vibra */
 [data-project="arachne"] .post-card {
