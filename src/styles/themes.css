@@ -342,6 +342,29 @@
 }
 
 /* ========================================
+   🌊  TATUENGINE — Wave / Physics
+   ======================================== */
+[data-project="tatuengine"] {
+  --color-accent: #14b8a6;
+  --color-accent-soft: rgba(20, 184, 166, 0.1);
+  --color-glow: 0 0 30px rgba(20, 184, 166, 0.12);
+  --pattern-url: url('/patterns/wavefield.svg');
+  --pattern-opacity: 0.04;
+  --hover-scale: 1.02;
+  --card-border: 1px solid rgba(20, 184, 166, 0.3);
+  --bg-gradient: linear-gradient(135deg, #0a1412 0%, #0d1f1a 50%, #0a1412 100%);
+}
+
+/* TatuEngine — wave interference pulse */
+[data-project="tatuengine"] .post-card {
+  animation: wavePulse 5s ease-in-out infinite;
+}
+@keyframes wavePulse {
+  0%, 100% { border-color: rgba(20, 184, 166, 0.3); }
+  50% { border-color: rgba(20, 184, 166, 0.7); box-shadow: 0 0 20px rgba(20, 184, 166, 0.1); }
+}
+
+/* ========================================
    🛠️  DEV / Outros — Tech neutral
    ======================================== */
 [data-project="dev"] {

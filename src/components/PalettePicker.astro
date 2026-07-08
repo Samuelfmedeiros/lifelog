@@ -157,6 +157,12 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   setTheme(savedTheme, false)
   setPalette(getSavedPalette(), false)
 
+  /* ─── Listen for palette-reapply from FilterBar ─── */
+  document.addEventListener('lifelog-palette-reapply', function(e) {
+    const palette = e.detail && e.detail.palette;
+    if (palette) setPalette(palette, false);
+  });
+
   /* ─── Eventos ─── */
   document.addEventListener('click', (e) => {
     // Toggle do popover
