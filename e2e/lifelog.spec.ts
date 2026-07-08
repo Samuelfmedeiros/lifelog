@@ -51,10 +51,10 @@ test.describe('Homepage', () => {
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 9 posts na timeline', async ({ page }) => {
+  test('deve exibir todos os 11 posts na timeline', async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(9);
+    await expect(cards).toHaveCount(11);
 
     // Verificar date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -87,7 +87,7 @@ test.describe('Homepage', () => {
 });
 
 /* =============================================
-   2. Páginas de Posts individuais
+   2. Páginas de Posts individuais (11 posts)
    ============================================= */
 
 test.describe('Páginas de Posts', () => {
@@ -156,7 +156,7 @@ test.describe('Arquivo', () => {
    ============================================= */
 
 test.describe('Sobre', () => {
-  test('mostra estatísticas: Posts=9, Projetos, Desde=2026', async ({ page }) => {
+  test('mostra estatísticas: Posts=11, Projetos, Desde=2026', async ({ page }) => {
     await page.goto('/sobre');
     await expect(page.locator('h1')).toContainText('Sobre o LifeLog');
 
@@ -171,10 +171,11 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '9' && v.label === 'Posts')).toBeTruthy();
-    // Projetos = unique projects with posts (dogwalk, arachne, capivara, portfolio = 4)
+    expect(values.find(v => v.number === '11' && v.label === 'Posts')).toBeTruthy();
+    // Projetos = unique projects with posts (agora 5: arachne, capivara, dogwalk, descobertas, portfolio)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
+    expect(projValue?.number).toBe('5');
     expect(parseInt(projValue!.number || '0')).toBeGreaterThanOrEqual(4);
     expect(values.find(v => v.label === 'Desde')).toBeTruthy();
   });
@@ -202,7 +203,7 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com 9 posts', async ({ page }) => {
+  test('XML válido com 11 posts', async ({ page }) => {
     const response = await page.goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
@@ -213,7 +214,7 @@ test.describe('RSS Feed', () => {
     expect(text).toContain('<channel>');
 
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(9);
+    expect(items).toBe(11);
 
     // Todos os slugs e context de títulos presentes
     for (const post of POSTS) {
@@ -264,14 +265,14 @@ test.describe('Filtros', () => {
     expect(count).toBe(1); // só primeiros-passos-infra-dogwalk
   });
 
-  test('"Todos" reset mostra todos os 9 posts', async ({ page }) => {
+  test('"Todos" reset mostra todos os 11 posts', async ({ page }) => {
     await page.locator('[data-filter-project="arachne"]').click();
     await page.waitForTimeout(100);
     expect(await visiblePosts(page)).toBe(2);
 
     await page.locator('[data-filter-project="all"]').click();
     await page.waitForTimeout(100);
-    expect(await visiblePosts(page)).toBe(9);
+    expect(await visiblePosts(page)).toBe(11);
   });
 
   test('filtro de texto "Estudos" não encontra posts (nenhum estudo publicado)', async ({ page }) => {
@@ -368,7 +369,7 @@ test.describe('Responsivo (Mobile)', () => {
   test('homepage legível', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1')).toBeVisible();
-    expect(await page.locator('.post-card').count()).toBe(9);
+    expect(await page.locator('.post-card').count()).toBe(11);
     const w = await page.locator('.post-card').first().evaluate(el => el.offsetWidth);
     expect(w).toBeGreaterThan(300);
   });
