@@ -1,0 +1,70 @@
+[19:00:23] 🚀 Iniciando pipeline...
+[19:00:23] 📝 Gerando post...
+[lifelog-auto] Tópico: Primeiro deploy do Dogwalk — Vite + Cloudflare Pages (dogwalk) — fase: catchup
+[lifelog-auto] Usando fallback (Ollama indisponível)
+[lifelog-auto] Post salvo: /home/samuel/lifelog/src/content/posts/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.mdx
+[lifelog-auto] ✅ Build OK
+📝 **Novo Post Publicado**
+
+🐶 **Primeiro deploy do Dogwalk — Vite + Cloudflare Pages**
+
+Explorando deploy inicial — aprendizados, desafios e descobertas.
+
+🏷️ #dogwalk #deploy #cloudflare #vite
+📅 `2026-05-25`
+📎 `primeiro-deploy-do-dogwalk-vite-cloudflare-pages.mdx`
+
+**Status:**
+✅ Publicado
+✅ Capa gerada
+✅ Build OK
+
+**Progresso:** 3/4 posts hoje · Fase: 📜 Catch-up
+[19:02:37] ✅ Post gerado
+[19:02:37] 🎨 Gerando covers via Cloudflare Worker...
+✅ Todos os posts têm capa!
+[19:02:37] ✅ Covers OK
+[19:02:37] 🔨 Buildando...
+
+> lifelog@1.0.0 build /home/samuel/lifelog
+> astro build
+
+19:02:41 [content] Syncing content
+19:02:41 [content] Synced content
+19:02:41 [types] Generated 1.16s
+19:02:41 [build] output: "static"
+19:02:41 [build] mode: "static"
+19:02:41 [build] directory: /home/samuel/lifelog/dist/
+19:02:41 [build] Collecting build info...
+19:02:41 [build] ✓ Completed in 1.20s.
+19:02:41 [build] Building static entrypoints...
+19:02:42 [vite] ✓ built in 1.54s
+19:02:42 [vite] ✓ built in 40ms
+19:02:42 [build] Rearranging server assets...
+
+ generating static routes 
+19:02:42   ├─ /404.html (+12ms) 
+19:02:42   ├─ /arquivo/index.html (+8ms) 
+19:02:42   ├─ /post/arachne-nasceu-frustracao-scrapers/index.html (+10ms) 
+19:02:42   ├─ /post/arachne-pipeline-multi-engine-cache/index.html (+6ms) 
+19:02:42   ├─ /post/capivara-hub-pessoal-bagunca-financeira/index.html (+7ms) 
+19:02:42   ├─ /post/dogwalk-a-primeira-ideia-do-marketplace-de-pets/index.html (+7ms) 
+19:02:42   ├─ /post/dogwalk-amadurece-testes-playwright/index.html (+9ms) 
+19:02:42   ├─ /post/dogwalk-primeiros-componentes-auth/index.html (+12ms) 
+19:02:42   ├─ /post/ecossistema-backups-seguranca-automacao/index.html (+16ms) 
+19:02:42   ├─ /post/fastapi-react-por-que-escolhi-essa-stack-pro-dogwalk/index.html (+7ms) 
+19:02:42   ├─ /post/inicio-dogwalk-marketplace-pets/index.html (+12ms) 
+19:02:42   ├─ /post/portifolio-samuel-redesign-identidade/index.html (+5ms) 
+19:02:42   ├─ /post/primeiro-deploy-do-dogwalk-vite-cloudflare-pages/index.html (+6ms) 
+19:02:42   ├─ /post/primeiros-passos-infra-dogwalk/index.html (+6ms) 
+19:02:42   ├─ /rss.xml (+36ms) 
+19:02:42   ├─ /sitemap.xml (+3ms) 
+19:02:42   ├─ /sobre/index.html (+5ms) 
+19:02:42   ├─ /index.html (+8ms) 
+19:02:42 ✓ Completed in 237ms.
+
+19:02:42 [build] ✓ Completed in 1.89s.
+19:02:42 [build] 16 page(s) built in 3.10s
+19:02:42 [build] Complete!
+[19:02:43] ✅ Build OK
+[19:02:43] 📤 Commit + push...
