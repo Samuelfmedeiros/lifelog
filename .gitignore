@@ -57,3 +57,6 @@ public/light_*.png
 public/test-light*.png
 .vercel
 .env*
+
+# Auto-post state
+.auto-post-state.json
