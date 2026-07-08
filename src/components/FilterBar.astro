@@ -89,6 +89,8 @@ const { years } = Astro.props;
     portfolio: '#00d4ff',
     capivara: '#f59e0b',
     tatuengine: '#14b8a6',
+    seguranca: '#ef4444',
+    lifelog: '#a855f7',
     estudos: '#3b82f6',
     descobertas: '#38bdf8',
   };
@@ -221,12 +223,7 @@ const { years } = Astro.props;
   // ===== Search =====
   searchInput.addEventListener('input', () => {
     activeSearch = searchInput.value.trim();
-    if (activeSearch.length < 2) {
-      postsData.forEach(pd => { pd.el.style.display = ''; });
-      filterPosts();
-      return;
-    }
-    fuzzySearch(activeSearch);
+    filterPosts();
   });
 
   searchInput.addEventListener('keydown', (e) => {
@@ -234,7 +231,6 @@ const { years } = Astro.props;
       searchInput.blur();
       searchInput.value = '';
       activeSearch = '';
-      postsData.forEach(pd => { pd.el.style.display = ''; });
       filterPosts();
     }
   });
@@ -248,6 +244,7 @@ const { years } = Astro.props;
 
   // ===== Filter logic =====
   function filterPosts() {
+    postsData = buildPostIndex(); // sempre fresco — posts são renderizados depois do FilterBar
     const searchLower = activeSearch.toLowerCase();
 
     postsData.forEach((pd) => {
@@ -294,6 +291,7 @@ const { years } = Astro.props;
   async function fuzzySearch(query) {
     const q = query.toLowerCase();
     if (q.length < 2) return filterPosts();
+    postsData = buildPostIndex(); // fresco sempre
 
     try {
       const fuse = await getFuse(postsData);

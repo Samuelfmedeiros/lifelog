@@ -20,7 +20,7 @@ LIFELOG_DIR = os.path.expanduser("~/lifelog")
 POSTS_DIR = os.path.join(LIFELOG_DIR, "src/content/posts")
 COVERS_DIR = os.path.join(LIFELOG_DIR, "public/covers")
 WORKER_URL = "https://lifelog-capa.samuelandrademedeiros.workers.dev"
-API_KEY = "lifelog_capa_2026"
+API_KEY = os.environ.get("LIFELOG_COVER_API_KEY", "dev-capa-key")
 
 # Project styles for prompts
 PROJECT_STYLES = {
@@ -43,6 +43,14 @@ PROJECT_STYLES = {
     "tatuengine": {
         "prompt_suffix": "Wave physics theme, teal and turquoise, sine wave interference patterns, fluid dynamics visualization, abstract neural wavefields, 16:9 wallpaper",
         "colors": ["#14b8a6", "#2dd4bf", "#0f766e"],
+    },
+    "seguranca": {
+        "prompt_suffix": "Security theme, deep red and crimson, shield patterns, matrix digital rain aesthetic, dark cybersecurity vibe, 16:9 wallpaper",
+        "colors": ["#ef4444", "#dc2626", "#450a0a"],
+    },
+    "lifelog": {
+        "prompt_suffix": "Journal theme, purple and magenta, abstract writing patterns, notebook aesthetic, creative tech vibe, 16:9 wallpaper",
+        "colors": ["#a855f7", "#c084fc", "#3b0764"],
     },
     "estudos": {
         "prompt_suffix": "Academic blueprint theme, deep blue and cyan, technical drawing aesthetic, clean scholarly atmosphere, 16:9 wallpaper",
