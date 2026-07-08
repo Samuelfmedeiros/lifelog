@@ -539,9 +539,18 @@ const { years } = Astro.props;
     border-color: rgba(var(--bar-accent-rgb), 0.2);
     box-shadow: 0 0 20px rgba(var(--bar-accent-rgb), 0.06);
   }
+  [data-theme="light"] .pill {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0, 0, 0, 0.06);
+    color: #1a1a2e;
+  }
+  [data-theme="light"] .pill[data-active="true"] {
+    color: #fff;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--bar-accent) 25%, transparent);
+  }
   [data-theme="light"] .pill:hover {
-    background: rgba(0, 0, 0, 0.03);
-    border-color: rgba(0, 0, 0, 0.05);
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
   }
 
   /* ════════ Mobile ════════ */
