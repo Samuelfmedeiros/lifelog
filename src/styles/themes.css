@@ -365,6 +365,44 @@
 }
 
 /* ========================================
+   🔒  SEGURANÇA — Security / Hardening
+   ======================================== */
+[data-project="seguranca"] {
+  --color-accent: #ef4444;
+  --color-accent-soft: color-mix(in srgb, #ef4444 15%, transparent);
+  --color-glow: rgba(239,68,68,0.3);
+  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #1a0a0a 30%, #0f0a0f 70%, #0a0a0f 100%);
+  --pattern-url: url('/patterns/shield.svg');
+  --pattern-opacity: 0.08;
+}
+[data-project="seguranca"] .post-banner {
+  border-color: #ef4444;
+  box-shadow: 0 0 40px rgba(239,68,68,0.15);
+}
+[data-project="seguranca"] .post-banner::after {
+  background: radial-gradient(ellipse at center, rgba(239,68,68,0.1) 0%, transparent 70%);
+}
+
+/* ========================================
+   📖  LIFELOG — Meta / Blog
+   ======================================== */
+[data-project="lifelog"] {
+  --color-accent: #a855f7;
+  --color-accent-soft: color-mix(in srgb, #a855f7 15%, transparent);
+  --color-glow: rgba(168,85,247,0.3);
+  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #150a1a 30%, #0f0a0f 70%, #0a0a0f 100%);
+  --pattern-url: url('/patterns/scribble.svg');
+  --pattern-opacity: 0.06;
+}
+[data-project="lifelog"] .post-banner {
+  border-color: #a855f7;
+  box-shadow: 0 0 40px rgba(168,85,247,0.15);
+}
+[data-project="lifelog"] .post-banner::after {
+  background: radial-gradient(ellipse at center, rgba(168,85,247,0.1) 0%, transparent 70%);
+}
+
+/* ========================================
    🛠️  DEV / Outros — Tech neutral
    ======================================== */
 [data-project="dev"] {
@@ -473,6 +511,31 @@
   0%, 100% { box-shadow: var(--color-glow); }
   50% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.2), 0 0 40px rgba(236, 72, 153, 0.05); }
 }
+
+/* ========================================
+   ☀️ Light + data-project override (MUST BE LAST)
+   Sobrescreve variáveis dark dos projetos quando light mode está ativo.
+   Colocado AQUI no final do arquivo para máxima precedência na cascata.
+   ======================================== */
+[data-theme="light"][data-project] {
+  --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
+  --color-bg: #f5f2eb;
+  --color-bg-card: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-muted: #78787d;
+  --color-border: #e5e4df;
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --color-glow: 0 4px 24px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --pattern-opacity: 0.012;
+  --pattern-blend: soft-light;
+  --particle-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  --card-border: 1px solid #efeee9;
+  --hover-scale: 1.015;
+  --card-radius: 14px;
+}
+/* Project-specific light overrides (if any need unique treatment) */
+[data-theme="light"][data-project="seguranca"] { --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%); }
+[data-theme="light"][data-project="lifelog"]   { --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%); }
 
 /* Entry animation — todo post ao aparecer na tela */
 @keyframes fadeIn {

@@ -18,6 +18,8 @@ export const PROJECTS: ProjectDef[] = [
   { id: 'portfolio',   label: 'Portfólio',  icon: '🚀',  accentDark: '#00d4ff',  group: 'projetos' },
   { id: 'capivara',    label: 'Capivara',   icon: '🐷',  accentDark: '#f59e0b',  group: 'projetos' },
   { id: 'tatuengine',  label: 'TatuEngine', icon: '🌊',  accentDark: '#14b8a6',  group: 'projetos' },
+  { id: 'seguranca',   label: 'Segurança',  icon: '🔒',  accentDark: '#ef4444',  group: 'projetos' },
+  { id: 'lifelog',     label: 'LifeLog',    icon: '📖',  accentDark: '#a855f7',  group: 'projetos' },
   { id: 'estudos',     label: 'Estudos',    icon: '📚',  accentDark: '#3b82f6',  group: 'estudos' },
   { id: 'descobertas', label: 'Descobertas',icon: '💡',  accentDark: '#38bdf8',  group: 'descobertas' },
 ]
