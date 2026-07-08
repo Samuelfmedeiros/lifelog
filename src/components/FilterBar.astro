@@ -20,21 +20,11 @@ const projects = [
   { id: 'descobertas', label: 'Descobertas' },
 ];
 
-const projectColors: Record<string, string> = {
-  all: '#848d97',
-  arachne: '#a78bfa',
-  dogwalk: '#34d399',
-  portfolio: '#22d3ee',
-  capivara: '#fbbf24',
-  estudos: '#60a5fa',
-  descobertas: '#fb7185',
-};
 ---
 
 <div
   id="filter-bar"
   class="filter-bar"
-  style="--bar-accent: #848d97; --bar-accent-rgb: 132, 141, 151;"
 >
   <!-- Row 1: Search -->
   <div class="search-row">
@@ -104,18 +94,8 @@ const projectColors: Record<string, string> = {
   const pills = document.querySelectorAll('[data-filter-project]');
   const yearPills = document.querySelectorAll('[data-filter-year]');
 
-  // ===== Project colors =====
-  const COLORS = {
-    all: '#848d97',
-    arachne: '#a78bfa',
-    dogwalk: '#34d399',
-    portfolio: '#22d3ee',
-    capivara: '#fbbf24',
-    estudos: '#60a5fa',
-    descobertas: '#fb7185',
-  };
-
-  // Cache RGBs pra evitar re-parse
+  // ===== Set bar accent from theme CSS variable — no hardcoded colors =====
+  // We set data-project on the bar so themes.css --color-accent resolves via cascade
   const RGBS = {};
   function hexToRgb(hex) {
     if (RGBS[hex]) return RGBS[hex];
@@ -130,13 +110,28 @@ const projectColors: Record<string, string> = {
   let activeYear = 'all';
   let activeSearch = '';
 
+  function setBarAccent(projectId) {
+    if (projectId === 'all') {
+      bar.removeAttribute('data-project');
+      bar.style.setProperty('--bar-accent', '#848d97');
+      bar.style.setProperty('--bar-accent-rgb', '132, 141, 151');
+    } else {
+      bar.setAttribute('data-project', projectId);
+      const color = getComputedStyle(bar).getPropertyValue('--color-accent').trim();
+      if (color) {
+        const rgb = hexToRgb(color);
+        bar.style.setProperty('--bar-accent', color);
+        bar.style.setProperty('--bar-accent-rgb', rgb);
+      }
+    }
+  }
+
   // ===== Fuse.js (self-hosted) =====
   let fusePromise = null;
   function getFuse(postsData) {
     if (!fusePromise) {
       fusePromise = import('/vendor/fuse.mjs').then(
         (mod) => new mod.default(postsData, {
-          keys: ['title', 'desc', 'tags', 'project'],
           threshold: 0.4,
           distance: 100,
           minMatchCharLength: 2,
@@ -337,6 +332,10 @@ const projectColors: Record<string, string> = {
     gap: 0.625rem;
     padding: 0.75rem 1rem;
     border-radius: 16px;
+
+    /* ── Accent defaults (overridden by JS via theme CSS vars) ── */
+    --bar-accent: #848d97;
+    --bar-accent-rgb: 132, 141, 151;
 
     /* ── Glass base ── */
     background: rgba(18, 18, 24, 0.55);
