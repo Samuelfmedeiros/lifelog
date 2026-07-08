@@ -1,5 +1,6 @@
 ---
 import ProjectIcon from './ProjectIcon.astro';
+import { PROJECTS, getProject } from '../lib/projects';
 
 export interface Props {
   title: string;
@@ -19,14 +20,9 @@ const formattedDate = date.toLocaleDateString('pt-BR', {
   month: 'short',
   year: 'numeric',
 });
-const projectLabels: Record<string, string> = {
-  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio',
-  capivara: 'Capivara', estudos: 'Estudos', descobertas: 'Descobertas',
-};
-const projectIcons: Record<string, string> = {
-  arachne: '🕷️', dogwalk: '🐶', portfolio: '🚀',
-  capivara: '🐷', estudos: '📚', descobertas: '💡',
-};
+const proj = getProject(project);
+const projectLabel = proj?.label || project;
+const projectIcon = proj?.icon || icon || '📝';
 ---
 
 <article class="post-card group" data-project={project} style={index !== undefined ? `--card-index: ${index}` : ''}>
@@ -42,12 +38,12 @@ const projectIcons: Record<string, string> = {
         />
       ) : (
         <div class="cover-placeholder">
-          <span class="placeholder-icon">{icon || projectIcons[project] || '📝'}</span>
+          <span class="placeholder-icon">{projectIcon}</span>
         </div>
       )}
       <!-- Project badge overlaid -->
       <div class="cover-badge">
-        {projectIcons[project] || '📝'} {projectLabels[project] || project}
+        {projectIcon} {projectLabel}
       </div>
     </div>
 

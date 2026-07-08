@@ -40,6 +40,10 @@ PROJECT_STYLES = {
         "prompt_suffix": "Tropical tech theme, warm amber and orange, sunset gradients with digital accents, Brazilian vibes, 16:9 wallpaper",
         "colors": ["#f59e0b", "#fbbf24", "#78350f"],
     },
+    "tatuengine": {
+        "prompt_suffix": "Wave physics theme, teal and turquoise, sine wave interference patterns, fluid dynamics visualization, abstract neural wavefields, 16:9 wallpaper",
+        "colors": ["#14b8a6", "#2dd4bf", "#0f766e"],
+    },
     "estudos": {
         "prompt_suffix": "Academic blueprint theme, deep blue and cyan, technical drawing aesthetic, clean scholarly atmosphere, 16:9 wallpaper",
         "colors": ["#3b82f6", "#60a5fa", "#1e3a5f"],

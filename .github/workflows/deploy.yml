@@ -1,0 +1,72 @@
+name: LifeLog CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+jobs:
+  build-check:
+    name: Build & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Astro build
+        run: npx astro build
+
+      - name: Check inline scripts (no TypeScript in is:inline)
+        run: |
+          echo "🔍 Verificando TypeScript em script is:inline..."
+          RESULT=$(grep -rn "is:inline" src/ --include="*.astro" -A5 2>/dev/null | grep -E ":\s*(string|number|boolean|Record|Array)\b" || true)
+          if [ -n "$RESULT" ]; then
+            echo "❌ TypeScript encontrado em inline script!"
+            echo "$RESULT"
+            exit 1
+          fi
+          echo "✅ Nenhum TS em inline scripts"
+
+  notify-success:
+    name: Notificar Telegram (Sucesso)
+    needs: [build-check]
+    if: github.ref_name == 'main' && github.event_name != 'pull_request' && success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Send Telegram notification
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=✅ *LifeLog CI*%0A%0A📦 *Status:* Sucesso%0A🔗 *URL:* https://lifelog-sepia.vercel.app%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`" \
+            -d "parse_mode=Markdown"
+
+  notify-failure:
+    name: Notificar Telegram (Falha)
+    needs: [build-check]
+    if: github.ref_name == 'main' && github.event_name != 'pull_request' && failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Send Telegram notification
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=❌ *LifeLog CI Falhou*%0A%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`%0A🔍 *Log:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -d "parse_mode=Markdown"

@@ -1,25 +1,13 @@
 ---
 // FilterBar v4 — Glass minimal
-// Barra em vidro com backdrop-filter, cor dinâmica que tinge o vidro ao selecionar
-// Duas linhas: search (full) + pills wrap
-// Transições suaves em tudo
+import { PROJECTS } from '../lib/projects';
 
 export interface Props {
   years: string[];
 }
 
 const { years } = Astro.props;
-
-const projects = [
-  { id: 'all', label: 'Todos' },
-  { id: 'arachne', label: 'Arachne' },
-  { id: 'dogwalk', label: 'Dogwalk' },
-  { id: 'portfolio', label: 'Portfólio' },
-  { id: 'capivara', label: 'Capivara' },
-  { id: 'estudos', label: 'Estudos' },
-  { id: 'descobertas', label: 'Descobertas' },
-];
-
+---
 ---
 
 <div
@@ -47,7 +35,7 @@ const projects = [
   <!-- Row 2: Pills + Year -->
   <div class="filter-row">
     <div class="filter-pills" role="radiogroup" aria-label="Filtrar por projeto">
-      {projects.map((p) => (
+      {[{ id: 'all', label: 'Todos' }, ...PROJECTS].map((p) => (
         <button
           class="pill"
           data-filter-project={p.id}
@@ -94,8 +82,16 @@ const projects = [
   const pills = document.querySelectorAll('[data-filter-project]');
   const yearPills = document.querySelectorAll('[data-filter-year]');
 
-  // ===== Set bar accent from theme CSS variable — no hardcoded colors =====
-  // We set data-project on the bar so themes.css --color-accent resolves via cascade
+  // ===== Project accent colors (single source — matches themes.css) =====
+  const PROJECT_ACCENTS = {
+    arachne: '#7c3aed',
+    dogwalk: '#22c55e',
+    portfolio: '#00d4ff',
+    capivara: '#f59e0b',
+    tatuengine: '#14b8a6',
+    estudos: '#3b82f6',
+    descobertas: '#38bdf8',
+  };
   const RGBS = {};
   function hexToRgb(hex) {
     if (RGBS[hex]) return RGBS[hex];
@@ -122,6 +118,27 @@ const projects = [
         const rgb = hexToRgb(color);
         bar.style.setProperty('--bar-accent', color);
         bar.style.setProperty('--bar-accent-rgb', rgb);
+      }
+    }
+  }
+
+  /** Set global site theme when clicking a project filter */
+  function setGlobalTheme(projectId) {
+    const html = document.documentElement;
+    if (projectId === 'all') {
+      html.removeAttribute('data-project');
+      html.style.removeProperty('--color-accent');
+      // Trigger PalettePicker reapply if palette was saved
+      const savedPalette = localStorage.getItem('lifelog-palette');
+      if (savedPalette) {
+        const event = new CustomEvent('lifelog-palette-reapply', { detail: { palette: savedPalette } });
+        document.dispatchEvent(event);
+      }
+    } else {
+      html.setAttribute('data-project', projectId);
+      const accent = PROJECT_ACCENTS[projectId];
+      if (accent) {
+        html.style.setProperty('--color-accent', accent);
       }
     }
   }
@@ -163,14 +180,6 @@ const projects = [
     if (target) obs.observe(target, { childList: true, subtree: true });
   }
 
-  // ===== Set bar accent — anima cor do vidro =====
-  function setBarAccent(projectId) {
-    const color = COLORS[projectId] || COLORS.all;
-    const rgb = hexToRgb(color);
-    bar.style.setProperty('--bar-accent', color);
-    bar.style.setProperty('--bar-accent-rgb', rgb);
-  }
-
   // ===== Project pill click =====
   pills.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -186,6 +195,7 @@ const projects = [
 
       activeProject = project;
       setBarAccent(project);
+      setGlobalTheme(project);
       filterPosts();
     });
   });
