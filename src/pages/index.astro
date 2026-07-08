@@ -6,14 +6,17 @@ import FilterBar from '../components/FilterBar.astro';
 import { getCollection } from 'astro:content';
 
 const posts = await getCollection('posts');
-posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+// Sort by pubDate (publication) descending, fallback to date
+const sortDate = (p: typeof posts[0]) => p.data.pubDate?.getTime() || p.data.date.getTime();
+posts.sort((a, b) => sortDate(b) - sortDate(a));
 
-// Group by date for timeline
+// Group by pubDate for timeline separator
 const grouped: { date: Date; posts: typeof posts }[] = [];
 const dateMap = new Map<string, typeof posts>();
 
 for (const post of posts) {
-  const dateKey = post.data.date.toISOString().split('T')[0];
+  const groupDate = post.data.pubDate || post.data.date;
+  const dateKey = groupDate.toISOString().split('T')[0];
   if (!dateMap.has(dateKey)) {
     dateMap.set(dateKey, []);
   }
@@ -22,13 +25,14 @@ for (const post of posts) {
 
 for (const [dateKey, dayPosts] of dateMap) {
   grouped.push({
-    date: dayPosts[0].data.date,
+    date: dayPosts[0].data.pubDate || dayPosts[0].data.date,
     posts: dayPosts,
   });
 }
 
 // Get unique years for filter
-const years = [...new Set(posts.map(p => p.data.date.getFullYear().toString()))].sort().reverse();
+const getPubDate = (p: typeof posts[0]) => p.data.pubDate || p.data.date;
+const years = [...new Set(posts.map(p => getPubDate(p).getFullYear().toString()))].sort().reverse();
 ---
 
 <BaseLayout title="Início" description="Jornada de aprendizado de Samuel Medeiros">
