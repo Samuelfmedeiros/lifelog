@@ -26,7 +26,26 @@
   --card-border: 1px solid #21262d;
   --entry-animation: fadeIn 0.5s ease-out;
   --bg-gradient: linear-gradient(180deg, #0a0a0f 0%, #0d1117 100%);
+  --navbar-bg: rgba(10, 10, 15, 0.85);
+  --navbar-border-color: var(--color-border);
+  --navbar-logo-color: #ffffff;
+  --navbar-brand-color: #78787d;
+  --navbar-link-color: #78787d;
+  --navbar-link-hover-bg: rgba(255, 255, 255, 0.06);
+  --navbar-cta-bg: var(--color-accent);
+  --navbar-cta-color: #ffffff;
+  --navbar-icon-bg: rgba(255, 255, 255, 0.06);
+  --navbar-icon-border: rgba(255, 255, 255, 0.15);
 }
+
+/* Navbar — usa variáveis (mudam com data-theme) */
+.navbar { background: var(--navbar-bg); border-bottom-color: var(--navbar-border-color); }
+.navbar-logo { color: var(--navbar-logo-color); }
+.navbar-brand-name { color: var(--navbar-brand-color); }
+.navbar-link { color: var(--navbar-link-color); }
+.navbar-link:hover { background: var(--navbar-link-hover-bg); color: var(--color-accent); }
+.navbar-link.cta { background: var(--navbar-cta-bg); color: var(--navbar-cta-color); }
+.navbar-logo-icon { background: var(--navbar-icon-bg); border-color: var(--navbar-icon-border); }
 
 /* ========================================
    ☀️ LIGHT THEME — Próximo ao Sol
@@ -61,30 +80,19 @@
   --card-radius: 14px;
   --hover-scale: 1.015;
   --particle-color: rgba(210, 160, 60, 0.35);
-}
 
-/* ========================================
-   ☀️ Navbar
-   ======================================== */
-[data-theme="light"] .navbar {
-  background: rgba(255, 255, 255, 0.82);
-  border-bottom-color: #efeee9;
-}
-[data-theme="light"] .navbar-logo { color: #1a1a2e; }
-[data-theme="light"] .navbar-brand-name { color: #78787d; }
-[data-theme="light"] .navbar-link { color: #78787d; }
-[data-theme="light"] .navbar-link:hover {
-  color: var(--color-accent);
-  background: rgba(99, 102, 241, 0.06);
-}
-[data-theme="light"] .navbar-link.cta {
-  background: #6366f1;
-  color: #fff;
-}
-[data-theme="light"] .navbar-logo-icon {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: rgba(99, 102, 241, 0.3);
-}
+  --navbar-bg: rgba(255, 255, 255, 0.82);
+  --navbar-border-color: #efeee9;
+  --navbar-logo-color: #1a1a2e;
+  --navbar-brand-color: #78787d;
+  --navbar-link-color: #78787d;
+  --navbar-link-hover-bg: rgba(99, 102, 241, 0.06);
+  --navbar-cta-bg: #6366f1;
+  --navbar-cta-color: #ffffff;
+  --navbar-icon-bg: rgba(99, 102, 241, 0.1);
+  --navbar-icon-border: rgba(99, 102, 241, 0.3);}
+
+
 
 /* ========================================
    ☀️ Hero
@@ -421,7 +429,7 @@
    ======================================== */
 
 /* 💥 Força o light theme sobre QUALQUER data-project — no FINAL pra ganhar cascade */
-[data-theme="light"][data-project] {
+html[data-theme="light"][data-project] {
   --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
   --rays-gradient: repeating-conic-gradient(
     from 35deg at 82% 6%,
@@ -517,7 +525,7 @@
    Sobrescreve variáveis dark dos projetos quando light mode está ativo.
    Colocado AQUI no final do arquivo para máxima precedência na cascata.
    ======================================== */
-[data-theme="light"][data-project] {
+html[data-theme="light"][data-project] {
   --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
   --color-bg: #f5f2eb;
   --color-bg-card: #ffffff;
