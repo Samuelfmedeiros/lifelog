@@ -29,9 +29,13 @@ const projectLabels: Record<string, string> = {
   capivara: 'Capivara', estudos: 'Estudos', descobertas: 'Descobertas',
 };
 
-// Get prev/next posts
+// Get prev/next posts sorted by pubDate
 const allPosts = await getCollection('posts');
-allPosts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+allPosts.sort((a, b) => {
+  const aSort = (a.data.pubDate || a.data.date).getTime();
+  const bSort = (b.data.pubDate || b.data.date).getTime();
+  return bSort - aSort;
+});
 const currentIndex = allPosts.findIndex(p => p.id === post.id);
 const prevPost = currentIndex < allPosts.length - 1 ? allPosts[currentIndex + 1] : null;
 const nextPost = currentIndex > 0 ? allPosts[currentIndex - 1] : null;
@@ -67,10 +71,10 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
         <div class="flex items-center gap-2 text-sm mb-4" style="color: var(--color-accent);">
           <span>{projectIcons[post.data.project]} {projectLabels[post.data.project] || post.data.project}</span>
           <span class="opacity-40">·</span>
-          <time datetime={post.data.date.toISOString()} style="color: var(--color-text-muted)">
-            {post.data.date.toLocaleDateString('pt-BR', {
-              day: '2-digit', month: 'long', year: 'numeric',
-            })}
+          <time datetime={(post.data.pubDate || post.data.date).toISOString()} style="color: var(--color-text-muted)">
+            {post.data.pubDate
+              ? (post.data.pubDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+              : post.data.date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
           </time>
         </div>
 
