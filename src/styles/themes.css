@@ -61,26 +61,18 @@
   --color-border: #e5e4df;
   --color-accent: #7c3aed;
   --color-accent-soft: rgba(124, 58, 237, 0.08);
-  --color-glow: 0 4px 24px rgba(124, 58, 237, 0.10);
+  --color-glow: 0 4px 24px rgba(124, 58, 237, 0.1);
   --card-border: 1px solid #efeee9;
   --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
-  --rays-gradient: repeating-conic-gradient(
-    from 35deg at 82% 6%,
-    transparent 0deg,
-    rgba(251,191,36,0.018) 4deg,
-    transparent 8deg,
-    transparent 18deg,
-    rgba(251,191,36,0.010) 22deg,
-    transparent 26deg
-  );
-  --aura-gradient: radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(139,92,246,0.12) 0%, transparent 50%);
-  --pattern-opacity: 0.012;
-  --pattern-blend: soft-light;
-  --pattern-url: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.3' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --rays-gradient: repeating-conic-gradient(from 35deg at 82% 6%, transparent 0deg, rgba(251, 191, 36, 0.02) 4deg, transparent 8deg, transparent 18deg, rgba(251, 191, 36, 0.01) 22deg, transparent 26deg);
+  --aura-gradient: radial-gradient(ellipse 1000px 700px at 82% 6%, rgba(139, 92, 246, 0.12) 0%, transparent 50%);
+  --pattern-opacity: 0;
+  --pattern-blend: normal;
+  --pattern-url: none;
   --card-radius: 14px;
   --hover-scale: 1.015;
   --particle-color: rgba(210, 160, 60, 0.35);
-
+  /* ── Navbar ── */
   --navbar-bg: rgba(255, 255, 255, 0.82);
   --navbar-border-color: #efeee9;
   --navbar-logo-color: #1a1a2e;
@@ -90,8 +82,8 @@
   --navbar-cta-bg: #6366f1;
   --navbar-cta-color: #ffffff;
   --navbar-icon-bg: rgba(99, 102, 241, 0.1);
-  --navbar-icon-border: rgba(99, 102, 241, 0.3);}
-
+  --navbar-icon-border: rgba(99, 102, 241, 0.3);
+}
 
 
 /* ========================================
