@@ -109,6 +109,16 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
+/* ── FilterBar theme overrides ── */
+[data-theme="light"] .filter-bar {
+  --filter-bar-bg: rgba(255, 255, 255, 0.85);
+  --filter-bar-border: #e5e4df;
+  --filter-search-bg: #ffffff;
+  --filter-search-border: #e5e4df;
+  --filter-pill-hover-bg: rgba(0, 0, 0, 0.04);
+  --filter-pill-hover-border: rgba(0, 0, 0, 0.1);
+}
+
 /* ========================================
    ☀️ Search
    ======================================== */
