@@ -68,3 +68,12 @@ Explorando deploy inicial — aprendizados, desafios e descobertas.
 19:02:42 [build] Complete!
 [19:02:43] ✅ Build OK
 [19:02:43] 📤 Commit + push...
+[main 264fdeb] auto-post: LifeLog 2026-07-08 19:02
+ 3 files changed, 97 insertions(+)
+ create mode 100644 .auto-pipeline.log
+ create mode 100644 public/covers/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.webp
+ create mode 100644 src/content/posts/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.mdx
+[19:02:52] ✅ Commit + push OK
+[19:02:52] 🌎 Deploy Vercel...
+https://lifelog-f2cysgog2-samuelfmedeiros-projects.vercel.app[19:03:33] ✅ Deploy Vercel OK
+[19:03:33] ✅ Pipeline completo!
