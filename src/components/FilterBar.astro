@@ -345,11 +345,19 @@ const { years } = Astro.props;
     --bar-accent: #848d97;
     --bar-accent-rgb: 132, 141, 151;
 
+    /* ── Theme-aware backgrounds (overridden by themes.css) ── */
+    --filter-bar-bg: rgba(18, 18, 24, 0.55);
+    --filter-bar-border: rgba(255, 255, 255, 0.06);
+    --filter-search-bg: rgba(255, 255, 255, 0.04);
+    --filter-search-border: rgba(255, 255, 255, 0.04);
+    --filter-pill-hover-bg: rgba(255, 255, 255, 0.04);
+    --filter-pill-hover-border: rgba(255, 255, 255, 0.06);
+
     /* ── Glass base ── */
-    background: rgba(18, 18, 24, 0.55);
+    background: var(--filter-bar-bg);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--filter-bar-border);
 
     /* ── Dynamic glow & tint via CSS color-mix ── */
     box-shadow:
@@ -382,8 +390,8 @@ const { years } = Astro.props;
     width: 100%;
     padding: 0.5rem 0.75rem;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--filter-search-bg);
+    border: 1px solid var(--filter-search-border);
     transition:
       border-color 0.4s ease,
       background 0.4s ease,
@@ -486,8 +494,8 @@ const { years } = Astro.props;
   }
   .pill:hover {
     color: var(--color-text);
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.06);
+    background: var(--filter-pill-hover-bg);
+    border-color: var(--filter-pill-hover-border);
   }
   .pill:active {
     transform: scale(0.94);
