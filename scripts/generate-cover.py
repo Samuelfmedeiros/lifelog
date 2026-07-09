@@ -16,11 +16,25 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-LIFELOG_DIR = os.path.expanduser("~/lifelog")
+LIFELOG_DIR = os.path.expanduser("~/projetos/lifelog")
 POSTS_DIR = os.path.join(LIFELOG_DIR, "src/content/posts")
 COVERS_DIR = os.path.join(LIFELOG_DIR, "public/covers")
 WORKER_URL = "https://lifelog-capa.samuelandrademedeiros.workers.dev"
-API_KEY = os.environ.get("LIFELOG_COVER_API_KEY", "dev-capa-key")
+API_KEY = os.environ.get("LIFELOG_COVER_API_KEY")
+if not API_KEY:
+    # Fallback: load from .env file
+    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    if k == "LIFELOG_COVER_API_KEY":
+                        API_KEY = v
+                        break
+if not API_KEY:
+    API_KEY = "dev-capa-key"
 
 # Project styles for prompts
 PROJECT_STYLES = {
