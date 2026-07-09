@@ -147,3 +147,13 @@ Explorando criação do Capivara — aprendizados, desafios e descobertas.
 09:02:21 [build] Complete!
 [09:02:21] ✅ Build OK
 [09:02:22] 📤 Commit + push...
+[main cf29ece] auto-post: LifeLog 2026-07-09 09:02
+ 5 files changed, 215 insertions(+), 43 deletions(-)
+ create mode 100644 e2e/theme-mobile.spec.ts
+ delete mode 100644 e2e/theme-verify.spec.ts
+ create mode 100644 public/covers/capivara-nasce-preciso-de-um-hub-pessoal-seguro.webp
+ create mode 100644 src/content/posts/capivara-nasce-preciso-de-um-hub-pessoal-seguro.mdx
+[09:02:31] ✅ Commit + push OK
+[09:02:31] 🌎 Deploy Vercel...
+https://lifelog-o1lwlzdwp-samuelfmedeiros-projects.vercel.app[09:03:12] ✅ Deploy Vercel OK
+[09:03:12] ✅ Pipeline completo!
