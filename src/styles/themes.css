@@ -598,4 +598,12 @@ html[data-theme="light"][data-project] {
 
 .post-card {
   animation: fadeIn 0.5s ease-out;
+  transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+/* 🔥 Garantia final: pattern noise OFF no light mode */
+html[data-theme="light"][data-project] {
+  --pattern-url: none;
+  --pattern-opacity: 0;
+  --pattern-blend: normal;
 }
