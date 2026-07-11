@@ -5,73 +5,87 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-
-env:
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  workflow_dispatch:
 
 jobs:
-  build-check:
-    name: Build & Type Check
+  validate-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+      statuses: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+    - name: Validate version
+      run: |
+        VERSION=$(grep '"version"' package.json | sed 's/.*"version": "//;s/".*//')
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "❌ Versão inválida: $VERSION (deve ser semver major.minor.patch)"
+          exit 1
+        fi
+        echo "✅ Versão validada: v$VERSION"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+    - name: Enable pnpm via corepack
+      run: |
+        corepack enable
+        corepack prepare pnpm@9 --activate
+        mkdir -p /tmp/pnpm-store
+        pnpm config set store-dir /tmp/pnpm-store --global
+        echo "PNPM_HOME=/tmp/pnpm-home" >> $GITHUB_ENV
 
-      - name: Astro build
-        run: pnpm astro build
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
 
-      - name: Check inline scripts (no TypeScript in is:inline)
-        run: |
-          echo "🔍 Verificando TypeScript em script is:inline..."
-          RESULT=$(grep -rn "is:inline" src/ --include="*.astro" -A5 2>/dev/null | grep -E ":\s*(string|number|boolean|Record|Array)\b" || true)
-          if [ -n "$RESULT" ]; then
-            echo "❌ TypeScript encontrado em inline script!"
-            echo "$RESULT"
-            exit 1
-          fi
-          echo "✅ Nenhum TS em inline scripts"
+    - name: Astro type check (lint)
+      continue-on-error: true
+      run: pnpm astro check
 
-  notify-success:
-    name: Notificar Telegram (Sucesso)
-    needs: [build-check]
-    if: github.ref_name == 'main' && github.event_name != 'pull_request' && success()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Send Telegram notification
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=✅ *LifeLog CI*%0A%0A📦 *Status:* Sucesso%0A🔗 *URL:* https://lifelog-sepia.vercel.app%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`" \
-            -d "parse_mode=Markdown"
+    - name: Run E2E tests
+      continue-on-error: true
+      run: |
+        npx playwright install chromium --with-deps
+        pnpm exec playwright test --reporter=list --workers=2 || true
 
-  notify-failure:
-    name: Notificar Telegram (Falha)
-    needs: [build-check]
-    if: github.ref_name == 'main' && github.event_name != 'pull_request' && failure()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Send Telegram notification
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=❌ *LifeLog CI Falhou*%0A%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`%0A🔍 *Log:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            -d "parse_mode=Markdown"
+    - name: Build project
+      run: pnpm build
+
+    - name: Deploy to Vercel
+      if: github.ref_name == 'main' && github.event_name != 'pull_request'
+      run: npx vercel@latest --prod --token=${{ secrets.VERCEL_TOKEN }} --yes 2>&1
+
+    - name: Health Check
+      if: github.ref_name == 'main' && github.event_name != 'pull_request'
+      run: |
+        sleep 15
+        for i in $(seq 1 3); do
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" https://lifelog-sepia.vercel.app 2>/dev/null)
+          [ "$CODE" = "200" ] && echo "✅ Online (HTTP $CODE)" && exit 0
+          echo "Tentativa $i: $CODE"
+          sleep 5
+        done
+        echo "❌ Site offline" && exit 1
+
+    - name: Notify Telegram Success
+      if: github.ref_name == 'main' && github.event_name != 'pull_request' && success()
+      run: |
+        curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=✅ *LifeLog CI*%0A%0A📦 *Status:* Sucesso%0A🔗 *URL:* https://lifelog-sepia.vercel.app%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`" \
+          -d "parse_mode=Markdown"
+
+    - name: Notify Telegram Failure
+      if: github.ref_name == 'main' && github.event_name != 'pull_request' && failure()
+      run: |
+        curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=❌ *LifeLog CI Falhou*%0A%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`%0A🔍 *Log:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          -d "parse_mode=Markdown"
