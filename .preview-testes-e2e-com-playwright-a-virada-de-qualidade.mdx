@@ -1,33 +1,336 @@
 ---
 title: "Testes E2E com Playwright — a virada de qualidade"
-description: "Explorando testes no Dogwalk — aprendizados, desafios e descobertas."
-date: 2026-06-15
+description: "Como 13 spec files, 234 testes e um helper de mock inteligente transformaram a qualidade do Dogwalk — e como estruturamos E2E de verdade."
+date: 2026-07-11
 project: dogwalk
-tags: ["dogwalk", "playwright", "testes", "e2e"]
-icon: "🐶"
+icon: "🎭"
 cover: /covers/testes-e2e-com-playwright-a-virada-de-qualidade.webp
+tags:
+  - dogwalk
+  - playwright
+  - e2e
+  - testes
+  - ci
+  - woodpecker
 ---
-## Contexto
 
-Este post faz parte da linha do tempo do **dogwalk** — um dos projetos que fazem parte da minha jornada de aprendizado como dev full-stack.
+A primeira versão dos testes E2E do Dogwalk foi o ponto de partida — um `auth.spec.ts` simples que verificava se a página de login carregava. O post anterior contou essa história. Mas o que veio depois foi uma reestruturação completa.
 
-## O que rolou
+Não bastava ter testes. Precisávamos de uma **arquitetura de testes** que:
 
-Testes E2E com Playwright — a virada de qualidade. Este tópico será expandido em breve com detalhes técnicos, código e aprendizados.
+- Rodasse em CI sem depender de ambiente externo
+- Cobrisse fluxos multi-perfil (tutor e walker autenticados)
+- Fosse rápida o suficiente pra dar feedback em segundos
+- Suportasse mocks de API reais, não stubs genéricos
 
-## Aprendizados
+Este post é um mergulho técnico nessa arquitetura.
 
-- Cada projeto traz novos desafios e soluções
-- Documentar o processo é tão importante quanto o resultado
-- A consistência supera a perfeição
+---
 
-```python
-# Continuidade é mais importante que perfeição
-def aprender():
-    while True:
-        praticar()
-        documentar()
-        compartilhar()
+## A estrutura atual
+
+Foram 13 spec files divididos por domínio, totalizando **931 linhas de teste** e **234 testes** registrados:
+
+```
+tests/e2e/
+├── auth-flow.spec.js          # Fluxo completo de autenticação (92 linhas)
+├── auth.spec.js               # UI pública: login, landing, responsivo (69 linhas)
+├── booking-flow.spec.js       # Fluxo de agendamento (52 linhas)
+├── booking.spec.js            # UI de agendamento (29 linhas)
+├── chat.spec.js               # Chat em tempo real (16 linhas)
+├── dashboard-flow.spec.js     # Navegação entre dashboards (62 linhas)
+├── e2e-complete-flow.spec.js  # Full-stack flow integrado (155 linhas)
+├── full-user-flow.spec.js     # Jornada completa tutor → walker (170 linhas)
+├── onboarding-flow.spec.js    # Cadastro e onboarding (33 linhas)
+├── payment-chat-map.spec.js   # Pagamento + chat + mapa (90 linhas)
+├── security.spec.js           # Rotas protegidas, CSRF, rate limit (55 linhas)
+├── signup-edge-cases.spec.js  # Casos limite de cadastro (65 linhas)
+├── visual.spec.js             # Regressão visual básica (43 linhas)
+└── helpers/
+    ├── auth.js                # Mock de sessão + API (219 linhas)
+    └── cookies.js             # Cookie banner helper
 ```
 
-> _A jornada é documentada enquanto acontece. Este post será atualizado com mais detalhes após revisão._
+Cada spec testa uma fatia do domínio. O mais longo (`full-user-flow.spec.js`) percorre a jornada completa: landing → login → dashboard tutor → busca de walkers → agendamento → dashboard walker → rota protegida.
+
+---
+
+## O core da estratégia: injeção de sessão mock
+
+O pulo do gato foi o helper `setupTutorSession()` / `setupWalkerSession()`. Ele faz **três coisas** em uma chamada:
+
+```javascript
+// tests/e2e/helpers/auth.js
+
+export async function setupTutorSession(page) {
+  const session = makeSession('tutor')
+  await addAuthInitScript(page, session)
+  await setupNetworkMock(page, { user: MOCK_USERS.tutor, authenticated: true })
+}
+```
+
+**1. Injeta sessão via `addInitScript`**
+
+O `AuthContext` do frontend tem um backdoor: se `window.__E2E_SESSION` existir, ele usa direto — zero chamadas de API:
+
+```javascript
+async function addAuthInitScript(page, session) {
+  await page.addInitScript((sess) => {
+    window.__E2E_SESSION = sess
+    localStorage.setItem('dw_access_token', sess.access_token || 'e2e-mock-token')
+    localStorage.setItem('dw_refresh_token', 'e2e-mock-refresh')
+    if (sess.user) {
+      localStorage.setItem('dw_user', JSON.stringify(sess.user))
+    }
+  }, session)
+}
+```
+
+Isso significa que o teste não depende de banco, servidor de auth, ou Turnstile. O componente acorda já autenticado.
+
+**2. Mocka a API real via `page.route()`**
+
+O network mock intercepta chamadas para **20 prefixos de rota** (`/auth/`, `/profiles/`, `/pets`, `/bookings`, `/walks`, `/wallet`, `/chat`, etc.) e retorna dados controlados.
+
+Para cada requisição, o dispatcher roteia pro handler certo:
+
+```javascript
+await page.route((url) => apiPathPrefixes.some(p => url.pathname.startsWith(p)),
+  async (route) => {
+    const path = new URL(route.request().url()).pathname
+
+    switch (path) {
+      case '/auth/me':
+        return route.fulfill({ status: 200, body: JSON.stringify(makeMeResponse(user)) })
+      case '/auth/login':
+      case '/auth/register':
+        return route.fulfill({ status: 200, body: JSON.stringify({
+          access_token: 'e2e-mock-token',
+          user: { id: user.id, email: user.email, role: user.role },
+        })})
+      case '/profiles/walkers':
+        return route.fulfill({ status: 200, body: JSON.stringify(MOCK_WALKERS) })
+      // ... +15 rotas
+    }
+  }
+)
+```
+
+**3. Dados mock realistas**
+
+Os mocks não são placeholders genéricos — representam dados de verdade que o frontend espera:
+
+```javascript
+const MOCK_USERS = {
+  tutor: { id: 'e2e-tutor-id', email: 'tutor@test.patapass', role: 'tutor' },
+  walker: { id: 'e2e-walker-id', email: 'walker@test.patapass', role: 'walker' },
+}
+
+const MOCK_PETS = [
+  { id: 'mock-pet-001', name: 'Rex', species: 'dog', breed: 'Labrador', weight: 28.5 },
+  { id: 'mock-pet-002', name: 'Luna', species: 'dog', breed: 'Golden Retriever', weight: 22.0 },
+]
+
+const MOCK_WALKERS = [
+  { id: 'mock-walker-001', name: 'Maria Passeadora', rating: 4.8, price_per_walk: 35, city: 'São Paulo' },
+  { id: 'mock-walker-002', name: 'Carlos PetLover', rating: 4.5, price_per_walk: 25, city: 'São Paulo' },
+]
+```
+
+---
+
+## A configuração do Playwright
+
+A `playwright.config.js` foi projetada pra rodar bem tanto local quanto em CI:
+
+```javascript
+export default defineConfig({
+  testDir: '.',
+  testMatch: ['tests/e2e/**/*.spec.{js,ts}'],
+  timeout: 30_000,
+  expect: { timeout: 10_000 },
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 2 : undefined,
+
+  use: {
+    baseURL: process.env.PLAYWRIGHT_TEST_URL || 'http://localhost:5173',
+    headless: true,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    locale: 'pt-BR',
+    timezoneId: 'America/Sao_Paulo',
+  },
+  // chromium apenas — suficiente pra regressão
+})
+```
+
+Detalhes que fizeram diferença:
+
+- **`trace: 'on-first-retry'`** — não polui com trace em testes que passam, mas captura tudo quando flaky
+- **`video: 'retain-on-failure'`** — ver o vídeo do teste falhando é 10x mais rápido que debugar log
+- **`locale: 'pt-BR'`** — os componentes têm texto em português e validação de CPF/CEP
+- **`baseURL` configurável** — `PLAYWRIGHT_TEST_URL` permite testar preview deploy antes de ir pra produção
+
+---
+
+## Pipeline CI com Woodpecker
+
+O CI tem **6 etapas encadeadas**, e E2E só roda se build passar:
+
+```yaml
+when:
+  branch: [master]
+  event: [push, pull_request, manual]
+
+steps:
+  install → lint → test (unit) → build → e2e → deploy
+```
+
+A etapa de E2E levanta o preview server, instala o Chromium, e executa:
+
+```yaml
+e2e:
+  commands:
+    - corepack enable && corepack prepare pnpm@9 --activate
+    - npx playwright install chromium --with-deps 2>/dev/null || true
+    - npx vite preview --port 5173 --host 127.0.0.1 &
+    - sleep 3
+    - PLAYWRIGHT_TEST_URL=http://127.0.0.1:5173 bash scripts/run-e2e-ci.sh 2>&1 || true
+  depends_on: [build]
+```
+
+---
+
+## Wrapper CI com dupla estratégia de reporter
+
+O `scripts/run-e2e-ci.sh` executa os testes **duas vezes**: uma com reporter `list` pra saída legível, outra com `json` pra análise.
+
+```bash
+# Pass 1: saída humana
+npx playwright test "${ARGS[@]}" || true
+
+# Pass 2: JSON report pra análise
+npx playwright test "${ARGS[@]}" --reporter=json 2>/dev/null > "$JSON_FILE" || true
+
+# Processa com Python
+python3 -c "
+import json
+d = json.load(open('$JSON_FILE'))
+s = d['stats']
+print(f'✅ {s[\"expected\"]}  ❌ {s[\"unexpected\"]}  ⏭  {s[\"skipped\"]}  ⏱  {s[\"duration\"]/1000:.0f}s')
+"
+
+# Registra no histórico de flaky
+python3 scripts/track-flaky.py "$JSON_FILE"
+
+# Notifica no Telegram
+bash scripts/notify-e2e.sh
+```
+
+O JSON report também alimenta o histórico de flaky (salvo em `test-results/flaky-history.csv`), que permite rastrear quais testes oscilam entre verde e vermelho ao longo do tempo.
+
+---
+
+## O que os testes cobrem
+
+### 🔐 Autenticação (2 specs, 161 linhas)
+
+Verifica que a landing carrega, o modal de login abre, formulários estão presentes, e que desktop e mobile renderizam sem quebrar. Sem mock — testa a UI pública real.
+
+### 📋 Fluxo de agendamento (2 specs, 81 linhas)
+
+Mock de tutor autenticado, preenche formulário de busca, verifica que walkers aparecem, testa criação de booking.
+
+```javascript
+test('tutor pode agendar passeio', async ({ page }) => {
+  await setupTutorSession(page)
+  await page.goto('/schedule')
+
+  await page.getByText('Rex').click()
+  await page.getByRole('button', { name: /agendar/i }).click()
+
+  await expect(page.getByText('Passeio agendado')).toBeVisible()
+})
+```
+
+### 🚨 Segurança (1 spec, 55 linhas)
+
+Testa que rotas protegidas redirecionam não-autenticados, que dashboard de tutor não expõe dados de walker, e que CSRF/CORS estão configurados.
+
+### 👤 Onboarding (1 spec, 33 linhas)
+
+Fluxo de cadastro multi-step: escolha de perfil → dados → pets → confirmação. Inclui casos limite como email duplicado e senha fraca.
+
+### 🎨 Visual (1 spec, 43 linhas)
+
+Snapshots de componentes-chave — verifica que a navbar não quebrou, que modal de login mantém proporção, que botões de CTA estão visíveis.
+
+---
+
+## Lições aprendidas
+
+### 1. Mock de API é melhor que fixture de banco
+
+No começo os E2E usavam banco de testes real. Cada execução precisava de seed, teardown, e isolamento. Com `page.route()`, o teste é deterministico: dados controlados, zero efeito colateral, roda em paralelo.
+
+### 2. addInitScript > page.evaluate()
+
+Injetar sessão antes do JS do app carregar evita race condition. Se o React tentar chamar `/auth/me` antes do mock estar pronto, o teste quebra. `addInitScript` executa antes de qualquer script da página.
+
+### 3. Duas execuções são melhores que um reporter híbrido
+
+Playwright permite múltiplos reporters, mas o JSON reporter só escreve o arquivo no final. Executar duas vezes (uma pra humano, uma pra máquina) é mais simples que configurar reporter customizado.
+
+### 4. CI com retry + vídeo = produtividade
+
+2 retries em CI + vídeo em falha reduziu o tempo de debugging de flaky tests de ~20min para ~2min. O vídeo mostra exatamente o que o navegador viu antes de falhar.
+
+### 5. Testes E2E melhoram o design do código
+
+Saber que algo vai ser testado força componentes mais modulares. O `AuthContext` precisou de um backdoor (`__E2E_SESSION`) que acabou simplificando a lógica de init. O network dispatcher mock inspirou a refatoração do API client pra usar um interceptor centralizado.
+
+---
+
+## Números
+
+| Métrica | Valor |
+|:--------|:-----:|
+| Spec files | 13 |
+| Testes totais | 234 |
+| Linhas de teste | 931 |
+| Linhas do mock helper | 219 |
+| Rotas mockadas | 20 prefixos |
+| Retries em CI | 2 |
+| Workers paralelos | 2 |
+| Timeout por teste | 30s |
+| Execução completa | ~80-120s |
+
+---
+
+## Próximos passos
+
+O que ainda quero adicionar:
+
+1. **Testes de Stripe Checkout** — hmm, difícil mockar iframe do Stripe. Talvez testar só até o redirect.
+2. **Regressão visual automática** — snapshot por componente, não só página inteira.
+3. **Testes de GPS tracking** — mockar `navigator.geolocation` e simular rota de 15 minutos.
+4. **Testes de notificação push** — verificar se o toast aparece e o badge atualiza.
+
+A arquitetura de mock está madura o suficiente pra suportar esses cenários. A base já está sólida — agora é expandir cobertura.
+
+---
+
+```python
+# Continuidade > Perfeição
+def evoluir_testes():
+    while True:
+        rodar_suite()
+        analisar_flaky()
+        adicionar_cenario()
+        refatorar_mock()
+```
+
+> _Este post é um mergulho técnico na arquitetura de E2E do Dogwalk. O post anterior ["Dogwalk amadurece — testes E2E com Playwright e CI"](/posts/dogwalk-amadurece-testes-playwright) conta a história do início dessa jornada._
