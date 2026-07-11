@@ -148,8 +148,8 @@
 
 /* ── FilterBar theme overrides ── */
 [data-theme="light"] .filter-bar.filter-bar {
-  --bar-accent: #5850ec;
-  --bar-accent-rgb: 88, 80, 236;
+  --bar-accent: #5850ec !important;
+  --bar-accent-rgb: 88, 80, 236 !important;
   --filter-bar-bg: rgba(255, 255, 255, 0.85);
   --filter-bar-border: #e5e4df;
   --filter-search-bg: #ffffff;
