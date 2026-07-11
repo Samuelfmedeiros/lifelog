@@ -30,7 +30,7 @@
   --navbar-border-color: var(--color-border);
   --navbar-logo-color: #ffffff;
   --navbar-brand-color: #78787d;
-  --navbar-link-color: #78787d;
+  --navbar-link-color: #5a5a60;
   --navbar-link-hover-bg: rgba(255, 255, 255, 0.06);
   --navbar-cta-bg: var(--color-accent);
   --navbar-cta-color: #ffffff;
@@ -57,7 +57,7 @@
   --color-bg: #f5f2eb;
   --color-bg-card: #ffffff;
   --color-text: #1a1a2e;
-  --color-text-muted: #78787d;
+  --color-text-muted: #5a5a60;
   --color-border: #e5e4df;
   --color-accent: #7c3aed;
   --color-accent-soft: rgba(124, 58, 237, 0.08);
@@ -77,7 +77,7 @@
   --navbar-border-color: #efeee9;
   --navbar-logo-color: #1a1a2e;
   --navbar-brand-color: #78787d;
-  --navbar-link-color: #78787d;
+  --navbar-link-color: #5a5a60;
   --navbar-link-hover-bg: rgba(99, 102, 241, 0.06);
   --navbar-cta-bg: #6366f1;
   --navbar-cta-color: #ffffff;
@@ -127,22 +127,29 @@
   color: #a0a0a6;
 }
 [data-theme="light"] .pill.pill {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.06);
-  color: #78787d;
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #5a5a60;
 }
 [data-theme="light"] .pill.pill[data-active="true"] {
   color: #fff;
   box-shadow: 0 0 16px color-mix(in srgb, var(--bar-accent) 25%, transparent);
 }
 [data-theme="light"] .pill.pill:hover {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
   color: #1a1a2e;
+}
+
+[data-theme="light"] .search-input.search-input::placeholder {
+  color: #7a7a80;
+  opacity: 1;
 }
 
 /* ── FilterBar theme overrides ── */
 [data-theme="light"] .filter-bar.filter-bar {
+  --bar-accent: #5850ec;
+  --bar-accent-rgb: 88, 80, 236;
   --filter-bar-bg: rgba(255, 255, 255, 0.85);
   --filter-bar-border: #e5e4df;
   --filter-search-bg: #ffffff;
@@ -492,7 +499,7 @@ html[data-theme="light"][data-project] {
   --color-bg: #f5f2eb;
   --color-bg-card: #ffffff;
   --color-text: #1a1a2e;
-  --color-text-muted: #78787d;
+  --color-text-muted: #5a5a60;
   --color-border: #e5e4df;
 }
 
@@ -575,7 +582,7 @@ html[data-theme="light"][data-project] {
   --color-bg: #f5f2eb;
   --color-bg-card: #ffffff;
   --color-text: #1a1a2e;
-  --color-text-muted: #78787d;
+  --color-text-muted: #5a5a60;
   --color-border: #e5e4df;
   --color-accent-soft: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --color-glow: 0 4px 24px color-mix(in srgb, var(--color-accent) 12%, transparent);
