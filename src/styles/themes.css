@@ -101,7 +101,7 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-[data-theme="light"] .filter-bar {
+[data-theme="light"] .filter-bar.filter-bar {
   background:
     color-mix(in srgb, rgba(255, 255, 255, 0.65) 100%, rgba(var(--bar-accent-rgb), 0.04));
 }
@@ -142,7 +142,7 @@
 }
 
 /* ── FilterBar theme overrides ── */
-[data-theme="light"] .filter-bar {
+[data-theme="light"] .filter-bar.filter-bar {
   --filter-bar-bg: rgba(255, 255, 255, 0.85);
   --filter-bar-border: #e5e4df;
   --filter-search-bg: #ffffff;
@@ -472,6 +472,9 @@
 
 /* 💥 Força o light theme sobre QUALQUER data-project — no FINAL pra ganhar cascade */
 html[data-theme="light"][data-project] {
+  --pattern-url: none;
+  --pattern-opacity: 0;
+  --pattern-blend: normal;
   --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
   --rays-gradient: repeating-conic-gradient(
     from 35deg at 82% 6%,
