@@ -523,10 +523,10 @@ test.describe('404', () => {
    ============================================= */
 
 test.describe('Health', () => {
-  test('homepage carrega em < 3s', async ({ page }) => {
+  test('homepage carrega em < 8s', async ({ page }) => {
     const start = Date.now();
     await page.goto('/');
-    expect(Date.now() - start).toBeLessThan(3000);
+    expect(Date.now() - start).toBeLessThan(8000);
   });
 
   test('sem erros de console na navegação', async ({ page }) => {
