@@ -3,7 +3,8 @@ import { getCollection } from 'astro:content';
 const SITE_URL = 'https://lifelog-sepia.vercel.app';
 
 export async function GET() {
-  const posts = await getCollection('posts');
+  const allPosts = await getCollection('posts');
+  const posts = allPosts.filter(p => !p.data.draft);
 
   const urls = [
     { loc: '/', changefreq: 'weekly', priority: '1.0' },

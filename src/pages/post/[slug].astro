@@ -4,7 +4,8 @@ import ProjectIcon from '../../components/ProjectIcon.astro';
 import { getCollection, render } from 'astro:content';
 
 export async function getStaticPaths() {
-  const posts = await getCollection('posts');
+  const allPosts = await getCollection('posts');
+  const posts = allPosts.filter(p => !p.data.draft);
   return posts.map((post) => ({
     params: { slug: post.id },
     props: { post },
