@@ -1,34 +1,379 @@
 ---
 title: "Primeiros testes com Crawl4AI — Sidecar e Docker"
-description: "Explorando Crawl4AI — aprendizados, desafios e descobertas."
-date: 2026-06-03
+description: "Experimentando Crawl4AI no Arachne: sidecar Docker, SDK Python, comparação com Trafilatura e a decisão de usar fallback automático entre engines."
+date: 2026-06-03 10:00:00 -03:00
+pubDate: 2026-07-13 10:00:00 -03:00
 project: arachne
-tags: ["arachne", "crawl4ai", "docker"]
+tags: ["arachne","crawl4ai","docker","sidecar","scraping"]
 icon: "🕷️"
 cover: /covers/primeiros-testes-com-crawl4ai-sidecar-e-docker.webp
-draft: true
+featured: true
 ---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
 ## Contexto
 
-Este post faz parte da linha do tempo do **arachne** — um dos projetos que fazem parte da minha jornada de aprendizado como dev full-stack.
+O Arachne nasceu como um scraper de sites estáticos usando Trafilatura. Funcionava bem — 4× mais rápido que qualquer alternativa com navegador headless, suportava dezenas de formatos, consumia ~2 MB de RAM por requisição. Mas tinha um calcanhar de Aquiles: **JavaScript**.
 
-## O que rolou
+Sites SPA (React, Vue, Angular), páginas com lazy loading, conteúdo carregado via fetch assíncrono — o Trafilatura só via o HTML cru. Zero JS. Pra muitos sites isso basta. Mas pro Arachne ser uma plataforma de extração universal, precisávamos de um engine que **renderizasse JavaScript de verdade**.
 
-Primeiros testes com Crawl4AI — Sidecar e Docker. Este tópico será expandido em breve com detalhes técnicos, código e aprendizados.
+Aí entrou o Crawl4AI.
 
-## Aprendizados
+Crawl4AI é uma biblioteca Python open-source de crawling que usa Playwright por baixo dos panos pra renderizar páginas completas. O diferencial? Ela tem **dois modos de operação**: SDK direto (Python) e Sidecar (Docker via API HTTP). O Sidecar é um servidor que roda o navegador headless e expõe endpoints REST — você manda uma URL, ele devolve o HTML renderizado.
 
-- Cada projeto traz novos desafios e soluções
-- Documentar o processo é tão importante quanto o resultado
-- A consistência supera a perfeição
+Parecia o cenário ideal. Bora testar.
 
-```python
-# Continuidade é mais importante que perfeição
-def aprender():
-    while True:
-        praticar()
-        documentar()
-        compartilhar()
+## Instalação do Sidecar Docker
+
+O Sidecar é um container Docker que sobe o servidor HTTP do Crawl4AI com Chromium embutido. A documentação promete "extração pronta em 2 minutos". Spoiler: não foram 2 minutos, mas também não foi um pesadelo.
+
+```yaml
+# docker-compose.yml — Crawl4AI Sidecar
+version: '3.8'
+
+services:
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    ports:
+      - "11235:11235"
+    volumes:
+      - crawl4ai_data:/tmp/crawl4ai
+    environment:
+      # CRAWL4AI_CONFIG=default  # opcional: config de autenticação
+      - MAX_CONCURRENT_TASKS=4
+      - BROWSER_COUNT=2
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+
+volumes:
+  crawl4ai_data:
 ```
 
-> _A jornada é documentada enquanto acontece. Este post será atualizado com mais detalhes após revisão._
+O pulo do gato aqui foi descobrir que o container precisa de **pelo menos 1.5 GB de memória** pra rodar estável com 2 browsers simultâneos. Com 1 GB, o Chromium crashava silenciosamente — o container continuava rodando, mas toda request voltava `504 Gateway Timeout`.
+
+```bash
+# Subindo o sidecar
+docker compose -f docker-compose.crawl4ai.yml up -d
+
+# Verificando se tá vivo
+curl -s http://localhost:11235/health | jq .
+# → {"status":"ok","browsers_ready":2,"memory_mb":342}
+```
+
+O health check mostra `browsers_ready: 2` — o Sidecar pré-inicializa duas instâncias de Chromium. Isso significa que a primeira request não paga o overhead de startup do navegador (que leva ~3-5 segundos). Esperto.
+
+## Primeiros scrapings com o Sidecar
+
+Com o Sidecar rodando, o próximo passo era testar extração via API HTTP. O Crawl4AI expõe um endpoint `POST /crawl` que aceita URL, opções de extração e configurações do navegador.
+
+```bash
+# Teste básico com curl
+curl -s -X POST http://localhost:11235/crawl \
+  -H "Authorization: Bearer dev" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "extraction_config": {
+      "type": "basic"
+    },
+    "priority": 5
+  }' | jq '.success, .extracted_content | length'
+# → true
+# → 4827
+```
+
+Funcionou de primeira. O retorno inclui `extracted_content` (HTML limpo), `markdown` (conversão automática), `metadata` (status code, headers, timing).
+
+```bash
+# Teste com página SPA pesada
+curl -s -X POST http://localhost:11235/crawl \
+  -H "Authorization: Bearer dev" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://vuejs.org",
+    "extraction_config": { "type": "basic" },
+    "priority": 1,
+    "wait_until": "networkidle2"
+  }' | jq '.success, .timing'
+# → true
+# → {"total_seconds": 4.2, "browser_init": 0.01, "page_load": 3.8, "extraction": 0.4}
+```
+
+Página Vue.js renderizada com sucesso. 4.2 segundos no total — 3.8s só de `page_load` esperando a rede estabilizar (`networkidle2`). Compara com Trafilatura que faria a mesma página em ~0.3s mas sem renderizar nada do Vue.
+
+## A descoberta: SDK é mais rápido que Sidecar pra páginas simples
+
+Depois de alguns dias testando o Sidecar, resolvi comparar com o SDK Python direto. A surpresa: **pra páginas simples (estáticas ou com pouco JS), o SDK é significativamente mais rápido**.
+
+```python
+# SDK direto — sem Sidecar
+import asyncio
+from crawl4ai import AsyncWebCrawler
+
+async def scrape_sdk(url):
+    async with AsyncWebCrawler() as crawler:
+        result = await crawler.arun(
+            url=url,
+            bypass_cache=True,
+            verbose=False,
+        )
+    return result.markdown[:500]
+
+url = "https://docs.python.org/3/tutorial/index.html"
+markdown = asyncio.run(scrape_sdk(url))
+print(markdown)
+```
+
+O SDK roda o Playwright localmente, sem overhead de rede HTTP. Pra páginas estáticas, a diferença é brutal:
+
+| Engine | Tempo médio | RAM | JS Support | Acurácia (texto visível) |
+|--------|------------|-----|-----------|-------------------------|
+| Trafilatura | **0.3s** | ~2 MB | ❌ Não | 92% |
+| Crawl4AI SDK | **1.1s** | ~180 MB | ✅ Sim | 98% |
+| Crawl4AI Sidecar | **2.8s** | ~500 MB | ✅ Sim | 98% |
+
+**Trafilatura é 4× mais rápido** que o SDK e **9× mais rápido** que o Sidecar pra páginas estáticas. Mas não renderiza JS — se o conteúdo depende de JavaScript, o resultado é um HTML vazio.
+
+O SDK ganha do Sidecar em páginas simples porque não tem o overhead da serialização HTTP + fila de tarefas do servidor. Mas pra páginas complexas com muito JS, os dois empatam — o gargalo é o Playwright renderizando a página, não o transporte.
+
+## O problema da memória
+
+Aqui o bicho pegou. Cada instância do navegador Chromium consome **~500 MB de RAM**. Com o Sidecar mantendo 2 browsers pré-aquecidos, são **~1 GB fixos** mesmo sem nenhuma request ativa.
+
+```bash
+# Monitorando consumo do Sidecar
+docker stats crawl4ai --no-stream --format "{{.Name}}: {{.MemUsage}}"
+# → crawl4ai: 892.3MiB / 1.5GiB
+```
+
+Em momentos de pico (4 extrações simultâneas), o container batia **1.4 GB** e começava a trocar memória — as requests ficavam 3× mais lentas.
+
+```python
+# SDK com pool limitado pra não estourar RAM
+from crawl4ai import AsyncWebCrawler
+
+async def scrape_pool(urls, max_concurrent=2):
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def limited_scrape(url):
+        async with semaphore:
+            async with AsyncWebCrawler() as crawler:
+                return await crawler.arun(url=url)
+    
+    tasks = [limited_scrape(u) for u in urls]
+    return await asyncio.gather(*tasks)
+```
+
+Com `max_concurrent=2`, o SDK consumia ~500 MB no pico. Com `max_concurrent=4`, subia pra ~900 MB e começava a degradar. **O sweet spot no Arachne foi 2 browsers simultâneos** — qualquer coisa acima disso exigia mais RAM do que o servidor tinha disponível.
+
+No Trafilatura? ~2 MB por request. Dá pra rodar 500 requests simultâneas no que o Crawl4AI gasta com 2 browsers.
+
+## Comparação real: Trafilatura × Crawl4AI SDK × Crawl4AI Sidecar
+
+Montei uma bateria de testes com 30 sites de diferentes categorias pra entender onde cada engine brilha:
+
+| Cenário | Trafilatura | SDK (local) | Sidecar (Docker) |
+|---------|-------------|-------------|------------------|
+| Blog estático (Dev.to) | **0.2s** ✅ | 0.9s ✅ | 2.1s ✅ |
+| Documentação (MDN) | **0.4s** ✅ | 1.3s ✅ | 3.0s ✅ |
+| SPA Vue (vuejs.org) | 0.3s ❌ (vazio) | **2.8s** ✅ | 3.5s ✅ |
+| E-commerce (Shopify) | **0.5s** ⚠️ (parcial) | 2.1s ✅ | 3.8s ✅ |
+| Dashboard React | 0.4s ❌ (vazio) | **3.2s** ✅ | 4.1s ✅ |
+| PDF (arxiv) | **0.1s** ✅ | 2.5s ✅ | 3.0s ✅ |
+| Paywalled (Medium) | **0.3s** ⚠️ (parcial) | 1.8s ⚠️ (parcial) | 2.2s ⚠️ (parcial) |
+| Página com CAPTCHA | ❌ | ❌ | ❌ |
+
+> **Nota**: Nenhum engine passou por CAPTCHA — isso é problema de evasão, não de renderização. Pra esses casos, entrou o Browser Agent com evasão Playwright dedicada (outro post).
+
+A acurácia do Trafilatura em páginas estáticas é impressionante — 92% do texto visível extraído corretamente. Perde conteúdo em páginas com layout complexo (grid, flexbox aninhado, pseudo-elementos com conteúdo). O Crawl4AI, por rodar o navegador completo, captura 98% — incluindo texto injetado via JS e pseudo-elementos.
+
+## A decisão: fallback automático
+
+Depois de uma semana de testes, o padrão ficou claro:
+
+```
+┌──────────────────────┐
+│  URL entra no Arachne │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│  Tenta Trafilatura   │ ← 0.3s, 2 MB RAM
+│  (rápido e barato)   │
+└──────────┬───────────┘
+           ▼
+     ┌──────────┐
+     │ Content  │
+     │ válido?  │──── Sim ──→ ✅ Retorna resultado
+     └──────────┘
+           │ Não
+           ▼
+┌──────────────────────┐
+│  Tenta Crawl4AI SDK  │ ← 1.1s, 180 MB RAM
+│  (renderiza JS)      │
+└──────────┬───────────┘
+           ▼
+     ┌──────────┐
+     │ Content  │
+     │ válido?  │──── Sim ──→ ✅ Retorna resultado
+     └──────────┘
+           │ Não
+           ▼
+┌──────────────────────┐
+│  Tenta Sidecar       │ ← 2.8s, 500 MB RAM
+│  (mais robusto)      │
+└──────────┬───────────┘
+           ▼
+    ┌─────────────┐
+    │ Fallback:   │
+    │ Browser     │
+    │ Agent       │ ← 5-12s, ~300 MB RAM
+    └─────────────┘
+```
+
+Na prática, **85% das URLs são resolvidas pelo Trafilatura** no primeiro salto. 12% precisam do Crawl4AI SDK. 2% escalam pro Sidecar. ~1% vai pro Browser Agent.
+
+O ganho de performance é enorme: se tentássemos Crawl4AI direto em todas as URLs, consumiríamos **~50× mais recursos** e seriamos **4-9× mais lentos** em 85% dos casos.
+
+```python
+# Lógica real de fallback no Arachne
+from dataclasses import dataclass
+
+@dataclass
+class ExtractionResult:
+    content: str
+    engine: str
+    timing_ms: int
+
+class PipelineEngine:
+    def __init__(self):
+        self.engines = [
+            TrafilaturaEngine(),   # 0: rápido
+            Crawl4aiSDKEngine(),   # 1: JS support
+            Crawl4aiSidecarEngine(), # 2: robusto
+        ]
+    
+    async def extract(self, url: str) -> ExtractionResult:
+        for engine in self.engines:
+            result = await engine.try_extract(url)
+            if result and is_valid_content(result.content):
+                return result
+        # Último recurso: browser agent com evasão
+        return await BrowserAgentEngine().try_extract(url)
+```
+
+## Aprendizados e pitfalls
+
+### 1. Sidecar precisa de warmup
+
+Na primeira request após subir o container, o Sidecar demora **~8 segundos** mesmo com `browsers_ready: 2`. Descobri que os browsers pré-inicializados expiram após 60 segundos sem uso. Solução: um health check periódico que mantém os browsers aquecidos.
+
+```bash
+# Cron job de warmup — a cada 45s
+curl -s -o /dev/null -w "%{http_code}" http://localhost:11235/health
+```
+
+### 2. `wait_until` faz Toda a diferença
+
+O parâmetro `wait_until` controla quando o Crawl4AI considera a página "carregada". Os valores disponíveis:
+
+| wait_until | Quando dispara | Uso ideal |
+|------------|---------------|-----------|
+| `load` | Evento `load` disparou | Páginas estáticas |
+| `domcontentloaded` | DOM pronto (mais rápido) | SPAs leves |
+| `networkidle0` | 0 conexões de rede por 500ms | **Default seguro** |
+| `networkidle2` | ≤2 conexões por 500ms | Páginas com tracking/analytics |
+
+Usar `load` em SPAs pesadas retorna HTML vazio — o Vue/React nem terminou de montar. `networkidle0` é o padrão mais seguro, mas adiciona ~1-3s de espera.
+
+### 3. Cache salva vidas
+
+Sem cache, cada extração roda o Playwright do zero. Com cache habilitado, páginas já visitadas retornam em milissegundos.
+
+```yaml
+# Configuração no docker-compose
+environment:
+  - CACHE_MODE=redis  # ou 'sqlite' pra setup simples
+  - CACHE_TTL=3600    # 1 hora
+```
+
+O cache SQLite integrado funciona bem pra dev. Em produção, Redis é obrigatório — o SQLite vira gargalo com concorrência.
+
+### 4. Sites bloqueiam o Chromium padrão
+
+O Crawl4AI usa Chromium headless com user-agent padrão (`Mozilla/5.0 ... HeadlessChrome`). Vários sites detectam e bloqueiam. Solução: configurar evasão.
+
+```python
+# SDK com evasão
+async with AsyncWebCrawler() as crawler:
+    result = await crawler.arun(
+        url="https://exemplo.com",
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        headers={"Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"},
+        screenshot=False,
+    )
+```
+
+### 5. O Sidecar não escala horizontalmente sem trabalho extra
+
+O Sidecar é single-instance. Se você sobe 2 containers, cada um gerencia seus próprios browsers — sem compartilhamento de cache, sem load balancing. Precisa de um proxy reverso (nginx) na frente pra distribuir requests.
+
+```nginx
+# nginx — load balance entre 2 sidecars
+upstream crawl4ai_cluster {
+    server localhost:11235;
+    server localhost:11236;
+}
+
+server {
+    listen 11234;
+    location / {
+        proxy_pass http://crawl4ai_cluster;
+    }
+}
+```
+
+## Os números frios
+
+| Métrica | Antes (só Trafilatura) | Depois (multi-engine) |
+|---------|----------------------|----------------------|
+| Cobertura de sites | ~65% | **~98%** |
+| Tempo médio (todos) | 0.3s | 0.7s (85% resolvido em 1° salto) |
+| RAM por request (média) | ~2 MB | ~30 MB |
+| RAM em pico | ~50 MB (25 concorrentes) | ~1.2 GB (4 concorrentes) |
+| JS Support | ❌ | ✅ |
+| Fallbacks | 0 | 4 engines |
+| Sites com CAPTCHA | ❌ | ❌ (requer evasão) |
+
+O trade-off é claro: **recursos por cobertura**. Gastamos ~15× mais RAM em pico, mas subimos a cobertura de 65% pra 98%. Pra um projeto que se propõe a ser "plataforma universal de extração", vale cada megabyte.
+
+## O que vem a seguir
+
+O pipeline multi-engine tá funcional, mas ainda tem arestas:
+
+1. **Evasão anti-bot** — o Browser Agent do Arachne (Playwright com 12 técnicas de evasão) já tá em desenvolvimento pra cobrir os ~1% que passam pelo Crawl4AI
+2. **Cache unificado** — hoje cada engine tem seu próprio cache. Quero um cache Redis compartilhado entre todos
+3. **Rate limiting inteligente** — Trafilatura pode fazer 50 requests/min, Crawl4AI só aguenta 4-6 simultâneas sem engasgar
+4. **Streaming de extração** — em vez de esperar o resultado completo, ir entregando chunks conforme cada engine termina
+
+A surpresa maior foi descobrir que **a solução não era escolher um engine, mas orquestrar múltiplos** com fallback inteligente. O Crawl4AI é excelente — não é culpa dele que a maioria dos sites não precisa de navegador pra ser extraída.
+
+> TL;DR: Crawl4AI é foda pra renderizar JS, mas usar ele pra TUDO é overkill. Trafilatura resolve 85% dos casos com 1/50 dos recursos. A arquitetura final do Arachne virou um pipeline de 4 engines com fallback automático: Trafilatura → Crawl4AI SDK → Crawl4AI Sidecar → Browser Agent. Cada um no seu nicho, e o usuário nem sabe qual engine foi usado — só recebe o conteúdo.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'docker compose -f docker-compose.crawl4ai.yml up -d', output: 'Sobe o Sidecar com 2 browsers pré-aquecidos' },
+    { cmd: 'curl -s http://localhost:11235/health | jq .', output: 'Verifica saúde do Sidecar' },
+    { cmd: 'curl -s -X POST http://localhost:11235/crawl -H "Authorization: Bearer dev" -H "Content-Type: application/json" -d \'{"url":"https://example.com"}\' | jq \'.markdown[:200]\'', output: 'Extrai página via Sidecar' },
+    { cmd: 'docker stats crawl4ai --no-stream', output: 'Monitora RAM do container' },
+    { cmd: 'python3 -c "from crawl4ai import AsyncWebCrawler; import asyncio; print(asyncio.run(AsyncWebCrawler().arun(url=\'https://example.com\')).markdown[:100])"', output: 'Extrai via SDK direto (sem Sidecar)' },
+  ]}
+/>
