@@ -24,7 +24,7 @@ for (const post of posts) {
 ---
 
 <BaseLayout title="Arquivo" description="Todos os posts do LifeLog">
-  <h1 class="text-3xl font-extrabold mb-2" style="color: #fff">📚 Arquivo</h1>
+  <h1 class="text-3xl font-extrabold mb-2" style="color: var(--color-heading)">📚 Arquivo</h1>
   <p class="mb-8" style="color: var(--color-text-muted)">{posts.length} posts no total</p>
 
   <!-- Stats -->
@@ -32,7 +32,7 @@ for (const post of posts) {
     {[...projectCount.entries()].map(([proj, count]) => (
       <div class="p-4 rounded-xl" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
         <ProjectIcon project={proj} />
-        <p class="text-lg font-bold mt-2" style="color: #fff">{count}</p>
+        <p class="text-lg font-bold mt-2" style="color: var(--color-heading)">{count}</p>
         <p class="text-xs" style="color: var(--color-text-muted)">{proj}</p>
       </div>
     ))}
