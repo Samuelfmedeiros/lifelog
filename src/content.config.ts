@@ -8,7 +8,7 @@ const posts = defineCollection({
     description: z.string(),
     date: z.date(),
     pubDate: z.date().optional(),
-    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara', 'estudos', 'descobertas']),
+    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara', 'tatuengine', 'estudos', 'descobertas']),
     tags: z.array(z.string()),
     icon: z.string().optional(),
     cover: z.string().optional(),

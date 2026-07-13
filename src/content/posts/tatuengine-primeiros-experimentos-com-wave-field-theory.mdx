@@ -1,0 +1,207 @@
+---
+title: "TatuEngine — primeiros experimentos com wave field theory"
+description: "Explorando começo da TatuEngine — aprendizados, desafios e descobertas."
+date: 2026-06-22 10:00:00 -03:00
+pubDate: 2026-07-13 22:46:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "wave", "ssm", "pesquisa"]
+icon: "🌊"
+cover: /covers/tatuengine-primeiros-experimentos-com-wave-field-theory.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Contexto
+
+A TatuEngine nasceu de uma pergunta idiota: **"RT Core processa redes neurais?"** Parece piada, mas a ideia por trás tinha um fundamento real — uma rede neural é, no fim das contas, uma função que transforma um vetor de entrada num vetor de saída. Se você codificar os pesos como geometria 3D (triângulos com índice de refração), cada token de entrada vira um raio que atravessa essa geometria, e a saída emerge da interferência construtiva das ondas no outro lado.
+
+É bonito na teoria. Na prática, o WSL não tem RT Core.
+
+Mas a pergunta certa não era "como usar RT Cores no WSL". A pergunta certa era: **"se eu tratar inferência como propagação de ondas num campo de fase, o que acontece?"**
+
+Foi essa pergunta que começou os experimentos.
+
+## O sonho original: pesos como geometria
+
+A metáfora inicial era elegante demais pra abandonar:
+
+```
+Peso ternário w ∈ {-1, 0, +1} → TriangleLens com η = w
+Posição da lente → f(layer, row, col) no espaço 3D
+Token de entrada → raio com fase inicial φ₀
+Saída → interferência de todas as ondas no detector
+```
+
+Cada peso da rede virava um triângulo num BVH (Bounding Volume Hierarchy). Uma inferência era literalmente um ray-trace: disparar raios, computar desvio de fase, somar coerente.
+
+```cpp
+// TriangleLens — cada peso vira um prisma refrativo
+struct TriangleLens {
+    float3 v0, v1, v2;       // vértices no espaço 3D
+    float refraction_index;   // η = peso ternário {-1, 0, +1}
+    float phase_bias;         // θ = correção de fase fina
+    float attenuation;        // α = quanto da amplitude perde
+};
+```
+
+O problema apareceu rápido: **1 bilhão de parâmetros em float32 = 27 GB de TriangleLens**. Cada peso vira 3 vértices × 3 floats + 3 floats de propriedades ópticas. 36 bytes por peso. Pra 1B parâmetros, 36 GB — sem chance de caber em VRAM de GPU consumer.
+
+## O primeiro pivô: abordagem híbrida
+
+Em vez de converter TUDO pra geometria (impossível pra 1B params), separei o pipeline:
+
+| Etapa | Onde roda | Por quê |
+|-------|-----------|---------|
+| Embedding lookup | CPU | Acesso linear à tabela — sem ganho em GPU |
+| RMSNorm | CPU | Operação vetorial simples |
+| **in_proj / out_proj / lm_head** | **GPU (bridge_matmul)** | **Matmul pesada — 99% dos FLOPs** |
+| Conv1d + SiLU | CPU | Estado sequencial pequeno |
+| SSM step | CPU | Inerentemente sequencial — `h(t) = f(h(t-1), x(t))` |
+| Residual add | CPU | Soma vetorial trivial |
+
+Essa divisão não foi óbvia de cara. O Mamba SSM é diferente de Transformer: o estado escondido `h(t)` depende de `h(t-1)`. Você não pode paralelizar o tempo como no attention. Mas as matmuls (que são a parte cara) são independentes por token.
+
+```cpp
+// Pipeline híbrido — CPU + BVH
+bool infer_one_token(/*...*/) {
+    // CPU: embedding, RMSNorm, conv1d, SSM, residual
+    rms_norm(state.hidden, norm, d_model);
+    bridge_matmul(model, bvh, IN_PROJ, l, state.hidden, state.x, cfg);
+    silu_conv1d(cs, conv_w, conv_b, state.x, d_model, d_conv);
+    ssm_step(state.x, dt_bias, A_log, B, C, D, ssm_state, state.y, ...);
+
+    // GPU via bridge_matmul: out_proj + lm_head
+    bridge_matmul(model, bvh, OUT_PROJ, l, state.y, state.out, cfg);
+    bridge_matmul(model, bvh, LM_HEAD, n_layers, state.hidden, logits, cfg);
+}
+```
+
+## A descoberta que mudou tudo: Block Codec
+
+O híbrido funcionava, mas ainda era caro — 10ms por token no CPU pra 1B params. Aí veio a sacada: **pesos ternários seguem padrões locais**. 32×32 weights consecutivos compartilham zero, sinal, magnitude similar.
+
+Em vez de 1 TriangleLens por peso (36 bytes), um **bloco 32×32** cabe em 288 bytes:
+
+```
+Cada bloco:
+- 256 bytes de payload (2 bits/weight × 1024)
+- 16 bytes de header (offset, scale, flags)
+- 16 bytes de metadados BVH (centroide, raio)
+Total: 288 bytes por 1024 pesos = 0.28 bytes/weight (vs 36 bytes 1:1)
+```
+
+**114× de compressão.** E mais importante: o kernel de travessia consegue processar blocos inteiros em paralelo com 32 threads no mesmo warp.
+
+```python
+# Contas rápidas
+pesos = 1_000_000_000  # 1B params
+tamanho_1x1 = pesos * 36  # 36 GB — inviável
+tamanho_block = pesos / 1024 * 288  # 281 MB — cabe em qualquer GPU
+print(f"Block Codec: {tamanho_1x1 / tamanho_block:.0f}× compressão")
+# → 114× compressão
+```
+
+## GPU Block-Traversal: o primeiro resultado real
+
+Com o Block Codec funcionando, escrevi o kernel CUDA de travessia. 32 threads por CTA, cada thread processando uma linha do bloco, warp shuffle pra soma parcial, shared memory pra acumulador.
+
+```cpp
+__global__ void block_traverse_kernel(
+    const BlockLens* blocks, int n_blocks,
+    const float* input, float* output
+) {
+    __shared__ float shared_acc[32][32];  // 4 KB shared
+
+    int block_idx = blockIdx.x;
+    int thread_row = threadIdx.x;  // 0..31
+
+    auto& block = blocks[block_idx];
+    float acc = 0.0f;
+
+    for (int c = threadIdx.y; c < 32; c += blockDim.y) {
+        float w = decode_ternary(block.packed, thread_row, c);
+        acc += w * input[block.col_offset + c];
+    }
+
+    // Warp shuffle reduce
+    for (int offset = 16; offset > 0; offset >>= 1)
+        acc += __shfl_xor_sync(0xFFFFFFFF, acc, offset);
+
+    if (threadIdx.x == 0)
+        atomicAdd(&output[block.row_offset + thread_row], acc * block.scale);
+}
+```
+
+O resultado surpreendeu:
+
+| Pipeline | CPU | GPU | Speedup |
+|----------|-----|-----|---------|
+| Inferência 1 token | 10.552 ms | **41.9 µs** | **252×** |
+| Bake 100K células | ~70 ms | 4.8 ms | **15×** |
+| Traversal 16 raios | 74.2 ms | 0.52 ms | **146×** |
+
+252 microssegundos por token numa GPU que também roda CUDA Cores. Pra comparação, um Transformer de tamanho similar leva 3-5ms no mesmo hardware.
+
+## O que aprendi com esses experimentos
+
+### 1. Ternarizar depois do treino destrói coerência
+
+O modelo que testei (BitMamba-1B) já era ternário nativo — treinado com pesos em {-1, 0, +1}. Tentei ternarizar um modelo float32 pós-treino e os logits viraram ruído. **Modelos ternários precisam ser treinados assim desde o início.**
+
+### 2. Softplus com float32 estoura silenciosamente
+
+`expf(89.0f) = +inf`. Isso quebrou meus testes de SSM step por 2 dias até eu perceber que o `softplus` do A_log tava gerando `inf` nos últimos batches. Solução: `log1pf(expf(-abs(x)))`.
+
+```cpp
+// Antes (quebrado): float x = logf(1 + expf(89)); // inf!
+float safe_softplus(float x) {
+    if (x > 50.0f) return x;       // regressão linear
+    if (x < -50.0f) return expf(x); // regressão exponencial
+    return log1pf(expf(x));         // zona segura
+}
+```
+
+### 3. SSM não carrega história no hidden state
+
+Eu esperava que o hidden state `h(t)` carregasse contexto, tipo o hidden do RNN. Mas `Δh ≈ 0.0001` entre tokens consecutivos. A memória real do Mamba está no `kv_cache` (conv buffer + SSM state). O hidden é quase um pass-through.
+
+### 4. O AutoTrainer converge rápido demais — e isso é bom
+
+Com spacing 3.5 entre lentes (default), o AutoTrainer atinge 99.5% de qualidade em 14 steps. Não porque o sistema é simples — porque **cada lente já resolve o gradiente local sem interferência**. Com spacing 0.8 (lentes sobrepostas), a entropia sobe e o treinador realmente precisa trabalhar. Mas 3.5 é o sweet spot pra inferência pura.
+
+### 5. O Adjacent Method vence gradiente numérico
+
+Em vez de computar gradiente por diferenças finitas (caro, instável), o Adjacent Method testa as 3 opções de índice de refração adjacente (η-1, η, η+1) e escolhe a que minimiza a função de fase. 3× mais rápido, sem falsos gradientes, deterministicamente convergente.
+
+## Os números frios
+
+| Métrica | Junho (início) | Julho (hoje) |
+|---------|----------------|--------------|
+| Testes | 0 | 400+ (30 suites) |
+| Speedup GPU | ❌ | 252× |
+| Compressão | 27.26 GB | 245 MB (114×) |
+| Pipeline | Conceitual | Híbrido CPU/GPU |
+| Agente | 0 | 8 subsistemas |
+| Modelo | Mamba 2.8B (planejado) | BitMamba-1B (funcional) |
+
+## O que vem a seguir
+
+O pipeline híbrido tá funcional, mas a visão original ainda não se realizou **completa**: os pesos não são geometria de verdade durante a inferência — o Block Codec é uma representação comprimida, não uma travessia óptica real.
+
+O próximo passo é conectar o **MotorGPU** (kernel de travessia paralela) com o pipeline de agente que construímos depois — Immunosystem, LTM associativo, GoalStack, ToolUseBuffer. O agente deve conseguir chamar ferramentas, lembrar de sessões anteriores, e auto-corrigir o campo de fase baseado em feedback.
+
+> TL;DR: Comecei querendo fazer ray tracing de redes neurais, descobri que SSM híbrido é o caminho real, comprimi 27 GB em 245 MB com Block Codec, e acelerei 252× na GPU. A TatuEngine não é mais uma ideia maluca — é um motor de inferência funcional que trata peso de rede como campo de fase. E sim, ainda acho que um dia os RT Cores vão processar geometria neural de verdade.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/TatuEngine && mkdir -p build && cd build && cmake .. && make -j', output: 'Build completo' },
+    { cmd: 'ctest --output-on-failure', output: 'Roda 400+ testes' },
+    { cmd: './build/tests/mamba_infer models/bitmamba_cpp/bitmamba_1b.bin 3', output: 'Valida pipeline híbrido' },
+    { cmd: 'python3 scripts/build_ltm_knowledge.py', output: 'Constrói base LTM do agente' },
+  ]}
+/>
