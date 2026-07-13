@@ -12,7 +12,7 @@ const firstDate = posts.reduce((earliest, p) =>
 
 <BaseLayout title="Sobre" description="Sobre o LifeLog">
   <article class="max-w-2xl mx-auto">
-    <h1 class="text-3xl font-extrabold mb-6" style="color: #fff">📖 Sobre o LifeLog</h1>
+    <h1 class="text-3xl font-extrabold mb-6" style="color: var(--color-heading)">📖 Sobre o LifeLog</h1>
 
     <div class="prose max-w-none" style="color: var(--color-text)">
       <p>
@@ -30,7 +30,7 @@ const firstDate = posts.reduce((earliest, p) =>
 
       <hr style="border-color: var(--color-border); margin: 2rem 0;" />
 
-      <h2 class="text-xl font-bold" style="color: #fff">📊 Estatísticas</h2>
+      <h2 class="text-xl font-bold" style="color: var(--color-heading)">📊 Estatísticas</h2>
       <div class="grid grid-cols-3 gap-4 my-6">
         <div class="p-4 rounded-xl text-center" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
           <p class="text-2xl font-bold" style="color: var(--color-accent)">{totalPosts}</p>
@@ -48,7 +48,7 @@ const firstDate = posts.reduce((earliest, p) =>
 
       <hr style="border-color: var(--color-border); margin: 2rem 0;" />
 
-      <h2 class="text-xl font-bold" style="color: #fff">📎 Links</h2>
+      <h2 class="text-xl font-bold" style="color: var(--color-heading)">📎 Links</h2>
       <ul style="list-style: none; padding: 0;">
         <li class="mb-2">
           <a href="https://samuelmedeiros.vercel.app" target="_blank" rel="noopener" style="color: var(--color-accent)">

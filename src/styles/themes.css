@@ -36,6 +36,7 @@
   --navbar-cta-color: #ffffff;
   --navbar-icon-bg: rgba(255, 255, 255, 0.06);
   --navbar-icon-border: rgba(255, 255, 255, 0.15);
+  --color-heading: #ffffff;
 }
 
 /* Navbar — usa variáveis (mudam com data-theme) */
@@ -83,6 +84,7 @@
   --navbar-cta-color: #ffffff;
   --navbar-icon-bg: rgba(99, 102, 241, 0.1);
   --navbar-icon-border: rgba(99, 102, 241, 0.3);
+  --color-heading: #1a1a2e;
 }
 
 
