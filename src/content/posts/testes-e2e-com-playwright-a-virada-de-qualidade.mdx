@@ -10,7 +10,7 @@ cover: /covers/testes-e2e-com-playwright-a-virada-de-qualidade.webp
 featured: true
 ---
 
-import { Terminal } from '../../components/Terminal.astro'
+import Terminal from '../../components/TerminalWidget.astro'
 
 ## Contexto
 
@@ -36,9 +36,9 @@ Lembro de um dia específico: fiz uma mudança no layout da landing page (só CS
 
 O primeiro passo foi óbvio: testes unitários. Adicionei Vitest, configurei cobertura básica, e comecei a testar hooks, serviços, e componentes isolados.
 
-\`\`\`bash
+```bash
 pnpm add -D vitest @testing-library/react
-\`\`\`
+```
 
 Os testes unitários são ótimos pra pegar lógica pura — `useProximity` com Haversine, `useHeatAlert`, funções de formatação de data. Eles rodam em milissegundos e dão feedback rápido.
 
@@ -58,7 +58,7 @@ A escolha foi Playwright. Por quê?
 - Report rico em HTML com traces e vídeos
 - CI-friendly com `--no-sandbox` e `fullyParallel`
 
-\`\`\`js
+```js
 // playwright.config.js — a configuração que mudou tudo
 import { defineConfig, devices } from '@playwright/test'
 
@@ -83,7 +83,7 @@ export default defineConfig({
     { name: 'mobile-chrome', use: { browserName: 'chromium', ...devices['Pixel 5'] } },
   ],
 })
-\`\`\`
+```
 
 ## O grande desafio: autenticação em E2E
 
@@ -101,7 +101,7 @@ A solução que funcionou foi um **híbrido elegante**: `window.__E2E_SESSION`.
 
 A ideia é simples: no AuthContext, antes de qualquer lógica de autenticação real, verificar se `window.__E2E_SESSION` existe:
 
-\`\`\`js
+```js
 // AuthContext — suporte nativo a mock de sessão
 if (window.__E2E_SESSION) {
   setUser(window.__E2E_SESSION.user)
@@ -109,11 +109,11 @@ if (window.__E2E_SESSION) {
   setLoading(false)
   return // zero chamadas de auth
 }
-\`\`\`
+```
 
 Nos testes, isso vira:
 
-\`\`\`js
+```js
 import { test } from '@playwright/test'
 import { setupTutorSession } from './helpers/auth.js'
 
@@ -122,7 +122,7 @@ test('dashboard tutor carrega', async ({ page }) => {
   await page.goto('/tutor/dashboard')
   await expect(page.getByText('Meus Pets')).toBeVisible()
 })
-\`\`\`
+```
 
 A `setupTutorSession` faz três coisas:
 
@@ -132,7 +132,7 @@ A `setupTutorSession` faz três coisas:
 
 O resultado? **Zero segundos de espera por autenticação**. ProtectedRoute resolve na hora. Sem Turnstile, sem 401, sem refresh token.
 
-\`\`\`js
+```js
 // helpers/auth.js — dados mock realistas
 const MOCK_PETS = [
   { id: 'mock-pet-001', name: 'Rex', species: 'dog', breed: 'Labrador', age: 3, weight: 28.5, emoji: '🐕' },
@@ -143,7 +143,7 @@ const MOCK_WALKERS = [
   { id: 'mock-walker-001', name: 'Maria Passeadora', rating: 4.8, review_count: 42, price_per_walk: 35 },
   { id: 'mock-walker-002', name: 'Carlos PetLover', rating: 4.5, review_count: 28, price_per_walk: 25 },
 ]
-\`\`\`
+```
 
 ## Dois passes no CI — o problema do JSON reporter
 
@@ -151,7 +151,7 @@ Playwright tem um bug chato: o **JSON reporter só grava o arquivo depois que to
 
 A solução foi rodar **duas vezes no CI**:
 
-\`\`\`bash
+```bash
 # Pass 1: output humano (list reporter)
 npx playwright test --project=chromium --timeout=30000 || true
 
@@ -161,13 +161,13 @@ npx playwright test --project=chromium --timeout=30000 --reporter=json 2>/dev/nu
 # Parse e notifica
 python3 scripts/track-flaky.py /tmp/e2e-results.json
 bash scripts/notify-e2e.sh
-\`\`\`
+```
 
 O primeiro pass roda com `list reporter` pra vermos os resultados em tempo real no log do CI. O segundo pass roda com `json reporter` redirecionado pra arquivo — se morrer, ainda temos o output do primeiro.
 
 Isso também alimenta o **sistema de flaky tracking**:
 
-\`\`\`python
+```python
 # track-flaky.py — histórico CSV de flaky tests
 def record(results_json_path: str):
     data = json.load(open(results_json_path))
@@ -179,7 +179,7 @@ def record(results_json_path: str):
     with open("test-results/flaky-history.csv", "a") as f:
         writer = csv.writer(f)
         writer.writerow([datetime.now(), passed, failed, total])
-\`\`\`
+```
 
 ## A trindade do CI: testes E2E antes do deploy
 
@@ -192,7 +192,7 @@ O deploy do Dogwalk tem uma pipeline CI/CD com **qualidade como gate**. O fluxo 
 5. **Deploy** — Só se TODOS os passos passarem
 6. **Health check** — Multi-rota curl pós-deploy
 
-\`\`\`yaml
+```yaml
 # Trecho do deploy.yml
 - name: Run E2E tests
   if: github.ref_name == 'master'
@@ -207,19 +207,19 @@ O deploy do Dogwalk tem uma pipeline CI/CD com **qualidade como gate**. O fluxo 
       CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://seu.pet${ROUTE}")
       echo "${ROUTE} → $CODE"
     done
-\`\`\`
+```
 
 Isso significa: **cada push no master roda os E2E contra o build exato que vai pro ar**. Se quebrar, não deploya.
 
 A pipeline também foi otimizada com cache dos browsers Playwright — o primeiro build instala os browsers (~300MB), os seguintes usam cache:
 
-\`\`\`yaml
+```yaml
 - name: Cache Playwright browsers
   uses: actions/cache@v4
   with:
     path: ~/.cache/ms-playwright
     key: playwright-\${{ hashFiles('pnpm-lock.yaml') }}
-\`\`\`
+```
 
 ## A cobertura atual: o que cada teste cobre
 
@@ -258,7 +258,7 @@ Menos elegante, porém **mais confiável**.
 
 O banner de cookies do Dogwalk tem `pointer-events: none` no container pra não bloquear cliques, mas ainda assim alguns overlays (como o `SlowConnectionBanner`) interceptavam interações. Criamos um helper que varre e remove todos os overlays fixos:
 
-\`\`\`js
+```js
 export async function dismissCookieBanner(page) {
   await page.evaluate(() => {
     document.querySelectorAll('[style*="position: sticky"], [style*="position:fixed"]').forEach(el => {
@@ -266,7 +266,7 @@ export async function dismissCookieBanner(page) {
     })
   })
 }
-\`\`\`
+```
 
 ### 4. Setup de sessão é o gargalo — resolva ele primeiro
 

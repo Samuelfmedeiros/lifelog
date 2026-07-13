@@ -5,7 +5,8 @@ import DateSeparator from '../components/DateSeparator.astro';
 import FilterBar from '../components/FilterBar.astro';
 import { getCollection } from 'astro:content';
 
-const posts = await getCollection('posts');
+const allPosts = await getCollection('posts');
+const posts = allPosts.filter(p => !p.data.draft);
 // Sort by pubDate (publication) descending, fallback to date
 const sortDate = (p: typeof posts[0]) => p.data.pubDate?.getTime() || p.data.date.getTime();
 posts.sort((a, b) => sortDate(b) - sortDate(a));

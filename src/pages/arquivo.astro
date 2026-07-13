@@ -3,7 +3,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import ProjectIcon from '../components/ProjectIcon.astro';
 import { getCollection } from 'astro:content';
 
-const posts = await getCollection('posts');
+const allPosts = await getCollection('posts');
+const posts = allPosts.filter(p => !p.data.draft);
 posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 
 // Group by year

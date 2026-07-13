@@ -3,7 +3,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import TerminalWidget from '../components/TerminalWidget.astro';
 import { getCollection } from 'astro:content';
 
-const posts = await getCollection('posts');
+const allPosts = await getCollection('posts');
+const posts = allPosts.filter(p => !p.data.draft);
 const totalPosts = posts.length;
 const projects = [...new Set(posts.map(p => p.data.project))].length;
 const firstDate = posts.reduce((earliest, p) => 
