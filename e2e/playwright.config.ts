@@ -9,12 +9,8 @@ export default defineConfig({
     baseURL: 'http://localhost:4321',
     viewport: { width: 1280, height: 720 },
   },
-  webServer: {
-    command: 'pnpm run dev',
-    url: 'http://localhost:4321',
-    reuseExistingServer: true,
-    timeout: 30000,
-  },
+  // Servidor gerenciado pelo CI/CD workflow (ou local via pnpm dev)
+  // webServer não configurado para evitar conflito com preview server
   projects: [
     {
       name: 'chromium',
