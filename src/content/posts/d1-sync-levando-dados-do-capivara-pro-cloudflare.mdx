@@ -1,0 +1,241 @@
+---
+title: "D1 Sync — levando dados do Capivara pro Cloudflare"
+description: "Explorando D1 sync — aprendizados, desafios e descobertas."
+date: 2026-06-25 10:00:00 -03:00
+pubDate: 2026-07-14 00:00:00 -03:00
+project: capivara
+tags: [capivara, cloudflare, d1, sync]
+icon: "🐷"
+cover: /covers/d1-sync-levando-dados-do-capivara-pro-cloudflare.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+No começo do Capivara, tudo vivia num PostgreSQL local — o banco principal com users, tokens, preferências, logs de atividade. Funcionava bem pro meu uso, mas tinha uma limitação clara: qualquer deploy cloud significava abrir conexão direta com o banco ou montar uma VPN.
+
+O objetivo era simples: ter uma cópia dos dados essenciais do Capivara no **Cloudflare D1** sem depender de um servidor PostgreSQL remoto. E de quebra, usar a rede global da Cloudflare pra servir dados mais rápido.
+
+Essa foi a minha jornada com D1 Sync.
+
+## O problema: Postgres local vs. Cloudflare
+
+O Capivara roda no PostgreSQL do meu servidor local (porta 5432). Os endpoints da API tão expostos via reverse proxy, mas o banco não — conexão direta com o banco nunca foi uma opção pra cloud.
+
+As opções na mesa eram:
+
+| Opção | Prós | Contras |
+|-------|------|---------|
+| Postgres remoto (Neon, etc) | SQL completo, familiar | Custo, latência, dependência externa |
+| SQLite puro | Simples, zero config | Sem serverless, sem sync nativo |
+| Cloudflare D1 | Serverless, 0 latência global, integração Workers | SQLite subset, batch limits |
+
+D1 é basicamente SQLite com esteróides — distribuído globalmente via Cloudflare, com Workers como clientes nativos. A restrição é o subset de SQL (sem `ALTER COLUMN`, sem `FOREIGN KEY` enforcement, sem CTEs recursivas) e o limite de 100 statements por batch.
+
+Mas prum hub pessoal como o Capivara? Servia perfeitamente.
+
+## A arquitetura
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  PostgreSQL  │────→│   D1 Sync   │────→│  Cloudflare  │
+│  (local)     │     │   (Worker)  │     │  D1 (edge)  │
+└─────────────┘     └──────────────┘     └─────────────┘
+       │                   │                     │
+  users, tokens,      Clean + map           Read replicas
+  preferences,        schemas +             via Workers
+  activity_logs       batch insert
+```
+
+O fluxo é:
+
+1. **Cron local** (a cada 6h): script Python que conecta no Postgres, query nos dados que mudaram desde o último sync
+2. **Transform**: mapeia tipos Postgres pra D1 (timestamptz → ISO strings, UUID → text, arrays → JSON)
+3. **HTTP POST** pro Worker na Cloudflare com payload JSON
+4. **Worker**: valida schema, faz upsert em batches de 50 registros
+5. **Resposta**: `{ synced: N, errors: [], timestamp }`
+
+## A primeira tentativa — O batch que explodiu
+
+No começo tentei enviar 200 users de uma vez. O D1 devolveu:
+
+```json
+{
+  "errors": ["D1_BATCH_TOO_LARGE: max 100 statements per batch"],
+  "synced": 0
+}
+```
+
+Tive que quebrar em lotes de 50. O truque foi paralelizar os batches com `Promise.all` respeitando o limite:
+
+```js
+const BATCH_SIZE = 50;
+const results = [];
+
+for (let i = 0; i < records.length; i += BATCH_SIZE) {
+  const batch = records.slice(i, i + BATCH_SIZE);
+  const stmts = batch.map(r => ({
+    sql: `INSERT OR REPLACE INTO users (id, name, email, preferences, updated_at)
+          VALUES (?, ?, ?, ?, ?)`,
+    params: [r.id, r.name, r.email, JSON.stringify(r.preferences), r.updated_at]
+  }));
+  results.push(await db.batch(stmts));
+}
+```
+
+Detalhe importante: `db.batch()` é atômico por batch — ou tudo ou nada. Se um batch falha, ele não afeta os anteriores. Perfeito pra retry parcial.
+
+## O problema do schema drift
+
+PostgreSQL aceita `ALTER TABLE` com `ADD COLUMN` sem drama. D1 também aceita, com uma diferença crucial: **não tem `ALTER COLUMN`**. Se você precisa mudar o tipo de uma coluna no D1, a saída é recriar a tabela:
+
+```sql
+-- D1 não permite:
+ALTER TABLE users ALTER COLUMN preferences TYPE TEXT;
+
+-- Solução: recreate
+CREATE TABLE users_new (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  preferences TEXT DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
+
+INSERT INTO users_new SELECT id, name, email,
+  CASE WHEN json_valid(preferences) THEN preferences ELSE '{}' END,
+  updated_at
+FROM users;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+```
+
+Isso virou parte do meu workflow de schema migration — versionar o schema D1 em arquivos SQL sequenciais, detectar drift comparando `PRAGMA table_info` entre local e remoto.
+
+## Aprendizados
+
+### 1. Timestamps no D1 são strings
+
+D1 não tem tipo `timestamptz`. Tudo se torna `TEXT`. A conversão `datetime.utcnow().isoformat()` no Python vira string, e no Worker você parseia com `new Date()`.
+
+```python
+# Python side
+def serialize_value(val):
+    if isinstance(val, datetime):
+        return val.isoformat()
+    if isinstance(val, UUID):
+        return str(val)
+    if isinstance(val, dict | list):
+        return json.dumps(val, ensure_ascii=False)
+    return val
+```
+
+```js
+// Worker side — parse de volta
+const updatedAt = new Date(row.updated_at);
+```
+
+Parece óbvio, mas esqueci de tratar `datetime` no Python no primeiro sync — o json.dumps serializa `datetime` pra string, mas o formato padrão é `YYYY-MM-DDTHH:MM:SS` sem timezone. Tive que explicitar `.isoformat()` e garantir que todos os timestamps do Postgres tivessem timezone antes de exportar.
+
+### 2. UPSERT não é tão óbvio
+
+D1 suporta `INSERT OR REPLACE`, mas isso **reinsere o registro inteiro** — qualquer coluna que você não passar vira `NULL`. Se quer um upsert seletivo (só atualizar alguns campos), precisa de um `UPDATE` separado:
+
+```sql
+-- Insere ou substitui COMPLETAMENTE (cuidado!)
+INSERT OR REPLACE INTO users (id, name, email, updated_at)
+VALUES (?, ?, ?, ?);
+-- ⚠️ preferences vira NULL se não estiver no INSERT!
+
+-- Upsert seletivo (só atualiza campos especificados)
+INSERT INTO users (id, name, email, preferences, updated_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (id) DO UPDATE SET
+  name = COALESCE(excluded.name, users.name),
+  email = COALESCE(excluded.email, users.email),
+  updated_at = excluded.updated_at;
+```
+
+O `COALESCE` garante que se você não passar um campo (ou passar NULL), ele mantém o valor anterior.
+
+### 3. Performance: batch é rei
+
+Comparação com dados reais do Capivara (~800 activity_logs):
+
+| Estratégia | Tempo | Statements |
+|---|---|---|
+| INSERT individual x800 | ~5.2s | 800 |
+| Batch de 50 x16 | ~0.7s | 800 |
+| Batch de 100 x8 | **~0.4s** | 800 |
+
+A diferença entre batch 50 e 100 é pequena, mas batch 50 é mais seguro pro limite de 100 statements — deixa margem pra queries extras de verificação.
+
+### 4. Retry com idempotência
+
+Como o sync roda a cada 6h, o mesmo registro pode ser sincronizado múltiplas vezes. `INSERT OR REPLACE` por chave primária garante idempotência — reexecutar o sync não duplica dados.
+
+```python
+def sync_table(table_name, columns, query, batch_size=50):
+    conn = get_pg_connection()
+    cursor = conn.cursor()
+    cursor.execute(query)  # query filtrada por updated_at > last_sync
+
+    batch = []
+    for row in cursor.fetchall():
+        serialized = [serialize_value(v) for v in row]
+        batch.append(serialized)
+        if len(batch) >= batch_size:
+            send_batch(table_name, columns, batch)
+            batch = []
+
+    if batch:
+        send_batch(table_name, columns, batch)
+```
+
+O cursor com `fetchall()` não carrega tudo na memória de uma vez — PostgreSQL já faz buffering server-side. Mas pra 800 registros, nem esquenta.
+
+## Métricas do primeiro mês
+
+| Métrica | Valor |
+|---------|-------|
+| Registros sincronizados | ~4.200 |
+| Tabelas sincronizadas | 4 (users, tokens, activity_logs, preferences) |
+| Falhas de sync | 2 (1 timeout, 1 schema drift) |
+| Latência média (sync→D1) | ~600ms |
+| Dados em D1 | ~2.8 MB |
+
+## O que vem a seguir
+
+O sync atual é **full-table por updated_at** — cada 6h varre as tabelas inteiras filtrando por `updated_at > last_sync`. Funciona, mas não escala bem conforme os dados crescem.
+
+Próximo passo: **Change Data Capture (CDC)** via PostgreSQL replication slots ou trigger-based tracking. Ou, de forma mais simples, uma tabela `sync_queue` que acumula mudanças em tempo real e o worker consome incrementalmente.
+
+Também quero explorar o **D1 replication**: Cloudflare replica D1 em até 10 regiões automaticamente. O sync atual joga tudo num D1 single-region — distribuir pras bordas pode reduzir latência de leitura de ~200ms pra ~50ms nas bordas.
+
+Mas isso é história pra outro post.
+
+```bash
+# O comando que roda o sync (via cron, silencioso)
+python3 scripts/d1-sync.py --tables users,tokens,activity_logs,preferences
+# --dry-run: só loga o que seria enviado
+# --force: re-sincroniza tudo ignorando last_sync
+```
+
+> _O D1 Sync foi uma das primeiras peças de infraestrutura cloud que conectei no Capivara. Parecia simples — "só copiar dados pro banco da Cloudflare" — mas cada detalhe (timezone, batch limits, idempotência, schema drift) ensinou algo novo. E o melhor: agora o Capivara tem presença na edge sem abrir mão do Postgres local._
+
+<Terminal>
+    python3 scripts/d1-sync.py --dry-run
+
+    [DRY-RUN] Syncing table: users
+    [DRY-RUN]   42 rows to sync (last_sync: 2026-06-24T12:00:00)
+    [DRY-RUN]   0 rows skipped (schema OK)
+    [DRY-RUN] Syncing table: activity_logs
+    [DRY-RUN]   153 rows to sync
+    [DRY-RUN] Syncing table: tokens
+    [DRY-RUN]   12 rows to sync
+    [DRY-RUN] Syncing table: preferences
+    [DRY-RUN]   18 rows to sync
+    [DRY-RUN] Total: 225 rows, ~4 batches
+    [DRY-RUN] D1 sync OK (simulated)
+</Terminal>
