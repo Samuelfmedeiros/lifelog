@@ -49,10 +49,9 @@ jobs:
       with:
         node-version: '22'
 
-    - name: Enable pnpm via corepack
+    - name: Install pnpm
       run: |
-        corepack enable
-        corepack prepare pnpm@10 --activate
+        npm install -g pnpm@10
         mkdir -p /tmp/pnpm-store
         pnpm config set store-dir /tmp/pnpm-store --global
         echo "PNPM_HOME=/tmp/pnpm-home" >> $GITHUB_ENV
