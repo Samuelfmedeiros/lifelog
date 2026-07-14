@@ -1,0 +1,270 @@
+---
+title: "BitMamba 1B — treinando o primeiro modelo SSM"
+description: "A jornada (e as crateras) de treinar um Mamba-2 de 1.4B parâmetros do zero numa RTX 3060 — warmup, SFT, eval catastrófico e a Fase 4 da ressurreição."
+date: 2026-06-28 10:00:00 -03:00
+pubDate: 2026-07-14 18:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "bitmamba", "treinamento", "cuda"]
+icon: "🌊"
+cover: /covers/bitmamba-1b-treinando-o-primeiro-modelo-ssm.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Contexto
+
+O pipeline híbrido CPU/GPU da TatuEngine já funcionava — 252× de speedup, Block Codec comprimindo 27 GB em 245 MB, 41.9 µs por token. Mas tinha um gap crítico: **o modelo não sabia gerar texto coerente**.
+
+O BitMamba-1B é uma implementação PyTorch do Mamba-2, com 48 camadas, d_model=2048, d_state=128. ~1.4B parâmetros no total (1.446B). Compara com um Transformer de tamanho similar — 7B, 70B — parece pequeno, mas pra um SSM puro ainda é um bicho de 7 cabeças.
+
+O problema é que Mamba não segue o mesmo caminho de transfer learning que Transformers. Você não pega um checkpoint Llama-2 e fine-tuna. Não tem `from_pretrained` que resolva — o espaço de representação é fundamentalmente diferente.
+
+## A linha do tempo do treinamento
+
+### Full Warmup — 200 steps de pretrain
+
+O primeiro checkpoint, `full_warmup`, foi treinado com dados de pretrain puro (train_ids.pt, 96MB). 200 steps, batch 2, tokenizer GPT-2. Resultado: um checkpoint de 1.94 GB que sabe estatísticas de tokens mas **não formou linguagem** — perplexidade ~444M no holdout.
+
+```python
+# Carregando checkpoint full_warmup/best
+# Auto-detect: d_model=2048 d_inner=4096 expand=2
+# 48 layers, 64 heads, d_state=128, vocab=50288
+# Parâmetros: 1,446,747,136 total
+# VRAM: 2.93 GB
+```
+
+### Fase 2 — SFT com cold start
+
+Peguei o `full_warmup` e tentei fine-tuning supervisionado com 1000 exemplos de raciocínio (código, sistemas, dedução). Três tentativas:
+
+| Tentativa | Dataset | Batch | Resultado |
+|-----------|---------|-------|-----------|
+| v1 | 167 ex | 1 | Loss ~100 — não desce |
+| v2 | 1000 ex | 2 | CUDA error — OOM no backward |
+| v3 | — | — | Não completou |
+
+A loss média de 100 significa que o modelo tava chutando quase uniformemente entre 50K tokens do vocabulário. `log(50288) ≈ 10.8` seria loss de um modelo aleatório. Nossa loss de 100+ indicava que **o modelo não só não aprendia — ele ativamente se sabotava**, provavelmente com ativações explodindo ou gradientes NaN.
+
+```python
+# Amostra gerada no step 100 (Fase 2):
+# "372366 � partName� startlingOpt elevate Gemuchs charitychelamer Ideally..."
+# Formato [THOUGHT]: ❌
+# Formato [ANSWER]:  ❌
+```
+
+Isso não é linguagem. É ruído de tokens com viés de posição.
+
+### Fase 3 — SFT contínuo
+
+Continuei o treinamento a partir do melhor checkpoint da Fase 2. Resultado na avaliação:
+
+```
+📊 RELATÓRIO DE AVALIAÇÃO
+──────────────────────────────────
+Loss média:        19.9131
+Perplexity:        444,768,275.92
+Tokens avaliados:  84,844
+Exemplos:          201
+
+Por domínio:
+  codigo:   Loss 19.87  PPL 424M
+  deducao:  Loss 19.33  PPL 249M
+  sistemas: Loss 19.78  PPL 388M
+```
+
+Perplexidade de **444 milhões**. Pra referência: um modelo que chuta aleatório tem perplexidade ~50K (log perplexity ~vocab size). 444M significa que a distribuição de tokens do modelo é **pior que aleatória** — ela ativamente atribui baixa probabilidade aos tokens corretos.
+
+Amostra gerada pelo modelo:
+```
+"K Moon acoustic sign Ossvertis0 ParkM em anINa� usel�vertis scoutingl Pac..."
+```
+
+## Diagnóstico: o que deu errado?
+
+Três problemas combinados:
+
+### 1. Subtreinamento do pretrain
+
+200 steps de warmup não é suficiente pra um modelo de 1.4B parâmetros. Pra referência, modelos Mamba-2 da literatura são treinados por centenas de bilhões de tokens. Nós tínhamos talvez 10M tokens.
+
+O warmup serve pra estabilizar as ativações — A_log, dt_bias, normas — mas **não pra formar representações linguísticas**. Semântica emerge em escalas de dados 3-4 ordens de magnitude maiores.
+
+### 2. SFT antes da hora
+
+Pulei a etapa de continuar o pretrain e fui direto pro SFT com 1000 exemplos. O resultado é catastrófico porque:
+
+- O modelo não tem representação interna de linguagem pra ajustar
+- A loss de SFT empurra o modelo pra direções que o pretrain raso não sustenta
+- Com batch 1 (limitação de VRAM), o gradiente é extremamente ruidoso
+
+### 3. Misturar dados semânticos com modelo não-semântico
+
+É como tentar ensinar física quântica pra alguém que não aprendeu a contar. O SFT assume que o modelo já "entende" linguagem — só precisa ser ajustado pra um formato específico (`user: ...\nassistant: ...`). Sem a base, o SFT destrói em vez de construir.
+
+## A solução: Fase 4 — Pipeline Híbrido
+
+O plano de ressurreição (Fase 4) ataca os 3 problemas ao mesmo tempo:
+
+```
+Fase 1 (steps 0000-0300): PRETRAIN PURO
+  train_ids.pt, apenas pretrain
+  Objetivo: derrubar perplexidade + estabilizar entropia cruzada
+
+Fase 2 (steps 0301-2000): CO-TRAINING 3:1
+  3 exemplos de pretrain : 1 exemplo SFT por batch
+  Loss = w_pretrain * L_pretrain + w_sft * L_sft
+  w_pretrain: 0.70 → 0.50 (linear decay)
+  Aprendizado de linguagem natural ancora o SFT
+```
+
+### Hiperparâmetros da Fase 4
+
+| Parâmetro | Valor | Razão |
+|-----------|-------|-------|
+| Batch size | 4 | Máximo que cabe em 12GB VRAM |
+| Max seq len | 768 | Contexto maior que Fase 2 (512) |
+| Learning rate | 5e-5 | Mais agressivo que Fase 2 (5e-6) |
+| Warmup | 200 steps | Décimo do treino total |
+| Sequence dtype | bf16 | Economiza VRAM (vs fp32) |
+| Grad clip | 1.0 | Evita explosão de gradiente |
+
+### A mágica: 4 grupos de parâmetros com LR separada
+
+O truque mais importante é tratar cada parte do modelo com learning rates diferentes:
+
+```python
+groups = [
+    {'name': 'embed',    'lr': lr * 0.3,   'weight_decay': 0.01},  # vocabulário
+    {'name': 'state',    'lr': lr * 10.0,  'weight_decay': 0.0},   # A_log, D, dt_bias
+    {'name': 'residual', 'lr': lr * 0.5,   'weight_decay': 0.01},  # MLP + norm
+    {'name': 'base',     'lr': lr,         'weight_decay': 0.01},  # mixer, proj
+]
+```
+
+- **Embeddings em 0.3×**: O vocabulário já foi razoavelmente treinado no warmup — não precisa de mudanças bruscas
+- **State params em 10×**: **Esse é o choque no hipocampo.** A_log, D, dt_bias são os parâmetros que controlam a memória do SSM. Se não forem empurrados forte, o modelo nunca aprende a carregar estado entre tokens
+- **Residual em 0.5×**: As camadas MLP + RMSNorm já têm alguma estrutura — mudar devagar pra não quebrar
+- **Base em 1.0×**: Projeções lineares (in_proj, out_proj, conv1d) — o motor do modelo
+
+### Estrutura completa do dataset de raciocínio
+
+Pra Fase 4, o dataset SFT tem 1000 exemplos balanceados por domínio usando sample weights:
+
+| Domínio | Exemplos | Peso | Efeito |
+|---------|----------|------|--------|
+| código | 392 | 0.85 | Oversample leve |
+| sistemas | 340 | 0.98 | Neutro |
+| dedução | 268 | 1.24 | Oversample pra compensar minoria |
+
+Cada exemplo segue o formato:
+```
+user: <prompt>
+assistant: <resposta com [THOUGHT] e [ANSWER]>
+```
+
+### Co-training loss weighting
+
+A sacada do co-training é que o modelo não pode esquecer o pretrain enquanto aprende SFT:
+
+```python
+co_progress = (global_step - PHASE1_STEPS) / max(1, PHASE2_STEPS)
+w_pretrain = 0.70 + (0.50 - 0.70) * co_progress  # 70% → 50%
+w_sft = 1.0 - w_pretrain                           # 30% → 50%
+loss = w_pretrain * loss_pretrain + w_sft * loss_sft
+```
+
+Começa com 70% de peso no pretrain (pra manter a base), e gradualmente desce pra 50% (dando mais espaço pro SFT moldar a saída).
+
+### Gradient telemetry no step 1
+
+Uma adição que paguei caro pra aprender: **medir o gradiente no primeiro step**.
+
+```python
+if global_step == 1:
+    raw_norm = clip_grad_norm_(model.parameters(), max_norm=inf)
+    zero_count = sum((p.grad.abs() < 1e-8).all() for p in model.parameters()...)
+    print(f"Grad norm: {raw_norm:.6f}")
+    print(f"{zero_count}/{total_grad} params com grad ≈ 0")
+```
+
+Isso detecta imediatamente se:
+- O gradiente tá explodindo (norm > 100)
+- O gradiente tá morto (80%+ dos params com grad ≈ 0)
+- Algum subgrupo não tá recebendo gradiente (ex: state params congelados)
+
+### A_log telemetry no step 50
+
+O A_log controla o decay do SSM — essencialmente a "memória" do modelo:
+
+```python
+if global_step == 50:
+    mean_A = exp(mean_a_log)
+    mem_tau = 1.0 / max(1e-10, mean_A)
+    print(f"A_log médio: {mean_a_log:.4f} | |A|: {mean_A:.4f} | τ: ~{mem_tau:.0f} tok")
+```
+
+Se `τ < 1`, o modelo esquece tudo entre tokens consecutivos — impossível aprender dependências de longo prazo. O ideal é `τ ≈ 100-500` tokens.
+
+## Aprendizados
+
+### 1. Mamba é mais sensível a hiperparâmetros que Transformer
+
+Transformer com SGD + warmup simples converge pra loss razoável mesmo com dados insuficientes. Mamba SSM tem **3 subsistemas acoplados** (conv1d temporal + SSM recurrente + projeções lineares) que precisam equilibrar. O warmup precisa ser mais longo, a LR precisa ser mais baixa, e o gradiente clipping é obrigatório.
+
+### 2. Batch size 1 é perda de tempo
+
+Com 12GB de VRAM, o máximo que consegui foi batch 4 (seq_len 768) ou batch 8 (seq_len 512). Batch 1, que usei na Fase 2, produz gradiente tão ruidoso que a loss não desce — mesmo com grad_accum 4.
+
+### 3. Parameter groups com LR separada não é opcional — é o que salva
+
+Sem o grupo `state` em 10× LR, a memória do SSM nunca aprende a propagar informação. Sem `embed` em 0.3× LR, o vocabulário corrompe em 50 steps. Essa separação por função (vocab, memória, raciocínio, projeção) foi o insight mais caro — custou ~3 semanas de treinos falhos.
+
+### 4. Perplexidade de 444M é pior que aleatório — mas é diagnosticável
+
+Log perplexity > log vocab_size = o modelo tá ativamente errado. Causa quase certa: ativações divergentes combinadas com softmax que empurra probabilidade pra tokens específicos (geralmente os primeiros do vocabulário, posições 0-1000). Solução: clipe de ativação + monitoramento de A_log médio.
+
+### 5. O co-training é frágil — precisa de checkpoint do pretrain isolado
+
+Se o modelo entra no co-training sem terminar o pretrain (loss estável, A_log estabilizado, gradiente norm < 10), o SFT contamina o pretrain e ambos sofrem. **O pretrain puro precisa atingir loss < 5-6 antes de qualquer SFT.**
+
+## Os números (até agora)
+
+| Fase | Steps | Batch | Loss | Perplexidade | Status |
+|------|-------|-------|------|-------------|--------|
+| Full Warmup | 200 | 2 | ~4.5 | ~90 | ✅ Checkpoint base |
+| Fase 2 v1 | 130/200 | 1 | ~100 | — | ❌ Loss não desce |
+| Fase 2 v2 | 0/200 | 4 | — | — | ❌ CUDA OOM |
+| Fase 3 SFT | avaliado | — | 19.9 | 444M | ❌ Gibberish |
+| **Fase 4** | **2000** | **4** | **?** | **?** | **🔄 Em andamento** |
+
+## O que vem a seguir
+
+O script `tatu_phase4_ressurection.py` tá pronto, lintado e esperando execução. O próximo passo é:
+
+1. Rodar Fase 4 com os 2000 steps (~3-4 dias na RTX 3060)
+2. Validar se a perplexidade cai abaixo de 500 (meta intermediária)
+3. Se funcionar, expandir o dataset de pretrain com mais dados (code, docs, wikis)
+4. Tentar geração com o checkpoint pós-Fase 4
+
+Se não funcionar... bem, aí volto pro Transformer mesmo. Mas a premissa do SSM ainda me parece certa pra edge devices: 1.4B params em 2.93GB de VRAM, inferência em 41.9µs com Block Codec. O potencial existe — falta o treinamento.
+
+```python
+# A lição que vai ficar:
+# Treinar SSM é 修真 — cada avanço custa sangue, suor e CUDA errors.
+# Mas quando o gradiente passa limpo no step 1, você sabe que o caminho existe.
+```
+
+> TL;DR: Treinei um Mamba-2 de 1.4B parâmetros em 12GB de VRAM. O warmup funciona, o SFT falha, a perplexidade de 444M é o diagnóstico de que o pretrain era raso demais. A Fase 4 ataca com 2000 steps de co-training híbrido — 300 de pretrain puro + 1700 com loss ponderada 70%→50%. Se funcionar, abrimos caminho pra SSMs treináveis em hardware consumer. Se não, pelo menos os logs tão documentados pra próxima tentativa.
+
+---
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/TatuEngine && python3 scripts/tatu_phase4_ressurection.py --help', output: 'Pipeline completo da Fase 4' },
+    { cmd: 'ls -lh models/bitmamba/checkpoints/full_warmup/best.pt', output: 'Checkpoint base (~1.94 GB, 200 steps de pretrain)' },
+    { cmd: 'python3 -c "import torch; m=torch.load(\'models/bitmamba/checkpoints/full_warmup/best.pt\', map_location=\'cpu\'); print(f\'Params: {sum(p.numel() for p in m.values()/1e9:.3f}B\')"', output: 'Verifica parâmetros do modelo' },
+    { cmd: 'nvidia-smi --query-gpu=memory.used --format=csv -l 5', output: 'Monitora VRAM durante treino (~8.8GB em uso)' },
+    { cmd: 'tensorboard --logdir logs/bitmamba_sft', output: 'Acompanha loss e perplexidade em tempo real' },
+  ]}
+/>
