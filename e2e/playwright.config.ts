@@ -12,7 +12,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm run dev',
     url: 'http://localhost:4321',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 30000,
   },
   projects: [

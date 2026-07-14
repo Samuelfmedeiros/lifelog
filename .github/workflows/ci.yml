@@ -75,7 +75,27 @@ jobs:
       run: pnpm build
       # Astro build catches MDX syntax errors, broken imports, missing components
 
+    - name: Start preview server
+      run: |
+        npx astro preview --port 4321 --host 127.0.0.1 &
+        sleep 3
+        for i in $(seq 1 10); do
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ 2>/dev/null || echo "000")
+          if [ "$CODE" = "200" ]; then
+            echo "✅ Preview server ready on :4321"
+            break
+          fi
+          echo "Waiting for preview... ($i)"
+          sleep 2
+        done
+        if [ "$CODE" != "200" ]; then
+          echo "❌ Preview server didn't start"
+          exit 1
+        fi
+
     - name: Run E2E tests
+      env:
+        PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
       run: pnpm exec playwright test --reporter=list
 
     # ── Deploy ─────────────────────────────────────────────
@@ -121,6 +141,10 @@ jobs:
         # Arquivo
         CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/arquivo/" 2>/dev/null || echo "000")
         [ "$CODE" = "200" ] && echo "✅ /arquivo/ → $CODE" || echo "⚠️  /arquivo/ → $CODE (não bloqueante)"
+
+        # Um post específico
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/post/d1-sync-levando-dados-do-capivara-pro-cloudflare/" 2>/dev/null || echo "000")
+        [ "$CODE" = "200" ] && echo "✅ /post/d1-sync → $CODE" || echo "⚠️  /post/d1-sync → $CODE (não bloqueante)"
 
         [ "$FAIL" = "0" ] && echo "✅ All health checks passed" || exit 1
 
