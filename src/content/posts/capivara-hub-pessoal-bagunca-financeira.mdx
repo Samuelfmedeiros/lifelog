@@ -1,73 +1,229 @@
 ---
-title: Capivara — o hub pessoal seguro do ecossistema
-description: "Precisava de um centro de controle unificado e seguro para meus projetos, dados e acesso. O Capivara nasceu como um hub pessoal e virou o cérebro administrativo do ecossistema."
-date: 2026-06-13
-pubDate: 2026-07-12 00:00:00 -03:00
+title: "Capivara: hub pessoal contra a bagunça financeira"
+description: "Como o Capivara resolveu a bagunça financeira de múltiplas contas, planilhas e categorias — unificando tudo em um dashboard."
+date: 2026-04-15 10:00:00 -03:00
+pubDate: 2026-07-13 23:00:00 -03:00
 project: capivara
-tags:
-  - capivara
-  - hub pessoal
-  - segurança
-  - centralização
-  - fastapi
-icon: 🐷
+tags: ["capivara", "financas", "dashboard", "python", "fastapi"]
+icon: "🐷"
 cover: /covers/capivara-hub-pessoal-bagunca-financeira.webp
-featured: false
+featured: true
 ---
 
-No meio de junho, enquanto o Dogwalk engrenava e o Arachne começava a tomar forma, uma verdade incômoda bateu na porta: eu tinha perdido o controle dos meus projetos.
+import Terminal from '../../components/TerminalWidget.astro'
 
-Não era uma crise — era bagunça. Senhas de serviços, chaves de API, endpoints de deploy, variáveis de ambiente, configurações de infraestrutura — tudo espalhado em arquivos .env, anotações soltas, e documentos perdidos. Cada projeto tinha seu próprio ecossistema de segredos e configurações, e eu não tinha uma visão unificada de nada.
+## O problema
 
-## O estalo (de novo)
+Eu tinha minhas finanças espalhadas em:
+- **Nubank** — conta principal, cartão de crédito
+- **Inter** — investimentos, segunda conta
+- **PicPay** — pagamentos diários, split de conta
+- **Wise** — recebimentos em dólar (freelas)
+- **3 planilhas Google Sheets** — categorização manual
+- **Caderno físico** — sim, eu usava caderno
 
-13 de junho. Eu estava caçando uma chave de API no terminal quando pensei: *"Isso é ridículo. Eu construo sistemas distribuídos, por que não construir um hub central pro meu próprio ecossistema?"*
+No fim do mês, olhar pra tudo isso e saber "quanto eu gastei de verdade" era impossível. Eu passava **2 horas por mês** consolidando manualmente.
 
-O nome veio antes do código. Capivara — o animal calmo que todo mundo gosta, mas que também sabe se impor. Queria um hub pessoal que fosse acolhedor, mas sério. Que organizasse minha vida digital sem parecer um sistema corporativo.
+O Capivara começou como hub seguro (senhas, tokens, chaves), mas virou também meu **centro financeiro** quando percebi que o mesmo backend que guarda secrets também pode agregar transações.
 
-## Primeiro commit
-
-O primeiro commit foi documental: `docs: descricao detalhada do projeto no AGENTS.md`. Antes de escrever uma linha de código, documentei exatamente o que o Capivara precisava ser.
-
-```markdown
-# Capivara
-Hub pessoal seguro para gerenciamento de projetos, segredos,
-credenciais e acesso centralizado ao ecossistema.
-
-Stack: FastAPI + React 19 + SQLite
-
-Funcionalidades planejadas:
-- Gerenciamento centralizado de credenciais e chaves de API
-- Painel de controle de projetos (status, health, métricas)
-- Visão consolidada de serviços, domínios e endpoints
-- Modo escuro porque sim
-```
-
-## O primeiro endpoint
-
-Horas depois veio o código de verdade. O endpoint mais simples possível — um `/health` que serviria de termômetro pro sistema:
+## A primeira versão: planilha exportada
 
 ```python
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+# app/finance/legacy_import.py — primeira versão, tosca mas funcional
+import csv
+from pathlib import Path
 
-app = FastAPI(title="Capivara", version="0.1.0")
-
-
-@app.get("/health")
-async def health():
-    return JSONResponse(
-        content={"status": "ok", "version": "0.1.0", "project": "capivara"},
-        status_code=200,
-    )
+def import_nubank_csv(path: Path) -> list[dict]:
+    """Importa exportação CSV do Nubank."""
+    transactions = []
+    with open(path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            transactions.append({
+                "date": row["Data"],
+                "description": row["Descrição"],
+                "amount": float(row["Valor"].replace("R$", "").replace(",", ".")),
+                "category": "não categorizado",
+            })
+    return transactions
 ```
 
-Simples, quase bobo. Mas todo grande sistema começa com um endpoint que responde "ok". O Capivara estava vivo.
+Funcionava. Mas exigia: entrar no Nubank → exportar CSV → subir pro Capivara → categorizar manualmente. 15 minutos por banco.
 
-## De "Mission Control" a "Capivara"
+## A evolução: API integrada
 
-Antes do nome final, o projeto se chamava "Mission Control" — uma referência a centro de controle de missões espaciais. O nome era legal, mas não tinha personalidade. "Capivara" veio da vontade de ter algo mais brasileiro, mais próximo, menos genérico.
+Depois que conectei as APIs dos bancos (via plugins do Capivara), o processo ficou automático:
 
-E fez sentido. Capivaras são animais gregários, que vivem em grupos, são adaptáveis — exatamente o que eu queria pro hub que centralizaria todos os meus projetos.
+```python
+# app/finance/providers.py — sync automático
+from datetime import datetime, timedelta
+import httpx
 
-O Capivara que nasceu em junho da necessidade de controle se tornaria, nos meses seguintes, o cérebro administrativo de todo o ecossistema Samuel. Mas isso é história pra outro post.
+class NubankProvider:
+    """Sync automático de transações via API não-oficial."""
+    
+    BASE_URL = "https://prod.nubank.com.br/api"
+    
+    async def sync_transactions(self, token: str, days: int = 30) -> list[dict]:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.BASE_URL}/transactions",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"since": (datetime.now() - timedelta(days=days)).isoformat()},
+            )
+            data = resp.json()
+            return [self._normalize(t) for t in data["transactions"]]
+    
+    def _normalize(self, raw: dict) -> dict:
+        """Normaliza transação Nubank pro schema unificado."""
+        return {
+            "id": raw["id"],
+            "date": raw["post_date"],
+            "description": raw["description"],
+            "amount": abs(raw["amount"]),
+            "type": "expense" if raw["amount"] < 0 else "income",
+            "category": self._guess_category(raw["title"]),
+            "provider": "nubank",
+        }
+    
+    def _guess_category(self, title: str) -> str:
+        """Categorização automática por palavra-chave."""
+        rules = {
+            "ifood": "alimentação",
+            "uber": "transporte",
+            "amazon": "compras",
+            "netflix": "streaming",
+            "spotify": "streaming",
+            "gasolina": "transporte",
+            "mercado": "alimentação",
+            "farmacia": "saúde",
+            "cinema": "lazer",
+        }
+        for keyword, category in rules.items():
+            if keyword in title.lower():
+                return category
+        return "outros"
+```
+
+## O dashboard financeiro
+
+Com os dados centralizados, construí o dashboard financeiro — a página que mais uso no Capivara:
+
+```tsx
+// frontend/src/components/finance/RevenueCard.tsx
+interface RevenueStats {
+  totalRevenue: number;
+  monthlyRevenue: number;
+  growth: number;
+  byCategory: Record<string, number>;
+  trend: 'up' | 'down' | 'stable';
+}
+
+function RevenueCard({ stats }: { stats: RevenueStats }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 p-4">
+      <MetricCard 
+        label="Receita total" 
+        value={formatBRL(stats.totalRevenue)}
+        trend={stats.trend === 'up' ? 'positive' : 'negative'}
+      />
+      <MetricCard 
+        label="Receita mensal" 
+        value={formatBRL(stats.monthlyRevenue)} 
+      />
+      <CategoryBreakdown categories={stats.byCategory} />
+      <GrowthIndicator 
+        percentage={stats.growth} 
+        period="últimos 30 dias"
+      />
+    </div>
+  );
+}
+```
+
+### Categorias que uso hoje
+
+| Categoria | % do orçamento | Fonte de dados |
+|-----------|----------------|----------------|
+| Moradia | 35% | Nubank + Inter |
+| Alimentação | 18% | Nubank + PicPay |
+| Transporte | 8% | Nubank |
+| Streaming/Apps | 5% | Nubank (cartão) |
+| Saúde | 6% | Inter |
+| Lazer | 7% | Split entre contas |
+| Investimentos | 15% | Inter (automático) |
+| Outros | 6% | Catch-all |
+
+## Health checks + Finanças = visão completa
+
+O Capivara não mostra só dinheiro — mostra **saúde do ecossistema**. Juntei health checks dos serviços com as métricas financeiras:
+
+```python
+# app/finance/health_integration.py
+async def financial_health_report() -> dict:
+    """Relatório combinado: saúde financeira + serviços."""
+    services = await check_all_services()
+    revenue = await get_monthly_revenue()
+    expenses = await get_monthly_expenses()
+    
+    return {
+        "services": {
+            "online": sum(1 for s in services if s["status"] == "ok"),
+            "total": len(services),
+            "degraded": [s["name"] for s in services if s["status"] != "ok"],
+        },
+        "financial": {
+            "balance": revenue - expenses,
+            "savings_rate": round((revenue - expenses) / revenue * 100, 1),
+            "trend": "positive" if revenue > expenses else "negative",
+        },
+    }
+```
+
+## Aprendizados
+
+### 1. Categorização automática é 80% precisa
+
+Com regex + palavra-chave, acerto ~80% das transações. Os 20% restantes eu reviso uma vez por mês. Muito melhor que 0% (planilha manual).
+
+### 2. Dados de banco são bagunçados
+
+Cada banco tem formato diferente de descrição:
+- Nubank: `"IFD*Ifood 1234"` 
+- Inter: `"Pagamento - Ifood - 12/03"`
+- PicPay: `"iFood Entrega R$ 45,90"`
+
+A normalização (tirar pontuação, lower case, match fuzzy) foi o maior trabalho.
+
+### 3. Gráfico bonito < dado correto
+
+Gastei mais tempo fazendo gráfico bonito do que validando dado. Depois que inverti a prioridade (dado certo primeiro, visual depois), o dashboard ficou útil de verdade.
+
+### 4. Manter histórico é mais importante que precisão
+
+No começo apagava transações duplicadas. Depois entendi que manter o raw data e marcar como `duplicated: true` é melhor — permite re-calcular sem perder informação.
+
+## Os números frios
+
+| Métrica | Antes (planilhas) | Depois (Capivara) |
+|---------|-------------------|-------------------|
+| Tempo pra consolidar mês | 2 horas | 2 minutos |
+| Precisão de categorização | 100% (manual) | ~80% (auto) |
+| Contas integradas | 0 | 4 (Nubank, Inter, PicPay, Wise) |
+| Erros de lançamento | ~5/mês | 0 |
+| Visão consolidada | 1x/mês | tempo real |
+| Gastos não identificados | "muita coisa" | ~5% do total |
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'curl -s http://localhost:8001/api/finance/summary | python3 -m json.tool', output: 'Resumo financeiro completo' },
+    { cmd: 'curl -s http://localhost:8001/api/finance/categories', output: 'Gastos por categoria (JSON)' },
+    { cmd: 'curl -s http://localhost:8001/api/health', output: 'Health check dos serviços + financeiro' },
+    { cmd: 'cd ~/projetos/Capivara/frontend && npx vite build', output: 'Build frontend — 256KB JS, 39KB CSS' },
+    { cmd: 'journalctl --user -u capivara-backend -n 20 --no-pager', output: 'Logs do backend Capivara' },
+  ]}
+/>
