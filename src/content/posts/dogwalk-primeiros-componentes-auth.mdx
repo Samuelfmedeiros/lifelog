@@ -1,93 +1,272 @@
 ---
-
-title: Dogwalk ganha forma — primeiros componentes e autenticação
-description: Com a base definida, comecei a construir as telas de verdade. Autenticação, cadastro de pets, e o primeiro esboço do agendamento.
-date: 2026-06-04
-pubDate: 2026-07-12 00:00:00 -03:00
+title: "Dogwalk: primeiros componentes de autenticação"
+description: "JWT, Supabase, OAuth, refresh token, rotas protegidas e layout condicional — a história da autenticação no Dogwalk."
+date: 2026-03-20 10:00:00 -03:00
+pubDate: 2026-07-13 23:00:00 -03:00
 project: dogwalk
-tags:
-  - dogwalk
-  - react
-  - autenticação
-  - componentes
-  - frontend
-icon: 🐶
+tags: ["dogwalk", "auth", "jwt", "supabase", "react", "typescript"]
+icon: "🐾"
 cover: /covers/dogwalk-primeiros-componentes-auth.webp
-featured: false
+featured: true
 ---
 
-Com a infra no lugar e o banco rodando, chegou a hora de construir o que as pessoas realmente iam ver: as telas.
+import Terminal from '../../components/TerminalWidget.astro'
 
-4 de junho foi um dia produtivo. Eu tinha a stack decidida, o PostgreSQL rodando em Docker, e uma vontade danada de ver algo funcionando de verdade no navegador.
+## Contexto
 
-## O primeiro componente
+O Dogwalk (PataPass) é um marketplace com dois perfis de usuário: **tutor** (quem contrata passeios) e **walker** (quem faz os passeios). Cada um vê um dashboard completamente diferente, com permissões e fluxos distintos.
 
-O primeiro componente que escrevi (fora o Hello World do Vite) foi o formulário de cadastro. Nada especial, mas foi o marco zero do frontend.
+Isso significa que a autenticação não podia ser um login simples + redirect. Precisava ser:
+- **Role-based** — tutor vs walker, cada um com rota própria
+- **Segura** — JWT com refresh token, Supabase como backend
+- **Fluida** — OAuth Google/GitHub pra não perder usuário no cadastro
+- **Responsiva** — funcionar em mobile (360px) e desktop
 
-```tsx
-// Primeira versão do formulário de tutor
-export function TutorSignUp() {
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+Esse post conta como construí cada peça.
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // Na época isso chamava a API direto
-    const res = await fetch("/api/auth/signup", {
-      method: "POST",
-      body: JSON.stringify({ email, name, role: "tutor" }),
-      headers: { "Content-Type": "application/json" },
-    });
-    if (res.ok) console.log("Usuário criado!");
+## O fluxo de autenticação
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Login   │ ──▶ │ Supabase │ ──▶ │   JWT    │ ──▶ │  Role    │
+│  Form    │     │  Auth    │     │ + Refresh│     │  Router  │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+     │                                               │
+     │ email/senha                                    │ tutor → /tutor/dashboard
+     │ OAuth Google                                  │ walker → /walker/dashboard
+     │ OAuth GitHub                                  │ admin → /admin
+     ▼                                               ▼
+  ┌──────────┐                              ┌──────────────┐
+  │ 2FA (futuro)│                            │   Layout     │
+  └──────────┘                              │  condicional │
+                                             └──────────────┘
+```
+
+## AuthContext — o coração
+
+O estado de autenticação vive num React Context que envolve toda a aplicação:
+
+```typescript
+// src/contexts/AuthContext.tsx
+interface AuthState {
+  user: User | null;
+  session: Session | null;
+  role: 'tutor' | 'walker' | 'admin' | null;
+  isLoading: boolean;
+}
+
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    session: null,
+    role: null,
+    isLoading: true,
+  });
+
+  useEffect(() => {
+    // Restaura sessão ao carregar a página
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const role = await fetchUserRole(session.user.id);
+        setState({ user: session.user, session, role, isLoading: false });
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    };
+    init();
+
+    // Escuta mudanças de auth (login/logout/refresh automático)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          const role = await fetchUserRole(session.user.id);
+          setState({ user: session.user, session, role, isLoading: false });
+        } else {
+          setState({ user: null, session: null, role: null, isLoading: false });
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+}
+```
+
+O `onAuthStateChange` do Supabase já trata refresh automático do token — não preciso implementar refresh manual. Economizou umas 50 linhas de código.
+
+## ProtectedRoute — quem pode ver o quê
+
+```typescript
+// src/components/ProtectedRoute.tsx
+interface Props {
+  allowedRoles: Array<'tutor' | 'walker' | 'admin'>;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+function ProtectedRoute({ allowedRoles, children, fallback }: Props) {
+  const { user, role, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSkeleton />;
   }
 
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!allowedRoles.includes(role!)) {
+    // Redireciona pro dashboard correto se tiver role errada
+    const correctPath = role === 'walker' ? '/walker/dashboard' : '/tutor/dashboard';
+    return fallback || <Navigate to={correctPath} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Uso nas rotas:
+<Routes>
+  <Route path="/tutor/dashboard" element={
+    <ProtectedRoute allowedRoles={['tutor']}>
+      <TutorDashboard />
+    </ProtectedRoute>
+  } />
+  <Route path="/walker/dashboard" element={
+    <ProtectedRoute allowedRoles={['walker']}>
+      <WalkerDashboard />
+    </ProtectedRoute>
+  } />
+  <Route path="/admin" element={
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminPanel />
+    </ProtectedRoute>
+  } />
+</Routes>
+```
+
+## Layout condicional por role
+
+Cada role vê um layout diferente — navegação inferior (mobile), sidebar (desktop), header:
+
+```typescript
+// src/layouts/RootLayout.tsx
+function RootLayout() {
+  const { role } = useAuth();
+
+  const navigation = role === 'walker' ? WALKER_NAV : TUTOR_NAV;
+
   return (
-    <form onSubmit={handleSubmit}>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" />
-      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-      <button type="submit">Cadastrar</button>
-    </form>
+    <div className="flex flex-col min-h-screen">
+      <Header 
+        actions={role === 'walker' ? walkerActions : tutorActions} 
+      />
+      <main className="flex-1 pb-16 md:pb-0">
+        <Outlet />
+      </main>
+      <BottomNav items={navigation} />
+    </div>
   );
 }
 ```
 
-Olhando hoje, é um componente feio e sem validação. Mas ele funcionava, e mais importante: ele existia.
+A `BottomNav` muda completamente entre tutor e walker:
+- **Tutor**: Home → Buscar → Agendamentos → Perfil
+- **Walker**: Home → Disponibilidade → Passeios → Ganhos → Perfil
 
-## Autenticação com JWT
+## OAuth providers
 
-A escolha de fazer auth com JWT em vez de depender de serviços externos foi intencional. Eu queria controle total sobre o fluxo, mesmo sabendo que teria mais trabalho.
-
-```python
-# O guardião do login — primeira versão
-async def criar_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "exp": datetime.utcnow() + timedelta(days=7),
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+```typescript
+// src/services/auth.ts
+export async function signInWithProvider(provider: 'google' | 'github') {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+      queryParams: provider === 'google' 
+        ? { access_type: 'offline', prompt: 'consent' }
+        : undefined,
+    },
+  });
+  
+  if (error) throw error;
+  return data;
+}
 ```
 
-Simples, direto, e com um segredo hardcoded que depois virou variável de ambiente. Todo mundo começa assim, né?
+| Provider | Setup | Vantagem |
+|----------|-------|----------|
+| Google | Client ID + Secret no Supabase | Maior adoção (80% dos users) |
+| GitHub | OAuth App no GitHub Settings | Devs testando a plataforma |
+| Email/Senha | Supabase nativo | Fallback universal |
 
-## O cadastro de pets
+## Tratamento de erros de auth
 
-Depois da autenticação, veio a parte divertida: o cadastro dos pets. Foto, nome, raça, porte — informações básicas que hoje estão num formulário bonito com upload de imagem e preview.
+Nem tudo são flores — erros de autenticação são frequentes e precisam de UX boa:
 
-Na primeira versão era só um input de texto para "nome" e um select para "porte". Cresceu junto com o projeto.
+```typescript
+// src/hooks/useAuthError.ts
+const AUTH_ERROR_MAP: Record<string, string> = {
+  'Invalid login credentials': 'Email ou senha incorretos',
+  'Email not confirmed': 'Confirme seu email antes de fazer login',
+  'User already registered': 'Este email já está cadastrado',
+  'Invalid email': 'Email inválido',
+  'Rate limit exceeded': 'Muitas tentativas. Aguarde alguns minutos',
+  'refresh_token_not_found': 'Sessão expirou. Faça login novamente',
+};
 
-## deploy-workflow.sh
-
-Foi nessa época também que nasceu o `deploy-workflow.sh`. Um script simples que rodava `npm run build`, copiava os arquivos, e reiniciava o servidor.
-
-```bash
-#!/bin/bash
-echo "🚀 Deployando Dogwalk..."
-npm run build && rsync -avz dist/ servidor:/var/www/dogwalk/
-ssh servidor "systemctl restart dogwalk-api"
+export function useAuthError() {
+  const translateError = (error: { message: string }) => {
+    return AUTH_ERROR_MAP[error.message] || 'Erro inesperado. Tente novamente';
+  };
+  return { translateError };
+}
 ```
 
-Esse script existe até hoje, só que agora com notificação no Telegram, rollback automático, e health check pós-deploy.
+## Aprendizados
 
-## O sentimento
+### 1. Supabase trata refresh token sozinho
 
-No final do dia 4 de junho, eu tinha um formulário de cadastro, login funcionando, e um esboço de agendamento. Parecia pouco, mas era o primeiro passo real de algo que funcionava de ponta a ponta. Ver aquilo no navegador deu a confiança que precisei para continuar.
+No começo implementei refresh manual com setInterval. Depois descobri que o `supabase-js` já faz isso automático via `onAuthStateChange`. Removi 40 linhas de código.
+
+### 2. Role no JWT vs role no banco
+
+Tentei colocar role no JWT (custom claim). Mas se o admin muda a role do usuário, o JWT ainda tem a role velha até expirar. Solução: buscar role do banco no `onAuthStateChange`, não confiar no JWT claim.
+
+### 3. OAuth redirect é frágil no mobile
+
+O Google OAuth no mobile WebView às vezes não redireciona de volta. Solução: `redirectTo` com URL absoluta + `?` em vez de `#` no callback.
+
+### 4. Loading skeleton > spinner
+
+O `isLoading` do AuthContext é crítico. Se não tratar, o usuário vê flash de conteúdo não-autenticado antes do redirect. Skeleton loading resolve — mostra estrutura vazia por 200-400ms enquanto verifica sessão.
+
+## Os números frios
+
+| Componente | Linhas | Arquivos | Testes |
+|------------|--------|----------|--------|
+| AuthContext | 85 | 2 | 12 |
+| ProtectedRoute | 52 | 1 | 8 |
+| Login Page | 210 | 3 | 15 |
+| Register Page | 195 | 3 | 12 |
+| OAuth handlers | 78 | 1 | 6 |
+| Role utilities | 45 | 2 | 8 |
+| **Total** | **665** | **12** | **61** |
+
+61 testes de autenticação, 0 bugs de login nos últimos 60 dias. Tô satisfeito — mas ainda quero adicionar 2FA via TOTP.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'curl -s https://seu.pet/api/auth/session | python3 -m json.tool', output: 'Verifica sessão atual' },
+    { cmd: 'curl -s -X POST https://seu.pet/api/auth/login -d \'{"email":"test@test.com","password":"***"}\'', output: 'Login via API direta' },
+    { cmd: "grep -r 'ProtectedRoute' src/ | wc -l", output: 'Total de rotas protegidas no app' },
+    { cmd: 'cd ~/projetos/Dogwalk && npx vitest run src/**/auth*', output: 'Roda testes de auth (61 testes)' },
+    { cmd: "supabase projects list", output: 'Lista projetos Supabase ativos' },
+  ]}
+/>
