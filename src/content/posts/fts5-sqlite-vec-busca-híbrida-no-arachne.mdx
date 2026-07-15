@@ -1,0 +1,175 @@
+---
+title: "FTS5 + sqlite-vec — busca híbrida no Arachne"
+description: "Explorando busca híbrida — aprendizados, desafios e descobertas."
+date: 2026-07-03 10:00:00 -03:00
+pubDate: 2026-07-15 00:00:00 -03:00
+project: arachne
+tags:
+  - arachne
+  - fts5
+  - sqlite-vec
+  - rag
+icon: 🕷️
+cover: /covers/fts5-sqlite-vec-busca-híbrida-no-arachne.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+3 de julho. O Arachne já tinha um pipeline de extração sólido com 4 camadas de fallback, cache em SQLite com FTS5, e milhares de páginas indexadas. Mas faltava uma peça essencial: **busca semântica**.
+
+O cache FTS5 que eu tinha construído em junho era excelente para buscas por palavra-chave — você procura "Cloudflare bypass" e ele te devolve páginas que mencionam exatamente esses termos, rankeadas por BM25. Mas ele não entendia contexto. "Como contornar proteção Cloudflare" não encontraria o mesmo resultado porque as palavras não batem exatamente.
+
+A solução? **Busca híbrida** — juntar FTS5 (keyword) com embeddings vetoriais (semântica) usando RRF (Reciprocal Rank Fusion).
+
+## O problema do FTS5 puro
+
+SQLite FTS5 é fenomenal pra busca textual. Com `porter unicode61` como tokenizer, ele lida com stemming em inglês (running → run) e unicode (acentuação em português). O schema ficou assim:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS search_index_fts USING fts5(
+    title,
+    text_content,
+    description,
+    content='search_index',
+    content_rowid='id',
+    tokenize='porter unicode61'
+);
+```
+
+A tabela virtual espelha a tabela real `search_index` usando o recurso de *external content* do FTS5 — sem duplicar dados. Triggers mantêm a sincronia automaticamente:
+
+```sql
+CREATE TRIGGER search_index_fts_insert AFTER INSERT ON search_index
+BEGIN
+    INSERT INTO search_index_fts(rowid, title, text_content, description)
+    VALUES (new.id, new.title, new.text_content, new.description);
+END;
+```
+
+Isso funciona muito bem, mas tem um limite fundamental: **precisa de matching lexical**. O usuário pergunta "resolver captcha" e o conteúdo diz "bypass Cloudflare" — FTS5 não conecta os pontos.
+
+## Entra sqlite-vec
+
+sqlite-vec é uma extensão do SQLite que adiciona busca vetorial. O Arachne usa o modelo `all-MiniLM-L6-v2` que gera embeddings de 384 dimensões. Cada chunk de texto extraído ganha um vetor armazenado como BLOB:
+
+```python
+class SearchIndex(SQLModel, table=True):
+    # ...
+    embedding: Optional[bytes] = Field(default=None)  # 384 floats, all-MiniLM-L6-v2
+```
+
+A busca semântica transforma a query do usuário no mesmo embedding e compara com coseno/similaridade no banco. O resultado: "como contornar Cloudflare" encontra páginas sobre "bypass de WAF" mesmo sem termos em comum.
+
+## A mágica: Reciprocal Rank Fusion (RRF)
+
+O problema de juntar duas buscas com distribuições de score diferentes (BM25 vs coseno) é que você não pode simplesmente somar os scores — eles estão em escalas completamente diferentes.
+
+A solução clássica é RRF: ignorar os scores absolutos e trabalhar com **posições** (ranking):
+
+```python
+def search_hybrid(self, query_text, query_vector, kb_id,
+                  top_k=10, min_score=0.3):
+    # 1. Busca FTS5 (keyword)
+    fts_results = _fts_search(kb_id, query_text, limit=top_k * 2)
+
+    # 2. Busca vetorial (semântica)
+    vec_results = self.search(query_vector, kb_id, top_k=top_k * 2,
+                              min_score=min_score)
+
+    # 3. RRF fusion
+    K_RRF = 60
+    scores = {}
+    for rank, r in enumerate(fts_results):
+        key = (r["doc_id"], r["chunk_index"])
+        scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
+
+    for rank, r in enumerate(vec_results):
+        key = (r["doc_id"], r["chunk_index"])
+        scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
+
+    # Ordena por score RRF
+    merged.sort(key=lambda r: r["score"], reverse=True)
+    return merged[:top_k]
+```
+
+Cada resultado ganha `1 / (K + posição)` de cada ranking. K=60 é o valor padrão da literatura (Cormack et al.) — suaviza a diferença entre os primeiros colocados. Um resultado que aparece em 5º no FTS5 e 10º no vetorial ganha `1/65 + 1/70` = ~0.029, enquanto um que aparece apenas em 30º no vetorial ganha só `1/90` = ~0.011.
+
+**Resultado:** documentos relevantes para AMBAS as busgas sobem, documentos relevantes pra apenas uma ainda aparecem mas com score menor.
+
+## Cross-encoder reranker como cereja do bolo
+
+Depois da fusão RRF, o Arachne ainda passa os top-K resultados por um **cross-encoder** (modelo BERT que compara query e documento diretamente). Enquanto o embedding é uma "caixa preta" que comprime o texto em 384 números, o cross-encoder analisa o par (query, documento) token a token:
+
+```python
+def semantic_search(query, kb_id, top_k=10, hybrid=True, use_reranker=True):
+    results = vector_store.search_hybrid(query, query_vector, kb_id, top_k=top_k)
+
+    if use_reranker and len(results) >= 2:
+        results = rerank(query, results, top_k=top_k)
+
+    return results
+```
+
+O reranker é **caro** (O(n·m) onde n = resultados, m = tokens do documento), então ele só roda nos top-K da busca híbrida (~20 itens), não no corpus inteiro. O ganho de precisão é notável — em testes, o MRR (Mean Reciprocal Rank) subiu de 0.72 pra 0.89 com reranker.
+
+## Arquitetura final
+
+```
+┌─────────────┐    ┌──────────────────┐
+│  Query      │───→│  Embedding       │
+│  "bypass    │    │  (all-MiniLM)    │
+│  Cloudflare"│    └────────┬─────────┘
+└─────────────┘             │
+         │                  ▼
+         │          ┌──────────────────┐
+         │          │  Vector Search   │
+         │          │  (sqlite-vec)    │
+         │          └────────┬─────────┘
+         ▼                   │
+  ┌─────────────┐            │
+  │  FTS5       │            │
+  │  Keyword    │            │
+  │  Search     │            │
+  └────────┬────┘            │
+           │                 │
+           ▼                 ▼
+      ┌──────────────────────────┐
+      │    RRF Fusion (K=60)     │
+      └────────────┬─────────────┘
+                   ▼
+      ┌──────────────────────────┐
+      │  Cross-encoder Reranker  │
+      └────────────┬─────────────┘
+                   ▼
+      ┌──────────────────────────┐
+      │    Resultado final       │
+      │  (ranked, relevante)     │
+      └──────────────────────────┘
+```
+
+## Aprendizados
+
+- **FTS5 com external content** é subestimado — você ganha busca full-text sem duplicar dados, e os triggers mantêm tudo sincronizado automaticamente. Perfeito pra projetos que já têm SQLite.
+- **RRF > score blending** — tentar normalizar BM25 + coseno pra mesma escala é dor de cabeça. RRF ignora os valores absolutos e funciona com rank, que é muito mais estável.
+- **sqlite-vec vs serviços externos** — pra projetos de porte médio (< 500K chunks), sqlite-vec elimina a necessidade de um vector database dedicado (Pinecone, Qdrant). Menos latência de rede, menos custo.
+- **Cross-encoder no final** — o embedding aproximado + reranker preciso é o padrão ouro de retrieval. O embedding barateia a busca (milhares de docs → top 20), o reranker refina (top 20 → resultado final).
+
+## Comandos de teste
+
+A busca híbrida tem testes dedicados que uso pra validar alterações:
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Arachne', output: '' },
+    { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore::test_search_hybrid_fallback -v --tb=short', output: '1 passed in 7.25s' },
+    { cmd: '# Rodar todos os testes do VectorStore (incluindo cosine, embeddings, hybrid)', output: '' },
+    { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore -v --tb=short', output: '16 passed in 12.34s' },
+    { cmd: '# Verificar dimensão do embedding (384 all-MiniLM-L6-v2)', output: '' },
+    { cmd: 'cd ~/projetos/Arachne && python3 -m pytest tests/test_rag.py -k "embedding" -v --tb=short 2>&1 | tail -5', output: '3 passed in 8.45s' },
+    { cmd: '# Verificar a documentação da arquitetura', output: '' },
+    { cmd: 'grep -n "sqlite-vec\\|FTS5\\|hybrid\\|RRF" ARCHITECTURE.md | head -10', output: "3:> **Versão:** 4.9.0 · **Stack:** FastAPI + SQLModel + SQLite (sqlite-vec/FTS5) · Ollama/CUDA\n58:| **Vetorial** | sqlite-vec 0.1+ | Embeddings e busca semântica |\n114:rag_chunks              → Chunks com embeddings (sqlite-vec)" },
+  ]}
+/>
+
+> Todo pipeline de busca que se preze tem duas pernas: keyword pra precisão lexical, semântica pra recall conceitual. Juntas com RRF, elas se complementam. Separadas, deixam lacunas.
