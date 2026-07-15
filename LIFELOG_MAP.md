@@ -1,6 +1,6 @@
 # 🗺️ LifeLog — Mapa Completo do Projeto
 
-> Gerado em: 2026-07-07
+> Gerado em: 2026-07-14
 > Stack: Astro 7 · MDX · Tailwind 4 · TypeScript
 
 ---
@@ -26,12 +26,11 @@
 ```
 ~/lifelog/
 │
-├── src/                          # Código fonte
+├── src/
+│   ├── content.config.ts          # Schema Zod: título, data, projeto, tags, capa
 │   ├── content/
-│   │   ├── config.ts             # Schema Zod: título, data, projeto, tags, capa
-│   │   ├── posts/                # 14 MDX posts
-│   │   └── drafts/
-│   │       └── queue.json        # Fila de publicação automática
+│   │   ├── posts/                # 23 MDX posts
+│   │   └── drafts/               # Rascunhos (.gitkeep)
 │   │
 │   ├── components/               # 6 componentes Astro
 │   │   ├── PostCard.astro        # Card da timeline (capa + info + tags)
@@ -81,11 +80,13 @@ const posts = defineCollection({
     title: z.string(),
     description: z.string(),
     date: z.date(),
-    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara', 'estudos', 'descobertas']),
+    pubDate: z.date().optional(),
+    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara', 'tatuengine', 'estudos', 'descobertas']),
     tags: z.array(z.string()),
     icon: z.string().optional(),
-    cover: z.string().optional(),    // path: /covers/<slug>.webp
+    cover: z.string().optional(),
     featured: z.boolean().optional().default(false),
+    draft: z.boolean().optional().default(false),
   }),
 });
 ```
@@ -126,7 +127,8 @@ Cada post herda o `data-project` do frontmatter e aplica cores específicas via 
 | arachne | Roxo | 🕷️ | 🕷️ | Cyberpunk |
 | dogwalk | Verde | 🐶 | 🐶 | Nature-tech |
 | portfolio | Ciano | 🚀 | 🚀 | Sci-fi |
-| capivara | Laranja | 🐷 | 🐷 | Tropical tech |
+| capivara | Âmbar | 🐷 | 🐷 | Tropical tech |
+| tatuengine | Teal | 🌊 | 🌊 | Wave/Physics |
 | estudos | Azul | 📚 | 📚 | Acadêmico |
 | descobertas | Rosa | 💡 | 💡 | Etéreo |
 
@@ -209,14 +211,16 @@ Build:         npm run build → dist/
 Auto-deploy:   Push no main → Vercel CI
 ```
 
-### 🤖 Cloudflare Worker (Capas AI)
+### 🤖 Cloudflare Worker (Capas AI) — Funcionando
 ```
 Worker:        lifelog-capa
 URL:           https://lifelog-capa.samuelandrademedeiros.workers.dev
 Modelo:        @cf/black-forest-labs/flux-1-schnell
 API Key:       {configurada no worker}
 Estilo:        Sem texto, tema por projeto
-Script:        ~/lifelog/scripts/generate_cover.py
+Script:        ~/lifelog/scripts/generate-cover.py
+Uso:           python3 scripts/generate-cover.py <slug>
+               python3 scripts/generate-cover.py --all
 ```
 
 ### 📰 RSS
@@ -268,28 +272,47 @@ src/content/drafts/queue.json
       → Commit + Push automático
 ```
 
-### Posts Atuais (14)
+### Posts Atuais (23)
 
 | Post | Projeto | Data |
 |------|---------|------|
-| O Começo do Arachne | arachne | 06/07 |
-| Capivara — organizar finanças | capivara | 06/07 |
-| Dogwalk — marketplace de pets | dogwalk | 06/07 |
-| O redesign sci-fi do portfólio | portfolio | 06/07 |
-| Python Async — o dia que tudo fez sentido | estudos | 06/07 |
-| FTS5 é subestimado | descobertas | 06/07 |
-| Por dentro do pipeline RAG do Arachne | arachne | 06/07 |
-| Por que escolhi Playwright para E2E no Dogwalk | dogwalk | 06/07 |
-| VHS & Antiguidades | descobertas | 06/07 |
-| SSM Drift — Estudo | estudos | 06/07 |
-| Portfolio Redesign Sci-Fi | portfolio | 06/07 |
-| OT Token Engine | estudos | 06/07 |
-| Capivara MVP Finanças | capivara | 06/07 |
-| Dogwalk Playwright E2E | dogwalk | 06/07 |
+| Dogwalk — a primeira ideia do marketplace de pets | dogwalk | Mai |
+| FastAPI + React — por que escolhi essa stack pro Dogwalk | dogwalk | Mai |
+| O início do Dogwalk — quando resolvi criar um marketplace de pets | dogwalk | Mai |
+| Primeiro deploy do Dogwalk — Vite + Cloudflare Pages | dogwalk | Mai |
+| Primeiros passos — infraestrutura e as primeiras linhas de código | dogwalk | Mai |
+| Capivara nasce — preciso de um hub pessoal seguro | capivara | Mai |
+| O Arachne nasceu de uma frustração — scrapers quebrados e dados perdidos | arachne | Jun |
+| Arachne — o scraper que virou plataforma | arachne | Jun |
+| Primeiros testes com Crawl4AI — Sidecar e Docker | arachne | Jun |
+| Pipeline multi-engine no Arachne — 4 camadas de fallback | arachne | Jun |
+| Arachne cresce — pipeline multi-engine e cache inteligente | arachne | Jun |
+| Capivara: hub pessoal contra a bagunça financeira | capivara | Jun |
+| Capivara cresce — dashboard, analytics e controle | capivara | Jun |
+| Dogwalk: primeiros componentes de autenticação | dogwalk | Jun |
+| Dogwalk amadurece — testes Playwright como backbone de qualidade | dogwalk | Jun |
+| Testes E2E com Playwright — a virada de qualidade | dogwalk | Jun |
+| Portfolio v3 — Vue 3.5 + Vite 8, o rebuild que eu precisava | portfolio | Jun |
+| Portifolio Samuel — o redesign que buscou identidade | portfolio | Jun |
+| TatuEngine — primeiros experimentos com wave field theory | tatuengine | Jun |
+| BitMamba 1B — treinando o primeiro modelo SSM | tatuengine | Jun |
+| D1 Sync — levando dados do Capivara pro Cloudflare | capivara | Jun |
+| O ecossistema toma forma — backups, segurança e automatização | descobertas | Jun |
+| Descobertas de Julho — ferramentas que mudaram meu fluxo | descobertas | Jul |
 
 ---
 
-## 9. Changelog — v1.1.0 (07/07/2026)
+## 9. Changelog
+
+### v1.2.0 (14/07/2026)
+- [x] **23 posts publicados** — de 14 para 23, cobrindo todos os projetos
+- [x] **TatuEngine** — novo projeto suportado (teal/wave theme, schema, paleta)
+- [x] **CI/CD Pipeline** — GitHub Actions com validação, build, E2E tests, deploy Vercel + health check
+- [x] **Deploy automatizado** — push no main → Vercel deploy + notificação Telegram
+- [x] **E2E Playwright** — testes headless no CI, preview server dedicado
+- [x] **Schema expandido** — `pubDate`, `draft`, `tatuengine` adicionados ao content.config.ts
+
+### v1.1.0 (07/07/2026)
 
 ### ✅ Realizado
 - [x] **Sitemap.xml** — SEO gerado automaticamente com todas as URLs
