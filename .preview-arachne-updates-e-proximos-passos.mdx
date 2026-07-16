@@ -1,0 +1,166 @@
+---
+title: "Arachne — o ecossistema de MCP tools, visão multimodal e o que vem por aí"
+description: "25 ferramentas MCP, visão multimodal com IA local, observabilidade, billing e o sandbox que tornou o Arachne uma plataforma — o estado atual do projeto em julho de 2026."
+date: 2026-07-16 10:00:00 -03:00
+pubDate: 2026-07-16 18:00:00 -03:00
+project: arachne
+tags:
+  - arachne
+  - mcp
+  - vision
+  - multimodal
+  - billing
+  - evolução
+icon: "🕷️"
+cover: /covers/arachne-updates-e-proximos-passos.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Quando escrevi o primeiro post sobre o Arachne, ele era basicamente um scraper com RAG. Três meses depois, virou uma plataforma com 25 ferramentas MCP, visão multimodal com IA local, painel de billing, observabilidade e deploy no MCP Registry oficial.
+
+Esse post não é sobre o começo — é sobre *onde o Arachne está agora* e como ele chegou aqui.
+
+## De 4 a 25 MCP tools
+
+O pulo do gato foi o protocolo MCP. Em junho, o Arachne tinha 4 ferramentas MCP expostas via STDIO. Hoje são **25**, com dois transportes:
+
+```
+📡 STDIO — tools locais, acoplamento direto
+☁️ SSE  — remoto via arachne.seu.pet/mcp, autenticação X-API-Key
+```
+
+Cada tool tem descrição, timing estimado e fallback chain. O `arachne_plan` é a orquestradora — você me pergunta "como faço X" e ela monta o plano de execução antes de qualquer tool rodar.
+
+```python
+# Exemplo: fallback chain do browser
+async def browser_extract(url: str) -> str:
+    try:
+        return await playwright_extract(url)       # 🎭 Playwright stealth
+    except BlockedError:
+        return await camoufox_extract(url)          # 🦊 Camoufox evasão
+    except TimeoutError:
+        return await screenshot_ocr(url)            # 📸 fallback: captura + OCR
+```
+
+E foi pro **MCP Registry oficial** como `io.github.Samuelfmedeiros/arachne` — descoberta automática por qualquer cliente MCP que conheça o nome.
+
+## Visão multimodal — 8 estágios + IA local
+
+A feature mais recente e a que mais me orgulha: o pipeline de visão que roda tudo localmente.
+
+```python
+# app/vision/pipeline.py — simplified
+stages = [
+    metadata_extract,    # 📐 dimensões, formato, EXIF
+    color_analysis,      # 🎨 histograma, paleta dominante
+    ocr_extract,         # 🔤 texto via Tesseract
+    edge_detect,         # 📏 contornos Canny
+    face_detect,         # 👤 detecção facial
+    texture_analysis,    # 🧶 padrões e texturas
+    quality_assess,      # ⭐ nitidez, ruído, exposição
+    vlm_describe,        # 🧠 IA opcional (gemma4:12b)
+]
+```
+
+Os 7 primeiros estágios são **zero AI** — puro OpenCV + Tesseract + NumPy. O oitavo estágio usa o **gemma4:12b** rodando local no Ollama (CUDA, GPU). Zero custo de API externa.
+
+Três endpoints REST + duas MCP tools dedicadas:
+
+| Rota | Função |
+|------|--------|
+| `POST /vision/analyze` | Analisa imagem de URL |
+| `POST /vision/upload` | Upload + análise |
+| `POST /vision/screenshot` | Screenshot + análise one-shot |
+| `arachne_vision` | MCP tool de imagem |
+| `arachne_screenshot_vision` | MCP tool screenshot+visão |
+
+A cereja do bolo: suporte a **data URI** (`data:image/png;base64,...`). Dá pra colar um base64 direto do buffer de memória sem salvar arquivo.
+
+## Observabilidade — cada chamada rastreada
+
+Implementei cabeçalhos `X-Called-By` e `X-MCP-Tool` injetados em toda chamada MCP. Cada requisição deixa rastro no `ApiUsageLog`:
+
+```python
+class ApiUsageLog(BaseModel):
+    id: int | None
+    user_id: int
+    endpoint: str
+    method: str
+    status_code: int
+    response_time_ms: float
+    tokens_in: int | None
+    tokens_out: int | None
+    called_by: str | None     # 🤖 qual agente chamou
+    mcp_tool: str | None      # 🛠️ qual tool MCP
+    created_at: datetime
+```
+
+Isso permite responder perguntas como "quem está usando mais o browser?" e "qual tool está consumindo mais tokens?" — dados reais, não achismo.
+
+## Monetização — Stripe com 4 tiers
+
+O Arachne virou produto. Quatro planos no Stripe:
+
+| Plano | Preço | Diferencial |
+|-------|-------|-------------|
+| **Free** | R$ 0 | 10 requisições/dia, scraping básico |
+| **Scraper** | R$ 29/mês | 500 req/dia, browser extraction |
+| **Pro** | R$ 79/mês | 2000 req/dia, visão multimodal + RAG |
+| **Enterprise** | R$ 399/mês | Ilimitado, suporte prioritário |
+
+Tudo integrado via Stripe Connect com webhooks de `checkout.session.completed`, `invoice.paid` e `customer.subscription.updated`. O rate limiting é Redis (com fallbar RAM) e 10 limiters dedicados por endpoint.
+
+## ai-jail — sandbox de segurança
+
+Uma adição silenciosa mas crítica: integração com **ai-jail v1.13.0** (bubblewrap). Todo browser/handler roda num sandbox com:
+
+- Sistema de arquivos read-only (exceto `/tmp`)
+- Sem acesso a GPU/Docker
+- Sem rede interna
+- Cache de dependências pré-montado
+
+```bash
+# ~/.ai-jail/rules.toml (global)
+[mask]
+files = [".env", "*.key", "secrets/"]
+network = ["internal"]
+```
+
+O sandbox é modulável — desliga via env var `ARACHNE_SANDBOX_ENABLED=false` sem rebuild.
+
+## Métricas — servidor respirando
+
+No momento em que escrevo:
+
+| Métrica | Valor |
+|---------|-------|
+| CPU | 0.6% |
+| RAM | 11.9 GB (76.9% usado) |
+| Disco | 690 GB livre (27.8% usado) |
+| Browser processes | 6 instâncias |
+| Heavy tasks | ✅ seguro |
+
+O servidor aguenta bem. 6 instâncias de browser ativas, mas o pool de workers (20/40 gunicorn) dá conta do recado.
+
+## O que vem por aí
+
+O roadmap imediato:
+
+- **Code Knowledge Graph** — já implementado (KG watcher, comunidades Leiden, god nodes). Falta expor pro frontend.
+- **MCP Intelligence Layer** — Smart Router, Tool Chainer, cache de memória entre tools
+- **Gravacão de vídeo** nas MCP tools (`arachne_record_video` com Playwright screencast)
+- **BYO LLM** no Settings — cada usuário escolhe seu modelo
+- **Pipeline Builder** visual — arrastar e soltar stages no navegador
+
+<Terminal
+  lines={[
+    { cmd: 'mcp_tools_count=$(curl -s https://arachne.seu.pet/mcp/tools | jq length)', output: '25 tools expostas via protocolo MCP' },
+    { cmd: 'curl -s https://arachne.seu.pet/ping | jq .version', output: '"2.1.0"' },
+    { cmd: 'curl -s https://arachne.seu.pet/metrics | jq .cpu_percent', output: '0.6' },
+    { cmd: 'echo "🏗️ Em construção — sempre"', output: 'mas funcionando em produção' },
+  ]}
+/>
+
+> *O Arachne não é mais um scraper. virou um ecossistema. E ainda tem muito chão pela frente.*
