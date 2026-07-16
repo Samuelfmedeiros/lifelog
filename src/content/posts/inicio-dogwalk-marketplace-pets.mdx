@@ -1,5 +1,4 @@
 ---
-
 title: O início do Dogwalk — quando resolvi criar um marketplace de pets
 description: "Tudo começou com uma necessidade simples: encontrar passeadores de confiança para minha própria dog. Foi assim que surgiu a ideia do Dogwalk, um marketplace de pets que hoje atende centenas de tutores."
 date: 2026-05-24
@@ -16,6 +15,8 @@ cover: /covers/inicio-dogwalk-marketplace-pets.webp
 featured: false
 ---
 
+import Terminal from '../../components/TerminalWidget.astro'
+
 Tudo começou com um problema besta. Eu precisava de alguém para passear com a minha dog em dias de correria, e não existia nada decente no mercado.
 
 Os apps que encontrei eram ruins de usar, cheios de taxas abusivas, e a experiência parecia ter sido desenhada por alguém que nunca teve um pet na vida. Foi naquela tarde de maio, sentado no computador, que pensei: *"Por que não fazer eu mesmo?"*
@@ -26,19 +27,44 @@ Os apps que encontrei eram ruins de usar, cheios de taxas abusivas, e a experiê
 
 ```python
 # O primeiro rabisco do Dogwalk (sim, foi em Python)
+from enum import Enum
+from datetime import datetime
+from typing import Optional
+
+class StatusPasseio(Enum):
+    PENDENTE = "pendente"
+    CONFIRMADO = "confirmado"
+    EM_ANDAMENTO = "em_andamento"
+    CONCLUIDO = "concluido"
+    CANCELADO = "cancelado"
+
 class Passeio:
     def __init__(self, tutor, passeador, pet):
         self.tutor = tutor
         self.passeador = passeador
         self.pet = pet
-        self.status = "pendente"
+        self.status = StatusPasseio.PENDENTE
+        self.inicio: Optional[datetime] = None
+        self.fim: Optional[datetime] = None
 
     def confirmar(self):
-        self.status = "confirmado"
-        print(f"Passeio de {self.pet.nome} confirmado com {self.passeador.nome}!")
+        self.status = StatusPasseio.CONFIRMADO
+        print(f"🐾 Passeio de {self.pet.nome} confirmado com {self.passeador.nome}!")
+
+    def iniciar(self):
+        if self.status != StatusPasseio.CONFIRMADO:
+            raise ValueError("Só pode iniciar passeio confirmado")
+        self.inicio = datetime.now()
+        self.status = StatusPasseio.EM_ANDAMENTO
+
+    def concluir(self):
+        self.fim = datetime.now()
+        self.status = StatusPasseio.CONCLUIDO
+        duracao = (self.fim - self.inicio).total_seconds() / 60
+        print(f"✅ Passeio concluído em {duracao:.0f} minutos")
 ```
 
-Esse código nunca foi pra produção, óbvio. Mas ele representa o momento em que parei de reclamar e comecei a construir.
+Esse código nunca foi pra produção, óbvio. Mas ele representa o momento em que parei de reclamar e comecei a construir. O `StatusPasseio` com Enum foi a primeira decisão de design que se manteve até hoje — a máquina de estados do booking ainda segue esses mesmos 5 estados.
 
 ## Por que marketplace?
 
@@ -46,8 +72,162 @@ A decisão de fazer um marketplace — e não um app de agenda — veio de uma o
 
 Era um clássico problema de coordenação que uma plataforma poderia resolver.
 
+## Mapeando o mercado
+
+Antes de escrever código de verdade, fiz uma planilha dos concorrentes. O cenário era desolador:
+
+| Concorrente | Taxa | UX | Cobertura | App Mobile |
+|-------------|------|----|-----------|------------|
+| DogHero | 20% | 😐 Mediana | SP/RJ apenas | ✅ |
+| PetBacker | 18-25% | 😕 Ruim | Internacional | ✅ |
+| Cão Leve | Fixa R$15 | 😞 Péssima | SP apenas | ❌ (WebView) |
+| Guru dos Pets | 15% | 😊 Boa | 3 capitais | ✅ (lenta) |
+| *Dogwalk (ideia)* | *10%* | *😎 Excelente* | *Nacional* | *✅ PWA* |
+
+A tabela deixou claro: **taxas altas e UX ruim eram a norma.** Dava para competir só fazendo o básico bem feito — taxa justa, app que não trava, suporte que responde.
+
+## As primeiras linhas de código de verdade
+
+Depois do protótipo em Python, veio a stack real. React 19 + Vite 8 no front, FastAPI + PostgreSQL no back. O primeiro endpoint que escrevi foi o de busca de passeadores:
+
+```python
+# backend/app/routers/search.py — primeira versão
+from fastapi import APIRouter, Query
+from typing import Optional
+from app.database import get_db
+
+router = APIRouter(prefix="/search", tags=["search"])
+
+@router.get("/walkers")
+async def search_walkers(
+    city: Optional[str] = Query(None),
+    min_rating: Optional[float] = Query(None, ge=0, le=5),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    async with get_db() as db:
+        query = "SELECT * FROM profiles WHERE role = 'passeador'"
+        params = []
+
+        if city:
+            query += " AND city = $1"
+            params.append(city)
+        if min_rating:
+            query += " AND rating >= $2"
+            params.append(min_rating)
+
+        query += " ORDER BY rating DESC NULLS LAST LIMIT $3 OFFSET $4"
+        params.extend([limit, offset])
+
+        rows = await db.fetch(query, *params)
+        return {"walkers": [dict(r) for r in rows], "total": len(rows)}
+```
+
+O `NULLS LAST` foi um detalhe que aprendi na marra — sem ele, passeadores sem avaliação ficavam no topo da busca.
+
+## Decisões de design que moldaram o produto
+
+### 1. Map-first search
+
+Desde o início decidi que a busca seria baseada em mapa, igual iFood/Uber. O usuário abre o app, vê o mapa com marcadores coloridos por serviço, e interage via bottom sheet.
+
+```typescript
+// src/components/search/SearchMapHub.tsx — versão inicial
+interface WalkerMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+  rating: number;
+  services: ('walk' | 'boarding' | 'transport')[];
+}
+
+function WalkerMapMarkers({ walkers }: { walkers: WalkerMarker[] }) {
+  const iconColors: Record<string, string> = {
+    walk: '#f59e0b',     // amber → passeio
+    boarding: '#3b82f6', // blue → estadia
+    transport: '#7c3aed', // purple → transporte
+  };
+
+  return (
+    <>
+      {walkers.map(w => (
+        <Marker
+          key={w.id}
+          position={{ lat: w.lat, lng: w.lng }}
+          icon={{
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: iconColors[w.services[0]],
+            fillOpacity: 0.9,
+            strokeWeight: 2,
+            strokeColor: '#ffffff',
+          }}
+        />
+      ))}
+    </>
+  );
+}
+```
+
+### 2. Perfil duplo (tutor/passeador)
+
+Um usuário pode ser tutor e passeador ao mesmo tempo. Foi uma decisão polêmica no time — alguns queriam contas separadas. Mas na prática, muitos passeadores também têm pets e usam o app como tutores. O modelo de `profiles` com switch resolveu:
+
+```typescript
+// src/hooks/useProfile.ts
+interface Profile {
+  id: string;
+  name: string;
+  role: 'tutor' | 'walker' | 'transporter';
+  is_active: boolean;
+}
+
+function useProfile() {
+  const { data: profiles, mutate } = useSWR('/profiles/me');
+
+  const switchProfile = async (profileId: string) => {
+    await api.post('/profiles/switch', { profile_id: profileId });
+    mutate(); // revalida dados
+  };
+
+  return { profiles, activeProfile: profiles?.active_profile_id, switchProfile };
+}
+```
+
 ## Os primeiros dias
 
 Passei o resto da semana pesquisando concorrentes, anotando features, e desenhando fluxos num caderno físico. Nada de ferramentas fancy — caneta e papel resolvem 80% dos problemas de design antes de escrever uma linha de código.
 
 O Dogwalk nasceu de uma necessidade real, não de uma pesquisa de mercado encomendada. Talvez por isso ele tenha feito tanto sentido desde o começo.
+
+## O que veio depois
+
+Em poucos dias o protótipo virou um MVP com:
+
+| Feature | Status no dia 1 | Status hoje |
+|---------|-----------------|-------------|
+| Cadastro de tutor | ✅ | ✅ Login social + email |
+| Cadastro de passeador | ✅ | ✅ + verificação + documento |
+| Busca por cidade | 🚧 só SP | ✅ multi-cidade |
+| Agendamento | ❌ | ✅ + Stripe Connect |
+| GPS ao vivo | ❌ | ✅ WebSocket |
+| Chat | ❌ | ✅ WebSocket |
+| Avaliações | ❌ | ✅ após cada passeio |
+| Finanças | ❌ | ✅ extrato + saque |
+
+O que começou com 53 linhas de Python num sábado à tarde se transformou em 35+ endpoints de API, 3 WebSocket canais, integração com Stripe Connect, e centenas de usuários ativos.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Dogwalk && find backend -name "*.py" | wc -l', output: 'Total de arquivos Python no backend' },
+    { cmd: "psql -d dogwalk -c \"SELECT count(*) FROM users;\"", output: 'Total de usuários cadastrados' },
+    { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d[\"paths\"]))"', output: 'Total de endpoints da API' },
+    { cmd: 'cd ~/projetos/Dogwalk/frontend && npx vitest run --reporter=dot 2>&1 | tail -5', output: 'Testes do frontend' },
+    { cmd: "grep -r 'featured: true' src/content/posts/ | wc -l", output: 'LifeLog posts em destaque' },
+  ]}
+/>

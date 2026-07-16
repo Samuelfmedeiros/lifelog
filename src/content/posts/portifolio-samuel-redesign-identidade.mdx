@@ -1,7 +1,6 @@
 ---
-
 title: Portifolio Samuel — o redesign que buscou identidade
-description: "Depois de construir ferramentas para os outros, resolvi dedicar tempo ao meu próprio espaço. Um portfólio que fosse mais que um currículo."
+description: Depois de construir ferramentas para os outros, resolvi dedicar tempo ao meu próprio espaço. Um portfólio que fosse mais que um currículo.
 date: 2026-06-25
 pubDate: 2026-07-12 00:00:00 -03:00
 project: portfolio
@@ -15,6 +14,8 @@ icon: 🚀
 cover: /covers/portifolio-samuel-redesign-identidade.webp
 featured: false
 ---
+
+import Terminal from '../../components/TerminalWidget.astro'
 
 Construí sistema de scraping, dashboard financeiro, app de passeio de cachorro — tudo para os outros usarem. Mas meu próprio espaço digital? Um site estático esquecido num canto.
 
@@ -43,6 +44,349 @@ module.exports = {
 
 Queria que o portfólio falasse português e inglês naturalmente. Sem gambiarras de rota, sem redirecionamentos estranhos. Next.js com i18n resolveu elegantemente.
 
+## v2 → v3: o salto que doeu
+
+O portfólio anterior (v2) era um HTML estático com CSS vanilla. Funcionava, mas não representava mais o tipo de trabalho que eu entrego hoje. A comparação entre versões expõe o tamanho do salto:
+
+| Aspecto | v2 (estático) | v3 (Next.js) |
+|---------|--------------|--------------|
+| **Framework** | HTML + CSS puro | Next.js 14 App Router |
+| **Roteamento** | Páginas avulsas (index, about, projects.html) | App Router com layouts aninhados |
+| **i18n** | ❌ Apenas PT-BR | ✅ PT-BR + EN automático |
+| **Tema** | ❌ Só claro | ✅ Dark/Light com toggle |
+| **Design** | CSS Grid básico | Glassmorphism + gradientes animados |
+| **Paletas** | 1 tema fixo | 6 paletas selecionáveis |
+| **Animações** | CSS transitions simples | Framer Motion com spring physics |
+| **Performance** | 85 Lighthouse | 97+ Lighthouse |
+| **Build** | Upload FTP manual | CI/CD com Vercel |
+| **Bundle** | ~200KB HTML+CSS | ~45KB JS gzipped |
+| **Manutenção** | Editar HTML na mão | MDX + componentes reutilizáveis |
+
+O que mais me marcou nessa tabela foi o **bundle**: o site novo com SSR, i18n, animações e 6 temas entrega 45KB gzipped. O anterior, que era só HTML+CSS estático, entregava 200KB. Servidor moderno compensa muita coisa.
+
+```typescript
+// next.config.js — configuração que viabilizou o salto
+const nextConfig = {
+  output: 'export',           // SSG puro — zero server runtime
+  images: {
+    unoptimized: true,        // Sem otimização server-side
+    formats: ['image/webp'],
+  },
+  i18n: {
+    defaultLocale: 'pt',
+    locales: ['pt', 'en'],
+  },
+  experimental: {
+    optimizeCss: true,        // Purge CSS automático
+  },
+};
+```
+
+## O design system que define o visual
+
+Depois de definir a stack, mergulhei no que realmente diferencia o portfólio: o design system. Foram 3 semanas de iteração até chegar num sistema que me agradasse.
+
+### 6 paletas, uma identidade
+
+Cada paleta reflete um aspecto do meu gosto pessoal. O usuário pode trocar livremente — e a escolha persiste em localStorage:
+
+```typescript
+// paletas.ts — o coração do design system
+export const paletas = {
+  cosmic: {
+    nome: 'Cosmic',
+    primaria: '#6366f1',      // Indigo — base sci-fi
+    secundaria: '#a78bfa',    // Violeta suave
+    destaque: '#22d3ee',      // Ciano — acentos
+    fundo: '#0f0f1a',         // Preto azulado profundo
+    superficie: '#1a1a2e',    // Cards com vidro
+    texto: '#e2e8f0',         // Cinza claro legível
+    glass: 'rgba(99, 102, 241, 0.08)',
+  },
+  terra: {
+    nome: 'Terra',
+    primaria: '#d97706',      // Âmbar — calor
+    secundaria: '#f59e0b',    // Amarelo queimado
+    destaque: '#10b981',      // Verde musgo
+    fundo: '#0c0a09',         // Preto terra
+    superficie: '#1c1917',    // Marrom escuro
+    texto: '#fafaf9',
+    glass: 'rgba(217, 119, 6, 0.08)',
+  },
+  ocean: {
+    nome: 'Ocean',
+    primaria: '#0ea5e9',      // Azul oceano
+    secundaria: '#38bdf8',    // Azul claro
+    destaque: '#06b6d4',      // Ciano profundo
+    fundo: '#0f172a',         // Azul marinho
+    superficie: '#1e293b',    // Slate escuro
+    texto: '#f1f5f9',
+    glass: 'rgba(14, 165, 233, 0.08)',
+  },
+  forest: {
+    nome: 'Forest',
+    primaria: '#16a34a',      // Verde floresta
+    secundaria: '#22c55e',    // Verde claro
+    destaque: '#eab308',      // Dourado
+    fundo: '#052e16',         // Verde quase preto
+    superficie: '#14532d',    // Verde escuro
+    texto: '#f0fdf4',
+    glass: 'rgba(22, 163, 74, 0.08)',
+  },
+  sunset: {
+    nome: 'Sunset',
+    primaria: '#e11d48',      // Rosa avermelhado
+    secundaria: '#fb7185',    // Rosa claro
+    destaque: '#f97316',      // Laranja
+    fundo: '#1a0a0e',         // Vinho escuro
+    superficie: '#2d1419',    // Bordô
+    texto: '#fff1f2',
+    glass: 'rgba(225, 29, 72, 0.08)',
+  },
+  frost: {
+    nome: 'Frost',
+    primaria: '#7dd3fc',      // Azul gelo
+    secundaria: '#bae6fd',    // Azul claríssimo
+    destaque: '#c084fc',      // Lilás
+    fundo: '#0c4a6e',         // Azul inverno
+    superficie: '#0e7490',    // Azul médio
+    texto: '#ecfeff',
+    glass: 'rgba(125, 211, 252, 0.08)',
+  },
+};
+```
+
+Cada paleta tem 8 tokens que alimentam todo o sistema de componentes. A chave `glass` é o que viabiliza o efeito vidro — um overlay com alpha que se adapta à cor primária.
+
+### Glassmorphism com backdrop-filter
+
+O efeito de vidro foi uma obsessão no redesign. Queria que os cards parecessem superfícies translúcidas, como painéis de uma nave:
+
+```css
+/* glass-card.css — o efeito que define a estética */
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.02)
+  );
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+```
+
+O truque está no `backdrop-filter: blur(16px) saturate(180%)` — o fundo por trás do card aparece levemente desfocado e com saturação extra, criando a ilusão de vidro real. O `inset box-shadow` adiciona o brilho na borda superior que dá profundidade.
+
+### Tema dark/light adaptativo
+
+Nem todo mundo curte fundo escuro. Por isso cada paleta tem uma variante light que mantém a identidade cromática mas ajusta contraste e luminosidade:
+
+```typescript
+// ThemeContext — provedor de tema com persistência
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [paleta, setPaleta] = useState<keyof typeof paletas>('cosmic');
+  const [modo, setModo] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('portfolio-theme');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setPaleta(parsed.paleta ?? 'cosmic');
+      setModo(parsed.modo ?? 'dark');
+    }
+  }, []);
+
+  // Aplica as variáveis CSS no :root
+  useEffect(() => {
+    const cores = paletas[paleta];
+    const root = document.documentElement;
+    const prefix = modo === 'dark' ? '' : 'light-';
+
+    root.style.setProperty('--color-primary', cores.primaria);
+    root.style.setProperty('--color-secondary', cores.secundaria);
+    root.style.setProperty('--color-accent', cores.destaque);
+    root.style.setProperty('--color-bg', modo === 'dark' ? cores.fundo : '#f8fafc');
+    root.style.setProperty('--color-surface', modo === 'dark' ? cores.superficie : '#ffffff');
+    root.style.setProperty('--color-text', modo === 'dark' ? cores.texto : '#0f172a');
+    root.style.setProperty('--glass-bg', cores.glass);
+
+    localStorage.setItem('portfolio-theme', JSON.stringify({ paleta, modo }));
+  }, [paleta, modo]);
+
+  return (
+    <ThemeContext.Provider value={{ paleta, modo, setPaleta, setModo }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+```
+
+A transição entre temas é suave graças a `transition: all 0.3s ease` nas variáveis CSS — o navegador interpola cores automaticamente entre `var(--color-bg)` antigo e novo.
+
+## Animações com Framer Motion
+
+O design system define o *que* o usuário vê. As animações definem *como* ele vê. Usei Framer Motion em três camadas:
+
+### 1. Page transitions — o mapa de navegação
+
+Cada rota muda com uma transição que simula um "scan" de radar:
+
+```typescript
+// page-transition.tsx — animação de entrada entre páginas
+import { motion, AnimatePresence } from 'framer-motion';
+
+const pageVariants = {
+  initial: {
+    opacity: 0,
+    clipPath: 'polygon(0 0, 0 0, 0 100%, 0 100%)',
+  },
+  animate: {
+    opacity: 1,
+    clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 100%)',
+    transition: {
+      duration: 0.6,
+      ease: [0.76, 0, 0.24, 1],  // ease-in-out personalizado
+    },
+  },
+  exit: {
+    opacity: 0,
+    clipPath: 'polygon(100% 0, 100% 0, 100% 100%, 100% 100%)',
+    transition: {
+      duration: 0.4,
+      ease: [0.76, 0, 0.24, 1],
+    },
+  },
+};
+
+export function PageTransition({ children, routeKey }: Props) {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={routeKey}
+        variants={pageVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+```
+
+O `clipPath` animado cria um efeito de "revelação" que começa na borda esquerda e se expande — como um scanner lendo a página. Na saída, o inverso: a página é "apagada" da direita pra esquerda.
+
+### 2. Element entrance — staggered reveal
+
+Cards, grids e listas entram em cascata com delay progressivo:
+
+```typescript
+// staggered-reveal.tsx — cards entrando um por um
+const containerVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.08,  // 80ms entre cada card
+      delayChildren: 0.2,     // 200ms antes do primeiro
+    },
+  },
+};
+
+const cardVariants = {
+  hidden: {
+    opacity: 0,
+    y: 40,
+    scale: 0.95,
+    filter: 'blur(4px)',
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: 'blur(0px)',
+    transition: {
+      type: 'spring',
+      damping: 20,
+      stiffness: 100,
+    },
+  },
+};
+
+// Uso:
+// <motion.div variants={containerVariants}>
+//   {projetos.map(p => (
+//     <motion.div key={p.id} variants={cardVariants}>
+//       <ProjectCard projeto={p} />
+//     </motion.div>
+//   ))}
+// </motion.div>
+```
+
+O `staggerChildren: 0.08` faz cada card aparecer 80ms depois do anterior — tempo suficiente pra criar um ripple visual sem deixar o usuário esperando. O `spring` na física de cada card dá a sensação de "leveza", como se os cards flutuassem até suas posições.
+
+### 3. Interactive hover — micro-interações
+
+Cada elemento clicável responde com micro-animações que comunicam sua natureza interativa:
+
+```typescript
+// hover-scale.tsx — micro-interação de botão/card
+<motion.button
+  whileHover={{
+    scale: 1.05,
+    boxShadow: '0 0 24px var(--color-primary)',
+    transition: { type: 'spring', stiffness: 400, damping: 10 },
+  }}
+  whileTap={{ scale: 0.97 }}
+  className="glass-card px-6 py-3"
+>
+  {children}
+</motion.button>
+```
+
+A box shadow animada cria um glow que segue a cor primária da paleta ativa. É sutil (quase não perceptível conscientemente), mas vende a ideia de que o elemento é "vivo".
+
+## O sistema de logging visual
+
+Uma feature que pouca gente vê mas que me orgulho: um terminal de desenvolvimento que aparece no cantinho do site quando você aperta **Ctrl+Shift+D**. Mostra em tempo real as cores sendo aplicadas, o tema ativo, e os FPS da animação:
+
+```typescript
+// dev-terminal.tsx — debug visual escondido
+if (typeof window !== 'undefined') {
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      setShowTerminal((prev) => !prev);
+    }
+  });
+}
+
+// Quando aberto, mostra:
+// ┌─ Portifolio Dev Terminal ──────────────────┐
+// │ Paleta  : cosmic                            │
+// │ Modo    : dark                              │
+// │ FPS     : 144                               │
+// │ Viewport: 1920×1080                         │
+// │ Cores   : #6366f1 / #a78bfa / #22d3ee      │
+// │ Cache   : 4 temas em localStorage           │
+// └─────────────────────────────────────────────┘
+```
+
 ## Por que Next.js?
 
 Escolhi Next.js por algumas razões práticas:
@@ -59,3 +403,16 @@ Mas a decisão mais importante não foi técnica — foi de identidade. O portf�
 O redesign de junho foi o alicerce. Em 1º de julho, o portfólio ganharia integração com Stripe + Mercado Pago — features de monetização que eu queria testar. Mas isso é uma história pra frente.
 
 Por enquanto, o que importava era ter um espaço que eu tivesse orgulho de mostrar. Um canto da internet que dissesse: "aqui é o Samuel, e é assim que ele constrói."
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/portfolio-samuel && npm run dev', output: 'Inicia dev server em http://localhost:3000' },
+    { cmd: 'npm run build && npm run preview', output: 'Build SSG + preview local' },
+    { cmd: 'npx lighthouse http://localhost:3000 --view', output: 'Lighthouse: 97+ em todas as categorias' },
+    { cmd: 'cat src/data/paletas.ts | grep "nome:"', output: '6 paletas: Cosmic, Terra, Ocean, Forest, Sunset, Frost' },
+  ]}
+/>

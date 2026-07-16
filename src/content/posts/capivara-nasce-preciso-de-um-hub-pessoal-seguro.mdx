@@ -4,43 +4,132 @@ description: "Precisava de um centro de controle unificado e seguro para meus pr
 date: 2026-05-28
 pubDate: 2026-05-28
 project: capivara
-tags: ["capivara", "hub", "segurança"]
+tags: ["capivara", "hub", "segurança", "fastapi", "jwt"]
 icon: "🐷"
 cover: /covers/capivara-nasce-preciso-de-um-hub-pessoal-seguro.webp
+featured: false
 ---
 
-Explorando a criação do Capivara: aprendizados, desafios e descobertas.
+import Terminal from '../../components/TerminalWidget.astro'
 
-Olá! Aqui é Samuel, e hoje vou compartilhar com vocês um projeto que nasceu da minha necessidade de ter um hub pessoal seguro. Chamo esse bicho de Capivara — sim, igual o roedor! 🦔
+Com o Dogwalk no ar e o Arachne começando a tomar forma, percebi um problema: eu não tinha um lugar central pra gerenciar tudo. Cada projeto tinha seu próprio banco, suas próprias credenciais, seu próprio painel.
+
+Foi assim que o Capivara nasceu — um hub pessoal seguro.
+
+## O problema
+
+Eu precisava de:
+
+- **Dashboard unificado** — ver status de todos os projetos num lugar só
+- **Gerenciamento de contatos** — leads do Dogwalk, mensagens do Portfólio
+- **Autenticação centralizada** — não queria reimplementar login em cada projeto
+- **API pública segura** — endpoints que o frontend consome sem expor o banco
+
+No começo cogitei usar o Supabase pra isso. Mas depois de configurar e usar por uns dias, vi que tarifário e latência não compensavam — especialmente com os dados trafegando por um servidor nos EUA quando eu e meus usuários estamos no Brasil.
+
+## A arquitetura
+
+```python
+# FastAPI + JWT — o coração do Capivara
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+app = FastAPI(title="Capivara Hub")
+security = HTTPBearer()
+
+# Rotas públicas (sem auth)
+@app.post("/api/portifolio/public/messages")
+async def receive_contact(data: ContactForm):
+    return await db.insert_message(data)
+
+# Rotas admin (com auth JWT)
+@app.get("/api/portifolio/messages")
+async def list_messages(auth: HTTPAuthorizationCredentials = Depends(security)):
+    payload = verify_jwt(auth.credentials)
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403)
+    return await db.get_all_messages()
+```
+
+A estrutura de rotas é simples: `/public/` pra endpoints que o frontend chama sem token, e sem prefixo pros endpoints admin que exigem JWT.
+
+## JWT e segurança
+
+Escolhi JWT em vez de sessions por ser stateless — não preciso de tabela de sessão, não preciso de Redis, e a verificação é rápida.
+
+```python
+from datetime import datetime, timedelta
+import jwt
+
+JWT_CONFIG = os.getenv("CAPIVARA_JWT_CONFIG")  # via Bitwarden SM
+JWT_ALGORITHM = "HS256"
+
+def create_access_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "role": "admin",
+        "exp": datetime.utcnow() + timedelta(hours=2),
+    }
+    return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
+```
+
+O segredo JWT vive no Bitwarden Secrets Manager, nunca no código. O Hermes injeta via env var no systemd service.
+
+## Banco de dados
+
+O Capivara usa PostgreSQL 18 local, com uma database separada pra cada projeto:
+
+```sql
+-- Database: capivara
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    message TEXT NOT NULL,
+    source TEXT DEFAULT 'portifolio',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE cv_downloads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ip_hash TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+Nada complexo — tabelas simples, sem ORM, só asyncpg. O backend é FastAPI puro com SQL raw.
+
+## Cloudflare Tunnel
+
+O Capivara roda em `localhost:8001` no WSL, exposto pro mundo via Cloudflare Tunnel:
+
+```bash
+cloudflared tunnel --url http://localhost:8001
+```
+
+O Tunnel resolve o problema de DNS, SSL, e firewall de uma vez. O domínio `capivara.seu.pet` aponta pro tunnel, e os frontends (Portfolio, Dogwalk) chamam `https://capivara.seu.pet/api/...`.
+
+| Componente | Local | Público |
+|-----------|-------|---------|
+| PostgreSQL | `localhost:5432` | ❌ (só local) |
+| Capivara API | `localhost:8001` | `capivara.seu.pet` |
+| Dashboard | Dev `:5173` | Em construção |
 
 ## Por que Capivara?
 
-Sempre fui curioso sobre como as pessoas gerenciam suas identidades digitais e dados pessoais online. Eu queria algo simples, mas robusto, para centralizar tudo sem abrir mão da segurança. E assim nasceu o Capivara, um projeto pessoal que me ajuda a manter tudo organizado e protegido.
+O nome veio naturalmente — capivara é o animal que integra o ecossistema. Ela não é o predador (Arachne), não é o animal de estimação (Dogwalk), mas está lá, no centro, mantendo tudo funcionando.
 
-## Como surgiu?
+Assim como o roedor, o Capivara hub é discreto mas essencial. Todo projeto do ecossistema passa por ele de alguma forma — seja pra enviar um contato, registrar um download, ou buscar dados do dashboard.
 
-No começo, tive apenas uma ideia vaga: criar algo seguro. Então, decidi dar vida ao Capivara usando algumas ferramentas amadas pelos devs brasileiros. Primeiro escolhi o Python por sua simplicidade e eficiência. Aqui está um pedaço do código inicial:
+---
 
-```python
-from cryptography.fernet import Fernet
+## Comandos úteis
 
-def gerar_chave():
-    return Fernet.generate_key()
-
-chave = gerar_chave()
-print(f"Chave de criptografia: {chave.decode()}")
-```
-
-## Desafios enfrentados
-
-Um dos maiores desafios foi garantir que o sistema fosse realmente seguro. Como assim "realmente"? Bom, no início, tive algumas preocupações com a gestão das chaves de criptografia. Eu precisava encontrar um equilíbrio entre segurança e facilidade de uso. Depois de várias tentativas e erros, descobri que usar uma combinação de armazenamento seguro no sistema operacional e gerenciamento cuidadoso das chaves foi o caminho certo.
-
-## Aprendizados
-
-Durante esse processo, aprendi bastante sobre criptografia e como ela funciona na prática. Também percebi a importância de testar continuamente os sistemas que desenvolvo para garantir que estão protegidos contra vulnerabilidades conhecidas.
-
-## Conclusão
-
-A principal lição que tirei do projeto Capivara é que, embora criar um sistema seguro exija esforço e paciência, o resultado final vale a pena. Hoje em dia, confio plenamente nele para gerenciar meus dados pessoais.
-
-Espero que essa jornada inspire vocês a explorarem suas próprias soluções de segurança digital. E se tiverem dúvidas ou quiserem compartilhar suas experiências, ficarei feliz em trocar ideias!
+<Terminal
+  lines={[
+    { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
+    { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Teste","email":"teste@teste.com","message":"Olá"}\'', output: '{"id":"uuid-123","status":"created"}' },
+    { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding pro dashboard' },
+  ]}
+/>
