@@ -1,0 +1,12 @@
+# ai-jail sandbox configuration
+# https://github.com/akitaonrails/ai-jail
+# Edit freely. Regenerate with: ai-jail --clean --init
+
+command = ["bash"]
+rw_maps = [
+    "~/.npm",
+    "~/.cache/pnpm",
+]
+no_gpu = true
+no_docker = true
+no_landlock = true
