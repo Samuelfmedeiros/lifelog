@@ -237,11 +237,10 @@ html[data-theme="light"] .filter-bar.filter-bar {
   color: var(--color-accent);
 }
 [data-theme="light"] .post-content pre {
-  background: #f4f3f0;
+  background: #fcf9f5;
   border-color: #e5e4df;
 }
 [data-theme="light"] .post-content pre code {
-  color: #1a1a2e;
   background: none;
 }
 [data-theme="light"] .post-content blockquote {

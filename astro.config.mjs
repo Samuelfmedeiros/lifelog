@@ -7,6 +7,14 @@ export default defineConfig({
   server: { host: '127.0.0.1' },
   integrations: [mdx()],
   devToolbar: { enabled: false },
+  markdown: {
+    shikiConfig: {
+      theme: {
+        dark: 'github-dark',
+        light: 'github-light',
+      },
+    },
+  },
   vite: {
     plugins: [tailwindcss()],
   },
