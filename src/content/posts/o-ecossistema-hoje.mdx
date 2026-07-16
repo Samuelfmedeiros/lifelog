@@ -1,0 +1,262 @@
+---
+title: "O ecossistema hoje — 5 projetos, um cérebro, e um plano"
+description: "De 3 projetos em junho pra 5 em julho, o ecossistema Samuel agora tem 2.396 commits, 3.647+ testes, e um agente orquestrando tudo."
+date: 2026-07-16 13:00:00 -03:00
+pubDate: 2026-07-16 14:00:00 -03:00
+project: descobertas
+tags:
+  - ecossistema
+  - visão-geral
+  - arquitetura
+  - automacao
+icon: 🌐
+cover: /covers/o-ecossistema-hoje.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+16 de julho. Dois meses atrás isso aqui era só uma ideia solta e um scraper chamado Arachne. Hoje são **5 projetos ativos**, cada um com sua stack, seu deploy, seus testes — e todos conversando entre si.
+
+O post anterior sobre o ecossistema (30 de junho) mostrava 3 projetos começando a se estruturar. Duas semanas depois, o cenário é outro:
+
+| Projeto | Junho | Hoje | + |
+|---------|-------|------|---|
+| **Arachne** | Pipeline + scraper | RAG, MCP, Vision, Stripe, 2.818 testes | 🚀 |
+| **Dogwalk** | Telas + auth | Geofencing, GPS, Stripe Connect, 852 commits | 🐶 |
+| **Capivara** | Esqueleto | Dashboard, 2FA, D1, 7 rotas admin | 🐹 |
+| **Portifolio** | Esboço v2 | Next.js 16, 5 jogos, i18n, 219 testes | 🛸 |
+| **TatuEngine** | Não existia | C++23 + CUDA, 252× speedup, MCP agent | 🦔 |
+| **LifeLog** | Não existia | 26 posts, Astro 7, CI/CD, capas AI | 📖 |
+| **Hermes** | Só DM | 7 profiles, Kanban, MCP, 25+ crons | 🤖 |
+
+O ecossistema deixou de ser um conjunto de scripts e virou uma plataforma operacional.
+
+## 🌐 O mapa do ecossistema
+
+Cada projeto tem um papel específico e se conecta aos outros por canais bem definidos:
+
+```
+                    ┌─────────────┐
+                    │   Hermes    │ ← Cérebro que orquestra TUDO
+                    │  (Agente)   │
+                    └──────┬──────┘
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+   ┌──────────┐    ┌──────────┐    ┌──────────────┐
+   │  Arachne │    │ Capivara │    │   Dogwalk    │
+   │  :9000   │◄──►│  :8001   │    │  seu.pet     │
+   │ MCP+RAG  │    │ Hub+Admin│    │ Stripe+GPS   │
+   └──────────┘    └──────────┘    └──────────────┘
+          │              │
+          ▼              ▼
+   ┌──────────┐    ┌──────────────┐
+   │ LifeLog  │    │  Portifolio  │
+   │ Blog 26  │    │ Next.js 16   │
+   │ posts    │    │ 5 mini-games │
+   └──────────┘    └──────────────┘
+          │
+          ▼
+   ┌──────────────┐
+   │  TatuEngine  │ ← O mais novo, o mais ambicioso
+   │ C++23 + CUDA │
+   └──────────────┘
+```
+
+**Conexões reais hoje:**
+- **Capivara → Arachne**: Health check e sincronização de dados do admin
+- **Capivara → Dogwalk**: Dashboard de revenue, leaderboard, stats
+- **Capivara → Portifolio**: Contact form + CV downloads via API
+- **LifeLog → Todos**: O blog que conta a história de cada projeto
+- **Arachne MCP → Todos**: Ferramentas expostas pra agentes IA
+- **Dogwalk API → Website**: Cloudflare Pages + Worker com HMAC Stripe
+
+Não é uma arquitetura planejada no papel — cresceu organicamente, e isso tem vantagens e dívidas.
+
+---
+
+## 🕷️ 1. Arachne — o mais maduro
+
+**2.818 testes · 654 commits · 18 conectores · 4 níveis de extração**
+
+O projeto que começou como um scraper virou plataforma completa. Hoje ele faz:
+
+- **Extração inteligente** com 4 níveis de fallback (Basic → Stealth → Headless → Camoufox)
+- **RAG híbrido** com FTS5 + sqlite-vec + cross-encoder reranker (RRF blend)
+- **Pipeline Visual** com 38 handlers arrastáveis e scheduler CRON
+- **Chatbot ReAct Agent** com 36 ferramentas e widget JS embedável
+- **MCP Server** com 25 ferramentas, SSE+STDIO
+- **Vision multimodal** OCR 8 estágios + VLM local (Gemma 4:12b)
+- **Stripe subscriptions** (Free/R$29/R$79/R$399) + trial 7 dias
+- **19 conectores** (Amazon, Shopee, YouTube, GitHub, Notion, etc.)
+
+A stack: FastAPI + SQLModel + SQLite (FTS5/sqlite-vec) + Ollama (CUDA) + Vue 3.5. Roda como serviço systemd na porta 9000 com MemoryMax=4G e embeddings em GPU.
+
+```
+arachne.seu.pet
+ ├── /docs → Swagger + Redoc
+ ├── /hub → Dashboard web
+ ├── /mcp → Remote MCP Server
+ ├── /chatbot → Widget embedável
+ └── /knowledge → Knowledge OS
+```
+
+---
+
+## 🐕 2. Dogwalk / PataPass — o produto real
+
+**852 commits · 15 E2E specs · Stripe Connect · MapLibre GL · GPS tracking**
+
+A plataforma de passeios e hospedagem para pets (Brasil). O único projeto com **clientes reais** e dinheiro de verdade rodando.
+
+```
+seu.pet
+ ├── Landing → Busca de passeadores
+ ├── Auth → Login/registro (Turnstile + JWT)
+ ├── Booking → Agendamento completo (5 passos)
+ ├── GPS → Mapa ao vivo com MapLibre + OpenFreeMap
+ ├── Geofencing → Áreas de serviço (círculo arrastável no mapa)
+ ├── Chat → Mensagens em tempo real
+ ├── Stripe → Checkout + Subscriptions + Connect (payout automático)
+ └── Admin → Dashboard revenue + leaderboard
+```
+
+**Mudanças recentes:** Supabase removido, API própria com FastAPI + PostgreSQL. Geofencing completo com service areas no mapa. Multi-cidade implementado. Modo escuro completo. Programa de indicação ativo. Build guard para UNRESOLVED_IMPORT quebrar explicitamente.
+
+---
+
+## 🐹 3. Capivara — hub pessoal central
+
+**86 commits · 75 testes · 2FA TOTP · D1 Disaster Recovery**
+
+O painel que centraliza todos os projetos em um lugar só. Funciona como hub administrativo:
+
+- **Dashboard** com health check de todos os serviços (Arachne, Dogwalk, TatuEngine)
+- **Umami Analytics** embutido com auto-login
+- **Dogwalk stats**: receita mensal, leaderboard, agendamentos
+- **2FA TOTP** e autenticação JWT com refresh token rotation
+- **D1 Sync**: backup Cloudflare edge a cada 6h
+- **Auditoria** completa de ações (login, convites, 2FA)
+
+Stack: FastAPI + React 19 + SQLite + Cloudflare Tunnel. Última grande refatoração reduziu Dashboard de 994→262 linhas (-74%) e bundle initial de 668→238 kB (-64%).
+
+---
+
+## 🛸 4. Portifolio Samuel — a vitrine
+
+**495 commits · 219 testes · Next.js 16 · 5 mini-games**
+
+Meu portfólio profissional virou vitrine interativa com tema sci-fi:
+
+- Cena parallax multicamada (L0-L3) com cockpit SVG animado
+- 5 mini-games embutidos (incluindo Simon, plataforma, quiz)
+- Terminal interativo com 15+ comandos
+- i18n PT/EN completo
+- Stripe + Mercado Pago para consultoria
+- SEO 100, Acessibilidade 95+, PWA
+
+O deploy é automático via push na master → CI/CD → Vercel. O post recente *5 jogos melhorados* conta a história completa da gamificação.
+
+---
+
+## 🦔 5. TatuEngine — o mais ambicioso
+
+**289 commits · 400+ testes · C++23 + CUDA · SSM × Phase Field**
+
+O projeto mais ousado: uma engine de inferência que mistura State Space Models com teoria de campo de fase. Roda na GPU (252× speedup comprovado) com compressão block-encoded de 114×.
+
+```
+TatuEngine
+ ├── BlockCodec → 32×32 blocos ternários, 27 GB → 245 MB
+ ├── GPU kernel → 32 threads/CTA, warp shuffle, 252× speedup
+ ├── GenerationContext → Agente autopoiético com LTM, ToolUse, GoalStack
+ ├── PhaseField → Campo potencial O(1), decisões SPLIT/PRUNE/EXPLORE
+ ├── CLI tatu → generate, mcp, tool, info
+ ├── Sandbox Híbrido → 51/51 testes, path validation
+ └── MCP Server → FastMCP, 4 tools (stdio/SSE)
+```
+
+BitMamba 1B já treinado e validado. O pipeline de treino SFT com Adafactor resolveu 4 fontes de NaN que travavam o treinamento. O post *SFT do TatuEngine* documenta a saga.
+
+---
+
+## 🤖 O cérebro: Hermes Agent
+
+Tudo isso é orquestrado pelo **Hermes Agent** — meu assistente pessoal autônomo que:
+
+- Gerencia **7 perfis especializados** (default, tatu, dogwalk, portifolio, capivara, arachne, lifelog)
+- Roda **25+ crons** (síntese diária, health checks, preview posts, backup, watchdog)
+- Mantém **3 boards Kanban** ativos (Arachne Sprint, Segurança, LifeLog)
+- Tem **conexão MCP** com Arachne, TatuEngine e GitHub
+- Monitora **segurança proativamente** (security hunter com varreduras 6h)
+- Gerencia **backups de 5 projetos** diariamente (F: → rotação 7 dias)
+
+O Hermes não é um chatbot — é um **operador de sistemas** que vive no Telegram, executa tarefas, e me notifica quando precisa de decisão humana.
+
+---
+
+## 📊 O ecossistema em números
+
+| Métrica | Valor |
+|---------|-------|
+| **Projetos** | 5 ativos + LifeLog + Hermes |
+| **Commits totais** | 2.396 (Arachne 654 + Dogwalk 852 + Portifolio 495 + TatuEngine 289 + Capivara 86 + LifeLog 80) |
+| **Testes** | 3.647+ (Arachne 2.818 + Portifolio 219 + TatuEngine 400+ + Capivara 75 + Dogwalk 15E2E) |
+| **Portas** | 3 serviços HTTP (:9000, :8001) |
+| **Bancos** | 4 SQLite + 1 PostgreSQL (Dogwalk) |
+| **Stacks** | FastAPI + Next.js + Astro + C++23/CUDA + React 19 + Vue 3.5 |
+| **Deploys** | Vercel (2) + Cloudflare Pages + systemd + Cloudflare Tunnel |
+| **Crons** | 25+ (backup, health, monitor, preview, síntese, watchdog) |
+| **Serviços externos** | Stripe, Cloudflare AI, Umami, Ollama, Redis |
+
+---
+
+## 🧠 Aprendizados
+
+**1. Ecossistema não se planeja — se cultiva.**
+
+Nenhum desses projetos nasceu de um roadmap. O Arachne era um scraper, o Capivara um painel simples, a TatuEngine uma curiosidade acadêmica. O que os uniu foi a necessidade real de cada momento.
+
+**2. Um cérebro central vale mais que mil scripts.**
+
+Antes do Hermes, cada projeto tinha seus próprios scripts de backup, health check e deploy. Hoje é um agente só que conhece todos eles. A sinergia entre projetos veio do orquestrador, não da arquitetura.
+
+**3. Testes são a cola que mantém tudo junto.**
+
+2.818 testes no Arachne. 219 no Portifolio. 400+ na TatuEngine. E toda vez que quebro algo, são eles que me avisam antes do deploy. Teste não é custo — é segurança pra poder mexer em produção sem medo.
+
+**4. Stacks diferentes convivem quando a interface é limpa.**
+
+FastAPI, Next.js, Astro, C++23 — cada projeto escolheu a ferramenta certa pro problema. A comunicação entre eles é via API REST + MCP. Não preciso de um monolito se tenho contratos claros.
+
+**5. O que não está documentado não existe.**
+
+O LifeLog nasceu dessa necessidade. Não adianta construir 5 projetos se ninguém (inclusive eu) sabe como eles funcionam, por que foram construídos, e o que aprenderam no caminho.
+
+---
+
+## 🗺️ O que vem a seguir
+
+- [ ] **Arachne SDK** — pip install arachne-sdk (publish no PyPI)
+- [ ] **Arachne MCP Registry** — submeter ao diretório oficial de MCP servers
+- [ ] **Dogwalk multi-cidade** — expandir além de SP (já parcialmente implementado)
+- [ ] **TatuEngine Python bindings** — import tatubind funcional
+- [ ] **Capivara CI/CD** — pipeline GitHub Actions
+- [ ] **LifeLog em português e inglês** — i18n nos posts
+- [ ] **Portifolio mais jogos** — o ecossistema merece mais interatividade
+- [ ] **Dashboard único** — visão consolidada de todos os projetos em tempo real
+
+O ecossistema hoje tem 5 projetos, ~2.400 commits, e um cérebro orquestrando tudo. Daqui um mês? Provavelmente mais.
+
+O legal é que cada peça se encaixa nas outras — e o todo já é maior que a soma das partes.
+
+<Terminal lines={[
+  'system:~$ echo $((654 + 852 + 495 + 289 + 86 + 80))',
+  '2396',
+  '',
+  'system:~$ python3 -c "print(2818 + 219 + 400 + 75)"',
+  '3512',
+  '',
+  'system:~$ echo "E isso é só o começo."',
+  'E isso é só o começo.',
+]} />
