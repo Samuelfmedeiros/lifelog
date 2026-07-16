@@ -318,6 +318,7 @@ body {
   padding: 1.25rem;
   overflow-x: auto;
   margin: 1.5rem 0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 .post-content pre code {
   background: none;
@@ -642,6 +643,7 @@ body {
   .post-content pre {
     padding: 1rem;
     font-size: 0.8125rem;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   }
   .post-content blockquote {
     padding-left: 0.875rem;
