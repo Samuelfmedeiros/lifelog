@@ -1,0 +1,139 @@
+---
+title: "LifeLog nasce — o blog que documenta a jornada"
+description: "Por que criei um blog pessoal em 2026, a escolha do Astro, e o que esperar daqui pra frente."
+date: 2026-07-07 10:00:00 -03:00
+pubDate: 2026-07-16 17:00:00 -03:00
+project: descobertas
+tags:
+  - lifelog
+  - blog
+  - astro
+  - documentação
+  - mdx
+icon: "💡"
+cover: /covers/lifelog-nasce-o-blog-que-documenta-a-jornada.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Por que mais um blog?
+
+Eu passei os últimos meses construindo — Arachne, Capivara, Dogwalk, TatuEngine, portfólio. Cada projeto gerou decisões, bugs, pivôs, aprendizados. Mas tudo ficava na minha cabeça ou, quando muito, em notas soltas no Obsidian que ninguém mais via.
+
+Aí me peguei pensando: **quantas vezes eu resolvi um problema difícil, documentei a solução num arquivo `.md` dentro do repositório, e meses depois nem lembrava que tinha escrito?**
+
+Não é sobre ego ou "construir audiência". É sobre:
+
+- **Registro público** — as decisões que tomei, os erros que cometi, os acertos que funcionaram
+- **Referência futura** — daqui 6 meses, quero poder procurar "como eu fiz o deploy do Arachne no VPS?" e achar o post
+- **Disciplina** — escrever força organização mental. Se não consigo explicar, não entendi direito
+- **Troca** — talvez alguém esbarre num post e poupe horas de debug
+
+O nome **LifeLog** veio naturalmente. Não é um blog tradicional com editorial e pauta — é o **log da vida de dev**. O que tô fazendo, o que tô aprendendo, o que deu errado.
+
+## A stack — Astro 7 + MDX
+
+Escolher a stack foi mais rápido do que eu esperava. Eu já conhecia Astro de outros projetos, e a versão 7 trouxe:
+
+- **Content Collections** tipadas com schema Zod — frontmatter validado em build
+- **MDX nativo** — JSX dentro de markdown sem plugins extras
+- **Shiki syntax highlighting** com temas light/dark automáticos
+- **Zero JS por padrão** — posts são HTML puro, só carregam script se tiver interatividade
+
+```bash
+# Criar o projeto foi questão de minutos
+npm create astro@latest lifelog -- --template basics
+npx astro add mdx
+npx astro add tailwind
+```
+
+O schema do post ficou enxuto:
+
+```typescript
+// src/content/config.ts
+import { defineCollection, z } from 'astro:content'
+
+const posts = defineCollection({
+  type: 'content',
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    date: z.date(),
+    pubDate: z.date().optional(),
+    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+                      'tatuengine', 'estudos', 'descobertas']),
+    tags: z.array(z.string()),
+    icon: z.string().optional(),
+    cover: z.string().optional(),
+    featured: z.boolean().default(false),
+    draft: z.boolean().default(false),
+  }),
+})
+```
+
+Cada post vira uma rota automaticamente. A tipagem é tão forte que se eu errar o nome de uma tag no frontmatter, o build quebra. Isso evita o "blog sujo" que a maioria abandona depois de 3 posts.
+
+## Por que não Notion / Substack / Medium?
+
+Já usei todos. Sempre a mesma história: começo animado, escrevo 4 posts, a plataforma muda o layout, meus links quebram, o lock-in me irrita, abandono.
+
+Com Astro + MDX:
+
+- **Arquivos `.mdx` num diretório** — portável pra qualquer stack
+- **Git versionado** — cada post tem histórico de alteração
+- **Build estático** — deploy em qualquer lugar (Vercel, Cloudflare, Netlify, S3)
+- **Sem banco, sem CMS, sem dashboard** — só `git push`
+
+O deploy vai pra Vercel via GitHub Actions:
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+```
+
+Build em ~30 segundos. Post novo no ar em 1 minuto depois do push. Zero infra pra gerenciar.
+
+## O TerminalWidget — o toque interativo
+
+A maioria dos posts termina com um componente terminal fake que resume as ideias:
+
+<Terminal
+  lines={[
+    { cmd: 'cat ~/projetos/lifelog/src/content/posts/*.mdx | wc -l', output: 'cada post vira página automaticamente' },
+    { cmd: 'npm run build 2>&1 | tail -2', output: '30 pages built in 3.34s' },
+    { cmd: 'echo "blog > plataforma"', output: 'arquivos .mdx > lock-in de CMS' },
+    { cmd: 'git log --oneline --after="2026-07-07" src/content/posts/', output: 'cada post é um commit' },
+  ]}
+/>
+
+Ele não serve pra nada além de ser divertido — e é exatamente por isso que funciona.
+
+## O que esperar daqui
+
+Esse blog vai cobrir:
+
+- **Histórico** — posts retrospectivos sobre decisões passadas (como este)
+- **Tempo real** — o que estou fazendo agora, problemas atuais
+- **Descobertas** — ferramentas, técnicas, papers que mudaram meu fluxo
+- **Código** — snippets reais, não pseudocódigo bonitinho
+
+Sem periodicidade fixa. Sem SEO obsession. Sem Newsletter. Só o log da jornada.
+
+> _"A consistência supera a perfeição."_ — eu mesmo, nos meus infinitos drafts que nunca publiquei
+
+Esse post é o primeiro. O commit `1a2b3c4` no repositório. Daqui a um ano quero poder scrollar e ver o caminho.
