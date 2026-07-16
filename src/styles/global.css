@@ -762,3 +762,11 @@ body {
     min-height: 36px;
   }
 }
+
+/* ═══════════════════════════════════
+   Shiki Syntax Highlighting — Dual Theme
+   ═══════════════════════════════════ */
+html.light .astro-code .line span { color: var(--shiki-light) !important; }
+html.dark .astro-code .line span { color: var(--shiki-dark) !important; }
+html.light .astro-code.github-light { background: var(--shiki-light-bg) !important; }
+html.dark .astro-code.github-dark { background: var(--shiki-dark-bg) !important; }
