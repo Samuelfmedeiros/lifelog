@@ -9,10 +9,11 @@ export default defineConfig({
   devToolbar: { enabled: false },
   markdown: {
     shikiConfig: {
-      theme: {
-        dark: 'github-dark',
+      themes: {
         light: 'github-light',
+        dark: 'github-dark',
       },
+      defaultColor: false,
     },
   },
   vite: {
