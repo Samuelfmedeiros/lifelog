@@ -91,7 +91,7 @@ Cada bloco:
 Total: 288 bytes por 1024 pesos = 0.28 bytes/weight (vs 36 bytes 1:1)
 ```
 
-**114× de compressão.** E mais importante: o kernel de travessia consegue processar blocos inteiros em paralelo com 32 threads no mesmo warp.
+**128× de compressão.** E mais importante: o kernel de travessia consegue processar blocos inteiros em paralelo com 32 threads no mesmo warp.
 
 ```python
 # Contas rápidas
@@ -99,7 +99,7 @@ pesos = 1_000_000_000  # 1B params
 tamanho_1x1 = pesos * 36  # 36 GB — inviável
 tamanho_block = pesos / 1024 * 288  # 281 MB — cabe em qualquer GPU
 print(f"Block Codec: {tamanho_1x1 / tamanho_block:.0f}× compressão")
-# → 114× compressão
+# → 128× compressão
 ```
 
 ## GPU Block-Traversal: o primeiro resultado real
