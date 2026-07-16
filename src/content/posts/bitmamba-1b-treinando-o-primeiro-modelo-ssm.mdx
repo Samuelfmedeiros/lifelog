@@ -14,7 +14,7 @@ import Terminal from '../../components/TerminalWidget.astro'
 
 ## Contexto
 
-O pipeline híbrido CPU/GPU da TatuEngine já funcionava — 252× de speedup, Block Codec comprimindo 27 GB em 245 MB, 41.9 µs por token. Mas tinha um gap crítico: **o modelo não sabia gerar texto coerente**.
+O pipeline híbrido CPU/GPU da TatuEngine já funcionava — 252× de speedup, Block Codec comprimindo 36 GB em 281 MB (128×), 41.9 µs por token. Mas tinha um gap crítico: **o modelo não sabia gerar texto coerente**.
 
 O BitMamba-1B é uma implementação PyTorch do Mamba-2, com 48 camadas, d_model=2048, d_state=128. ~1.4B parâmetros no total (1.446B). Compara com um Transformer de tamanho similar — 7B, 70B — parece pequeno, mas pra um SSM puro ainda é um bicho de 7 cabeças.
 
