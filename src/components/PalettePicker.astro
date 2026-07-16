@@ -100,6 +100,8 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 
   function setTheme(theme, save = true) {
     document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.classList.toggle('dark', theme !== 'light')
+    document.documentElement.classList.toggle('light', theme === 'light')
     if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
     // Ícone do toggle switch
     const icon = document.querySelector('.rail-theme-icon')
