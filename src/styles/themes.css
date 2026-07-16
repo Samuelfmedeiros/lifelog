@@ -237,8 +237,9 @@ html[data-theme="light"] .filter-bar.filter-bar {
   color: var(--color-accent);
 }
 [data-theme="light"] .post-content pre {
-  background: #fcf9f5;
+  background: #fcf9f5 !important;
   border-color: #e5e4df;
+  color: #1a1a2e !important;
 }
 [data-theme="light"] .post-content pre code {
   background: none;
