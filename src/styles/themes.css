@@ -149,9 +149,9 @@
 }
 
 /* ── FilterBar theme overrides ── */
-[data-theme="light"] .filter-bar.filter-bar {
-  --bar-accent: #5850ec !important;
-  --bar-accent-rgb: 88, 80, 236 !important;
+html[data-theme="light"] .filter-bar.filter-bar {
+  --bar-accent: #5850ec;
+  --bar-accent-rgb: 88, 80, 236;
   --filter-bar-bg: rgba(255, 255, 255, 0.85);
   --filter-bar-border: #e5e4df;
   --filter-search-bg: #ffffff;
@@ -575,9 +575,8 @@ html[data-theme="light"][data-project] {
 }
 
 /* ========================================
-   ☀️ Light + data-project override (MUST BE LAST)
-   Sobrescreve variáveis dark dos projetos quando light mode está ativo.
-   Colocado AQUI no final do arquivo para máxima precedência na cascata.
+   ☀️ Light + data-project override (MUST BE LAST — ÚNICO BLOCO)
+   Unificado em 1 bloco só (em vez de 3 que o lightningcss mergearia).
    ======================================== */
 html[data-theme="light"][data-project] {
   --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%);
@@ -588,31 +587,18 @@ html[data-theme="light"][data-project] {
   --color-border: #e5e4df;
   --color-accent-soft: color-mix(in srgb, var(--color-accent) 10%, transparent);
   --color-glow: 0 4px 24px color-mix(in srgb, var(--color-accent) 12%, transparent);
-  --pattern-opacity: 0.012;
-  --pattern-blend: soft-light;
   --particle-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
   --card-border: 1px solid #efeee9;
-  --hover-scale: 1.015;
   --card-radius: 14px;
-}
-/* Project-specific light overrides (if any need unique treatment) */
-[data-theme="light"][data-project="seguranca"] { --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%); }
-[data-theme="light"][data-project="lifelog"]   { --bg-gradient: linear-gradient(180deg, #fcf9f5 0%, #f7f3eb 30%, #f0ece2 70%, #ece7db 100%); }
-
-/* Entry animation — todo post ao aparecer na tela */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.post-card {
-  animation: fadeIn 0.5s ease-out;
-  transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-/* 🔥 Garantia final: pattern noise OFF no light mode */
-html[data-theme="light"][data-project] {
+  --hover-scale: 1.015;
+  /* Pattern noise — desligado no light mode */
   --pattern-url: none;
   --pattern-opacity: 0;
   --pattern-blend: normal;
+}
+
+/* Scroll reveal é controlado pelo global.css (.post-card:not(.revealed)).
+   Transition de hover mantida aqui pra consistência. */
+.post-card {
+  transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
 }

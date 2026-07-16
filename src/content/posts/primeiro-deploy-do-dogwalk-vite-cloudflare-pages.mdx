@@ -1,28 +1,109 @@
 ---
 title: "Primeiro deploy do Dogwalk — Vite + Cloudflare Pages"
-description: "Explorando deploy inicial — aprendizados, desafios e descobertas."
+description: "Depois de semanas codando, chegou a hora de colocar o Dogwalk no ar. O primeiro deploy foi uma mistura de euforia e frustration — Vite + Cloudflare Pages."
 date: 2026-05-25
+pubDate: 2026-07-08 00:00:00 -03:00
 project: dogwalk
-tags: ["dogwalk", "deploy", "cloudflare", "vite"]
+tags: ["dogwalk", "deploy", "cloudflare", "vite", "frontend"]
 icon: "🐶"
 cover: /covers/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.webp
-draft: true
+featured: false
 ---
 
-## Contexto
+import Terminal from '../../components/TerminalWidget.astro'
 
-Este post faz parte da linha do tempo do **dogwalk** — um dos projetos que fazem parte da minha jornada de aprendizado.
+Três dias depois de começar a codar, eu já tinha um frontend básico — tela de login, homepage, e um formulário de busca. Não era bonito, mas funcionava. Aí veio o momento da verdade: botar no ar.
 
-## O que rolou
+## Vite como build tool
 
-Primeiro deploy do Dogwalk — Vite + Cloudflare Pages. Mais detalhes em breve.
+Escolhi Vite desde o início. O ecossistema React 19 tava (e ainda tá) migrando pra Vite, e não fazer sentido começar um projeto novo com CRA em 2026.
 
-## Próximos passos
-
-```python
-# Continuidade é mais importante que perfeição
-print("Em construção... 🚧")
+```bash
+# Configuração inicial — Vite 8 + React 19 + TypeScript
+npm create vite@latest dogwalk -- --template react-ts
+cd dogwalk
+npm install react-router-dom@latest @tanstack/react-query
 ```
 
-> _A jornada é documentada enquanto acontece. Este post foi gerado automaticamente pelo pipeline do LifeLog._
+O que me ganhou no Vite foi o HMD instantâneo — mudava um componente e via o resultado em milissegundos. Em dias de muito fluxo de UI, isso salvava horas.
 
+## O deploy: Cloudflare Pages
+
+Escolhi Cloudflare Pages por três motivos:
+
+1. **Integração com Git** — push na branch = deploy automático
+2. **Edge network** — CDN global sem configurar nada
+3. **Preço** — plano gratuito generoso pra um projeto que ainda não tinha usuários
+
+O primeiro `wrangler pages deploy` foi emocionante:
+
+```bash
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
+
+O build passou. O deploy foi pro ar. E aí veio o baque: **página em branco**.
+
+## O erro clássico: SPA routing no Cloudflare
+
+O Cloudflare Pages servia o `index.html` na raiz, mas qualquer rota como `/dashboard` ou `/passeios` dava 404. O Vite Router tava configurado pra history mode (sem `#`), e o CF não sabia redirecionar.
+
+```typescript
+// createBrowserRouter no React Router — lindo em dev, 404 em prod
+const router = createBrowserRouter([
+  { path: "/", element: <Home /> },
+  { path: "/dashboard", element: <Dashboard /> },
+  { path: "/passeios", element: <Passeios /> },
+]);
+```
+
+**A solução:** um arquivo `_redirects` na raiz do build:
+
+```
+# public/_redirects — Cloudflare Pages SPA fallback
+/*    /index.html    200
+```
+
+Sim, uma linha. Uma LINHA de config que me custou 2 horas de debug. Tava escrito na documentação, mas quem lê documentação inteira antes de fazer o primeiro deploy?
+
+## API e CORS
+
+O backend FastAPI tava rodando local (`localhost:8000`), então o frontend no ar (`dogwalk.pages.dev`) não conseguia chamar a API — CORS bloqueava.
+
+```python
+# FastAPI — CORS config (primeira versão)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://dogwalk.pages.dev"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+Resolver CORS em produção quando você só testou em dev é sempre um tapa na cara. Mas depois de configurado, o fluxo completo funcionou: frontend no CF → API local via Cloudflare Tunnel.
+
+## O aprendizado
+
+| Problema | Causa | Fix | Tempo perdido |
+|----------|-------|-----|---------------|
+| Página branca | SPA history mode sem fallback | `_redirects` | 2h |
+| CORS bloqueado | Origem não configurada | `allow_origins` | 1h |
+| Build falhando | Versão errada do Node | `.nvmrc` | 30min |
+
+No fim do dia, o Dogwalk tava no ar. O site era feio, tinha uma tela de login que não logava ninguém, e a API caía a cada 10 minutos. Mas estava **no ar**.
+
+> Não precisa ser perfeito no primeiro deploy. Precisa existir.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'npx wrangler pages deploy dist/ --project-name dogwalk', output: 'Deploy do frontend no Cloudflare Pages' },
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://dogwalk.pages.dev', output: '200 — site no ar' },
+    { cmd: 'npx wrangler pages project list', output: 'Lista projetos publicados' },
+    { cmd: 'echo "/* /index.html 200" > public/_redirects', output: 'SPA fallback routing' },
+  ]}
+/>

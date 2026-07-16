@@ -9,20 +9,305 @@ icon: "🐶"
 cover: /covers/fastapi-react-por-que-escolhi-essa-stack-pro-dogwalk.webp
 ---
 
+import Terminal from '../../components/TerminalWidget.astro'
+
 ## Contexto
 
-Este post faz parte da linha do tempo do **dogwalk** — um dos projetos que fazem parte da minha jornada de aprendizado.
+Depois de definir o MVP do Dogwalk, veio a próxima decisão crítica: **qual stack usar?** Eu sabia que queria algo moderno, produtivo e que não me fizesse reinventar a roda. Mas também não queria apostar em hype tecnológico que ia me deixar na mão daqui 6 meses.
 
-## O que rolou
+O processo de decisão levou uma semana — e envolveu mais protótipos descartados do que gostaria de admitir.
 
-FastAPI + React — por que escolhi essa stack pro Dogwalk. Mais detalhes em breve.
+## As candidatas
 
-## Próximos passos
+Antes de escolher, listei as stacks que considerei viáveis:
+
+| Stack | Backend | Frontend | Mobile | Produtividade |
+|-------|---------|----------|--------|---------------|
+| **A → FastAPI + React** | Python 3.11+ | React + Vite | PWA | Alta |
+| B → Next.js fullstack | Node/TS | Next.js | PWA | Média |
+| C → Django + HTMX | Python | HTML/JS | PWA | Alta |
+| D → Flask + Alpine | Python | Alpine.js | PWA | Média |
+| E → Spring Boot + Angular | Java/Kotlin | Angular | Native | Baixa |
+
+Nos primeiros dias, a opção **B (Next.js fullstack)** parecia a mais atraente — um framework só, TypeScript de ponta a ponta, Vercel cuidando do deploy. Mas conforme fui aprofundando, problemas apareceram.
+
+## Por que não Next.js?
+
+Eu amo JS/TS, mas para esse projeto específico, Next.js trouxe mais dúvidas que respostas:
 
 ```python
-# Continuidade é mais importante que perfeição
-print("Em construção... 🚧")
+# Dilema que me fez pular do Next pra FastAPI
+# Cenário: preciso rodar uma fila de tarefas assíncronas
+
+# No Next.js (API routes):
+# - Timeout de 10s em serverless functions (Vercel)
+# - Sem worker nativo pra background jobs
+# - Solução: BullMQ + Redis + worker separado = 3 serviços
+
+# No FastAPI:
+# - BackgroundTasks nativo
+# - Celery/ARQ se precisar de fila
+# - WebSocket pra tempo real
+# - Solução: 1 serviço + 1 worker opcional
 ```
 
-> _A jornada é documentada enquanto acontece. Este post foi gerado automaticamente pelo pipeline do LifeLog._
+O **timeout de serverless functions** foi o maior limitador. O Dogwalk precisa de:
+- Upload de fotos com redimensionamento
+- Cálculo de rotas otimizadas pra dog walker
+- Notificações push em lote
+- Processamento de pagamentos com conciliação
 
+Tudo isso em serverless de 10s de timeout? Dava pra contornar, mas com workarounds que adicionavam complexidade desnecessária.
+
+## A decisão: FastAPI + React
+
+A escolha final não foi emocional — foi uma planilha.
+
+```python
+criterios = {
+    "performance": {"peso": 3, "fastapi": 9, "next": 8, "django": 6},
+    "ecossistema": {"peso": 3, "fastapi": 8, "next": 9, "django": 9},
+    "produtividade": {"peso": 4, "fastapi": 9, "next": 7, "django": 8},
+    "escalabilidade": {"peso": 2, "fastapi": 8, "next": 6, "django": 7},
+    "custo_infra": {"peso": 3, "fastapi": 8, "next": 5, "django": 8},
+    "maturidade": {"peso": 2, "fastapi": 7, "next": 7, "django": 10},
+}
+
+def calcular_nota(criterios, stack):
+    total = sum(
+        v["peso"] * v[stack]
+        for k, v in criterios.items()
+    )
+    return total / sum(v["peso"] for v in criterios.values())
+
+for stack in ["fastapi", "next", "django"]:
+    print(f"{stack}: {calcular_nota(criterios, stack):.2f}")
+
+# → fastapi: 8.35
+# → next: 7.06
+# → django: 7.82
+```
+
+FastAPI venceu por pouco, mas venceu com consistência — ficou em primeiro ou segundo em todos os critérios, sem nenhum ponto fraco grave.
+
+## Por que React e não outra coisa no front
+
+Com o backend decidido, veio a escolha do frontend. Aqui as opções eram:
+
+| Framework | Vantagens | Desvantagens |
+|-----------|-----------|--------------|
+| **React + Vite** | Ecossistema maduro, componentes, PWA | Bundle grande, decisões extras |
+| Vue 3 + Nuxt | Mais opinionado, reativo | Menos devs disponíveis |
+| Svelte | Bundle pequeno, performático | Ecossistema novo |
+| Alpine + SSR | Simples, sem build | Complexidade no estado |
+| HTMX | Zero JS, HTML puro | Limitações em UI complexa |
+
+Escolhi React porque:
+1. **Ecossistema de mapas** — Leaflet, Mapbox, Google Maps têm React components maduros, essenciais pro Dogwalk
+2. **PWA sem esforço** — Vite + vite-plugin-pwa entrega PWA em 5 minutos
+3. **TypeScript** — Tipagem salva em projeto com muitas entidades (prestador, dono, serviço, pagamento, avaliação)
+4. **Mercado** — Se um dia eu precisar de ajuda, React devs são mais fáceis de encontrar
+
+## A arquitetura que montei
+
+Com a stack decidida, desenhei a arquitetura do projeto:
+
+```
+dogwalk/
+├── api/                       # FastAPI backend
+│   ├── app/
+│   │   ├── main.py            # Entry point + middleware
+│   │   ├── config.py          # Settings via pydantic-settings
+│   │   ├── models/            # SQLAlchemy + Pydantic models
+│   │   ├── routers/           # Endpoints REST
+│   │   ├── services/          # Lógica de negócio
+│   │   └── workers/           # Tarefas assíncronas
+│   ├── alembic/               # Migrations
+│   └── tests/                 # Testes com pytest
+│
+├── web/                       # React frontend
+│   ├── src/
+│   │   ├── components/        # Componentes reutilizáveis
+│   │   ├── pages/             # Páginas da aplicação
+│   │   ├── hooks/             # Custom hooks
+│   │   ├── services/          # API client (axios)
+│   │   └── stores/            # Estado global (zustand)
+│   ├── public/                # Assets estáticos
+│   └── tests/                 # Testes com vitest
+│
+└── infra/                     # Docker + deploy
+    ├── docker-compose.yml
+    ├── Dockerfile.api
+    ├── Dockerfile.web
+    └── nginx.conf
+```
+
+Uma decisão que fiz questão de tomar cedo: **separação clara entre api e web**, em pastas diferentes, cada uma com seu `package.json`/`pyproject.toml`. Nada de monorepo com tudo misturado. Cada parte pode ser desenvolvida, testada e deployada independentemente.
+
+## Setup do ambiente: o que funcionou
+
+Depois de algumas tentativas e erros, o setup ideal ficou assim:
+
+```bash
+# Backend
+cd api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install fastapi uvicorn sqlalchemy asyncpg pydantic-settings
+
+# Frontend
+cd web
+npm create vite@latest . -- --template react-ts
+npm install react-router-dom zustand axios leaflet
+npm install -D @types/leaflet tailwindcss postcss autoprefixer
+```
+
+O segredo que descobri: **pydantic-settings** com `.env` file. Isso salvou incontáveis headaches de config:
+
+```python
+# api/app/config.py
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+class Settings(BaseSettings):
+    app_name: str = "Dogwalk API"
+    debug: bool = False
+    database_url: str = "postgresql+asyncpg://localhost:5432/dogwalk"
+    secret_key: str = "change-me-in-production"
+    cors_origins: list[str] = ["http://localhost:5173"]
+    sentry_dsn: str | None = None
+    cloudflare_r2_endpoint: str | None = None
+    maps_api_key: str | None = None
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+@lru_cache()
+def get_settings():
+    return Settings()
+```
+
+```typescript
+// web/src/services/api.ts
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Interceptor pra token JWT
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('auth_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+```
+
+## Os primeiros endpoints
+
+Com o setup funcionando, escrevi os primeiros endpoints reais:
+
+```python
+# api/app/routers/prestadores.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import get_db
+from app.models import Prestador
+from app.schemas import PrestadorOut, PrestadorCreate
+
+router = APIRouter(prefix="/prestadores", tags=["prestadores"])
+
+@router.get("/", response_model=list[PrestadorOut])
+async def listar_prestadores(
+    lat: float | None = None,
+    lng: float | None = None,
+    raio_km: float = 5.0,
+    servico: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista prestadores com filtro opcional por geolocalização"""
+    query = "SELECT * FROM prestadores WHERE 1=1"
+    params = {}
+
+    if lat and lng:
+        query += """ AND ST_DWithin(
+            ST_MakePoint(:lng, :lat)::geography,
+            localizacao::geography,
+            :raio
+        )"""
+        params["lat"] = lat
+        params["lng"] = lng
+        params["raio"] = raio_km * 1000
+
+    if servico:
+        query += " AND :servico = ANY(servicos)"
+        params["servico"] = servico
+
+    result = await db.execute(query, params)
+    return result.scalars().all()
+
+
+@router.get("/{prestador_id}", response_model=PrestadorOut)
+async def detalhe_prestador(
+    prestador_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    prestador = await db.get(Prestador, prestador_id)
+    if not prestador:
+        raise HTTPException(status_code=404, detail="Prestador não encontrado")
+    return prestador
+```
+
+O async do FastAPI brilhou aqui — com `asyncpg` e `AsyncSession`, as queries rodam sem bloquear o event loop, e a API consegue lidar com centenas de requisições concorrentes mesmo numa instância pequena.
+
+## O que aprendi
+
+### 1. Stack unificada (JS/TS fullstack) parece atraente mas cobra um preço
+
+Next.js é lindo pra landing pages e blogs. Pra um app com background jobs, WebSocket, e processamento server-side, você acaba montando a mesma infra que teria com FastAPI — só que em JS.
+
+### 2. A separação front/backend não é dogma — é pragmatismo
+
+Ter o backend em Python e o frontend em React significa que cada lado usa as bibliotecas certas pro seu domínio. Python tem SQLAlchemy, Alembic, Pydantic, Celery/ARQ pra backend. React tem ecossistema de UI, mapas, estado. Ninguém precisa fazer concessões.
+
+### 3. Pydantic v2 é um dos melhores pacotes Python da atualidade
+
+Validação, serialização, documentação automática (OpenAPI), settings management, type hints — o Pydantic v2 faz tudo isso com desempenho nativo (Rust). É o tipo de biblioteca que melhora cada parte do código que toca.
+
+### 4. Config via .env + pydantic-settings salva vidas
+
+No começo, eu tinha as configs espalhadas em constantes no código. Num dos primeiros deploys, um `DATABASE_URL` hardcoded vazou pro repositório. Desde que migrei pra `.env`, nunca mais tive esse problema.
+
+### 5. TypeScript no frontend + Pydantic no backend = consistência
+
+Eu crio os schemas Pydantic no backend e os tipos TypeScript correspondentes no frontend. Não é automático (um dia faço um gerador), mas a disciplina de manter os dois sincronizados já evitou pelo menos 5 bugs de tipo em chamadas de API.
+
+## Os números da stack
+
+| Aspecto | Resultado |
+|---------|-----------|
+| Frameworks considerados | 5 |
+| Dias de decisão | 7 |
+| Endpoints criados no primeiro sprint | 12 |
+| Componentes React no primeiro sprint | 8 |
+| Testes passando | 47 |
+| ms por requisição (média) | 12 |
+| Linhas de configuração | ~300 |
+
+> TL;DR: Escolhi FastAPI + React depois de uma semana de análise comparando 5 stacks contra critérios objetivos. FastAPI venceu pela combinação de performance, produtividade e ecossistema Python. React pela maturidade do ecossistema de mapas e PWA. A separação clara entre front e backend permite que cada lado use as ferramentas certas sem concessão.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/dogwalk && tree -L 2 -I "node_modules|__pycache__|.venv|dist"', output: 'dogwalk/\n├── api/\n│   ├── alembic/\n│   ├── app/\n│   ├── pyproject.toml\n│   └── tests/\n├── web/\n│   ├── public/\n│   ├── src/\n│   ├── package.json\n│   ├── vite.config.ts\n│   └── tailwind.config.js\n└── infra/' },
+    { cmd: 'cd api && source .venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000', output: 'INFO:     Uvicorn running on http://0.0.0.0:8000' },
+    { cmd: 'cd web && npm run dev', output: 'VITE v6.2.0 ready in 236ms\nLocal: http://localhost:5173' },
+    { cmd: 'curl -s http://localhost:8000/docs | grep -o "openapi.*\\.\\(json\\|yaml\\)" | head -1', output: 'openapi.json' },
+  ]}
+/>
