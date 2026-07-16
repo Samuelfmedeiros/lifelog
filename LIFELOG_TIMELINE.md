@@ -78,7 +78,7 @@ Baseado em: git logs, timestamps de arquivos, backups, sessões Hermes
 20. ✅ **Descobertas de Julho** — ferramentas que mudaram meu fluxo
 21. ⬜ **Sistema de temas** — dark/light, 6 paletas, cores por projeto
 22. ⬜ **Pipeline auto-post** — geração automática com aprovação
-23. ⬜ **O ecossistema hoje** — visão geral dos projetos e stacks
+23. ✅ **O ecossistema hoje** — visão geral dos projetos e stacks (16/07)
 24. ⬜ **E2E Playwright** — a virada de qualidade nos testes
 
 ### Total: 24 posts — 16 publicados, 8 pendentes 🚀
