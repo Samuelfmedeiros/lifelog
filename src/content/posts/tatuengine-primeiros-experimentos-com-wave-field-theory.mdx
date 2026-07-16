@@ -45,7 +45,7 @@ struct TriangleLens {
 };
 ```
 
-O problema apareceu rápido: **1 bilhão de parâmetros em float32 = 27 GB de TriangleLens**. Cada peso vira 3 vértices × 3 floats + 3 floats de propriedades ópticas. 36 bytes por peso. Pra 1B parâmetros, 36 GB — sem chance de caber em VRAM de GPU consumer.
+O problema apareceu rápido: **1 bilhão de parâmetros em float32 = 36 GB de TriangleLens**. Cada peso vira 3 vértices × 3 floats + 3 floats de propriedades ópticas. 36 bytes por peso. Pra 1B parâmetros, 36 GB — sem chance de caber em VRAM de GPU consumer.
 
 ## O primeiro pivô: abordagem híbrida
 
@@ -191,7 +191,7 @@ O pipeline híbrido tá funcional, mas a visão original ainda não se realizou 
 
 O próximo passo é conectar o **MotorGPU** (kernel de travessia paralela) com o pipeline de agente que construímos depois — Immunosystem, LTM associativo, GoalStack, ToolUseBuffer. O agente deve conseguir chamar ferramentas, lembrar de sessões anteriores, e auto-corrigir o campo de fase baseado em feedback.
 
-> TL;DR: Comecei querendo fazer ray tracing de redes neurais, descobri que SSM híbrido é o caminho real, comprimi 27 GB em 245 MB com Block Codec, e acelerei 252× na GPU. A TatuEngine não é mais uma ideia maluca — é um motor de inferência funcional que trata peso de rede como campo de fase. E sim, ainda acho que um dia os RT Cores vão processar geometria neural de verdade.
+> TL;DR: Comecei querendo fazer ray tracing de redes neurais, descobri que SSM híbrido é o caminho real, comprimi 36 GB em 281 MB com Block Codec (128×), e acelerei 252× na GPU. A TatuEngine não é mais uma ideia maluca — é um motor de inferência funcional que trata peso de rede como campo de fase. E sim, ainda acho que um dia os RT Cores vão processar geometria neural de verdade.
 
 ---
 
