@@ -1,26 +1,61 @@
 import { test, expect } from '@playwright/test';
+import { readdirSync, readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /* =============================================
-   Dados atuais do site (14/07/2026)
+   Dados DINÂMICOS — lê frontmatter dos MDX
+   Toda execução de teste detecta novos posts
+   automaticamente. Posts com draft:true pulados.
    ============================================= */
 
-const POSTS = [
-  { slug: 'inicio-dogwalk-marketplace-pets',        titleMatch: 'início do Dogwalk',                    project: 'dogwalk' },
-  { slug: 'primeiros-passos-infra-dogwalk',          titleMatch: 'Primeiros passos — infraestrutura',    project: 'dogwalk' },
-  { slug: 'arachne-nasceu-frustracao-scrapers',      titleMatch: 'Arachne nasceu de uma frustração',    project: 'arachne' },
-  { slug: 'dogwalk-primeiros-componentes-auth',      titleMatch: 'Dogwalk ganha forma — primeiros',     project: 'dogwalk' },
-  { slug: 'arachne-pipeline-multi-engine-cache',     titleMatch: 'Arachne cresce — pipeline',           project: 'arachne' },
-  { slug: 'capivara-hub-pessoal-bagunca-financeira', titleMatch: 'Capivara — o hub pessoal',            project: 'capivara' },
-  { slug: 'dogwalk-amadurece-testes-playwright',     titleMatch: 'Dogwalk amadurece — testes',          project: 'dogwalk' },
-  { slug: 'portifolio-samuel-redesign-identidade',   titleMatch: 'Portifolio Samuel — o redesign',      project: 'portfolio' },
-  { slug: 'ecossistema-backups-seguranca-automacao', titleMatch: 'ecossistema toma forma — backups',    project: 'descobertas' },
-  { slug: 'dogwalk-a-primeira-ideia-do-marketplace-de-pets', titleMatch: 'Dogwalk — a primeira ideia', project: 'dogwalk' },
-  { slug: 'fastapi-react-por-que-escolhi-essa-stack-pro-dogwalk', titleMatch: 'FastAPI + React', project: 'dogwalk' },
-  { slug: 'primeiro-deploy-do-dogwalk-vite-cloudflare-pages', titleMatch: 'Primeiro deploy do Dogwalk', project: 'dogwalk' },
-  { slug: 'capivara-nasce-preciso-de-um-hub-pessoal-seguro', titleMatch: 'Capivara nasce', project: 'capivara' },
-  { slug: 'd1-sync-levando-dados-do-capivara-pro-cloudflare', titleMatch: 'D1 Sync', project: 'capivara' },
-  { slug: 'bitmamba-1b-treinando-o-primeiro-modelo-ssm', titleMatch: 'BitMamba 1B', project: 'tatuengine' },
-];
+const POSTS_DIR = join(__dirname, '..', 'src', 'content', 'posts');
+
+interface PostData {
+  slug: string;
+  title: string;
+  project: string;
+}
+
+function parseFrontmatter(content: string): Record<string, any> {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  const fm: Record<string, any> = {};
+  for (const line of match[1].split('\n')) {
+    const kv = line.match(/^(\w+):\s*(.+)$/);
+    if (kv) {
+      let val: any = kv[2].trim();
+      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+      if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+      if (val === 'true') val = true;
+      if (val === 'false') val = false;
+      fm[kv[1]] = val;
+    }
+  }
+  return fm;
+}
+
+function loadPosts(): PostData[] {
+  const files = readdirSync(POSTS_DIR).filter(f => f.endsWith('.mdx'));
+  const posts: PostData[] = [];
+  for (const file of files) {
+    const content = readFileSync(join(POSTS_DIR, file), 'utf-8');
+    const fm = parseFrontmatter(content);
+    if (fm.draft) continue; // Pula rascunhos automaticamente
+    posts.push({
+      slug: file.replace(/\.mdx$/, ''),
+      title: fm.title || '',
+      project: fm.project || '',
+    });
+  }
+  return posts;
+}
+
+// 🚀 Carregado dinamicamente! Testes nunca mais desatualizados.
+const POSTS = loadPosts();
 
 const PROJECT_PILLS = [
   'Todos', 'Arachne', 'Dogwalk', 'Portfólio', 'Capivara',
@@ -57,10 +92,10 @@ test.describe('Homepage', () => {
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 15 posts na timeline', async ({ page }) => {
+  test('deve exibir todos os 25 posts na timeline', async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(15);
+    await expect(cards).toHaveCount(25);
 
     // Verificar date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -104,7 +139,7 @@ test.describe('Páginas de Posts', () => {
 
       // Título da página — check that page title contains the post title
       const pageTitle = await page.title();
-      expect(pageTitle.toLowerCase()).toContain(post.titleMatch.toLowerCase());
+      expect(pageTitle.toLowerCase()).toContain(post.title.toLowerCase());
 
       // Header do post
       await expect(page.locator('article[data-project]')).toBeVisible();
@@ -162,7 +197,7 @@ test.describe('Arquivo', () => {
    ============================================= */
 
 test.describe('Sobre', () => {
-  test('mostra estatísticas: Posts=13, Projetos, Desde=2026', async ({ page }) => {
+  test('mostra estatísticas: Posts=25, Projetos=6, Desde=2026', async ({ page }) => {
     await page.goto('/sobre');
     await expect(page.locator('h1')).toContainText('Sobre o LifeLog');
 
@@ -177,8 +212,8 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '15' && v.label === 'Posts')).toBeTruthy();
-    // Projetos = unique projects with posts (agora 6: arachne, capivara, dogwalk, descobertas, portfolio, tatuengine)
+    expect(values.find(v => v.number === '25' && v.label === 'Posts')).toBeTruthy();
+    // Projetos = unique projects with posts (6: arachne, dogwalk, portfolio, capivara, tatuengine, descobertas)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
     expect(projValue?.number).toBe('6');
@@ -209,7 +244,7 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com 15 posts', async ({ page }) => {
+  test('XML válido com 25 posts', async ({ page }) => {
     const response = await page.goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
@@ -220,7 +255,7 @@ test.describe('RSS Feed', () => {
     expect(text).toContain('<channel>');
 
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(15);
+    expect(items).toBe(25);
 
     // Todos os slugs e contexto de títulos presentes
     for (const post of POSTS) {
@@ -239,27 +274,30 @@ test.describe('Filtros', () => {
   });
 
   test('busca textual filtra posts', async ({ page }) => {
+    const dogwalkCount = POSTS.filter(p => p.project === 'dogwalk').length;
     await page.locator('#filter-search').fill('Dogwalk');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
-    expect(count).toBeGreaterThanOrEqual(3);
+    expect(count).toBeGreaterThanOrEqual(dogwalkCount);
 
     const titles = await visiblePostTitles(page);
     expect(titles.some(t => t.toLowerCase().includes('dogwalk'))).toBeTruthy();
   });
 
   test('filtro de projeto "Arachne" mostra posts corretos', async ({ page }) => {
+    const expected = POSTS.filter(p => p.project === 'arachne').length;
     await page.locator('[data-filter-project="arachne"]').click();
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
-    expect(count).toBeGreaterThanOrEqual(2);
+    expect(count).toBeGreaterThanOrEqual(expected);
   });
 
-  test('filtro de projeto "Capivara" mostra 3 posts', async ({ page }) => {
+  test('filtro de projeto "Capivara" mostra posts corretos', async ({ page }) => {
+    const expected = POSTS.filter(p => p.project === 'capivara').length;
     await page.locator('[data-filter-project="capivara"]').click();
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
-    expect(count).toBe(3); // capivara-hub-pessoal + capivara-nasce + d1-sync
+    expect(count).toBe(expected);
   });
 
   test('filtro de projeto + busca combinados (Dogwalk + infra)', async ({ page }) => {
@@ -271,14 +309,15 @@ test.describe('Filtros', () => {
     expect(count).toBe(1); // só primeiros-passos-infra-dogwalk
   });
 
-  test('"Todos" reset mostra todos os 15 posts', async ({ page }) => {
+  test('"Todos" reset mostra todos os posts', async ({ page }) => {
+    const arachnPosts = POSTS.filter(p => p.project === 'arachne').length;
     await page.locator('[data-filter-project="arachne"]').click();
     await page.waitForTimeout(100);
-    expect(await visiblePosts(page)).toBe(2);
+    expect(await visiblePosts(page)).toBe(arachnPosts);
 
     await page.locator('[data-filter-project="all"]').click();
     await page.waitForTimeout(100);
-    expect(await visiblePosts(page)).toBe(15);
+    expect(await visiblePosts(page)).toBe(POSTS.length);
   });
 
   test('filtro de texto "Estudos" não encontra posts (nenhum estudo publicado)', async ({ page }) => {
@@ -294,10 +333,11 @@ test.describe('Filtros', () => {
     expect(await visiblePosts(page)).toBe(0);
   });
 
-  test('filtro de projeto TatuEngine mostra 1 post (BitMamba)', async ({ page }) => {
+  test('filtro de projeto TatuEngine mostra posts corretos', async ({ page }) => {
+    const expected = POSTS.filter(p => p.project === 'tatuengine').length;
     await page.locator('[data-filter-project="tatuengine"]').click();
     await page.waitForTimeout(200);
-    expect(await visiblePosts(page)).toBe(1); // bitmamba-1b
+    expect(await visiblePosts(page)).toBe(expected);
   });
 
   test('filtro de projeto Segurança mostra 0 posts (ainda sem posts)', async ({ page }) => {
@@ -375,7 +415,7 @@ test.describe('Responsivo (Mobile)', () => {
   test('homepage legível', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1')).toBeVisible();
-    expect(await page.locator('.post-card').count()).toBe(15);
+    expect(await page.locator('.post-card').count()).toBe(POSTS.length);
     const w = await page.locator('.post-card').first().evaluate(el => el.offsetWidth);
     expect(w).toBeGreaterThan(300);
   });
