@@ -8,6 +8,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
+    "cleanup": "bash scripts/cleanup-post.sh",
+    "cleanup:dist": "bash scripts/cleanup-post.sh --dist",
     "test": "playwright test --config e2e/playwright.config.ts",
     "test:headed": "playwright test --headed --config e2e/playwright.config.ts",
     "test:debug": "playwright test --debug --config e2e/playwright.config.ts"
@@ -22,5 +24,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
   }
 }
