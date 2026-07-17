@@ -1,11 +1,11 @@
 ---
-// PalettePicker — Barra que abre pra ESQUERDA
-// Cada botão: nome + emoji. Tema = toggle switch colorido.
+// PalettePicker — Barra que abre pra ESQUERDA do toggle
+// Position: absolute → não empurra nada, funciona em qualquer navbar
 import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 ---
 
 <div id="theme-rail" class="theme-rail">
-  <!-- Popover — VEM PRIMEIRO no HTML, RTL joga pra ESQUERDA do toggle -->
+  <!-- Popover — absolute, fora do fluxo, abre à ESQUERDA do toggle -->
   <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
     <!-- 🎨 Cor -->
     <button id="rail-cor" class="rail-btn" aria-label="Alternar cor" title="Alternar cor">
@@ -29,7 +29,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     </button>
   </div>
 
-  <!-- Botão toggle — MESMO TAMANHO, VEM DEPOIS no HTML (RTL joga pra DIREITA) -->
+  <!-- Botão toggle — MESMO TAMANHO, no fluxo normal -->
   <button id="rail-toggle" class="rail-toggle" aria-label="Personalizar" title="Personalizar">
     <span class="rail-toggle-inner">
       <span id="rail-indicator" class="rail-indicator" style="background: #a78bfa"></span>
@@ -78,7 +78,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     root.style.setProperty('--aura-gradient', isDark ? p.auraDark : p.auraLight)
     root.style.setProperty('--card-shadow', isDark ? p.shadowDark : p.shadowLight)
 
-    // Atualiza cor do toggle switch (thumb + track)
+    // Atualiza cor do toggle switch
     const thumb = document.getElementById('rail-theme-thumb')
     const track = document.querySelector('.rail-toggle-track')
     if (thumb) thumb.style.background = accent
@@ -109,7 +109,6 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     document.documentElement.classList.toggle('light', theme === 'light')
     if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
 
-    // Atualiza toggle switch
     const thumb = document.getElementById('rail-theme-thumb')
     const icon = document.getElementById('rail-theme-icon')
     if (thumb) {
@@ -242,19 +241,19 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       return
     }
 
-    // Cor — cicla paleta
+    // Cor
     if (e.target.closest('#rail-cor')) {
       cyclePalette()
       return
     }
 
-    // Tema — toggle switch
+    // Tema
     if (e.target.closest('#rail-theme')) {
       toggleTheme(e)
       return
     }
 
-    // Idioma — alterna PT/EN
+    // Idioma
     if (e.target.closest('#rail-lang')) {
       cycleLang()
       return
@@ -266,11 +265,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 <style>
   /* ═══════════════════════════════════════════
      Theme Rail — Container
-     direction: rtl → toggle à DIREITA, popover à ESQUERDA
+     position: relative → ancora o popover absolute
      ═══════════════════════════════════════════ */
   .theme-rail {
     display: flex;
-    direction: rtl;
     align-items: center;
     position: relative;
     z-index: 100;
@@ -331,12 +329,17 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   /* ═══════════════════════════════════════════
-     Popover — abre pra ESQUERDA (RTL)
+     Popover — POSITION ABSOLUTE à esquerda do toggle
+     Não empurra nada — funciona em qualquer layout
      ═══════════════════════════════════════════ */
   .rail-popover {
     display: flex;
     align-items: center;
     gap: 6px;
+    position: absolute;
+    right: calc(100% + 4px);
+    top: 50%;
+    transform: translateY(-50%);
     max-width: 0;
     overflow: hidden;
     opacity: 0;
@@ -347,6 +350,8 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     padding: 0;
+    white-space: nowrap;
+    pointer-events: none;
   }
   :global([data-theme="light"]) .rail-popover {
     background: rgba(0,0,0,0.03);
@@ -354,10 +359,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   .theme-rail.open .rail-popover {
-    max-width: 280px;
+    max-width: 300px;
     opacity: 1;
     padding: 4px 8px;
-    margin-left: 4px;
+    pointer-events: auto;
   }
 
   /* ═══════════════════════════════════════════
@@ -382,7 +387,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   .rail-btn:hover {
     opacity: 1;
     background: var(--color-accent-soft);
-    transform: scale(1.04);
+    transform: scale(1.05);
   }
   .rail-btn:active { transform: scale(0.94); }
 
@@ -447,11 +452,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   .rail-toggle-thumb.light #rail-theme-icon {
     filter: none;
   }
-
   .rail-toggle-thumb #rail-theme-icon {
     filter: drop-shadow(0 0 1px rgba(0,0,0,0.3));
   }
-
   .rail-toggle-switch:hover .rail-toggle-thumb {
     box-shadow: 0 1px 6px color-mix(in srgb, var(--toggle-track-accent) 50%, transparent);
   }
