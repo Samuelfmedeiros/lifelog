@@ -1,11 +1,11 @@
 ---
-// PalettePicker — Theme, Palette & Language Control
-// Minimal, sempre visível, elementos minúsculos e discretos
+// PalettePicker — Barra compacta com 3 ícones: Cor, Tema, Idioma
+// Abre/fecha como barra única horizontal
 import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 ---
 
 <div id="theme-rail" class="theme-rail">
-  <!-- Botão toggle (🎨) — MESMO TAMANHO, Samuel pediu -->
+  <!-- Botão toggle — MESMO TAMANHO -->
   <button id="rail-toggle" class="rail-toggle" aria-label="Personalizar" title="Personalizar">
     <span class="rail-toggle-inner">
       <span id="rail-indicator" class="rail-indicator" style="background: #a78bfa"></span>
@@ -13,29 +13,17 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     </span>
   </button>
 
-  <!-- 🌙/☀️ Tema — sempre visível -->
-  <button id="rail-theme" class="rail-theme-btn" aria-label="Alternar tema claro/escuro" title="Alternar tema">
-    <span id="rail-theme-icon">🌙</span>
-  </button>
-
-  <!-- 🎨 Paletas (6 cores) — sempre visível -->
-  <div class="rail-palettes" role="radiogroup" aria-label="Paletas de cor">
-    {PALETTES.map(p => (
-      <button
-        class="rail-dot"
-        data-palette={p.id}
-        title={p.name}
-        role="radio"
-        aria-checked={p.id === DEFAULT_PALETTE}
-        style={`--dot-bg: ${p.accentDark}`}
-      ></button>
-    ))}
-  </div>
-
-  <!-- 🇧🇷🇺🇸 Idioma — sempre visível -->
-  <div class="rail-lang" role="radiogroup" aria-label="Idioma">
-    <button class="rail-lang-btn" data-lang="pt" role="radio" aria-checked="true" title="Português">PT</button>
-    <button class="rail-lang-btn" data-lang="en" role="radio" aria-checked="false" title="English">EN</button>
+  <!-- Popover — barra única com 3 ícones -->
+  <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
+    <button id="rail-cor" class="rail-icon-btn" aria-label="Cor" title="Cor">
+      <span id="rail-cor-icon">🎨</span>
+    </button>
+    <button id="rail-theme" class="rail-icon-btn" aria-label="Tema" title="Tema">
+      <span id="rail-theme-icon">🌙</span>
+    </button>
+    <button id="rail-lang" class="rail-icon-btn" aria-label="Idioma" title="Idioma">
+      <span id="rail-lang-text">🇧🇷</span>
+    </button>
   </div>
 </div>
 
@@ -83,10 +71,14 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     if (indicator) indicator.style.background = p.accentDark
 
     if (save) try { localStorage.setItem(STORAGE_KEY, id) } catch {}
+  }
 
-    document.querySelectorAll('.rail-dot').forEach(el => {
-      el.setAttribute('aria-checked', el.dataset.palette === id ? 'true' : 'false')
-    })
+  let paletteIndex = PALETTES.findIndex(p => p.id === getSavedPalette())
+  if (paletteIndex === -1) paletteIndex = 0
+
+  function cyclePalette() {
+    paletteIndex = (paletteIndex + 1) % PALETTES.length
+    setPalette(PALETTES[paletteIndex].id)
   }
 
   /* ─── Tema ─── */
@@ -146,18 +138,36 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   /* ─── Idioma ─── */
+  let currentLang = 'pt'
+
   function getSavedLocale() {
     try { const s = localStorage.getItem(LOCALE_KEY); if (s === 'pt' || s === 'en') return s } catch {}
     return 'pt'
   }
 
   function setLocale(locale, save = true) {
+    currentLang = locale
     document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
-    document.querySelectorAll('.rail-lang-btn').forEach(el => {
-      el.setAttribute('aria-checked', el.dataset.lang === locale ? 'true' : 'false')
-    })
     if (save) try { localStorage.setItem(LOCALE_KEY, locale) } catch {}
+    const el = document.getElementById('rail-lang-text')
+    if (el) el.textContent = locale === 'en' ? '🇺🇸' : '🇧🇷'
     document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
+  }
+
+  function cycleLang() {
+    setLocale(currentLang === 'pt' ? 'en' : 'pt')
+  }
+
+  /* ─── Toggle popover ─── */
+  function togglePopover(e) {
+    e.stopPropagation()
+    const rail = document.getElementById('theme-rail')
+    const isOpen = rail.classList.contains('open')
+    if (isOpen) {
+      rail.classList.remove('open')
+    } else {
+      rail.classList.add('open')
+    }
   }
 
   /* ─── Init ─── */
@@ -166,30 +176,53 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   setPalette(getSavedPalette(), false)
   const savedLocale = getSavedLocale()
   document.documentElement.setAttribute('lang', savedLocale === 'en' ? 'en' : 'pt-BR')
+  currentLang = savedLocale
+  const langEl = document.getElementById('rail-lang-text')
+  if (langEl) langEl.textContent = savedLocale === 'en' ? '🇺🇸' : '🇧🇷'
 
   /* ─── Listen for palette-reapply from FilterBar ─── */
   document.addEventListener('lifelog-palette-reapply', function(e) {
     const palette = e.detail && e.detail.palette;
-    if (palette) setPalette(palette, false);
+    if (palette) {
+      setPalette(palette, false)
+      paletteIndex = PALETTES.findIndex(p => p.id === palette)
+    }
   });
 
-  /* ─── Eventos ─── */
+  /* ─── Fechar popover ao clicar fora ─── */
   document.addEventListener('click', (e) => {
-    const dot = e.target.closest('.rail-dot')
-    if (dot) {
-      setPalette(dot.dataset.palette)
+    const rail = document.getElementById('theme-rail')
+    if (!rail || !rail.classList.contains('open')) return
+    if (!rail.contains(e.target)) {
+      rail.classList.remove('open')
       return
     }
 
+    // 🎨 Cor — cicla paleta
+    const corBtn = e.target.closest('#rail-cor')
+    if (corBtn) {
+      cyclePalette()
+      return
+    }
+
+    // 🌙 Tema
     const themeBtn = e.target.closest('#rail-theme')
     if (themeBtn) {
       toggleTheme(e)
       return
     }
 
-    const langBtn = e.target.closest('.rail-lang-btn')
+    // 🇧🇷/🇺🇸 Idioma
+    const langBtn = e.target.closest('#rail-lang')
     if (langBtn) {
-      setLocale(langBtn.dataset.lang)
+      cycleLang()
+      return
+    }
+
+    // Toggle button
+    const toggleBtn = e.target.closest('#rail-toggle')
+    if (toggleBtn) {
+      togglePopover(e)
       return
     }
   })
@@ -199,12 +232,12 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 <style>
   /* ═══════════════════════════════════════════
      Theme Rail — Container
-     display: flex padrão (LTR), TUDO SEMPRE VISÍVEL
+     direction: rtl → toggle à DIREITA, popover à ESQUERDA
      ═══════════════════════════════════════════ */
   .theme-rail {
     display: flex;
+    direction: rtl;
     align-items: center;
-    gap: 2px;
     position: relative;
     z-index: 100;
   }
@@ -264,112 +297,58 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   /* ═══════════════════════════════════════════
-     🌙/☀️ Botão de Tema — minúsculo e discreto
+     Popover — barra única com 3 ícones
      ═══════════════════════════════════════════ */
-  .rail-theme-btn {
+  .rail-popover {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    margin-right: 0;
+  }
+  :global([data-theme="light"]) .rail-popover {
+    background: rgba(0,0,0,0.03);
+    border-color: rgba(0,0,0,0.06);
+  }
+
+  .theme-rail.open .rail-popover {
+    max-width: 140px;
+    opacity: 1;
+    padding: 4px 6px;
+    margin-right: 4px;
+    border-width: 1px;
+  }
+
+  /* ═══════════════════════════════════════════
+     3 ícones — todos iguais, compactos
+     ═══════════════════════════════════════════ */
+  .rail-icon-btn {
     all: unset;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
-    font-size: 0.7rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 0.95rem;
     line-height: 1;
     transition: all 0.2s ease;
     flex-shrink: 0;
-    opacity: 0.5;
+    opacity: 0.6;
   }
-  .rail-theme-btn:hover {
+  .rail-icon-btn:hover {
     opacity: 1;
     background: var(--color-accent-soft);
     transform: scale(1.1);
   }
-  .rail-theme-btn:active { transform: scale(0.9); }
-
-  /* ═══════════════════════════════════════════
-     Paletas (6 dots) — bolinhas minúsculas
-     ═══════════════════════════════════════════ */
-  .rail-palettes {
-    display: flex;
-    align-items: center;
-    gap: 1px;
-  }
-
-  .rail-dot {
-    all: unset;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--dot-bg);
-    opacity: 0.35;
-    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-    position: relative;
-    flex-shrink: 0;
-  }
-  .rail-dot:hover {
-    opacity: 0.8;
-    transform: scale(1.3);
-  }
-  .rail-dot[aria-checked="true"] {
-    opacity: 0.85;
-    transform: scale(1.2);
-    box-shadow: 0 0 8px var(--dot-bg);
-  }
-  .rail-dot[aria-checked="true"]::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 50%;
-    border: 1.5px solid rgba(255,255,255,0.3);
-  }
-  :global([data-theme="light"]) .rail-dot[aria-checked="true"]::after {
-    border-color: rgba(0,0,0,0.3);
-  }
-
-  /* ═══════════════════════════════════════════
-     🇧🇷🇺🇸 Idioma — PT/EN minúsculo
-     ═══════════════════════════════════════════ */
-  .rail-lang {
-    display: flex;
-    align-items: center;
-    gap: 1px;
-  }
-
-  .rail-lang-btn {
-    all: unset;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px 3px;
-    border-radius: 3px;
-    font-size: 0.55rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    color: rgba(255,255,255,0.4);
-    transition: all 0.2s ease;
-    line-height: 1;
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-  .rail-lang-btn:hover {
-    color: var(--color-accent);
-    opacity: 1;
-  }
-  .rail-lang-btn[aria-checked="true"] {
-    color: var(--color-accent);
-    opacity: 0.9;
-  }
-  :global([data-theme="light"]) .rail-lang-btn {
-    color: rgba(0,0,0,0.35);
-  }
-  :global([data-theme="light"]) .rail-lang-btn[aria-checked="true"] {
-    color: var(--color-accent);
-  }
+  .rail-icon-btn:active { transform: scale(0.9); }
 </style>
