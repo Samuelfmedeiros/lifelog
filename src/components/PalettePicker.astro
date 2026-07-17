@@ -184,37 +184,42 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   /* ─── Fechar popover ao clicar fora ─── */
   document.addEventListener('click', (e) => {
     const rail = document.getElementById('theme-rail')
-    if (!rail || !rail.classList.contains('open')) return
+    if (!rail) return
+
+    // Toggle button — funciona SEMPRE, aberto ou fechado
+    const toggleBtn = e.target.closest('#rail-toggle')
+    if (toggleBtn) {
+      togglePopover(e)
+      return
+    }
+
+    // Se popover fechado, ignora outros cliques
+    if (!rail.classList.contains('open')) return
+
+    // Clicou fora do rail → fecha
     if (!rail.contains(e.target)) {
       rail.classList.remove('open')
       return
     }
 
-    // 🎨 Cor — cicla paleta
+    // Cor — cicla paleta
     const corBtn = e.target.closest('#rail-cor')
     if (corBtn) {
       cyclePalette()
       return
     }
 
-    // 🌙 Tema
+    // Tema
     const themeBtn = e.target.closest('#rail-theme')
     if (themeBtn) {
       toggleTheme(e)
       return
     }
 
-    // 🇧🇷/🇺🇸 Idioma
+    // Idioma
     const langBtn = e.target.closest('#rail-lang')
     if (langBtn) {
       cycleLang()
-      return
-    }
-
-    // Toggle button
-    const toggleBtn = e.target.closest('#rail-toggle')
-    if (toggleBtn) {
-      togglePopover(e)
       return
     }
   })
