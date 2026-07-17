@@ -1,0 +1,171 @@
+---
+title: "Capivara — updates e próximos passos"
+description: "Explorando estado atual do Capivara — aprendizados, desafios e descobertas."
+date: 2026-07-17
+project: capivara
+tags: ["capivara", "update", "progresso"]
+icon: "🐷"
+cover: /covers/capivara-updates-e-proximos-passos.webp
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Contexto
+
+O **Capivara** nasceu como um hub pessoal — um lugar centralizado pra gerenciar meus projetos, acessar dashboards, monitorar saúde da infra e, aos poucos, virou o centro de operações de tudo que eu construo. FastAPI + React, SQLite, Cloudflare Tunnel, JWT.
+
+Nas últimas semanas o foco foi **enxugar, organizar e fortalecer**. O Capivara tinha crescido desordenadamente — componentes inline de centenas de linhas, rotas misturadas, proxies que não eram mais necessários. Era hora de refatorar.
+
+## O que rolou
+
+### A grande refatoração do frontend (−83%)
+
+O marco mais pesado foi pegar um frontend de **2.085 linhas** e reduzir pra **359** — uma redução de 83% sem perder uma feature sequer.
+
+```typescript
+// Dashboard.tsx: 994 → 262 linhas (−74%)
+// AdminPage.tsx: 1.091 → 97 linhas (−91%)
+```
+
+O segredo? Extrair componentes inline. Cada aba do Admin Panel era uma função de 100-200 linhas dentro da própria página. Dashboard tinha 8 seções inline. Separei tudo em `components/dashboard/` e `components/admin/` — cada componente virou um arquivo dedicado com sua própria responsabilidade.
+
+```typescript
+// Antes: tudo inline no AdminPage.tsx
+function OverviewSection() { /* 150 linhas aqui */ }
+function LogsSection() { /* 120 linhas aqui */ }
+// 10 seções no mesmo arquivo → 1.091 linhas
+
+// Depois: orquestrador puro
+import { OverviewSection } from '../components/admin/OverviewSection';
+import { LogsSection } from '../components/admin/LogsSection';
+// AdminPage vira 97 linhas de imports + layout
+```
+
+### Ghost Component Pattern
+
+Durante a refatoração descobri um padrão perigoso que chamei de **Ghost Component**: componentes existiam como arquivos em `components/` mas as páginas ainda tinham **definições inline duplicadas**. O código funcionava (a versão inline executava), mas ninguém sabia qual versão era a verdadeira.
+
+```bash
+# Diagnóstico: comparar arquivos exportados vs definições inline
+grep -c 'export function' components/*.tsx
+grep -c '^function ' pages/*.tsx
+```
+
+A causa é simples: alguém começa a extrair um componente (cria o arquivo), copia o código, mas esquece de remover o original da página. O arquivo vira "morto-vivo" — existe, é importado em lugar nenhum, e a página tem duas versões que podem divergir.
+
+A lição: **refatoração incompleta é pior que nenhuma refatoração**. Se vai extrair, extraia completo — crie o arquivo, importe na página, **remova o inline**, teste.
+
+### React Router v7 — o fim do `window.location` caseiro
+
+Antes eu usava um sistema caseiro de roteamento com `window.location` e listeners manuais. Funcionava, mas era frágil — qualquer navegação SPA exigia sincronização manual de estado.
+
+```typescript
+// Antes: caseiro e frágil
+function navigate(path: string) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+// Depois: React Router v7 com BrowserRouter
+<BrowserRouter>
+  <Routes>
+    <Route path="/" element={<Dashboard />} />
+    <Route path="/admin" element={<AdminPage />} />
+    <Route path="/login" element={<Login />} />
+    <Route path="/cadastro" element={<Register />} />
+    <Route path="/status" element={<StatusPage />} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+</BrowserRouter>
+```
+
+6 rotas, navegação SPA real, sem reload, sem gambiarra. React Router cuida de tudo — match de URL, history, link components.
+
+### Schema Drift — o bug silencioso que o security scan pegou
+
+O painel admin consulta dados do Arachne lendo **diretamente o SQLite dele** (`~/.arachne/arachne.db`). O problema: Capivara e Arachne são projetos independentes, e o schema do Arachne muda sem o Capivara saber.
+
+```python
+# O erro silencioso no _query_sqlite
+def _query_sqlite(db_path, sql, params):
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        log.warning("SQLite query failed: %s", e)
+        return []  # ← silencioso!
+```
+
+O segurança scan detectou colunas que não existiam mais:
+- `extractions.extractor` → deveria ser `page_id, author`
+- `pipelines.status` → deveria ser `last_run_status`
+
+O pior: o erro era capturado e retornava `[]` — a seção Arachne no admin simplesmente aparecia vazia, sem crash, sem feedback visual. Só o security scan (que varre logs em busca de padrões de erro) revelou o problema.
+
+Criei um **schema drift guard** (`scripts/schema_drift_guard.sh`) que calcula hash SHA256 das models SQLAlchemy e compara com um hash armazenado — se mudou, alerta antes de quebrar.
+
+### 🐷 Portifolio Data API
+
+Uma das features mais legais: o **Portfolio rodando na Vercel** agora persiste dados reais via Cloudflare Tunnel → Capivara → PostgreSQL 18.
+
+```
+Portfolio (Vercel) → Cloudflare Tunnel → Capivara:8001 → PG18:5432
+```
+
+Três endpoints públicos (sem auth):
+- `POST /portifolio/public/messages` — formulário de contato
+- `POST /portifolio/public/cv-downloads` — registro de download de currículo
+- `POST /portifolio/public/events` — eventos de monitoramento
+
+No dashboard admin, vejo mensagens recebidas, downloads, e eventos de tracking — tudo em tempo real.
+
+### ThemeToggle + Toast System
+
+Pequenas melhorias de UX que fazem diferença:
+
+- **ThemeToggle**: alternador claro/escuro com persistência em `localStorage` + fallback pra `prefers-color-scheme`
+- **Toast system**: notificações toast em todo o app, integrado ao Root.tsx. Feedback visual pra ações como criar convite, salvar configuração
+- **StatusPage**: página pública em `/status` que mostra health check dos serviços — útil pra compartilhar com terceiros sem dar acesso ao dashboard
+
+## Aprendizados
+
+### 1. Refatoração é cirurgia, não demolição
+
+Extrair 18 componentes de 2 páginas sem quebrar nada exige **passos atômicos**: extrair um componente de cada vez, testar, commitar, repetir. Tentei fazer 3 de uma vez e quebrou o build do TypeScript. O `tsc --noEmit` é seu melhor amigo — rode antes e depois de cada extração.
+
+### 2. Dados de terceiros precisam de validação de schema
+
+Quando você consulta o banco de outro projeto, **nunca confie no schema**. Use `PRAGMA table_info()` pra validar as colunas ANTES de fazer SELECT. Melhor ainda: crie um contrato de schema versionado entre os projetos.
+
+```typescript
+// Validar schema antes de consultar
+const columns = await db.query("PRAGMA table_info('extractions')");
+const hasColumn = columns.some(c => c.name === 'page_id');
+if (!hasColumn) throw new Error('Schema mismatch: extractions missing page_id');
+```
+
+### 3. Componentes inline são dívida técnica disfarçada
+
+Toda função que você escreve inline numa página de 500+ linhas é um componente que vai ser extraído um dia — e quanto mais tarde, mais caro. O padrão "extraio depois" só funciona se você realmente extrai **logo depois**. Deixar acumular vira uma bola de neve de 2.000 linhas.
+
+### 4. Sistema de 2 serviços é mais frágil que 2 sistemas independentes
+
+O Capivara consultando o SQLite do Arachne é frágil exatamente porque **funciona bem na maior parte do tempo**. Quando quebra (schema muda), quebra silenciosamente. APIs HTTP com versionamento são mais caras de implementar, mas muito mais seguras.
+
+## O que vem por aí
+
+O Capivara tá num bom lugar agora — enxuto, organizado, com testes passando (44/44) e build limpo. Os próximos passos:
+
+- **2FA** — autenticação de dois fatores pro acesso admin
+- **WebSocket** — notificações em tempo real (health alerts, novos convites)
+- **Mais integração com o Arachne** — via API HTTP, não SQL direto
+- **Dark mode completo** — ThemeToggle já existe, mas algumas seções ainda precisam de ajustes finos
+
+```bash
+# O deploy continua simples
+cd ~/projetos/Capivara/frontend && pnpm build            # 618 mods / 384ms
+systemctl --user restart capivara-backend.service         # zero downtime
+```
+
+> _Código enxuto, sistema saudável, próximo feature a caminho. O Capivara cresceu, foi podado e tá mais forte._

@@ -472,16 +472,12 @@ test.describe('Temas por Projeto', () => {
 test.describe('Theme Toggle', () => {
   test('troca entre dark e light ao clicar no rail', async ({ page }) => {
     await page.goto('/');
-    // Open the palette rail
-    const railToggle = page.locator('#rail-toggle');
-    await railToggle.click();
-    await page.waitForTimeout(300);
 
-    // Click theme toggle switch inside rail
+    // Theme button is always visible (no popover needed)
     const themeBtn = page.locator('#rail-theme');
     await expect(themeBtn).toBeVisible();
     await themeBtn.click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
     // Should have switched to light
     const theme = await page.locator('html').getAttribute('data-theme');
@@ -489,7 +485,7 @@ test.describe('Theme Toggle', () => {
 
     // Toggle back to dark
     await themeBtn.click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     const theme2 = await page.locator('html').getAttribute('data-theme');
     expect(theme2).toBe('dark');
   });
