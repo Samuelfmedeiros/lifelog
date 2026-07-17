@@ -1,0 +1,110 @@
+---
+title: "First Dogwalk deploy — Vite + Cloudflare Pages"
+description: "After weeks of coding, it was time to put Dogwalk online. The first deploy was a mix of euphoria and frustration — Vite + Cloudflare Pages."
+date: 2026-05-25
+pubDate: 2026-07-08 00:00:00 -03:00
+lang: 'en'
+project: dogwalk
+tags: ["dogwalk", "deploy", "cloudflare", "vite", "frontend"]
+icon: "🐶"
+cover: /covers/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Three days after I started coding, I already had a basic frontend — login screen, homepage, and a search form. It wasn't pretty, but it worked. Then came the moment of truth: putting it online.
+
+## Vite as the build tool
+
+I chose Vite from the start. The React 19 ecosystem was (and still is) migrating to Vite, and there was no sense in starting a new project with CRA in 2026.
+
+```bash
+# Initial setup — Vite 8 + React 19 + TypeScript
+npm create vite@latest dogwalk -- --template react-ts
+cd dogwalk
+npm install react-router-dom@latest @tanstack/react-query
+```
+
+What won me over with Vite was the instant HMR — I'd change a component and see the result in milliseconds. On heavy UI flow days, this saved hours.
+
+## The deploy: Cloudflare Pages
+
+I chose Cloudflare Pages for three reasons:
+
+1. **Git integration** — push to branch = automatic deploy
+2. **Edge network** — global CDN without configuration
+3. **Price** — generous free tier for a project that didn't have users yet
+
+The first `wrangler pages deploy` was exciting:
+
+```bash
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
+
+The build passed. The deploy went live. And then came the shock: **blank page**.
+
+## The classic mistake: SPA routing on Cloudflare
+
+Cloudflare Pages served the `index.html` at the root, but any route like `/dashboard` or `/walks` returned a 404. Vite Router was configured for history mode (without `#`), and CF didn't know how to redirect.
+
+```typescript
+// createBrowserRouter in React Router — beautiful in dev, 404 in prod
+const router = createBrowserRouter([
+  { path: "/", element: <Home /> },
+  { path: "/dashboard", element: <Dashboard /> },
+  { path: "/walks", element: <Walks /> },
+]);
+```
+
+**The solution:** a `_redirects` file at the build root:
+
+```
+# public/_redirects — Cloudflare Pages SPA fallback
+/*    /index.html    200
+```
+
+Yes, one line. One LINE of config that cost me 2 hours of debugging. It was in the documentation, but who reads the entire documentation before their first deploy?
+
+## API and CORS
+
+The FastAPI backend was running locally (`localhost:8000`), so the frontend live at (`dogwalk.pages.dev`) couldn't call the API — CORS was blocking it.
+
+```python
+# FastAPI — CORS config (first version)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://dogwalk.pages.dev"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+Fixing CORS in production when you've only tested in dev is always a slap in the face. But once configured, the full flow worked: frontend on CF → local API via Cloudflare Tunnel.
+
+## The lesson learned
+
+| Problem | Cause | Fix | Time wasted |
+|---------|-------|-----|-------------|
+| Blank page | SPA history mode without fallback | `_redirects` | 2h |
+| CORS blocked | Origin not configured | `allow_origins` | 1h |
+| Build failing | Wrong Node version | `.nvmrc` | 30min |
+
+At the end of the day, Dogwalk was online. The site was ugly, had a login screen that didn't log anyone in, and the API went down every 10 minutes. But it was **online**.
+
+> It doesn't have to be perfect on the first deploy. It just needs to exist.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'npx wrangler pages deploy dist/ --project-name dogwalk', output: 'Deploy frontend on Cloudflare Pages' },
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://dogwalk.pages.dev', output: '200 — site is live' },
+    { cmd: 'npx wrangler pages project list', output: 'List published projects' },
+    { cmd: 'echo "/* /index.html 200" > public/_redirects', output: 'SPA fallback routing' },
+  ]}
+/>

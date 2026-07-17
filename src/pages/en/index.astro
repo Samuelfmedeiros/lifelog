@@ -1,13 +1,13 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import PostCard from '../components/PostCard.astro';
-import DateSeparator from '../components/DateSeparator.astro';
-import FilterBar from '../components/FilterBar.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import DateSeparator from '../../components/DateSeparator.astro';
+import FilterBar from '../../components/FilterBar.astro';
 import { getCollection } from 'astro:content';
 
-const locale = 'pt';
+const locale = 'en';
 const allPosts = await getCollection('posts');
-const posts = allPosts.filter(p => !p.data.draft && !p.id.startsWith('en/'));
+const posts = allPosts.filter(p => !p.data.draft && p.id.startsWith('en/'));
 const sortDate = (p) => p.data.pubDate?.getTime() || p.data.date.getTime();
 posts.sort((a, b) => sortDate(b) - sortDate(a));
 
@@ -28,8 +28,10 @@ for (const [dateKey, dayPosts] of dateMap) {
 const getPubDate = (p) => p.data.pubDate || p.data.date;
 const years = [...new Set(posts.map(p => getPubDate(p).getFullYear().toString()))].sort().reverse();
 
-const t = (await import('../lib/i18n')).getTranslations(locale);
-const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--color-accent)">Samuel Medeiros</strong>';
+const t = (await import('../../lib/i18n')).getTranslations(locale);
+const subtitleHtml = 'The learning journey of <strong style="color: var(--color-accent)">Samuel Medeiros</strong>';
+const emptyMsg = locale === 'en' ? 'No posts found 😢' : 'Nenhum post encontrado 😢';
+const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os filtros';
 ---
 
 <BaseLayout title={t.home.title} description={t.home.description} locale={locale}>
@@ -44,8 +46,8 @@ const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--co
   <div class="timeline">
     {grouped.length === 0 && (
       <div id="empty-state" class="text-center py-20">
-        <p class="text-lg" style="color: var(--color-text-muted)">Nenhum post encontrado 😢</p>
-        <p class="text-sm mt-2" style="color: var(--color-text-muted)">Tenta mudar os filtros</p>
+        <p class="text-lg" style="color: var(--color-text-muted)">{emptyMsg}</p>
+        <p class="text-sm mt-2" style="color: var(--color-text-muted)">{emptyHint}</p>
       </div>
     )}
     {grouped.map((group) => (
@@ -59,7 +61,7 @@ const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--co
               date={post.data.date}
               project={post.data.project}
               tags={post.data.tags}
-              slug={post.id}
+              slug={`/en/post/${post.id.replace('en/', '')}`}
               icon={post.data.icon}
               cover={post.data.cover}
               index={i}

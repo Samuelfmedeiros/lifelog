@@ -1,0 +1,230 @@
+---
+title: "Capivara: Personal Hub Against Financial Chaos"
+description: "How Capivara solved the financial mess of multiple accounts, spreadsheets and categories — unifying everything in one dashboard."
+date: 2026-04-15 10:00:00 -03:00
+pubDate: 2026-07-13 23:00:00 -03:00
+project: capivara
+tags: ["capivara", "finances", "dashboard", "python", "fastapi"]
+icon: "🐷"
+cover: /covers/capivara-hub-pessoal-bagunca-financeira.webp
+featured: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The problem
+
+My finances were scattered across:
+- **Nubank** — main account, credit card
+- **Inter** — investments, second account
+- **PicPay** — daily payments, bill splitting
+- **Wise** — USD income (freelance)
+- **3 Google Sheets** — manual categorization
+- **Physical notebook** — yes, I used a notebook
+
+At the end of the month, looking at all that and knowing "how much did I actually spend" was impossible. I spent **2 hours per month** manually consolidating.
+
+Capivara started as a secure hub (passwords, tokens, keys), but also became my **financial center** when I realized that the same backend that stores secrets can also aggregate transactions.
+
+## The first version: exported spreadsheet
+
+```python
+# app/finance/legacy_import.py — first version, crude but functional
+import csv
+from pathlib import Path
+
+def import_nubank_csv(path: Path) -> list[dict]:
+    """Imports Nubank CSV export."""
+    transactions = []
+    with open(path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            transactions.append({
+                "date": row["Data"],
+                "description": row["Descrição"],
+                "amount": float(row["Valor"].replace("R$", "").replace(",", ".")),
+                "category": "uncategorized",
+            })
+    return transactions
+```
+
+It worked. But it required: log into Nubank → export CSV → upload to Capivara → manually categorize. 15 minutes per bank.
+
+## The evolution: integrated API
+
+After connecting the bank APIs (via Capivara plugins), the process became automatic:
+
+```python
+# app/finance/providers.py — automatic sync
+from datetime import datetime, timedelta
+import httpx
+
+class NubankProvider:
+    """Automatic transaction sync via unofficial API."""
+    
+    BASE_URL = "https://prod.nubank.com.br/api"
+    
+    async def sync_transactions(self, token: str, days: int = 30) -> list[dict]:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.BASE_URL}/transactions",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"since": (datetime.now() - timedelta(days=days)).isoformat()},
+            )
+            data = resp.json()
+            return [self._normalize(t) for t in data["transactions"]]
+    
+    def _normalize(self, raw: dict) -> dict:
+        """Normalizes Nubank transaction to unified schema."""
+        return {
+            "id": raw["id"],
+            "date": raw["post_date"],
+            "description": raw["description"],
+            "amount": abs(raw["amount"]),
+            "type": "expense" if raw["amount"] < 0 else "income",
+            "category": self._guess_category(raw["title"]),
+            "provider": "nubank",
+        }
+    
+    def _guess_category(self, title: str) -> str:
+        """Automatic categorization by keyword."""
+        rules = {
+            "ifood": "food",
+            "uber": "transport",
+            "amazon": "shopping",
+            "netflix": "streaming",
+            "spotify": "streaming",
+            "gas": "transport",
+            "grocery": "food",
+            "pharmacy": "health",
+            "cinema": "leisure",
+        }
+        for keyword, category in rules.items():
+            if keyword in title.lower():
+                return category
+        return "other"
+```
+
+## The financial dashboard
+
+With the data centralized, I built the financial dashboard — the page I use most in Capivara:
+
+```tsx
+// frontend/src/components/finance/RevenueCard.tsx
+interface RevenueStats {
+  totalRevenue: number;
+  monthlyRevenue: number;
+  growth: number;
+  byCategory: Record<string, number>;
+  trend: 'up' | 'down' | 'stable';
+}
+
+function RevenueCard({ stats }: { stats: RevenueStats }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 p-4">
+      <MetricCard 
+        label="Total Revenue" 
+        value={formatBRL(stats.totalRevenue)}
+        trend={stats.trend === 'up' ? 'positive' : 'negative'}
+      />
+      <MetricCard 
+        label="Monthly Revenue" 
+        value={formatBRL(stats.monthlyRevenue)} 
+      />
+      <CategoryBreakdown categories={stats.byCategory} />
+      <GrowthIndicator 
+        percentage={stats.growth} 
+        period="last 30 days"
+      />
+    </div>
+  );
+}
+```
+
+### Categories I use today
+
+| Category | % of budget | Data source |
+|-----------|-------------|-------------|
+| Housing | 35% | Nubank + Inter |
+| Food | 18% | Nubank + PicPay |
+| Transport | 8% | Nubank |
+| Streaming/Apps | 5% | Nubank (card) |
+| Health | 6% | Inter |
+| Leisure | 7% | Split across accounts |
+| Investments | 15% | Inter (automatic) |
+| Other | 6% | Catch-all |
+
+## Health checks + Finances = complete view
+
+Capivara doesn't just show money — it shows **ecosystem health**. I combined service health checks with financial metrics:
+
+```python
+# app/finance/health_integration.py
+async def financial_health_report() -> dict:
+    """Combined report: financial health + services."""
+    services = await check_all_services()
+    revenue = await get_monthly_revenue()
+    expenses = await get_monthly_expenses()
+    
+    return {
+        "services": {
+            "online": sum(1 for s in services if s["status"] == "ok"),
+            "total": len(services),
+            "degraded": [s["name"] for s in services if s["status"] != "ok"],
+        },
+        "financial": {
+            "balance": revenue - expenses,
+            "savings_rate": round((revenue - expenses) / revenue * 100, 1),
+            "trend": "positive" if revenue > expenses else "negative",
+        },
+    }
+```
+
+## Learnings
+
+### 1. Automatic categorization is 80% accurate
+
+With regex + keywords, I hit ~80% of transactions. The remaining 20% I review once a month. Much better than 0% (manual spreadsheet).
+
+### 2. Bank data is messy
+
+Each bank has a different description format:
+- Nubank: `"IFD*Ifood 1234"` 
+- Inter: `"Payment - Ifood - 03/12"`
+- PicPay: `"iFood Delivery R$ 45.90"`
+
+Normalization (removing punctuation, lowercasing, fuzzy matching) was the biggest effort.
+
+### 3. Pretty chart < correct data
+
+I spent more time making charts look pretty than validating data. After I flipped the priority (data right first, visuals later), the dashboard became truly useful.
+
+### 4. Keeping history is more important than precision
+
+At first I deleted duplicate transactions. Then I understood that keeping raw data and marking it as `duplicated: true` is better — it allows recalculation without losing information.
+
+## The cold numbers
+
+| Metric | Before (spreadsheets) | After (Capivara) |
+|---------|-------------------|-------------------|
+| Time to consolidate month | 2 hours | 2 minutes |
+| Categorization accuracy | 100% (manual) | ~80% (auto) |
+| Connected accounts | 0 | 4 (Nubank, Inter, PicPay, Wise) |
+| Entry errors | ~5/month | 0 |
+| Consolidated view | 1x/month | real-time |
+| Unidentified spending | "lots of stuff" | ~5% of total |
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'curl -s http://localhost:8001/api/finance/summary | python3 -m json.tool', output: 'Full financial summary' },
+    { cmd: 'curl -s http://localhost:8001/api/finance/categories', output: 'Spending by category (JSON)' },
+    { cmd: 'curl -s http://localhost:8001/api/health', output: 'Service health check + financial' },
+    { cmd: 'cd ~/projetos/Capivara/frontend && npx vite build', output: 'Frontend build — 256KB JS, 39KB CSS' },
+    { cmd: 'journalctl --user -u capivara-backend -n 20 --no-pager', output: 'Capivara backend logs' },
+  ]}
+/>

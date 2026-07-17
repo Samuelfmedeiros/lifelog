@@ -1,0 +1,273 @@
+---
+title: "Dogwalk: first authentication components"
+description: "JWT, Supabase, OAuth, refresh token, protected routes and conditional layout — the story of authentication in Dogwalk."
+date: 2026-03-20 10:00:00 -03:00
+pubDate: 2026-07-13 23:00:00 -03:00
+lang: 'en'
+project: dogwalk
+tags: ["dogwalk", "auth", "jwt", "supabase", "react", "typescript"]
+icon: "🐾"
+cover: /covers/dogwalk-primeiros-componentes-auth.webp
+featured: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+Dogwalk (PataPass) is a marketplace with two user profiles: **tutor** (who hires walks) and **walker** (who performs the walks). Each sees a completely different dashboard, with distinct permissions and flows.
+
+This means authentication couldn't be a simple login + redirect. It needed to be:
+- **Role-based** — tutor vs walker, each with their own route
+- **Secure** — JWT with refresh token, Supabase as backend
+- **Seamless** — Google/GitHub OAuth so users don't drop off during signup
+- **Responsive** — work on mobile (360px) and desktop
+
+This post covers how I built each piece.
+
+## The authentication flow
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Login   │ ──▶ │ Supabase │ ──▶ │   JWT    │ ──▶ │  Role    │
+│  Form    │     │  Auth    │     │ + Refresh│     │  Router  │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+     │                                               │
+     │ email/password                                │ tutor → /tutor/dashboard
+     │ OAuth Google                                  │ walker → /walker/dashboard
+     │ OAuth GitHub                                  │ admin → /admin
+     ▼                                               ▼
+  ┌──────────┐                              ┌──────────────┐
+  │ 2FA (future)│                            │ Conditional  │
+  └──────────┘                              │   Layout     │
+                                             └──────────────┘
+```
+
+## AuthContext — the heart
+
+The authentication state lives in a React Context that wraps the entire application:
+
+```typescript
+// src/contexts/AuthContext.tsx
+interface AuthState {
+  user: User | null;
+  session: Session | null;
+  role: 'tutor' | 'walker' | 'admin' | null;
+  isLoading: boolean;
+}
+
+function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    session: null,
+    role: null,
+    isLoading: true,
+  });
+
+  useEffect(() => {
+    // Restores session when page loads
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const role = await fetchUserRole(session.user.id);
+        setState({ user: session.user, session, role, isLoading: false });
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    };
+    init();
+
+    // Listens for auth changes (login/logout/automatic refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          const role = await fetchUserRole(session.user.id);
+          setState({ user: session.user, session, role, isLoading: false });
+        } else {
+          setState({ user: null, session: null, role: null, isLoading: false });
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+}
+```
+
+Supabase's `onAuthStateChange` already handles automatic token refresh — I didn't need to implement manual refresh. Saved about 50 lines of code.
+
+## ProtectedRoute — who can see what
+
+```typescript
+// src/components/ProtectedRoute.tsx
+interface Props {
+  allowedRoles: Array<'tutor' | 'walker' | 'admin'>;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+function ProtectedRoute({ allowedRoles, children, fallback }: Props) {
+  const { user, role, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSkeleton />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!allowedRoles.includes(role!)) {
+    // Redirects to the correct dashboard if wrong role
+    const correctPath = role === 'walker' ? '/walker/dashboard' : '/tutor/dashboard';
+    return fallback || <Navigate to={correctPath} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Usage in routes:
+<Routes>
+  <Route path="/tutor/dashboard" element={
+    <ProtectedRoute allowedRoles={['tutor']}>
+      <TutorDashboard />
+    </ProtectedRoute>
+  } />
+  <Route path="/walker/dashboard" element={
+    <ProtectedRoute allowedRoles={['walker']}>
+      <WalkerDashboard />
+    </ProtectedRoute>
+  } />
+  <Route path="/admin" element={
+    <ProtectedRoute allowedRoles={['admin']}>
+      <AdminPanel />
+    </ProtectedRoute>
+  } />
+</Routes>
+```
+
+## Conditional layout by role
+
+Each role sees a different layout — bottom navigation (mobile), sidebar (desktop), header:
+
+```typescript
+// src/layouts/RootLayout.tsx
+function RootLayout() {
+  const { role } = useAuth();
+
+  const navigation = role === 'walker' ? WALKER_NAV : TUTOR_NAV;
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Header 
+        actions={role === 'walker' ? walkerActions : tutorActions} 
+      />
+      <main className="flex-1 pb-16 md:pb-0">
+        <Outlet />
+      </main>
+      <BottomNav items={navigation} />
+    </div>
+  );
+}
+```
+
+The `BottomNav` changes completely between tutor and walker:
+- **Tutor**: Home → Search → Appointments → Profile
+- **Walker**: Home → Availability → Walks → Earnings → Profile
+
+## OAuth providers
+
+```typescript
+// src/services/auth.ts
+export async function signInWithProvider(provider: 'google' | 'github') {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`,
+      queryParams: provider === 'google' 
+        ? { access_type: 'offline', prompt: 'consent' }
+        : undefined,
+    },
+  });
+  
+  if (error) throw error;
+  return data;
+}
+```
+
+| Provider | Setup | Advantage |
+|----------|-------|-----------|
+| Google | Client ID + Secret in Supabase | Highest adoption (80% of users) |
+| GitHub | OAuth App in GitHub Settings | Devs testing the platform |
+| Email/Password | Native Supabase | Universal fallback |
+
+## Auth error handling
+
+Not everything is smooth sailing — auth errors are frequent and need good UX:
+
+```typescript
+// src/hooks/useAuthError.ts
+const AUTH_ERROR_MAP: Record<string, string> = {
+  'Invalid login credentials': 'Incorrect email or password',
+  'Email not confirmed': 'Confirm your email before logging in',
+  'User already registered': 'This email is already registered',
+  'Invalid email': 'Invalid email',
+  'Rate limit exceeded': 'Too many attempts. Please wait a few minutes',
+  'refresh_token_not_found': 'Session expired. Please log in again',
+};
+
+export function useAuthError() {
+  const translateError = (error: { message: string }) => {
+    return AUTH_ERROR_MAP[error.message] || 'Unexpected error. Please try again';
+  };
+  return { translateError };
+}
+```
+
+## Lessons learned
+
+### 1. Supabase handles refresh token on its own
+
+At first I implemented manual refresh with setInterval. Then I discovered that `supabase-js` already does this automatically via `onAuthStateChange`. Removed 40 lines of code.
+
+### 2. Role in JWT vs role in database
+
+I tried putting the role in the JWT (custom claim). But if an admin changes the user's role, the JWT still has the old role until it expires. Solution: fetch role from the database in `onAuthStateChange`, don't rely on the JWT claim.
+
+### 3. OAuth redirect is fragile on mobile
+
+Google OAuth in mobile WebView sometimes doesn't redirect back. Solution: `redirectTo` with absolute URL + `?` instead of `#` in the callback.
+
+### 4. Loading skeleton > spinner
+
+The `isLoading` from AuthContext is critical. If not handled, the user sees a flash of unauthenticated content before redirect. Skeleton loading solves it — shows an empty structure for 200-400ms while checking the session.
+
+## The cold numbers
+
+| Component | Lines | Files | Tests |
+|-----------|-------|-------|-------|
+| AuthContext | 85 | 2 | 12 |
+| ProtectedRoute | 52 | 1 | 8 |
+| Login Page | 210 | 3 | 15 |
+| Register Page | 195 | 3 | 12 |
+| OAuth handlers | 78 | 1 | 6 |
+| Role utilities | 45 | 2 | 8 |
+| **Total** | **665** | **12** | **61** |
+
+61 authentication tests, 0 login bugs in the last 60 days. I'm satisfied — but I still want to add 2FA via TOTP.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'curl -s https://seu.pet/api/auth/session | python3 -m json.tool', output: 'Check current session' },
+    { cmd: 'curl -s -X POST https://seu.pet/api/auth/login -d \'{"email":"test@test.com","password":"***"}\'', output: 'Login via direct API' },
+    { cmd: "grep -r 'ProtectedRoute' src/ | wc -l", output: 'Total protected routes in the app' },
+    { cmd: 'cd ~/projetos/Dogwalk && npx vitest run src/**/auth*', output: 'Run auth tests (61 tests)' },
+    { cmd: "supabase projects list", output: 'List active Supabase projects' },
+  ]}
+/>

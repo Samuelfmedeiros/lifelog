@@ -4,8 +4,15 @@ import { PROJECTS } from '../lib/projects';
 
 export interface Props {
   years: string[];
+  locale?: string;
 }
-const { years } = Astro.props;
+const { years, locale } = Astro.props;
+const isEn = locale === 'en';
+const searchPlaceholder = isEn ? 'Search posts...' : 'Buscar posts...';
+const searchAria = isEn ? 'Search posts' : 'Buscar posts';
+const filterAria = isEn ? 'Filter by project' : 'Filtrar por projeto';
+const yearAria = isEn ? 'Filter by year' : 'Filtrar por ano';
+const allLabel = isEn ? 'All' : 'Todos';
 ---
 
 <div
@@ -22,9 +29,9 @@ const { years } = Astro.props;
       <input
         id="filter-search"
         type="text"
-        placeholder="Buscar posts..."
+        placeholder={searchPlaceholder}
         class="search-input"
-        aria-label="Buscar posts"
+        aria-label={searchAria}
       />
       <span class="search-hint"><kbd>⌘</kbd><kbd>K</kbd></span>
     </div>
@@ -32,8 +39,8 @@ const { years } = Astro.props;
 
   <!-- Row 2: Pills + Year -->
   <div class="filter-row">
-    <div class="filter-pills" role="radiogroup" aria-label="Filtrar por projeto">
-      {[{ id: 'all', label: 'Todos' }, ...PROJECTS].map((p) => (
+    <div class="filter-pills" role="radiogroup" aria-label={filterAria}>
+      {[{ id: 'all', label: allLabel }, ...PROJECTS].map((p) => (
         <button
           class="pill"
           data-filter-project={p.id}
@@ -47,7 +54,7 @@ const { years } = Astro.props;
     </div>
 
     {years.length > 1 && (
-      <div class="year-pills" role="radiogroup" aria-label="Filtrar por ano">
+      <div class="year-pills" role="radiogroup" aria-label={yearAria}>
         <button
           class="pill year-pill"
           data-filter-year="all"
@@ -55,7 +62,7 @@ const { years } = Astro.props;
           aria-checked="true"
           role="radio"
         >
-          Todos
+          {allLabel}
         </button>
         {years.map((y) => (
           <button

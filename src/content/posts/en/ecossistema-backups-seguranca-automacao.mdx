@@ -1,0 +1,82 @@
+---
+title: The ecosystem takes shape — backups, security, and automation
+description: "With 3 projects running, the infrastructure needed to be robust. Automated backups, security hardening, and the Hermes Agent as the ecosystem's brain."
+date: 2026-06-30
+pubDate: 2026-07-12 00:00:00 -03:00
+project: descobertas
+tags:
+  - infra
+  - backup
+  - security
+  - automation
+  - hermes
+icon: 💡
+cover: /covers/ecossistema-backups-seguranca-automacao.webp
+featured: false
+lang: en
+---
+
+June 30. Three active projects — Arachne, Dogwalk, Capivara — each with its own repository, database, secrets. Keeping everything running manually was no longer viable.
+
+June ended with a realization: projects without infrastructure are liabilities, not assets. If a server goes down, if a database corrupts, if a key leaks — the problem isn't the project's, it's mine.
+
+## The backup system
+
+The first priority was obvious: automated backup of everything.
+
+```bash
+#!/bin/bash
+# backup.sh — runs on cron nightly at 3am
+DATE=$(date +%Y-%m-%d)
+BACKUP_DIR="/mnt/f/backups/$DATE"
+mkdir -p "$BACKUP_DIR"
+
+# Projects
+for project in arachne dogwalk capivara; do
+    sqlite3 "/home/samuel/$project/data/$project.db" \
+        ".backup '$BACKUP_DIR/${project}_$(date +%H%M).db'"
+done
+
+# Sync to M: (secondary backup)
+rsync -avz /mnt/f/backups/ /mnt/m/backups/
+```
+
+The structure was simple but solid: SQLite database → local backup (F:) → rsync to secondary drive (M:). Two failure points covered, zero external service costs.
+
+## Security hardening
+
+With real data running, security was no longer optional. Each project received:
+
+- **Environment variables**: No hardcoded secrets
+- **Basic firewall**: ufw configured per service
+- **Health checks**: Endpoints I could query to know everything was alive
+- **Log rotation**: To avoid filling up the disk
+
+The Hermes Agent stepped in as the ecosystem's brain — monitoring logs, triggering alerts, and even suggesting fixes when something went off track.
+
+## Cloudflare Tunnel
+
+Instead of exposing ports directly (and dealing with bot attacks), I used Cloudflare Tunnel. Each project got its own subdomain with reverse proxy, automatic SSL, and built-in DDoS protection:
+
+```
+arachne.yoursite.com → Tunnel → localhost:8000
+dogwalk.yoursite.com → Tunnel → localhost:3000
+capivara.yoursite.com → Tunnel → localhost:8001
+```
+
+Simple, secure, and free.
+
+## The ecosystem standing
+
+When the clock struck midnight on July 1st, the ecosystem looked like this:
+
+| Project | Status | Backup | CI |
+|---------|--------|--------|----|
+| Arachne | Multi-engine pipeline running | Automatic | ✅ |
+| Dogwalk | E2E tests + CI | Automatic | ✅ |
+| Capivara | Secure personal hub under construction | Automatic | 🔄 |
+| Portfolio | Redesign starting | Static | 🔄 |
+
+It wasn't perfect. But it was robust. And it was mine.
+
+June 2026 was the month I stopped building scattered projects and started building an *ecosystem*.

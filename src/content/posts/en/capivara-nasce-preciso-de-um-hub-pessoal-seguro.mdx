@@ -1,0 +1,136 @@
+---
+title: "Capivara is Born — I Needed a Secure Personal Hub"
+description: "I needed a unified and secure control center for my projects, data, and access. Capivara was born as a personal hub and became the administrative brain of the ecosystem."
+date: 2026-05-28
+pubDate: 2026-05-28
+project: capivara
+tags: ["capivara", "hub", "security", "fastapi", "jwt"]
+icon: "🐷"
+cover: /covers/capivara-nasce-preciso-de-um-hub-pessoal-seguro.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+With Dogwalk live and Arachne starting to take shape, I noticed a problem: I didn't have a central place to manage everything. Each project had its own database, its own credentials, its own dashboard.
+
+That's how Capivara was born — a secure personal hub.
+
+## The problem
+
+I needed:
+
+- **Unified dashboard** — see the status of all projects in one place
+- **Contact management** — Dogwalk leads, Portfolio messages
+- **Centralized authentication** — I didn't want to reimplement login in every project
+- **Secure public API** — endpoints that the frontend consumes without exposing the database
+
+At first I considered using Supabase for this. But after setting it up and using it for a few days, I saw that the pricing and latency weren't worth it — especially with data traveling through a US-based server when both my users and I are in Brazil.
+
+## The architecture
+
+```python
+# FastAPI + JWT — the heart of Capivara
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+app = FastAPI(title="Capivara Hub")
+security = HTTPBearer()
+
+# Public routes (no auth)
+@app.post("/api/portifolio/public/messages")
+async def receive_contact(data: ContactForm):
+    return await db.insert_message(data)
+
+# Admin routes (with JWT auth)
+@app.get("/api/portifolio/messages")
+async def list_messages(auth: HTTPAuthorizationCredentials = Depends(security)):
+    payload = verify_jwt(auth.credentials)
+    if not payload or payload.get("role") != "admin":
+        raise HTTPException(status_code=403)
+    return await db.get_all_messages()
+```
+
+The route structure is simple: `/public/` for endpoints that the frontend calls without a token, and no prefix for admin endpoints that require JWT.
+
+## JWT and security
+
+I chose JWT over sessions because it's stateless — no session table needed, no Redis required, and verification is fast.
+
+```python
+from datetime import datetime, timedelta
+import jwt
+
+JWT_CONFIG = os.getenv("CAPIVARA_JWT_CONFIG")  # via Bitwarden SM
+JWT_ALGORITHM = "HS256"
+
+def create_access_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "role": "admin",
+        "exp": datetime.utcnow() + timedelta(hours=2),
+    }
+    return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
+```
+
+The JWT secret lives in Bitwarden Secrets Manager, never in code. Hermes injects it via env var in the systemd service.
+
+## Database
+
+Capivara uses PostgreSQL 18 locally, with a separate database for each project:
+
+```sql
+-- Database: capivara
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    message TEXT NOT NULL,
+    source TEXT DEFAULT 'portfolio',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE cv_downloads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ip_hash TEXT,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+Nothing complex — simple tables, no ORM, just asyncpg. The backend is pure FastAPI with raw SQL.
+
+## Cloudflare Tunnel
+
+Capivara runs on `localhost:8001` in WSL, exposed to the world via Cloudflare Tunnel:
+
+```bash
+cloudflared tunnel --url http://localhost:8001
+```
+
+The Tunnel solves DNS, SSL, and firewall issues in one go. The domain `capivara.seu.pet` points to the tunnel, and the frontends (Portfolio, Dogwalk) call `https://capivara.seu.pet/api/...`.
+
+| Component | Local | Public |
+|-----------|-------|---------|
+| PostgreSQL | `localhost:5432` | ❌ (local only) |
+| Capivara API | `localhost:8001` | `capivara.seu.pet` |
+| Dashboard | Dev `:5173` | Under construction |
+
+## Why Capivara?
+
+The name came naturally — capybara is the animal that integrates the ecosystem. It's not the predator (Arachne), it's not the pet (Dogwalk), but it's there, in the center, keeping everything running.
+
+Just like the rodent, the Capivara hub is discreet but essential. Every project in the ecosystem passes through it in some way — whether to send a contact, register a download, or fetch dashboard data.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
+    { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Test","email":"test@test.com","message":"Hello"}\'', output: '{"id":"uuid-123","status":"created"}' },
+    { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding for the dashboard' },
+  ]}
+/>

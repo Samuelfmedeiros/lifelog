@@ -1,0 +1,87 @@
+---
+title: "LifeLog is born — the blog that documents the journey"
+description: "Why I created a personal blog in 2026, the Astro choice, and what to expect going forward."
+date: 2026-07-07 10:00:00 -03:00
+pubDate: 2026-07-16 17:00:00 -03:00
+project: descobertas
+tags:
+  - lifelog
+  - blog
+  - astro
+  - documentation
+  - mdx
+icon: "💡"
+cover: /covers/lifelog-nasce-o-blog-que-documenta-a-jornada.webp
+featured: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Why another blog?
+
+I've spent the last months building — Arachne, Capivara, Dogwalk, TatuEngine, portfolio. Each project generated decisions, bugs, pivots, learnings. But it all stayed in my head or, at best, in scattered Obsidian notes no one else saw.
+
+Then I caught myself thinking: **how many times did I solve a hard problem, document the solution in a `.md` file inside the repo, and months later not even remember I'd written it?**
+
+It's not about ego or "building an audience." It's about:
+
+- **Public record** — the decisions I made, the mistakes I committed, the wins that worked
+- **Future reference** — 6 months from now, I want to search "how did I deploy Arachne on VPS?" and find the post
+- **Discipline** — writing forces mental organization. If I can't explain it, I haven't understood it
+- **Exchange** — maybe someone stumbles on a post and saves hours of debugging
+
+The name **LifeLog** came naturally. It's not a traditional blog with editorial and agenda — it's the **dev life log**. What I'm doing, what I'm learning, what went wrong.
+
+## The stack — Astro 7 + MDX
+
+Choosing the stack was faster than expected. I already knew Astro from other projects, and version 7 brought:
+
+- **Typed Content Collections** with Zod schema — validated frontmatter at build
+- **Native MDX** — JSX inside markdown without extra plugins
+- **Shiki syntax highlighting** with automatic light/dark themes
+- **Zero JS by default** — posts are pure HTML, only load scripts if interactive
+
+```bash
+# Creating the project took minutes
+npm create astro@latest lifelog -- --template basics
+npx astro add mdx
+npx astro add tailwind
+```
+
+The post schema was lean:
+
+```typescript
+// src/content/config.ts
+import { defineCollection, z } from 'astro:content'
+
+const posts = defineCollection({
+  type: 'content',
+  schema: z.object({
+    title: z.string(),
+    description: z.string(),
+    date: z.date(),
+    pubDate: z.date().optional(),
+    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+                      'tatuengine', 'estudos', 'descobertas']),
+    tags: z.array(z.string()),
+    icon: z.string().optional(),
+    cover: z.string().optional(),
+    featured: z.boolean().default(false),
+    draft: z.boolean().default(false),
+  }),
+})
+```
+
+Each post becomes a route automatically. The typing is so strong that if I misspell a tag name in the frontmatter, the build breaks. This prevents the "messy blog" that most abandon after 3 posts.
+
+## Why not Notion / Substack / Medium?
+
+I've used them all. Always the same story: excited start, write 4 posts, the platform changes its layout, my links break, the lock-in annoys me, I abandon it.
+
+With Astro + MDX:
+
+- **`.mdx` files in a directory** — portable to any stack
+- **Git versioned** — every post has change history
+- **Static build** — deploy anywhere (Vercel, Cloudflare, Netlify, S3)
+- **No database, no CMS, no dashboard** — just `git push`

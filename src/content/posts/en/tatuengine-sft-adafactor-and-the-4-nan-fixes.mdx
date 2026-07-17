@@ -1,0 +1,167 @@
+---
+title: "TatuEngine SFT — Adafactor and the 4 NaN fixes"
+description: "The saga of making Student BitMamba-1B learn without exploding: Adafactor vs AdamW, saving 4 GB of VRAM, and the 4 bugs that produced NaN during bf16 training."
+date: 2026-07-05 10:00:00 -03:00
+pubDate: 2026-07-15 17:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "adafactor", "nan"]
+icon: "🌊"
+cover: /covers/tatuengine-sft-adafactor-and-the-4-nan-fixes.webp
+featured: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+The TatuEngine SFT (Supervised Fine-Tuning) pipeline is the project's current bottleneck. The Teacher LoRA (Qwen2.5-3B-Instruct + LoRA R=16) has already distilled 381 reasoning examples into 3 datasets. The Student (BitMamba-1B PyTorch) has the model — 1.446B parameters, 48 layers, d_model=2048, d_state=128 — but **it doesn't learn properly**.
+
+It's not a lack of data. The problem is more fundamental: **training systematically explodes into NaN**.
+
+There were 4 distinct bugs. Each killed training in a different way. And Adafactor (the AdamW substitute) was simultaneously part of the solution and part of the problem.
+
+---
+
+## The 4 NaN Fixes
+
+### Fix #1 — Softplus overflow in dt_bias: `expf(89.0) = inf`
+
+The first NaN came from the SSM step — layer 1, first batch, always at `ssm_step`. The culprit: `softplus(dt_bias + dt)`.
+
+```cpp
+// Before (exploded):
+float dt = log1pf(expf(x));  // softplus(x) = log(1 + exp(x))
+
+// After (stable):
+float dt = x > 0.0f ? x + log1pf(expf(-x)) : log1pf(expf(x));
+// Numerically stable equivalent:
+// softplus(x) = max(0, x) + log(1 + exp(-|x|))
+```
+
+`expf(89.0) ≈ 5.5e38` → `+inf` in float32. When `dt_bias` exceeded ~89 after a few iterations, softplus returned `+inf`, the `ssm_step` propagated `inf`, and backward turned everything into NaN.
+
+2 days of debugging. A 1-line patch. `log1pf(expf(-|x|))` fixes it.
+
+### Fix #2 — Adafactor `eps=(None, 0.001)`: the `rsqrt(0)` in bf16
+
+Adafactor factorizes the second moment into rank-1 (row + col), saving ~4 GB vs AdamW (4 GB vs 8.14 GB on RTX 3060). But there's a catch:
+
+```python
+# Before (NaN at step 3):
+optimizer = torch.optim.Adafactor(
+    model.parameters(),
+    lr=3e-5,
+    eps=(1e-30, 0.001),  # default eps1
+)
+
+# After (stable):
+optimizer = torch.optim.Adafactor(
+    model.parameters(),
+    lr=3e-5,
+    eps=(None, 0.001),  # eps1 = finfo(bf16).eps ≈ 0.0078
+)
+```
+
+The default eps1=1e-30 exists for the float32 case (where `finfo(float32).eps = 1.19e-7`). But in bf16, `finfo(bf16).eps = 0.0078`. When the accumulated second moment is small (early steps), `rsqrt(accum + 1e-30)` returns a huge number because `1e-30` is subnormal in bf16 and becomes 0. Result: `inf * 0 = NaN`.
+
+By passing `eps=(None, 0.001)`, PyTorch uses `finfo(dtype).eps` as eps1, which for bf16 is 0.0078 — enough to prevent underflow in `rsqrt`.
+
+### Fix #3 — State LR Scale: `A_log`, `D`, and `dt_bias` need 50× more LR
+
+The SSM's state parameters (`A_log`, `D`, `dt_bias`) control the model's temporal dynamics. With the base LR (`lr=3e-5`), they barely move:
+
+```python
+# SSM state parameters — need higher LR
+STATE_PARAMS = ["A_log", "D", "dt_bias"]
+STATE_LR_SCALE = 50  # LR = base × 50
+
+optimizer = torch.optim.Adafactor(
+    [
+        {"params": model.core_params()},
+        {"params": model.state_params(), "lr": args.lr * STATE_LR_SCALE},
+    ],
+    lr=3e-5,
+    eps=(None, 0.001),
+)
+```
+
+Without this, `dt_bias` freezes near 0, softplus produces `log(2) ≈ 0.69` forever, and the model doesn't develop temporal discretization — the SSM essentially doesn't work.
+
+### Fix #4 — Gradient Clamping: `clamp_(-1, 1)` + max-norm
+
+The SSM gradient is inherently unstable because of backpropagation through the `exp(Δ · A)` discretization:
+
+```python
+# Full SFT: clamp + max-norm (prevents bf16 overflow)
+if not args.no_grad_clamp:
+    for p in model.parameters():
+        if p.grad is not None:
+            p.grad.data.clamp_(-1.0, 1.0)  # prevents exploding gradients
+if args.grad_clip > 0:
+    torch.nn.utils.clip_grad_norm_(
+        model.parameters(), args.grad_clip, norm_type=float('inf')
+    )
+```
+
+In head-only mode (training only lm_head), gradients are left free — no clamp because the head needs fast movement to tame output variance. In full SFT, the [-1, 1] clamp is mandatory: without it, deep layers explode at step 5-10.
+
+---
+
+## Comparison table: Adafactor vs AdamW
+
+| Aspect | AdamW | Adafactor |
+|--------|-------|-----------|
+| Optimizer memory | 8.14 GB (2 states + momentum) | ~4 GB (rank-1 factored) |
+| Cost per step | Higher (full matrix update) | Lower (row/col update) |
+| bf16 stability | `eps=1e-8` safe | Needs `eps=(None, X)` tuning |
+| Warmup | Required (cold momentum) | Built-in (`relative_step=True`) |
+| Convergence | Faster on transformers | Slower on SSM (needs state_lr_scale) |
+
+The 4 GB saving is critical on the RTX 3060 (12 GB). With AdamW, the 1.4B model + optimizer occupy ~11.5 GB — no room for batch > 1 or sequences > 256 tokens. With Adafactor, 7.5 GB fits with margin to spare.
+
+---
+
+## The Current Pipeline
+
+```
+Teacher LoRA (Qwen2.5-3B)
+  ↓ 381 distilled examples
+Student BitMamba-1B PyTorch
+  ↓ Full warmup (200 steps, plain text)
+Checkpoint step_0200
+  ↓ SFT Phase 2 (domain-balanced + replay buffer 9:1)
+Student SFT Final
+```
+
+3 datasets: `student_train.jsonl` (prompt + teacher_response format), `distill_clean_train.jsonl` (with score filter), `tatu_train_data.jsonl` (hybrid format with thought/answer). The dataset preparer (`prepare_datasets()`) normalizes all 3 formats and applies `[THOUGHT]/[ANSWER]` tags.
+
+The fineweb-edu replay buffer (9:1 reasoning:pretrain) keeps the model from forgetting general language during SFT.
+
+---
+
+## Lessons learned
+
+1. **Softplus isn't safe in float32** — the naive `log(1 + exp(x))` explodes when x > 89. Always use the numerically stable version.
+
+2. **Adafactor saves VRAM but charges in tuning** — eps1 needs to be calibrated for the dtype. `None` works (delegates to finfo), but never use the default 1e-30 in bf16.
+
+3. **SSM state parameters are a class of their own** — `dt_bias`, `A_log`, `D` control temporal discretization and need much higher LR than projection parameters. The `state_lr_scale=50` was discovered empirically after losing 3 training runs.
+
+4. **Gradient clamping isn't optional in SSM** — backpropagation through `exp(Δ · A)` amplifies gradients exponentially. `clamp_(-1, 1)` + `clip_grad_norm_` are complementary safety layers, not redundant.
+
+The full Student SFT hasn't run yet (3 epochs, 381 examples). But now the pipeline doesn't explode anymore — the next step is to let it train and see what comes out.
+
+> TL;DR: Adafactor saved 4 GB of VRAM (critical on RTX 3060), but cost 3 lost training runs to NaN before getting the 4 fixes right. Numerically stable softplus, eps1 calibrated for bf16, state_lr_scale=50 for SSM parameters, and clamp+clip as complementary safety layers. The pipeline no longer explodes — now it's time to let it run.
+
+---
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/TatuEngine && python3 tatu/scripts/tatu_sft_train.py --help', output: 'Full SFT pipeline — arguments and defaults' },
+    { cmd: 'nvidia-smi --query-gpu=memory.total,memory.used --format=csv', output: 'Check available VRAM (target: 12 GB RTX 3060)' },
+    { cmd: `python3 -c "from tatu.models.bitmamba import BitMamba; m=BitMamba(); print(f'{sum(p.numel() for p in m.parameters())/1e9:.2f}B params')"`, output: 'Confirm model architecture (1.446B params)' },
+    { cmd: 'ls -lh data/train/student_train.jsonl', output: 'SFT dataset with 381 examples distilled from Teacher LoRA' },
+    { cmd: 'grep -rn "grad_clamp\\\\|state_lr_scale\\\\|Adafactor" tatu/scripts/tatu_sft_train.py', output: 'Verify all 4 fixes are in the code' },
+  ]}
+/>

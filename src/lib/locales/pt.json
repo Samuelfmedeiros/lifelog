@@ -1,0 +1,85 @@
+{
+  "nav": {
+    "home": "Início",
+    "archive": "📚 Arquivo",
+    "about": "ℹ️ Sobre",
+    "portfolio": "🚀 Portfólio",
+    "logo": "📖 LifeLog"
+  },
+  "home": {
+    "title": "Início",
+    "description": "Jornada de aprendizado de Samuel Medeiros",
+    "subtitle": "Dev · Projetos · Estudos · Descobertas",
+    "loading": "Carregando..."
+  },
+  "archive": {
+    "title": "📚 Arquivo",
+    "description": "Todos os posts do LifeLog",
+    "pageTitle": "Arquivo"
+  },
+  "about": {
+    "title": "📖 Sobre o LifeLog",
+    "description": "Sobre o LifeLog",
+    "p1": "LifeLog é meu diário de bordo técnico. Um registro vivo da minha jornada como desenvolvedor — projetos, descobertas, bugs épicos, e tudo que aprendo pelo caminho.",
+    "p2": "Cada post tem um tema visual único dependendo do projeto. Se tô falando do Arachne, você vê a teia roxa. Se é sobre o Dogwalk, a paleta muda pra laranja. O projeto define a cara do post.",
+    "projects": "Projetos",
+    "projectsList": "🕷️ Arachne · 🐶 Dogwalk · 🐷 Capivara · 🚀 Portfólio · 📚 Estudos",
+    "portfolio": "🚀 Portfólio",
+    "portfolioUrl": "https://samuelmedeiros.vercel.app"
+  },
+  "post": {
+    "continueReading": "Continuar lendo →",
+    "backToTimeline": "← Voltar para timeline",
+    "writtenBy": "Escrito por",
+    "published": "Publicado",
+    "tags": "Tags",
+    "project": "Projeto",
+    "minutes": "min de leitura",
+    "previous": "← Anterior",
+    "next": "Próximo →"
+  },
+  "404": {
+    "title": "404 — Não Encontrado",
+    "description": "Página não encontrada",
+    "heading": "Página não encontrada",
+    "message": "Essa página não existe ou foi movida.",
+    "backHome": "← Voltar para timeline"
+  },
+  "search": {
+    "placeholder": "Buscar posts...",
+    "ariaLabel": "Buscar posts",
+    "noResults": "Nenhum post encontrado"
+  },
+  "filter": {
+    "ariaLabel": "Filtrar por projeto",
+    "all": "Todos",
+    "yearLabel": "Filtrar por ano",
+    "allYears": "Todos"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "ls": "→ Listar projetos",
+    "contact": "→ Contato",
+    "projects": "→ Detalhes dos projetos",
+    "catAbout": "→ Sobre mim",
+    "notFound": "Comando não encontrado. Digite \"help\" para ver os comandos disponíveis.",
+    "projectsList": "📁 projetos/",
+    "featured": "📦 PROJETOS EM DESTAQUE"
+  },
+  "theme": {
+    "toggleLabel": "Alternar tema",
+    "toggleTitle": "Alternar tema",
+    "colorLabel": "Paleta de cores",
+    "colorTitle": "Paleta de cores",
+    "langLabel": "Alternar idioma",
+    "langTitle": "Alternar idioma"
+  },
+  "project": {
+    "arachne": "Arachne",
+    "dogwalk": "Dogwalk",
+    "portfolio": "Portfólio",
+    "capivara": "Capivara",
+    "estudos": "Estudos",
+    "descobertas": "Descobertas"
+  }
+}

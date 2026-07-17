@@ -1,14 +1,13 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import ProjectIcon from '../components/ProjectIcon.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectIcon from '../../components/ProjectIcon.astro';
 import { getCollection } from 'astro:content';
 
-const locale = 'pt';
+const locale = 'en';
 const allPosts = await getCollection('posts');
-const posts = allPosts.filter(p => !p.data.draft && !p.id.startsWith('en/'));
+const posts = allPosts.filter(p => !p.data.draft && p.id.startsWith('en/'));
 posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 
-// Group by year
 const byYear = new Map();
 for (const post of posts) {
   const year = post.data.date.getFullYear().toString();
@@ -17,20 +16,18 @@ for (const post of posts) {
 }
 const years = [...byYear.keys()].sort().reverse();
 
-// Count by project
 const projectCount = new Map();
 for (const post of posts) {
   const p = post.data.project;
   projectCount.set(p, (projectCount.get(p) || 0) + 1);
 }
 
-const t = (await import('../lib/i18n')).getTranslations(locale);
-const totalLabel = locale === 'en' ? `${posts.length} posts total` : `${posts.length} posts no total`;
+const t = (await import('../../lib/i18n')).getTranslations(locale);
 ---
 
 <BaseLayout title={t.archive.pageTitle} description={t.archive.description} locale={locale}>
   <h1 class="text-3xl font-extrabold mb-2" style="color: var(--color-heading)">{t.archive.title}</h1>
-  <p class="mb-8" style="color: var(--color-text-muted)">{totalLabel}</p>
+  <p class="mb-8" style="color: var(--color-text-muted)">{posts.length} posts total</p>
 
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12">
     {[...projectCount.entries()].map(([proj, count]) => (
@@ -48,7 +45,7 @@ const totalLabel = locale === 'en' ? `${posts.length} posts total` : `${posts.le
       <div class="space-y-2">
         {byYear.get(year).map((post) => (
           <a
-            href={`/post/${post.id}`}
+            href={`/en/post/${post.id.replace('en/', '')}`}
             class="flex items-center gap-3 p-3 rounded-lg text-sm hover:opacity-80 transition no-underline!"
             style="background: var(--color-bg-card); border: 1px solid var(--color-border); color: var(--color-text);"
           >
@@ -56,7 +53,7 @@ const totalLabel = locale === 'en' ? `${posts.length} posts total` : `${posts.le
             <div class="flex-1 min-w-0">
               <span class="font-medium block truncate">{post.data.title}</span>
               <span class="text-xs" style="color: var(--color-text-muted)">
-                {post.data.date.toLocaleDateString(locale === 'en' ? 'en-US' : 'pt-BR')}
+                {post.data.date.toLocaleDateString('en-US')}
               </span>
             </div>
             <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--color-accent-soft); color: var(--color-accent);">

@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import '../styles/themes.css';
 import PalettePicker from '../components/PalettePicker.astro';
+import { getTranslations, detectLocale } from '../lib/i18n';
 
 export interface Props {
   title: string;
@@ -9,20 +10,33 @@ export interface Props {
   theme?: string;
   image?: string;
   type?: string;
+  locale?: string;
 }
 
-const { title, description, theme, image, type } = Astro.props;
+const { title, description, theme, image, type, locale } = Astro.props;
+const lang = locale === 'en' ? 'en' : 'pt-BR';
+const dataLocale = locale || 'pt';
+const t = getTranslations(dataLocale);
 const pageTitle = `${title} — LifeLog`;
-const pageDesc = description || 'Jornada de aprendizado de Samuel Medeiros';
+const pageDesc = description || t.home.description;
 const themeAttr = theme || 'dev';
 const ogType = type || 'website';
 const ogImage = image || undefined;
 const ogUrl = Astro.url;
 const SITE_URL = 'https://lifelog-sepia.vercel.app';
+
+// Nav links
+const homeHref = dataLocale === 'en' ? '/en/' : '/';
+const archiveHref = dataLocale === 'en' ? '/en/archive' : '/arquivo';
+const aboutHref = dataLocale === 'en' ? '/en/about' : '/sobre';
+const portfolioHref = 'https://samuelmedeiros.vercel.app';
+const footerText = dataLocale === 'en'
+  ? `LifeLog © ${new Date().getFullYear()} — Samuel Medeiros' learning journey`
+  : `LifeLog © ${new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros`;
 ---
 
 <!DOCTYPE html>
-<html lang="pt-BR" data-project={themeAttr} data-theme="dark" data-locale="pt">
+<html lang={lang} data-project={themeAttr} data-theme="dark" data-locale={dataLocale}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -80,18 +94,18 @@ const SITE_URL = 'https://lifelog-sepia.vercel.app';
   <body>
     <header class="navbar">
       <nav class="navbar-inner">
-        <a href="/" class="navbar-logo">
+        <a href={homeHref} class="navbar-logo">
           <span class="navbar-logo-icon">📖</span>
           <span>LifeLog</span>
           <span class="navbar-brand-sep">·</span>
           <span class="navbar-brand-name">Samuel Medeiros</span>
         </a>
         <div class="navbar-links">
-          <a href="/" class="navbar-link">Início</a>
-          <a href="/arquivo" class="navbar-link">📚 Arquivo</a>
-          <a href="/sobre" class="navbar-link">ℹ️ Sobre</a>
+          <a href={homeHref} class="navbar-link" data-i18n="nav.home">{t.nav.home}</a>
+          <a href={archiveHref} class="navbar-link" data-i18n="nav.archive">{t.nav.archive}</a>
+          <a href={aboutHref} class="navbar-link" data-i18n="nav.about">{t.nav.about}</a>
+          <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio">{t.nav.portfolio}</a>
           <PalettePicker />
-          <a href="https://samuelmedeiros.vercel.app" target="_blank" rel="noopener" class="navbar-link cta">🚀 Portfólio</a>
         </div>
       </nav>
     </header>
@@ -101,7 +115,7 @@ const SITE_URL = 'https://lifelog-sepia.vercel.app';
     </main>
 
     <footer class="max-w-6xl mx-auto px-4 py-8 text-center text-xs" style="color: var(--color-text-muted); border-top: 1px solid var(--color-border);">
-      <p>LifeLog © {new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros</p>
+      <p>{footerText}</p>
       <p class="mt-1">
         <a href="/rss.xml" class="hover:underline" style="color: var(--color-accent)">RSS</a>
       </p>
@@ -147,198 +161,6 @@ const SITE_URL = 'https://lifelog-sepia.vercel.app';
     [data-theme="light"] .timeline-line::before { opacity: 0.15; }
     [data-theme="light"] .glass { background: rgba(255,255,255,0.8); border-color: #efeee9; }
     [data-theme="light"] footer { border-top-color: #efeee9; }
-    [data-theme="light"] footer p { color: #a0a0a6; }
-    [data-theme="light"] ::-webkit-scrollbar-track { background: #f7f6f3; }
-    [data-theme="light"] ::-webkit-scrollbar-thumb { background: #d4d3ce; }
-    [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #b8b7b0; }
-    [data-theme="light"] ::selection { background: rgba(99,102,241,0.2); color: #1a1a2e; }
-    [data-theme="light"] .terminal-widget { box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
-    [data-theme="light"] .terminal-output pre { color: #a78bfa; }
   </style>
-
-  <!-- Particle Background -->
-  <canvas id="particle-canvas" style="position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.5;"></canvas>
-
-  <script is:inline>
-  (function() {
-    // ========== SCROLL REVEAL ==========
-    function observeScroll() {
-      const cards = document.querySelectorAll('.post-card');
-      if (!cards.length) return;
-
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('revealed');
-            observer.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-
-      cards.forEach(card => observer.observe(card));
-    }
-
-    // Run after paint
-    if (document.readyState === 'complete') observeScroll();
-    else window.addEventListener('load', observeScroll);
-  })();
-  </script>
-  <script is:inline>
-  (function() {
-    const canvas = document.getElementById('particle-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let particles = [];
-    let mouse = { x: null, y: null, radius: 120 };
-    let w, h;
-
-    function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    function getVars() {
-      const style = getComputedStyle(document.documentElement);
-      const theme = document.documentElement.getAttribute('data-theme');
-      const isLight = theme === 'light';
-      return {
-        particleColor: style.getPropertyValue('--particle-color').trim() || (isLight ? 'rgba(210,160,60,0.35)' : 'rgba(200,210,255,0.4)'),
-        accentColor: style.getPropertyValue('--color-accent').trim() || '#a78bfa',
-        isLight,
-        // Light mode: warm golden dust, slow drift
-        // Dark mode: sharp stars, gentle twinkle
-        speed: isLight ? 0.2 : 0.5,
-        sizeMin: isLight ? 1.5 : 0.8,
-        sizeMax: isLight ? 3.5 : 2.2,
-        connectionOpacity: isLight ? 0.08 : 0.15,
-        alpha: isLight ? 0.4 : 0.6,
-        count: isLight ? 40 : 60,
-      };
-    }
-
-    let vars = getVars();
-    function initParticles() {
-      vars = getVars();
-      particles = [];
-      for (let i = 0; i < vars.count; i++) {
-        particles.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          vx: (Math.random() - 0.5) * vars.speed,
-          vy: (Math.random() - 0.5) * vars.speed - (vars.isLight ? Math.random() * 0.08 : 0),
-          r: Math.random() * (vars.sizeMax - vars.sizeMin) + vars.sizeMin,
-          // Track original speed for consistency across theme changes
-          baseVx: 0,
-          baseVy: 0,
-          phase: Math.random() * Math.PI * 2, // for twinkling
-        });
-      }
-    }
-    initParticles();
-
-    // Re-init on theme change
-    const obs = new MutationObserver(() => {
-      initParticles();
-    });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-    document.addEventListener('mousemove', (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
-    });
-    document.addEventListener('mouseleave', () => {
-      mouse.x = null;
-      mouse.y = null;
-    });
-
-    function animate() {
-      ctx.clearRect(0, 0, w, h);
-      const cur = getVars();
-
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-
-        // Gentle floating motion
-        p.vx += (Math.random() - 0.5) * 0.02;
-        p.vy += (Math.random() - 0.5) * 0.02;
-
-        // Damping
-        p.vx *= 0.98;
-        p.vy *= 0.98;
-
-        // Speed cap
-        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-        if (spd > cur.speed) {
-          p.vx = (p.vx / spd) * cur.speed;
-          p.vy = (p.vy / spd) * cur.speed;
-        }
-
-        // Mouse interaction
-        if (mouse.x !== null && mouse.y !== null) {
-          const dx = mouse.x - p.x;
-          const dy = mouse.y - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < mouse.radius) {
-            const force = (mouse.radius - dist) / mouse.radius;
-            // Push away from mouse
-            p.vx -= (dx / dist) * force * 0.04;
-            p.vy -= (dy / dist) * force * 0.04;
-          }
-        }
-
-        p.x += p.vx;
-        p.y += p.vy;
-
-        // Wrap around
-        if (p.x < -10) p.x = w + 10;
-        if (p.x > w + 10) p.x = -10;
-        if (p.y < -10) p.y = h + 10;
-        if (p.y > h + 10) p.y = -10;
-
-        // Draw connections
-        for (let j = i + 1; j < particles.length; j++) {
-          const p2 = particles[j];
-          const dx = p.x - p2.x;
-          const dy = p.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 150) {
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(124, 58, 237, ${(1 - dist / 150) * cur.connectionOpacity})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        }
-
-        // Twinkle effect
-        const twinkle = cur.isLight
-          ? 0.8 + 0.2 * Math.sin(p.phase + Date.now() * 0.001)
-          : 0.6 + 0.4 * Math.sin(p.phase + Date.now() * 0.002);
-
-        // Draw particle
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = cur.particleColor;
-        ctx.globalAlpha = cur.alpha * twinkle;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-
-        // Light mode: subtle glow on each particle (dust motes catch light)
-        if (cur.isLight && p.r > 2.5) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r * 2.5, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(251,191,36,0.04)';
-          ctx.fill();
-        }
-      }
-
-      requestAnimationFrame(animate);
-    }
-    animate();
-  })();
-  </script>
-</body>
+  </body>
 </html>

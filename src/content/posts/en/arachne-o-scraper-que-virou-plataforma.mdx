@@ -1,0 +1,244 @@
+---
+title: "Arachne — the Scraper That Became a Platform"
+description: "The real story of how a 200-line Python scraper became a platform with 740+ files, RAG, visual pipelines and 36 ReAct tools."
+date: 2026-06-01 10:00:00 -03:00
+pubDate: 2026-07-13 22:00:00 -03:00
+project: arachne
+tags: ["arachne","scraping","crawl4ai","python","fastapi"]
+icon: "🕷️"
+cover: /covers/arachne-o-scraper-que-virou-plataforma.webp
+featured: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+Arachne started as a ~200-line Python script. Literally a `scraper.py` that downloaded pages, threw them at BeautifulSoup, extracted text, and saved to JSON. Nothing more.
+
+The problem is that this script broke **every week**. The site would change its selector, Cloudflare would start blocking, the page would load via JS and BeautifulSoup would grab nothing. I spent more time putting out fires than actually extracting data.
+
+The last straw was when I lost an entire database because an e-commerce scraper changed its HTML without warning. **2000+ corrupted records.** That's when I decided: I'm going to build something that doesn't break.
+
+What I didn't know is that this "something" would become a platform with 3763 files, 740 Python modules, 1460 API routes, 2698 tests, and 36 ReAct tools. But let's take it step by step.
+
+## The 200-line scraper
+
+The first commit was ridiculously simple:
+
+```python
+import requests
+from bs4 import BeautifulSoup
+
+def scrape(url):
+    resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    return {
+        'title': soup.title.text if soup.title else '',
+        'text': soup.get_text(separator='\n', strip=True),
+        'links': [a['href'] for a in soup.find_all('a', href=True)]
+    }
+```
+
+It worked for static sites. But real sites are anything but static: Cloudflare, CAPTCHA, JS rendering, rate limiting, anti-bot. Each obstacle turned into a new `try/except`. The code became a 2000-line monstrosity in 3 months.
+
+Then came the decision: **either I pay for an expensive scraping service (ScrapingBee, ScrapingAnt — like R$200-500/month), or use heavy tools (Scrapy — 15 minutes to set up a project), or build it my way.**
+
+I chose the third option. Obviously.
+
+## The evolution to multi-engine
+
+Instead of a single scraper, I created **progressive fallback layers**:
+
+| Engine | When to use | Latency | Coverage |
+|--------|-------------|----------|-----------|
+| Trafilatura (std) | Static pages, blogs, docs | ~0.5s | 70% of sites |
+| Crawl4AI (sidecar) | SPA, React, Vue, heavy JS | ~1.5s | 85% |
+| Playwright (stealth) | Cloudflare, light antibot | ~4s | 92% |
+| Camoufox (full evasion) | Aggressive WAF, Captcha | ~8s | 98% |
+
+```python
+class ProgressiveFetcher:
+    def __init__(self):
+        self.engines = [
+            TrafilaturaEngine(),
+            Crawl4AIEngine(),
+            PlaywrightStealthEngine(),
+            CamoufoxEngine(),
+        ]
+
+    def fetch(self, url):
+        for engine in self.engines:
+            result = engine.try_fetch(url)
+            if result and not result.error:
+                return result
+        raise AllEnginesFailed(url)
+```
+
+Each engine has a `try_fetch()` that returns `None` on failure. The secret isn't having one perfect scraper — it's having 4 that together cover 98% of cases.
+
+The result? **Zero manual fallback maintenance.** If Trafilatura gets a 403, Crawl4AI tries with JS. If Crawl4AI gets blocked, Playwright tries with stealth. If that fails, Camoufox steps in with real Firefox fingerprinting.
+
+## RAG with semantic chunking
+
+With data coming in, the next problem was **finding what mattered**. Having 10 thousand extracted pages is useless if you can't search them.
+
+Enter RAG — but not the generic "dump everything into a vector store" RAG. Each step was thought through:
+
+| Step | Technique | Result |
+|-------|---------|-----------|
+| Chunking | 6 strategies (recursive, semantic, by paragraph, sliding window, by topic, markdown-aware) | 98% recall |
+| Embedding | sentence-transformers + nomic-embed-text (local) | ~200ms latency |
+| Search | Hybrid FTS5 + vector (sqlite-vec) | 94% precision vs 78% vector-only |
+| Reranking | Cross-encoder | Top-3 accuracy: 96% |
+
+```python
+# Six chunking strategies, one line each
+strategies = {
+    'recursive': RecursiveCharacterTextSplitter(500, 50),
+    'semantic': SemanticChunker(embedding_model),
+    'paragraph': ParagraphSplitter(min_chars=200),
+    'sliding_window': SlidingWindowChunker(300, 100),
+    'topic': TopicAwareSplitter(),
+    'markdown': MarkdownStructureSplitter(),
+}
+```
+
+The killer feature was **hybrid search**. Vector search alone is good for semantic similarity but terrible for exact keyword matching. FTS5 alone is the opposite. Combining them with adaptive weighting (FTS5 60% + vector 40%) raised precision from 78% to 94%.
+
+```python
+def hybrid_search(query, kb_id, top_k=10):
+    fts5_results = search_fts5(query, kb_id)       # keyword match
+    vector_results = search_vector(query, kb_id)    # semantic match
+    merged = merge_ranked(fts5_results, vector_results,
+                         fts5_weight=0.6, vector_weight=0.4)
+    return rerank_cross_encoder(query, merged[:top_k])
+```
+
+## Pipelines: from CLI to visual builder
+
+With extraction + RAG working, the inevitable demand came to automate workflows. The **pipeline executor** was born: 38 handlers that chain together.
+
+```python
+Handler registry:
+├── Input: url, text, file, webhook, cron, api
+├── Extraction: scrape, extract, vision, transcribe
+├── Processing: chunk, embed, summarize, translate, classify
+├── Transformation: format, template, aggregation, filter
+├── Output: save, export, notify, webhook_callback
+```
+
+At first it was just YAML config. Then came the **visual builder** — drag & drop handlers. Then the integrated **cron scheduler**. Then pipeline creation via **chat** ("create a pipeline that extracts AI news every week and saves to JSON").
+
+| Feature | How it was before | How it is now |
+|---------|---------------|--------------|
+| Create pipeline | Manual YAML | Chat, drag & drop or YAML |
+| Run | Manual CLI | CRON, webhook or manual |
+| Monitor | Terminal logs | Dashboard with charts |
+| Test | impossible | Sandbox + step debug |
+
+## MCP Tools: the scraper becomes a tool server
+
+The cherry on top was turning everything into an **MCP Server** (Model Context Protocol). This means any AI agent (Claude, Cursor, Hermes) can use Arachne's tools without configuring anything — just connect via stdio or SSE.
+
+```python
+# run_mcp.py — auto-detect mode: SSE if PORT is set, stdio otherwise
+import os, sys
+from app.mcp.server import MCPServer
+
+server = MCPServer()
+server.register_tools([
+    arachne_scrape, arachne_browser_extract,
+    arachne_search, arachne_query,
+    arachne_transcribe, arachne_vision,
+    arachne_calc, arachne_screenshot,
+    arachne_format_converter, arachne_record,
+    arachne_metrics, arachne_plan,
+    arachne_capabilities,
+])
+
+if 'PORT' in os.environ:
+    server.run_sse(port=int(os.environ['PORT']))
+else:
+    server.run_stdio()
+```
+
+13 MCP tools today. From a 200-line scraper to a tool server that runs inside Cursor, Claude, and Hermes. Each tool has its own fallback chain, timeouts, cache, and automatic evasion.
+
+## The real metrics
+
+No theory — production numbers today:
+
+| Metric | Value | Note |
+|---------|-------|------|
+| **Avg latency** (std) | 1.8s | Direct Trafilatura |
+| **Latency** (stealth) | 4.2s | Playwright with evasion |
+| **Latency** (full) | 7.5s | Camoufox with fingerprint |
+| **Extraction accuracy** | 94.7% | Main content vs noise |
+| **Coverage** (std) | 71% | Sites without blocking |
+| **Coverage** (4 engines) | 98.2% | With progressive fallback |
+| **Coverage** (with browser-run) | 99.1% | With manual interaction |
+| **RAG top-3 precision** | 96% | Hybrid + cross-encoder |
+| **Tests** | 2,698 | 740 Python files |
+| **Pipeline handlers** | 38 | 6 categories |
+| **ReAct tools** | 36 | Agent layer |
+| **i18n keys** | 1,131 | PT/EN without diff |
+
+## What I learned on this journey
+
+### 1. Progressive fallback > perfect scraper
+
+I spent months trying to make ONE scraper that solved everything. The real solution was having 4 scrapers that complement each other. **98.2% coverage vs 70% from any single engine.** The best engineering is not depending on a single point of failure.
+
+### 2. RAG without smart chunking is garbage
+
+At first I used fixed 500-character chunks. The result was bizarre — sentences cut in half, lost context, useless embeddings. **6 chunking strategies** with automatic content-type detection solved it. For blogs: markdown-aware. For PDFs: paragraph. For code: sliding window.
+
+### 3. FTS5 + vector > either one alone
+
+Vector search is hype, but FTS5 wins at exact term search by a huge margin. The hybrid combination with a cross-encoder reranker on top gave 96% accuracy. Without the reranker, it dropped to 89%.
+
+### 4. API-first from the start
+
+Every new feature in Arachne is born as an API. Only later comes UI, CLI, MCP tool. This forces clean design and allows any frontend to consume. The MCP Server came for free because the APIs already existed.
+
+```python
+# Every MCP tool is an existing API + wrapper
+@router.post("/scrape")
+async def scrape_endpoint(url: str = Body(...)):
+    engine = select_engine(url)           # real logic
+    result = await engine.extract(url)    # real logic
+    return result                         # full reuse
+```
+
+### 5. 740 Python files isn't a feature — it's a responsibility
+
+Arachne grew more than I planned. 3763 files total. That takes its toll in maintenance. The secret was keeping the **layered architecture** from the start: API → agent → pipeline → scraper/RAG. Each layer knows the minimum about the other.
+
+## What's next
+
+Arachne is no longer a scraper — it's a **data intelligence platform**. But there's still ground to cover:
+
+- **Public Python SDK** (`pip install arachne-sdk`) — in progress
+- **Bot Platform** — no-code bot builder
+- **BYO LLM** — bring your own model
+- **Official MCP Directory** — submit to the official modelcontextprotocol servers
+
+From 200 lines of Python to 3763 files, 36 ReAct tools and 13 MCP tools. All because a BeautifulSoup broke on a rainy day and I had the dumb idea of "I'll do better."
+
+> TL;DR: A 200-line scraper became a multi-engine platform with 98% coverage, RAG with semantic chunking (96% precision), visual pipeline with 38 handlers, and MCP Server with 13 tools. All in Python + FastAPI, open source, running locally. The lesson: progressive fallback beats perfect scraper, hybrid search beats vector-only, and API-first pays dividends forever.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Arachne && python -m app.main', output: 'Start server on :9000' },
+    { cmd: 'curl -X POST http://localhost:9000/api/scrape -H "Content-Type: application/json" -d \'{"url":"https://example.com"}\'', output: 'Extract page via REST API' },
+    { cmd: 'cd ~/projetos/Arachne && python tests/run_all.py --coverage', output: 'Run 2698 tests with coverage' },
+    { cmd: 'python run_mcp.py', output: 'Start MCP Server in stdio mode (for Cursor/Claude)' },
+    { cmd: 'cd ~/projetos/Arachne && curl http://localhost:9000/health', output: 'Health check — platform status' },
+  ]}
+/>

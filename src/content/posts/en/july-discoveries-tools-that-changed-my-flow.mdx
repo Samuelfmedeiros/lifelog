@@ -1,0 +1,157 @@
+---
+title: "July discoveries — tools that changed my flow"
+description: "Exploring July's tools — lessons, challenges, and discoveries."
+date: 2026-07-01 10:00:00 -03:00
+pubDate: 2026-07-14 22:00:00 -03:00
+project: descobertas
+tags: ["discoveries", "tools", "dev", "productivity"]
+icon: "💡"
+cover: /covers/july-discoveries-tools-that-changed-my-flow.webp
+featured: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## July was a month of experimentation
+
+July arrived and with it that feeling that my workflow needed a shake-up. Not that the tools I was using were bad — but comfortable isn't synonymous with efficient. I spent the month testing, banging my head, discarding, and adopting. This post is the record of what stuck.
+
+Three tools changed my game this month: **UV**, **Codex CLI**, and the **MCP** ecosystem. Each one solved a specific pain I didn't even know I had.
+
+## UV: the pip I always wanted
+
+I've always had a complicated relationship with Python packaging. `pip` is slow, `poetry` is heavy, `pipenv` abandoned everyone. My solution was a Frankenstein of `requirements.txt` + manual virtualenvs + shell scripts to activate each project.
+
+Then I discovered [UV](https://github.com/astral-sh/uv) — a pip/poetry written in Rust by Astral (the same folks behind Ruff). Installs in seconds:
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+First impact: installing Arachne's dependencies (380+ packages) dropped from **47 seconds with pip** to **6 seconds with uv**. That's not incremental improvement — it's a different category.
+
+```python
+# Before: pip + manual venv
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt       # 47s
+
+# After: uv handles everything
+uv sync                                # 6s
+uv add fastapi                         # install + lock
+uv tool run pytest                     # without activating venv
+```
+
+But what really got me hooked was `uv tool` — it runs isolated Python tools without contaminating the global environment, like `npx` for Node:
+
+```
+uv tool run ruff check src/
+uv tool run black --check .
+uv tool run mypy src/ --strict
+```
+
+No virtualenv activated, no pollution. Perfect for CI and one-off commands.
+
+**The tradeoff?** Lock file in its own format (not compatible with `pip freeze`). If your team uses pure pip, you'll have to convert. But for solo projects or small teams — no going back.
+
+## Codex CLI: a code agent that works
+
+Until July I used Hermes for everything — pair programming, debugging, refactoring. But some tasks don't need a full agent, they need a **terminal tool that thinks**.
+
+[Codex CLI](https://github.com/openai/codex-cli) fills this niche: you give it a prompt in the terminal, it edits files and runs commands. Simple. Fast. Zero configuration.
+
+```
+$ codex "refactor this file to use dataclasses instead of dicts"
+```
+
+What I discovered in practice:
+
+- **Surgical tasks** (refactor a function, add a test, debug) — Codex is 3x faster than opening Hermes and writing a full prompt
+- **Multi-file tasks** (change schema, update handler, test) — Hermes still wins because of structured planning
+- **CI debugging** — `codex "why did this test fail?"` inside the CI container resolves directly
+
+I added an alias to `.zshrc`:
+
+```bash
+alias x="codex"
+alias xr="codex --repl"  # continuous conversation mode
+```
+
+REPL mode is the most useful — it becomes a pair programmer in the terminal that maintains context between commands. I use it directly for pipeline debugging.
+
+**Caution:** Codex runs commands without confirmation by default. Don't run it on production without reviewing. If you're touching infrastructure, pass `--dry-run` first.
+
+## MCP: the missing layer between LLMs and tools
+
+MCP (Model Context Protocol) is Anthropic's protocol that standardizes how LLMs connect with external tools. Like USB-C for AI — a universal connector.
+
+Before, every integration was custom: Hermes plugin for Telegram, REST handler for the database, socket for Playwright. All hand-stitched. MCP changes the game: you write an **MCP server** once, and any MCP client (Hermes, Claude Desktop, Cursor, Codex) discovers and uses the tools automatically.
+
+The ecosystem I built in July:
+
+```
+mcp-servers/
+├── filesystem/    # read/write files with permissions
+├── github/        # PRs, issues, code search
+├── sequential-thinking/  # structured reasoning
+├── fetch/         # fetch web pages
+└── arachne/       # scraping, vision, transcribe, RAG → 36 tools
+```
+
+Each server exposes tools that any agent can consume. When I connected Hermes to MCP Arachne for the first time, it was magical:
+
+```
+Hermes: "fetch the latest blog post and extract the links"
+→ MCP Arachne.scrape("https://samuel.me/lifelog")
+→ returns clean markdown
+→ MCP Arachne.extract_links(post_content)
+→ list of URLs
+→ done
+```
+
+Hermes didn't need to know _how_ scraping worked — it just asked. MCP made the bridge.
+
+**For Hermes users**, configuring MCP is trivial — just add to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/samuel/projetos"]
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+  arachne:
+    command: python3
+    args: ["-m", "arachne.mcp.server"]
+```
+
+Done. Hermes discovers and exposes the tools on the next interaction. No restart, no extra config.
+
+## The workflow that stuck
+
+After a month of experimentation, my daily flow became:
+
+1. **UV** manages all environments — one `uv sync` and I'm running
+2. **Codex CLI** for quick tasks — debug, local refactor, CI
+3. **Hermes + MCP** for complex tasks — multi-file, deploy, orchestration
+4. **Lifelog** records what worked (like this post)
+
+```
+# Real example: debug + fix + deploy
+codex "fix the timezone bug in the scheduler"     # 30s → fixes
+hermes "run the tests, deploy the hotfix"          # 2min → tests + deploy
+```
+
+Each tool in its niche. None trying to do everything alone.
+
+## Lessons learned
+
+1. **Right tool in the right place** — no point having a Swiss Army knife if you need a screwdriver. Codex for micro-tasks, Hermes for macro. UV for packages, pip for nothing.
+
+2. **MCP is the future of integration** — open protocol, any client, any server. The ecosystem I built in July has already saved me hours. If you use LLMs in the terminal, MCP isn't optional — it's infrastructure.
+
+3. **Documenting the discovery doubles the learning** — this post exists because every new tool came with a "hm, I'll note that." Two weeks later, I have a record of what worked, what didn't, and why. I recommend doing the same.
+
+For next month I want to explore data visualization tools and maybe some Rust — TatuEngine demands it. But that's a story for August.
