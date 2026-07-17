@@ -1,0 +1,177 @@
+---
+title: "Dogwalk — updates and next steps"
+description: "Exploring the current state of Dogwalk — lessons learned, challenges and discoveries."
+date: 2026-07-16
+pubDate: 2026-07-16 22:02:00 -03:00
+lang: 'en'
+project: dogwalk
+tags: ["dogwalk", "update", "progress"]
+icon: "🐶"
+cover: /covers/dogwalk-updates-e-proximos-passos.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+Dogwalk (PataPass) is no longer that MVP from May. Since the last dedicated post, the project has taken on the contours of a real platform — geofencing, multi-city, per-profile theming, and a build quality I'm proud of. This post is a checkpoint: what was done, what I learned, and what's coming next.
+
+The stack is still FastAPI + PostgreSQL + React 19 + Vite 8, but the surrounding ecosystem has matured — systemd service, Cloudflare Tunnel, CI/CD with E2E tests, build guard against broken imports.
+
+## Geofencing — the map became the brain
+
+The biggest July news was the complete **geofencing system**. It started as a modest idea — "show the walker's service area" — and turned into an entire module with three components:
+
+### ServiceAreaDrawer
+
+Each walker can draw their service areas on the map: draggable circle, radius slider, multiple areas per profile. Saved via REST API, loaded on search.
+
+```tsx
+// ServiceAreaDrawer — drag, resize, save
+function ServiceAreaDrawer({ profileId }: Props) {
+  const [areas, setAreas] = useState<ServiceArea[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await api.put(`/profiles/${profileId}/service-areas`, { areas });
+    setIsSaving(false);
+    toast.success('Service area updated!');
+  };
+
+  return (
+    <div className="space-y-4">
+      <MapContainer>
+        {areas.map((area, i) => (
+          <DraggableCircle
+            key={i}
+            center={area.center}
+            radius={area.radius}
+            onChange={(updated) => updateArea(i, updated)}
+          />
+        ))}
+      </MapContainer>
+      <Slider
+        value={radius}
+        min={500}
+        max={10000}
+        onChange={setRadius}
+        label={`Radius: ${(radius / 1000).toFixed(1)} km`}
+      />
+      <Button onClick={handleSave} loading={isSaving}>
+        Save areas
+      </Button>
+    </div>
+  );
+}
+```
+
+The most challenging part was the `useCallback` dance with Rolldown (Vite 8). Inline closures with block body in JSX props break the build — I had to extract named handlers.
+
+### Proximity Alerts
+
+When the walker is on a walk and passes near (< 50m) a point of interest (POI), the app automatically alerts:
+
+```
+📍 {"lat": -23.587, "lng": -46.657} — Near Gate 7 (Ibirapuera)
+📢 "You're passing near a point of interest!"
+```
+
+The POIs are real — 33 seeded points around the Ibirapuera region, with names, coordinates and categories. The proximity logic runs on the frontend during the walk via GPS tracking, with no server latency.
+
+```ts
+// Proximity check — efficient, no extra library
+function checkProximity(
+  currentPos: [number, number],
+  pois: MapPoint[],
+  threshold = 50 // meters
+): MapPoint[] {
+  return pois.filter(poi => {
+    const dist = haversineDistance(currentPos, [poi.lat, poi.lng]);
+    return dist <= threshold;
+  });
+}
+```
+
+### Migration tests
+
+The geofencing module came with migration tests that validate seeded data. I learned the hard way that `updated_at` needs to be explicit in SQL seeds, and that `act()` from React Testing Library can cause timeout if wrapped around Promises that resolve too quickly.
+
+## Multi-city — preparing the ground
+
+Previously, search was naive — it brought all walkers regardless of location. Now it has **two new routers** in the backend:
+
+```
+GET /cities                    → list all cities with walkers
+GET /cities/{city}/walkers     → walkers filtered by city
+GET /search/walkers            → unified search: city + price + rating
+```
+
+The implementation followed the pattern already working in other endpoints: `get_optional_user` for public endpoints, ordering by descending rating with nulls last, pagination via `limit`/`offset`.
+
+The biggest surprise came with **SQLModel**: `select(func.count()).select_from(query.subquery())` is the pattern to count total results ignoring pagination. Obvious in retrospect, but it cost me an hour of debugging to find the right syntax.
+
+## Per-profile theming — own visual identity
+
+One of the most common feedbacks from testing was: "tutor and walker look like the same app." I solved it with **dynamic per-profile theming**:
+
+| Profile | Color | Vibe |
+|---------|-------|------|
+| Tutor 🐕 | Orange (#f97316) | Welcoming, ownership |
+| Walker 🦮 | Green (#22c55e) | Nature, trust |
+
+In practice, it's a CSS custom properties swap on login:
+
+```css
+:root {
+  --brand: var(--tutor);
+}
+body[data-role="walker"] {
+  --brand: var(--walker);
+}
+```
+
+shadcn/ui was completely subjugated — the system colors now come from brand vars, not the default palette. It was more work than expected (every shadcn component has hardcoded references to `primary`, `ring`, `background`), but the final result is consistent.
+
+## Build guard — no more deploy surprises
+
+How many times did a build break in CI because of a broken import that I only found out about after 3 minutes of pipeline? Too many. The solution was a **Vite plugin that explicitly breaks the build** if it detects `UNRESOLVED_IMPORT`:
+
+```ts
+// vite.config.ts — build guard
+function unresolvedImportGuard(): Plugin {
+  return {
+    name: 'unresolved-import-guard',
+    buildEnd(error) {
+      if (error?.message?.includes('UNRESOLVED_IMPORT')) {
+        console.error('[BUILD GUARD] Unresolved import detected!');
+        process.exit(1);
+      }
+    },
+  };
+}
+```
+
+Looks simple, but the impact was huge — zero broken builds in CI since I implemented it.
+
+## What's coming next
+
+The next cycle has 3 fronts:
+
+1. **PetProfile + WalkerProfile pages** — already started on the `feature/geofencing` branch, with routes, navigation and API connection. It will unify the profile editing experience.
+
+2. **Push notifications** — the notification WebSocket is ready on the backend, but the frontend still doesn't integrate with Service Worker for native notifications. High priority.
+
+3. **Referral program** — the ReferralCard component already exists in the dashboards, but the tracking + reward logic isn't wired up with Stripe Connect yet.
+
+Additionally, I want to dedicate time to **onboarding documentation** — the walker registration flow still has gaps that generate questions during testing.
+
+## Lessons learned
+
+- **Geofencing is more complex than it seems.** It's not just "calculate distance" — it's drawing areas, persisting, loading, real-time updates, handling map edges.
+- **Multi-city prepares the ground for scale.** Having cities, search and filters now means that when it's time to expand to other states, the infra is already ready.
+- **Per-profile theming isn't just visual.** It's a product decision that communicates "this app is yours" to each user type. Worth the effort.
+- **Build guard should be default.** Every pipeline wins when you fail fast.
+
+> _July 16, 2026. Dogwalk is no longer an MVP. It's a platform. And there's still a long road ahead._

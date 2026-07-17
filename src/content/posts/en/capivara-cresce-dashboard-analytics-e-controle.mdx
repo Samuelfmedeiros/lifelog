@@ -1,0 +1,572 @@
+---
+title: "Capivara Grows — Dashboard, Analytics and Control"
+description: "From messy spreadsheets to a full dashboard with real-time health checks, Umami integration, and financial analytics with spending categories. The evolution of Capivara from a simple personal hub to the ecosystem's control center."
+date: 2026-06-12 10:00:00 -03:00
+pubDate: 2026-07-13 22:00:00 -03:00
+project: capivara
+tags: ["capivara", "dashboard", "umami", "analytics", "fastapi", "react"]
+icon: "🐷"
+cover: /covers/capivara-cresce-dashboard-analytics-e-controle.webp
+featured: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The original problem: account chaos
+
+Capivara [was born in May](/posts/capivara-nasce-preciso-de-um-hub-pessoal-seguro) as a secure personal hub — JWT authentication, temporary invites, a nice dashboard. It solved the access problem, but **it didn't solve the visibility problem**.
+
+I had:
+
+- 6 services running (Arachne, Dogwalk, Capivara, Portfolio, Cloudflare tunnel, Umami)
+- **3** different dashboards to check status
+- **2** Google Sheets with Dogwalk financial data
+- **1** lost `.env.local` file with production secrets
+- **0** unified view of ecosystem health
+
+Every time something broke — a tunnel going down, a silent deploy failure — I found out **by accident**, usually when a user told me. No alerts, no dashboard, no history.
+
+Capivara needed to grow.
+
+## First spreadsheets
+
+Before the dashboard, I was at the **crappy spreadsheet** level:
+
+```
+📊 Dogwalk Revenue — June
+┌──────────┬────────┬──────────┐
+│ Week     │ R$     │ Walks    │
+├──────────┼────────┼──────────┤
+│ Week 1   │ 1,250  │ 14       │
+│ Week 2   │ 980    │ 11       │  ← Google Sheets
+│ Week 3   │ 1,470  │ 17       │     raw dog
+│ Week 4   │ 2,100  │ 23       │
+└──────────┴────────┴──────────┘
+```
+
+It worked, but required:
+
+1. Manual export from Supabase
+2. Copy to spreadsheet
+3. Formatting
+4. Sharing
+5. Repeat next week
+
+And if I wanted to know **how much each walker earned**? Another spreadsheet. **How many cancellations per month?** Another spreadsheet. The number of spreadsheets grew at the same rate as the questions.
+
+The last straw was when I had to cross-reference data from 3 different spreadsheets to answer "which walker had the best customer retention?" I spent the whole afternoon. **That's work a robot should do.**
+
+## Health check dashboard
+
+The first real feature after login was the consolidated health check. Instead of pinging each service manually, I created a single endpoint in the FastAPI backend:
+
+```python
+"""Health monitor — consolidated status of all Capivara ecosystem services."""
+
+from __future__ import annotations
+
+import httpx
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/api/health", tags=["health"])
+
+PORTIFOLIO_STAGING = "https://safm3.vercel.app"
+PORTIFOLIO_PROD = "https://samuelmedeiros.vercel.app"
+TUNNEL_URL = "https://capivara.seu.pet"
+
+@router.get("/all")
+def health_all():
+    """Check ALL ecosystem services and return consolidated status."""
+    return _check_all()
+
+def _check_all() -> dict:
+    results: dict[str, bool | dict] = {}
+
+    # 1. Self — Capivara is always online if it responded
+    results["capivara_backend"] = True
+
+    # 2. Portfolio Staging
+    results["portifolio_staging"] = _check_url(PORTIFOLIO_STAGING)
+
+    # 3. Portfolio Production
+    results["portifolio_production"] = _check_url(PORTIFOLIO_PROD)
+
+    # 4. Tunnel
+    results["tunnel"] = _check_url(TUNNEL_URL)
+
+    # Overall status
+    required = ["capivara_backend", "tunnel"]
+    all_ok = all(
+        isinstance(results[r], bool) and results[r]
+        or isinstance(results[r], dict) and results[r].get("online", False)
+        for r in required
+    )
+
+    return {
+        "status": "healthy" if all_ok else "degraded",
+        "services": results,
+    }
+
+def _check_url(url: str, timeout: int = 5) -> dict:
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
+            r = c.get(url)
+            if r.status_code == 404:
+                alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
+                if alt != url:
+                    r = c.get(alt)
+            return {"online": r.status_code == 200, "status": r.status_code}
+    except httpx.RequestError as e:
+        return {"online": False, "error": str(e)}
+```
+
+The endpoint became a **systemd cron job** that runs every 5 minutes. If something critical goes down, `capivara-health-check.py` sends an alert on Telegram:
+
+```python
+#!/usr/bin/env python3
+"""capivara-health-check.py — Cron monitor for the Capivara ecosystem."""
+
+import json, sys, urllib.request
+
+CAPIVARA_URL = "http://localhost:8001/api/health/all"
+CRITICAL = ["capivara_backend", "tunnel"]
+
+try:
+    req = urllib.request.Request(CAPIVARA_URL, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+except Exception as e:
+    print(f"⚠️  Capivara HEALTH CHECK FAILED: {e}")
+    sys.exit(1)
+
+services = data.get("services", {})
+offline = [
+    name for name in CRITICAL
+    if not (services.get(name) is True
+            or services.get(name, {}).get("online"))
+]
+
+if offline:
+    print(f"🔴 Degraded — critical offline: {', '.join(offline)}")
+    sys.exit(1)
+
+sys.exit(0)  # Silent = all clear
+```
+
+On the frontend, the **ServiceHealthBar** shows the status at a glance:
+
+```tsx
+function ServiceHealthBar({ health }: { health: ServiceHealth }) {
+  const items = [
+    { key: 'capivara_backend', label: 'Backend', ok: health.capivara_backend },
+    { key: 'tunnel', label: 'Tunnel', ok: health.tunnel },
+    { key: 'portifolio_staging', label: 'Portfolio Staging',
+      ok: health.portifolio_staging === true,
+      unknown: health.portifolio_staging === null },
+  ]
+
+  return (
+    <div className="glass p-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"
+         role="region" aria-label="Service status">
+      <span className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase
+                       tracking-wide font-medium shrink-0">Services</span>
+      {items.map(item => (
+        <div key={item.key} className="flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            item.unknown ? 'bg-[rgba(255,255,255,0.2)]'
+            : item.ok ? 'bg-green-400' : 'bg-red-500'
+          }`} />
+          <span className={item.unknown ? 'text-[rgba(255,255,255,0.25)]'
+                                   : 'text-[rgba(255,255,255,0.5)]'}>
+            {item.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+```
+
+The design is intentional: **green dot = all good, red dot = broke, gray dot = not monitored**. No yellow. Yellow is indecision — either it's online or it's not.
+
+## Umami integration
+
+Umami analytics already existed in the ecosystem — self-hosted on port 3100, tracking visits to Portfolio and Dogwalk. The problem was that **each access required a separate login**. Capivara had admin credentials, but the flow was:
+
+1. Open `https://capivara.seu.pet:3100`
+2. Type email + password
+3. Navigate to the right dashboard
+4. Repeat on next access
+
+**Solution: reverse proxy with auto-login.** I created a proxy in FastAPI that forwards requests to Umami:
+
+```python
+"""Proxy routes to Umami analytics server (port 3100)."""
+
+import httpx
+from fastapi import APIRouter, Request
+from fastapi.responses import Response
+
+router = APIRouter(prefix="/api/umami", tags=["umami"])
+UMAMI_API = "http://localhost:3100"
+
+@router.get("/status")
+async def umami_status():
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(f"{UMAMI_API}/")
+            return {"online": resp.status_code == 200}
+    except httpx.ConnectError:
+        return {"online": False, "error": "Connection refused"}
+
+async def _proxy(path: str, request: Request) -> Response:
+    url = f"{UMAMI_API}{path}"
+    body = await request.body()
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.request(
+            method=request.method, url=url,
+            headers=headers, content=body,
+            follow_redirects=True,
+        )
+    return Response(content=resp.content, status_code=resp.status_code,
+                    headers=dict(resp.headers))
+
+@router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_umami(path: str, request: Request):
+    return await _proxy(f"/{path}", request)
+```
+
+On the frontend, auto-login works like this:
+
+```tsx
+function openUmami() {
+  trackEvent('service_access', { service: 'umami' })
+  window.open('/api/auth/umami-login', '_blank', 'noopener,noreferrer')
+}
+
+function UmamiMiniCard() {
+  return (
+    <div className="glass p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-[rgba(255,255,255,0.4)]
+                         uppercase tracking-wide font-medium">
+          📊 Umami Analytics
+        </span>
+        <span className="text-[10px] px-2 py-0.5 rounded-full
+                         bg-green-500/10 text-green-400">online</span>
+      </div>
+      <p className="text-xs text-[rgba(255,255,255,0.5)] mb-3">
+        Samuel Portfolio and Dogwalk
+      </p>
+      <button onClick={openUmami}
+        className="text-[11px] px-3 py-2 rounded-lg
+                   bg-[rgba(0,212,255,0.05)] border
+                   border-[rgba(0,212,255,0.1)] text-cyan
+                   hover:text-white hover:border-[rgba(0,212,255,0.3)]
+                   transition-all">
+        📊 Open Umami
+      </button>
+    </div>
+  )
+}
+```
+
+I also added **server-side tracking** — events like login, logout, sync, and dashboard access are sent to the Umami collector via fire-and-forget:
+
+```python
+def _send(event: str, url: str = "/api", hostname: str = "capivara.seu.pet"):
+    payload = json.dumps({
+        "type": "event",
+        "payload": {
+            "hostname": hostname,
+            "url": url,
+            "website": CAPIVARA_WEBSITE_ID,
+            "name": event,
+        },
+    }).encode()
+    req = Request(COLLECTOR_URL, data=payload,
+                  headers={"Content-Type": "application/json",
+                           "User-Agent": "capivara/1.0"},
+                  method="POST")
+    try:
+        urlopen(req, timeout=3)
+    except URLError:
+        pass  # fire-and-forget: silent failure
+```
+
+This gave me visibility into **who accesses what and when** — without relying on server logs.
+
+## Financial analytics with categories
+
+Dogwalk processes ~50 transactions per month between walks, withdrawals, and chargebacks. Each transaction has a value, a walker, a client, and a status. But **what really matters** is the categorization:
+
+| Category     | Jun/26 | Jul/26 | Change |
+|--------------|:------:|:------:|:------:|
+| Walks        | R$ 4,720 | R$ 5,810 | +23% |
+| Withdrawals  | R$ 3,100 | R$ 4,200 | +35% |
+| Fees         | R$ 470  | R$ 580  | +23% |
+| Chargebacks  | R$ 120  | R$ 90   | -25% |
+| **Net**      | **R$ 1,030** | **R$ 940** | **-9%** |
+
+The backend exposes this aggregated data via the `/dogwalk/revenue` endpoint:
+
+```python
+@router.get("/revenue")
+async def revenue_stats(current_user=Depends(get_current_user),
+                        db=Depends(get_db)):
+    """Revenue aggregated by month with category breakdown."""
+    twelve_months_ago = datetime.now(timezone.utc) - timedelta(days=365)
+
+    bookings = db.query(Booking).filter(
+        Booking.status == "finished",
+        Booking.scheduled_date >= twelve_months_ago,
+    ).order_by(Booking.scheduled_date).all()
+
+    monthly = defaultdict(lambda: {"revenue": 0, "walks": 0, "categories": {}})
+    for b in bookings:
+        month_key = b.scheduled_date.strftime("%Y-%m")
+        monthly[month_key]["revenue"] += float(b.price or 0)
+        monthly[month_key]["walks"] += 1
+        cat = categorize_booking(b)
+        monthly[month_key]["categories"][cat] = \
+            monthly[month_key]["categories"].get(cat, 0) + float(b.price or 0)
+
+    return {
+        "total_revenue": sum(m["revenue"] for m in monthly.values()),
+        "total_walks": sum(m["walks"] for m in monthly.values()),
+        "monthly": [
+            {"month": k, **v}
+            for k, v in sorted(monthly.items())
+        ],
+    }
+```
+
+On the frontend, the visualization is a horizontal bar chart with gradient:
+
+```tsx
+{monthlyData.map((m: any) => {
+  const maxRev = Math.max(...monthlyData.map((x: any) => x.revenue))
+  const pct = maxRev > 0 ? (m.revenue / maxRev) * 100 : 0
+  const monthLabel = new Date(m.month + '-02')
+    .toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  return (
+    <div key={m.month} className="flex items-center gap-2 text-xs">
+      <span className="w-14 text-[rgba(255,255,255,0.3)] shrink-0">
+        {monthLabel}
+      </span>
+      <div className="flex-1 h-5 rounded
+                      bg-[rgba(255,255,255,0.03)] overflow-hidden relative">
+        <div className="h-full rounded bg-gradient-to-r
+                        from-[#00d4ff]/40 to-[#00d4ff]
+                        transition-all duration-500"
+             style={{ width: `${Math.max(pct, 3)}%` }} />
+      </div>
+      <span className="w-20 text-right text-[rgba(255,255,255,0.5)] shrink-0">
+        R$ {m.revenue.toFixed(0)}
+      </span>
+      <span className="w-6 text-right text-[rgba(255,255,255,0.2)]
+                       text-[10px] shrink-0">
+        {m.walks}
+      </span>
+    </div>
+  )
+})}
+```
+
+The cherry on top: a **Revenue Change Indicator** that automatically calculates the month-over-month percentage change:
+
+```tsx
+const revenueChange = prevMonth && currentMonth
+  ? ((currentMonth.revenue - prevMonth.revenue)
+     / prevMonth.revenue * 100).toFixed(0)
+  : null
+
+// ...
+
+{revenueChange && (
+  <div className="mt-2 text-[10px] text-[rgba(255,255,255,0.3)]">
+    {Number(revenueChange) >= 0 ? '↗' : '↘'}
+    {' '}{Math.abs(Number(revenueChange))}% vs previous month
+  </div>
+)}
+```
+
+## Data visualization learnings
+
+After 30+ commits of dashboard evolution, some learnings crystallized:
+
+### 1. Skeleton loading > spinner
+
+Every card on the dashboard has an explicit loading state with a skeleton. The user sees the page structure immediately, even if the data takes 200ms:
+
+```tsx
+function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`skeleton ${className}`} />
+}
+
+// Usage:
+{loading && !error && (
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <Skeleton className="h-[100px]" />
+    <Skeleton className="h-[100px]" />
+    ...
+  </div>
+)}
+```
+
+### 2. Refresh indicator — data age
+
+A `RefreshIndicator` shows **how long ago** the data was updated, not just the last update time. This is crucial to know if the data is reliable:
+
+```tsx
+function RefreshIndicator({ lastUpdated, onRefresh }) {
+  const [ago, setAgo] = useState('')
+  useEffect(() => {
+    const tick = () => {
+      const sec = Math.floor((Date.now() - lastUpdated) / 1000)
+      if (sec < 5) setAgo('now')
+      else if (sec < 60) setAgo(`${sec}s ago`)
+      else setAgo(`${Math.floor(sec / 60)}min ago`)
+    }
+    tick()
+    const interval = setInterval(tick, 5000)
+    return () => clearInterval(interval)
+  }, [lastUpdated])
+
+  return (
+    <span className="text-[10px] text-[rgba(255,255,255,0.25)]">
+      updated {ago}
+    </span>
+  )
+}
+```
+
+### 3. Collapsible sections with native height transition
+
+Instead of accordion libraries, the transition uses `scrollHeight` + CSS:
+
+```tsx
+const [height, setHeight] = useState(0)
+const contentRef = useRef<HTMLDivElement>(null)
+
+useEffect(() => {
+  if (contentRef.current) {
+    setHeight(open ? contentRef.current.scrollHeight : 0)
+  }
+}, [open, children])
+
+return (
+  <div className="overflow-hidden transition-[height] duration-300
+                  ease-[cubic-bezier(0.16,1,0.3,1)]"
+       style={{ height: height > 0 ? height : undefined }}>
+    <div ref={contentRef}>
+      {open && children}
+    </div>
+  </div>
+)
+```
+
+### 4. Not monitoring everything is better than monitoring it wrong
+
+At first I wanted to monitor **everything** — latency of each endpoint, Umami response time, R2 status. The result was **a cluttered dashboard that nobody looked at**. I reduced it to 4 essential services and usage went up 10x.
+
+### 5. Financial data needs context
+
+Seeing "R$ 5,810" in isolation says nothing. Seeing "R$ 5,810 — 23% higher than last month" tells a story. The `revenueChange` was the most praised feature by those who tested the dashboard.
+
+## The evolution metrics
+
+| Metric | Capivara 1.0 (May) | Capivara 2.0 (July) |
+|---------|:-------------------:|:--------------------:|
+| Dashboard sections | 2 (login, status) | 6 (dashboard, Umami, Portfolio, Dogwalk, Invites, Telemetry) |
+| Monitored services | 1 (self) | 6 (backend, tunnel, staging, prod, Umami, Dogwalk) |
+| API endpoints | 5 | 25+ |
+| React components | ~200 LOC | ~1,100 LOC (Dashboard) + ~1,100 LOC (Admin) |
+| Authentication | Simple JWT | JWT + bcrypt + 2FA + expiring invites |
+| Umami tracking | ❌ via pageview | ✅ 7 server-side events |
+| Backup | ❌ none | ✅ D1 Cloudflare (6h sync) |
+| Alerts | ❌ | ✅ Telegram + health check cron |
+
+## Unified telemetry
+
+In addition to Umami, I created a **custom telemetry system** — all projects send events to Capivara, which stores them in SQLite and exposes aggregates:
+
+```python
+@router.post("/ingest")
+async def ingest(event: TelemetryPayload, request: Request, db=Depends(get_db)):
+    record = TelemetryEvent(
+        event_type=event.event_type,
+        source=event.source,
+        payload=json.dumps(event.payload, ensure_ascii=False),
+        ip=event.ip or (request.client.host if request.client else None),
+        user_agent=event.user_agent or request.headers.get("user-agent"),
+        referrer=event.referrer or request.headers.get("referer"),
+    )
+    db.add(record)
+    db.commit()
+    return {"ok": True, "id": record.id}
+```
+
+This lets me track events like:
+- `cv_download` — resume downloads on Portfolio
+- `contact_submit` — contact form messages
+- `dashboard_access` — when someone enters Capivara
+- `service_access` — when an external service is accessed via proxy
+
+The telemetry dashboard shows everything aggregated:
+
+```tsx
+<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+  <div className="bg-[rgba(255,255,255,0.02)] rounded-lg p-3 text-center">
+    <div className="text-lg font-semibold text-[#00d4ff]">
+      {stats.total_events}
+    </div>
+    <div className="text-[9px] text-[rgba(255,255,255,0.3)]
+                    uppercase tracking-wide">
+      Events (30d)
+    </div>
+  </div>
+  <div className="bg-[rgba(255,255,255,0.02)] rounded-lg p-3 text-center">
+    <div className="text-lg font-semibold text-green-400">
+      {stats.cv_downloads}
+    </div>
+    <div className="text-[9px] text-[rgba(255,255,255,0.3)]
+                    uppercase tracking-wide">
+      CV Downloads
+    </div>
+  </div>
+  {/* ... more metrics ... */}
+</div>
+```
+
+## What's next
+
+Capivara 2.0 is functional, but not finished. The next steps in the queue:
+
+1. **Public status page** (`status.capivara.seu.pet`) — anyone can see if services are online
+2. **Auto-backup SQLite → R2** — disaster recovery without depending on local machine
+3. **TatuEngine proxy** — monitor the SSM engine too
+4. **Historical revenue charts** — the current bar chart shows only 12 months, I want 5 years
+5. **Dashboard notifications** — instead of just Telegram, a visual feed of important events
+6. **True mobile-first** — the dashboard works on mobile, but the financial experience is still desktop
+
+> TL;DR: Capivara went from a login hub to a control center with real-time health checks, categorized financial analytics, Umami integration with auto-login, and unified telemetry. I learned that a dashboard isn't about showing everything — it's about **showing the right thing at the right time**.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Capivara && systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\\n   Active: active (running)\\n   Port: 8001' },
+    { cmd: 'curl -s http://localhost:8001/api/health/all | jq .', output: '{\\n  "status": "healthy",\\n  "services": {\\n    "capivara_backend": true,\\n    "portifolio_staging": {"online": true, "status": 200},\\n    "portifolio_production": {"online": true, "status": 200},\\n    "tunnel": {"online": true, "status": 200}\\n  }\\n}' },
+    { cmd: 'cd ~/projetos/Capivara/frontend && npx vite build', output: 'vite v8.0.0 building for production...\\n✓ 42 modules transformed.\\n✓ built in 1.8s' },
+    { cmd: 'python3 ~/projetos/Capivara/backend/capivara-health-check.py', output: '(silent — all clear)' },
+    { cmd: 'cd ~/projetos/Capivara && git log --oneline | wc -l', output: '37' },
+  ]}
+/>

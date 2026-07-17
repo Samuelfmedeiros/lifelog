@@ -1,0 +1,132 @@
+---
+title: "TatuEngine — updates and next steps"
+description: "Exploring the current state of TatuEngine — lessons, challenges, and discoveries."
+date: 2026-07-17
+pubDate: 2026-07-17 22:37:00 -03:00
+project: tatuengine
+tags:
+  - tatuengine
+  - update
+  - progress
+icon: "🌊"
+cover: /covers/tatuengine-updates-and-next-steps.webp
+featured: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+TatuEngine has undergone a radical transformation in the last 30 days. From the `block_traverse_kernel` with 252× speedup to the complete Teacher-Student pipeline, what started as "what if RT Cores ran neural networks?" became a functional inference engine with an autopoietic agent, security sandbox, and 128 passing Python tests (not counting the 40+ C++ tests).
+
+This post is an X-ray of the current state — what works, what broke, what we learned, and where the ship is heading.
+
+## What happened
+
+### SFT Pipeline: Teacher LoRA trained, Student ready
+
+The biggest milestone was the Supervised Fine-Tuning pipeline. The `tatu_sft_train.py` script (837 lines) was created, the Teacher LoRA (Qwen2.5-3B-Instruct in GGUF) finished training, and 381 examples were distilled into datasets. The Student (BitMamba-1B PyTorch) is ready, differentiable, forward+backward validated on the RTX 3060 — but still not trained.
+
+```python
+# tatu_sft_train.py pipeline
+# 1. Load distilled datasets (JSONL)
+# 2. Tokenize in [THOUGHT]/[ANSWER] format
+# 3. Instantiate Student PyTorch (BitMambaForCausalLM) — 1B params
+# 4. Train with AdamW fp32 + Cosine Annealing
+# 5. Save checkpoints every 50 steps
+```
+
+The Teacher became a 2GB `.gguf` in `models/qwen_teacher/`. The full SFT run is the next step — the Student hasn't learned anything yet.
+
+### Security Sandbox: 4 isolation levels
+
+The `ApiSandbox` (511 lines, singleton) went into production with **4 permission levels**: SAFE, PROMPT, RESTRICTED, DENIED. Blocks filesystem writes, dangerous calls, malicious argv. 51/51 tests in the sandbox module alone.
+
+```python
+# ApiSandbox: 4 isolation levels
+class SandboxLevel(Enum):
+    SAFE = "safe"         # trusted tools (calculator, date)
+    PROMPT = "prompt"     # ask user before (web, file read)
+    RESTRICTED = "restricted"  # authorized directories only
+    DENIED = "denied"     # forbidden (shell, file write)
+```
+
+Each tool in `tool_registry.py` declares its sandbox level. The MCP `tatu_tool_execute` validates before executing — if a SAFE tool tries to access a forbidden path, the sandbox blocks it with `SandboxError`.
+
+### Depth Pruning: Mamba2 48 → 32 layers
+
+The `prune_mamba.py` was an interesting experiment: take the original Mamba2-1.3B (48 layers) and surgically remove the last 16 abstraction layers. The rationale? Not all depth translates to quality for specific tasks — and 32 layers take up 33% less VRAM.
+
+```bash
+# Depth pruning: 48 → 32 layers
+python3 scripts/prune_mamba.py
+# Output: models/bitmamba_cpp/mamba2_1.3b_pruned_32.pt
+```
+
+The pruning preserves embedding, norm_f, lm_head, and the first 32 SSM layers.
+
+### C++ Bindings: 124 errors (and why it's not blocking)
+
+The pybind11 bindings build accumulated 124 errors. Sounds serious, but it's not — they're structural warnings from cmake + pybind11 with C++23, not logic errors. The `.so` compiles and the Python tests pass (128/128). It's on the todo list but doesn't block delivery.
+
+### What we actually learned
+
+Some lessons worth recording:
+
+**1. The AutoTrainer converges too fast.** With spacing 3.5 (default), the lenses barely overlap. The system reaches high quality in a few steps and the AutoTrainer sits idle — not because it's broken, but because the system already solved the problem. I need more complex inputs to test real topological evolution.
+
+**2. Adjacent Method won.** Testing the 3 η options (-1, 0, +1) by finite differences is faster, more accurate, and free of the false gradients that the original proportional allocation had.
+
+**3. The SSM hidden state doesn't carry history.** Δh ≈ 0.000 between consecutive tokens. The real memory is in the SSM state (the kv_cache). The Energy Observer v1 was measuring the wrong thing — corrected.
+
+**4. Softplus with float32 overflows at x > 89.** `expf(89.0) = inf`. A 1-line patch with `log1pf(expf(-|x|))` saved 2 days of NaN debugging.
+
+```cpp
+// numerically stable softplus
+float dt_val = dt_x > 0.0f
+    ? dt_x + log1pf(expf(-dt_x))
+    : log1pf(expf(dt_x));
+```
+
+## Lessons learned
+
+Looking back, the biggest lesson isn't technical — it's strategic:
+
+- **The hybrid approach (CPU SSM + GPU matmul) was discovered in 3 days and solved what 2 weeks of OptiX couldn't.** The right problem isn't "how to use RT Cores", it's "how to maximize throughput with available resources."
+- **Native ternary models > post-training.** Ternarizing a float32 model after training destroys coherence. BitMamba-2 works because it was trained from scratch with ternary weights.
+- **SSM is not a transformer.** No point trying to parallelize what is inherently sequential. Accepting that the step is CPU-bound and focusing on accelerating matmuls was the right move.
+- **Documenting while building pays dividends.** Every entry in HISTORY.md kept me from repeating errors from previous sprints. The document became the source of truth that the roadmap should be.
+
+## Next steps
+
+The queue is clear:
+
+1. **Student SFT full training** — run 3 epochs with 381 examples. This is the current bottleneck.
+2. **Dataset expansion** — batch distillation with varied prompts.
+3. **Systematic evaluation** — Student vs Teacher reasoning benchmark.
+4. **Student in production** — replace the legacy C++ API with the PyTorch Server.
+5. **Self-improvement loop** — Teacher → Student → generation → distillation → Teacher.
+
+```bash
+# The next command I want to run:
+# python3 tatu/scripts/tatu_sft_train.py --epochs 3 --lr 3e-5
+```
+
+> *TatuEngine doesn't replace Arachne — it's the inference backend Arachne consumes to offer infinite context, low latency, and energy efficiency.*
+
+---
+
+**Timeline:** 30 days ago it was an experiment with RT Cores that didn't work. Today it's 128 passing Python tests, dozens of C++ tests, an autopoietic agent with 8 subsystems, a security sandbox, and a SFT pipeline ready to run. The project doesn't accelerate — it accumulates.
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/TatuEngine && PYTHONPATH=. python3 -m pytest tests/ -q', output: 'Pytest: 128 passed in 14.3s' },
+    { cmd: 'python3 tatu/scripts/tatu_sft_train.py --epochs 1 --max-steps 20', output: 'Quick SFT pipeline test' },
+    { cmd: 'python3 scripts/prune_mamba.py', output: 'Depth pruning: Mamba2 48 → 32 layers' },
+    { cmd: 'python3 -c "from tatu.sandbox import sandbox; print(sandbox.check_read(\\\"~/projetos/TatuEngine/LICENSE.txt\\\"))"', output: 'SandboxResult(ok=True, path=...)' },
+    { cmd: 'cat docs/HISTORY.md | head -5', output: '# 🦔 TatuEngine — Complete Project History' },
+  ]}
+/>

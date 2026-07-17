@@ -1,0 +1,87 @@
+---
+
+title: Arachne Grows — Multi-Engine Pipeline and Smart Cache
+description: "The simple scraper became a platform. Crawl4AI Sidecar, automatic 4-layer fallback, and SQLite cache with FTS5."
+date: 2026-06-10
+pubDate: 2026-07-12 00:00:00 -03:00
+project: arachne
+tags:
+  - arachne
+  - crawl4ai
+  - pipeline
+  - cache
+  - fts5
+icon: 🕷️
+cover: /covers/arachne-pipeline-multi-engine-cache.webp
+featured: false
+lang: en
+---
+
+One week after the first commit, Arachne was no longer that try/except scraper. I had moved from "I'll make my own system" to "how do I do this right?"
+
+June 10. The day Arachne stopped being a script and became a platform.
+
+## The try/except problem
+
+The first version was honest — it tried Crawl4AI, and if it failed, fell back to Trafilatura. It worked, but had glaring limitations:
+
+- If both failed, the user saw a dry error
+- No cache — every request was from scratch
+- No parallelism, no queue, no reporting
+
+I needed something more robust. Something that truly *wouldn't break*.
+
+## Multi-engine pipeline with 4 fallback levels
+
+After a few hours of design, the final architecture looked like this:
+
+```python
+class ExtractionPipeline:
+    """4 levels of automatic fallback."""
+
+    ENGINES = [
+        ("crawl4ai_sidecar", crawl4ai_sidecar_extract),  # Level 1: most powerful
+        ("crawl4ai_sdk", crawl4ai_sdk_extract),          # Level 2: direct SDK
+        ("trafilatura", trafilatura_extract),              # Level 3: light and fast
+        ("requests_bs4", requests_bs4_extract),            # Level 4: last resort
+    ]
+
+    async def extract(self, url: str) -> ExtractionResult:
+        for engine_name, engine_fn in self.ENGINES:
+            try:
+                result = await engine_fn(url)
+                if result and result.markdown:
+                    return result
+            except Exception as e:
+                logger.warning(f"{engine_name} failed for {url}: {e}")
+                continue
+        raise ExtractionError(f"All 4 engines failed for {url}")
+```
+
+Each engine has different strengths. Crawl4AI Sidecar is the Swiss army knife — renders JavaScript, handles Cloudflare. If it fails, the SDK tries without Docker. Trafilatura is the shortcut for simple pages. And requests + BeautifulSoup is the last resort, the "better than nothing" of the story.
+
+## Smart cache with FTS5
+
+Having 4 engines is great, but hitting all of them for every URL is inefficient. That's where caching came in.
+
+SQLite with FTS5 — Full-Text Search version 5. One of the most underrated SQLite features. It allows indexing extracted content and doing fast text searches without needing Elasticsearch or external services:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+    url, title, content, markdown,
+    tokenize='porter unicode61'
+);
+```
+
+The logic became simple:
+1. Check the cache first (URL hash)
+2. If it exists and is fresh (< 24h), return it directly
+3. If not, extract, save to cache, and return
+
+The result: already-visited pages return in **milliseconds** instead of seconds. And FTS5 allows searching historical content — a knowledge base that grows by itself.
+
+## The project's power BI
+
+Curiously, on that same June 10, the repository gained an `arachne_readme.pbix` — a Power BI file that visually detailed the project's architecture. It wasn't code, it was visual documentation. It showed the flows, the engines, the cache, and how everything connected.
+
+Arachne was leaving the realm of my personal experiment and preparing for something bigger.

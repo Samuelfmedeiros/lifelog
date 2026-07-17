@@ -1,0 +1,99 @@
+---
+title: "TatuEngine SFT — Adafactor and the 4 NaN fixes"
+description: "The saga of making Student BitMamba-1B learn without exploding: Adafactor vs AdamW, saving 4 GB of VRAM, and the 4 bugs that produced NaN during bf16 training."
+date: 2026-07-05 10:00:00 -03:00
+pubDate: 2026-07-15 17:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "adafactor", "nan"]
+cover: /covers/tatuengine-sft-adafactor-and-the-4-nan-fixes.webp
+featured: true
+lang: 'en'
+---
+
+## Context
+
+The TatuEngine SFT (Supervised Fine-Tuning) pipeline is the project's current bottleneck. The Teacher LoRA (Qwen2.5-3B-Instruct + LoRA R=16) has already distilled 381 reasoning examples into 3 datasets. The Student (BitMamba-1B PyTorch) has the model — 1.446B parameters, 48 layers — but **it doesn't learn properly**.
+
+It's not a lack of data. The problem is more fundamental: **training systematically explodes into NaN**.
+
+There were 4 distinct bugs. Each killed training in a different way. And Adafactor (the AdamW substitute) was simultaneously part of the solution and part of the problem.
+
+---
+
+## The 4 NaN Fixes
+
+### Fix #1 — Softplus overflow in dt_bias: `expf(89.0) = inf`
+
+The first NaN came from the SSM step — layer 1, first batch, always at `ssm_step`. The culprit: `softplus(dt_bias + dt)`.
+
+`expf(89.0) ≈ 5.5e38` → `+inf` in float32. When `dt_bias` exceeded ~89 after a few iterations, softplus returned `+inf`, the `ssm_step` propagated `inf`, and backward turned everything into NaN.
+
+2 days of debugging. A 1-line patch: `log1pf(expf(-|x|))` fixes it.
+
+### Fix #2 — Adafactor `eps=(None, 0.001)`: the `rsqrt(0)` in bf16
+
+Adafactor factorizes the second moment into rank-1 (row + col), saving ~4 GB vs AdamW (4 GB vs 8.14 GB on RTX 3060). But there's a catch:
+
+The default eps1=1e-30 exists for the float32 case (where `finfo(float32).eps = 1.19e-7`). But in bf16, `finfo(bf16).eps = 0.0078`. When the accumulated second moment is small (early steps), `rsqrt(accum + 1e-30)` returns a huge number because `1e-30` is subnormal in bf16 and becomes 0. Result: `inf * 0 = NaN`.
+
+By passing `eps=(None, 0.001)`, PyTorch uses `finfo(dtype).eps` as eps1, which for bf16 is 0.0078 — enough to prevent underflow in `rsqrt`.
+
+### Fix #3 — State LR Scale: state params need 50× more LR
+
+The SSM state parameters (`A_log`, `D`, `dt_bias`) control the model's temporal dynamics. With the base LR (`lr=3e-5`), they barely move.
+
+Without this, `dt_bias` freezes near 0, softplus produces `log(2) ≈ 0.69` forever, and the model never develops temporal discretization — the SSM essentially doesn't work.
+
+### Fix #4 — Gradient Clamping: `clamp_(-1, 1)` + max-norm
+
+The SSM gradient is inherently unstable because of backpropagation through the discretization `exp(Δ · A)`.
+
+In head-only mode (training only the lm_head), gradients are left free — no clamp because the head needs fast movement to tame output variance. In full SFT, the [-1, 1] clamp is mandatory: without it, deep layers explode at step 5-10.
+
+---
+
+## Comparison Table: Adafactor vs AdamW
+
+| Aspect | AdamW | Adafactor |
+|--------|-------|-----------|
+| Optimizer memory | 8.14 GB (2 states + momentum) | ~4 GB (rank-1 factorized) |
+| Cost per step | Higher (full matrix update) | Lower (row/col update) |
+| bf16 stability | `eps=1e-8` safe | Needs `eps=(None, X)` tuning |
+| Warmup | Required (cold momentum) | Built-in (`relative_step=True`) |
+| Convergence | Faster in transformers | Slower in SSM (needs state_lr_scale) |
+
+The 4 GB saving is critical on the RTX 3060 (12 GB). With AdamW, the 1.4B model + optimizer take ~11.5 GB — no room for batch > 1 or sequences > 256 tokens. With Adafactor, 7.5 GB fit and there's headroom.
+
+---
+
+## The Current Pipeline
+
+```
+Teacher LoRA (Qwen2.5-3B)
+  ↓ 381 distilled examples
+Student BitMamba-1B PyTorch
+  ↓ Full warmup (200 steps, plain text)
+Checkpoint step_0200
+  ↓ SFT Phase 2 (domain-balanced + replay buffer 9:1)
+Student SFT Final
+```
+
+3 datasets: prompt + teacher_response format, score-filtered format, and a hybrid thought/answer format. The dataset preparer normalizes all 3 and applies `[THOUGHT]/[ANSWER]` tags.
+
+The fineweb-edu replay buffer (9:1 reasoning:pretrain) keeps the model from forgetting general language during SFT.
+
+---
+
+## Lessons learned
+
+1. **Softplus isn't safe in float32** — the naive `log(1 + exp(x))` formulation explodes when x > 89. Always use the numerically stable version.
+
+2. **Adafactor saves VRAM but charges in tuning** — eps1 must be calibrated for the dtype. `None` works (delegates to finfo), but never use the default 1e-30 in bf16.
+
+3. **SSM state parameters are their own class** — `dt_bias`, `A_log`, `D` control temporal discretization and need much higher LR than projection parameters. The `state_lr_scale=50` was discovered empirically after losing 3 training runs.
+
+4. **Gradient clamping isn't optional in SSM** — backprop through `exp(Δ · A)` amplifies gradients exponentially. `clamp_(-1, 1)` + `clip_grad_norm_` are complementary safety layers, not redundant.
+
+The full Student SFT hasn't run yet (3 epochs, 381 examples). But the pipeline no longer explodes — the next step is letting it train and seeing what comes out.
+
+> TL;DR: Adafactor saved 4 GB of VRAM (critical on the RTX 3060), but cost 3 lost training runs to NaN until the 4 fixes were right. Numerically stable softplus, eps1 calibrated for bf16, state_lr_scale=50 for SSM params, and clamp+clip as complementary safety layers. The pipeline no longer explodes — now let it run.

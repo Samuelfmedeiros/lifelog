@@ -1,0 +1,318 @@
+---
+title: "E2E tests with Playwright — the quality turnaround"
+description: "How end-to-end tests transformed quality and confidence in Dogwalk's development — the real story of a stack that learned to test itself."
+date: 2026-06-15 10:00:00 -03:00
+pubDate: 2026-07-13 00:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "playwright", "testing", "e2e", "ci-cd", "quality", "automation"]
+icon: "🐶"
+cover: /covers/e2e-tests-with-playwright-the-quality-turnaround.webp
+featured: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+Dogwalk was born as an experiment — a pet walking platform that, like every side project, started with "I'll just make the basics work." And it worked. For a while.
+
+The problem is that side projects have a cruel lifecycle: first it's fun because everything is new. Then comes the phase of "small bugs." And then, without you noticing, every new deploy becomes a gamble. You change a line of CSS and discover you broke the scheduling flow. You swap an icon and the tutor's dashboard disappears.
+
+This is the story of how Dogwalk stopped gambling and started testing.
+
+## The beginning: no tests, no safety net
+
+In the beginning, there were no tests at all. Zero. Not unit, not integration, certainly not E2E. The flow was:
+
+1. Code the feature
+2. Run `pnpm dev` and test manually in the browser
+3. If it seemed to work, commit and deploy
+
+It worked fine for a few weeks — the app was small, I could keep everything in my head. But it reached a point where touching one thing would break something completely different.
+
+I remember one specific day: I made a change to the landing page layout (just CSS!) and, as collateral, the login modal stopped opening. I found out because a friend tested it and said "I tried to log in and nothing happens." Terrible feeling.
+
+## The first attempt: unit tests
+
+The first step was obvious: unit tests. I added Vitest, configured basic coverage, and started testing hooks, services, and isolated components.
+
+```bash
+pnpm add -D vitest @testing-library/react
+```
+
+Unit tests are great for pure logic — `useProximity` with Haversine, `useHeatAlert`, date formatting functions. They run in milliseconds and give fast feedback.
+
+But there was a fundamental problem: **unit tests don't test what the user sees**.
+
+They test whether a function returns the right value, but not whether the button is on the screen, whether the modal opens, whether navigation works. The user doesn't care about a `calculateDistance()` function — they want to click "Schedule" and see the walk confirmed.
+
+## The turnaround: Playwright enters the scene
+
+That's when I decided: **I need tests that navigate through the app like a real user**.
+
+The choice was Playwright. Why?
+
+- Native multi-browser support (Chromium, Firefox, WebKit) without plugins
+- Clean API with `page.goto()`, `page.getByText()`, `page.getByRole()`
+- `addInitScript()` — perfect for session mocking (spoiler: this was crucial)
+- Rich HTML reports with traces and videos
+- CI-friendly with `--no-sandbox` and `fullyParallel`
+
+```js
+// playwright.config.js — the configuration that changed everything
+import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testMatch: ['tests/e2e/**/*.spec.{js,ts}'],
+  timeout: 30_000,
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 2 : undefined,
+  use: {
+    baseURL: process.env.PLAYWRIGHT_TEST_URL || 'http://localhost:5173',
+    headless: true,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    lang: 'en-US',
+    timezoneId: 'America/Sao_Paulo',
+  },
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    { name: 'firefox', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+    { name: 'mobile-chrome', use: { browserName: 'chromium', ...devices['Pixel 5'] } },
+  ],
+})
+```
+
+## The big challenge: authentication in E2E
+
+The biggest obstacle for E2E tests in an SPA is **authentication**. Dogwalk has login with Turnstile (Cloudflare CAPTCHA), JWT, refresh token, and ProtectedRoute with role verification.
+
+In a headless browser, Turnstile doesn't render. Classic solutions:
+
+1. **Inject token in localStorage** — works initially, but `supabase-js` calls `onAuthStateChange` which detects an invalid token and logs out
+2. **Login via REST** — good, but the token expires in 1h and you need to manage refresh
+3. **Mock API calls** — AuthContext listens to `onAuthStateChange`, which dies with expired token
+
+The solution that worked was an **elegant hybrid**: `window.__E2E_SESSION`.
+
+### `window.__E2E_SESSION` — the pattern that saved the tests
+
+The idea is simple: in AuthContext, before any real authentication logic, check if `window.__E2E_SESSION` exists:
+
+```js
+// AuthContext — native session mock support
+if (window.__E2E_SESSION) {
+  setUser(window.__E2E_SESSION.user)
+  setSession(window.__E2E_SESSION)
+  setLoading(false)
+  return // zero auth calls
+}
+```
+
+In tests, this becomes:
+
+```js
+import { test } from '@playwright/test'
+import { setupTutorSession } from './helpers/auth.js'
+
+test('tutor dashboard loads', async ({ page }) => {
+  await setupTutorSession(page)
+  await page.goto('/tutor/dashboard')
+  await expect(page.getByText('My Pets')).toBeVisible()
+})
+```
+
+The `setupTutorSession` does three things:
+
+1. Injects `window.__E2E_SESSION` with mock data via `addInitScript`
+2. Sets `localStorage` with `dw_access_token` and `dw_user`
+3. Intercepts FastAPI calls via `page.route()` and returns controlled data
+
+The result? **Zero seconds waiting for authentication**. ProtectedRoute resolves instantly. No Turnstile, no 401, no refresh token.
+
+```js
+// helpers/auth.js — realistic mock data
+const MOCK_PETS = [
+  { id: 'mock-pet-001', name: 'Rex', species: 'dog', breed: 'Labrador', age: 3, weight: 28.5, emoji: '🐕' },
+  { id: 'mock-pet-002', name: 'Luna', species: 'dog', breed: 'Golden Retriever', age: 2, weight: 22.0, emoji: '🐩' },
+]
+
+const MOCK_WALKERS = [
+  { id: 'mock-walker-001', name: 'Maria Walker', rating: 4.8, review_count: 42, price_per_walk: 35 },
+  { id: 'mock-walker-002', name: 'Carlos PetLover', rating: 4.5, review_count: 28, price_per_walk: 25 },
+]
+```
+
+## Two passes in CI — the JSON reporter problem
+
+Playwright has an annoying bug: the **JSON reporter only writes the file after ALL tests finish**. If the process dies (timeout, OOM), you lose the result.
+
+The solution was to run **twice in CI**:
+
+```bash
+# Pass 1: human output (list reporter)
+npx playwright test --project=chromium --timeout=30000 || true
+
+# Pass 2: JSON report (pipe to file)
+npx playwright test --project=chromium --timeout=30000 --reporter=json 2>/dev/null > /tmp/e2e-results.json
+
+# Parse and notify
+python3 scripts/track-flaky.py /tmp/e2e-results.json
+bash scripts/notify-e2e.sh
+```
+
+The first pass runs with `list reporter` so we can see results in real time in the CI log. The second pass runs with `json reporter` redirected to a file — if it dies, we still have the first pass output.
+
+This also feeds the **flaky tracking system**:
+
+```python
+# track-flaky.py — CSV history of flaky tests
+def record(results_json_path: str):
+    data = json.load(open(results_json_path))
+    stats = data.get("stats", {})
+    passed = stats.get("expected", 0)
+    failed = stats.get("unexpected", 0)
+    total = stats.get("total", 0)
+
+    with open("test-results/flaky-history.csv", "a") as f:
+        writer = csv.writer(f)
+        writer.writerow([datetime.now(), passed, failed, total])
+```
+
+## The CI trinity: E2E tests before deploy
+
+Dogwalk's deploy has a CI/CD pipeline with **quality as a gate**. The flow is:
+
+1. **Lint** — ESLint checks code standards
+2. **Unit tests** — Vitest runs full suite
+3. **Build** — Vite build with env vars
+4. **E2E tests** (⬅️ here!) — Preview server + Playwright
+5. **Deploy** — Only if ALL steps pass
+6. **Health check** — Multi-route curl post-deploy
+
+```yaml
+# Excerpt from deploy.yml
+- name: Run E2E tests
+  if: github.ref_name == 'master'
+  env:
+    PLAYWRIGHT_TEST_URL: http://localhost:4173
+  run: pnpm test:e2e:ci
+
+- name: Health Check — Multi-Route
+  if: github.ref_name == 'master'
+  run: |
+    for ROUTE in "/" "/login" "/plans"; do
+      CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://seu.pet${ROUTE}")
+      echo "${ROUTE} → $CODE"
+    done
+```
+
+This means: **every push to master runs E2E against the exact build that will go live**. If it breaks, no deploy.
+
+The pipeline was also optimized with Playwright browser caching — the first build installs the browsers (~300MB), subsequent ones use cache:
+
+```yaml
+- name: Cache Playwright browsers
+  uses: actions/cache@v4
+  with:
+    path: ~/.cache/ms-playwright
+    key: playwright-\${{ hashFiles('pnpm-lock.yaml') }}
+```
+
+## Current coverage: what each test covers
+
+Today the E2E tests cover 7 critical areas:
+
+| Test | Lines | What it covers |
+|------|-------|---------------|
+| `full-user-flow.spec.js` | 170 | Full flow: landing → mock login → dashboard → scheduling |
+| `e2e-complete-flow.spec.js` | 155 | 6 compact steps: landing, login modal, tutor dash, schedule, walker dash, route guard |
+| `auth-flow.spec.js` | ~80 | Login, logout, protected routes, invalid session |
+| `booking-flow.spec.js` | ~60 | Scheduling with calendar, pet selection, confirmation |
+| `dashboard-flow.spec.js` | ~70 | Tutor and walker dashboards with mock data |
+| `payment-chat-map.spec.js` | ~80 | Stripe integration, chat, tracking map |
+| `visual.spec.js` | 43 | Rendering, mobile viewport, essential elements |
+| `security.spec.js` | ~50 | Protected routes without token |
+| `onboarding-flow.spec.js` | ~40 | First access flow |
+| `signup-edge-cases.spec.js` | ~50 | Registration validations |
+
+**Total: ~13 spec files, ~800+ lines of tests.**
+
+## Lessons from the trenches
+
+After weeks of writing and maintaining these tests, some lessons stood out:
+
+### 1. API mocks are better than testing against production
+
+At first I tried testing against a real backend. Result: flaky tests due to external dependencies, inconsistent data, slowness. With mock data in `addInitScript`, the tests are **deterministic and fast**.
+
+### 2. `waitForTimeout` is a necessary evil (but controlled)
+
+Playwright has `waitForLoadState('networkidle')` that works in most cases, but in Dogwalk the SPA makes async calls that never fully "idle." The solution was `waitForTimeout(2000-3000)` combined with `waitForSelector` for specific elements.
+
+Less elegant, but **more reliable**.
+
+### 3. Cookie banner is the silent enemy of E2E
+
+Dogwalk's cookie banner has `pointer-events: none` on the container so it doesn't block clicks, but some overlays (like the `SlowConnectionBanner`) still intercepted interactions. We created a helper that scans and removes all fixed overlays:
+
+```js
+export async function dismissCookieBanner(page) {
+  await page.evaluate(() => {
+    document.querySelectorAll('[style*="position: sticky"], [style*="position:fixed"]').forEach(el => {
+      if (el.style.top === '0px') el.style.display = 'none'
+    })
+  })
+}
+```
+
+### 4. Session setup is the bottleneck — solve it first
+
+The biggest test setup time was login. With `window.__E2E_SESSION`, setup dropped from ~20s to **~100ms**. This transformed the DX — tests that used to take 2 minutes to set up now run in seconds.
+
+### 5. Test mobile first
+
+Samuel (yes, me) accesses Dogwalk more from his phone. The lesson: **always test mobile before desktop**. The Playwright project has `mobile-chrome` as the third project, and the preference is to write the test with 375x844 viewport before 1280x800.
+
+## Practical results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Deploy confidence | Low (manual testing) | High (CI blocks on failure) |
+| Feedback time | Days (user reported) | Minutes (CI notifies) |
+| Undetected regressions | Constant | Rare |
+| E2E test setup | ~20s (UI login) | ~100ms (mock session) |
+| Total E2E duration | ~3min | ~45s (parallel) |
+| Test maintenance | N/A | ~10% of development time |
+
+## Next steps
+
+The E2E tests are a solid foundation, but there's still room to grow:
+
+- **GitHub Actions E2E matrix**: run chromium + firefox + mobile in parallel
+- **Visual regression testing**: capture screenshots and compare with baseline
+- **Dedicated API E2E**: test backend directly without mock (in addition to mock tests)
+- **Walker flow coverage**: currently we have more tutor tests than walker tests
+- **Real payment tests**: use Stripe test mode in an isolated environment
+
+In the end, the biggest change wasn't technical — it was **mental**. Before, deploy was anxiety. Now, it's a process. CI says: "go ahead, I tested it." And when it says it's green, I trust it.
+
+> _The journey is documented as it happens. This post is a record of a phase where Dogwalk stopped being a prototype and started behaving like a real product._
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'pnpm test:e2e', output: 'Run all E2E tests' },
+    { cmd: 'pnpm test:e2e:ci', output: 'CI wrapper with JSON + notification' },
+    { cmd: 'pnpm test:e2e:quick', output: 'Chromium only, 15s timeout' },
+    { cmd: 'pnpm test:e2e:debug', output: 'Headed browser with infinite timeout' },
+    { cmd: 'pnpm test:e2e:report', output: 'Open HTML report' },
+    { cmd: 'PLAYWRIGHT_TEST_URL=https://seu.pet pnpm test:e2e', output: 'Against production' },
+  ]}
+/>

@@ -1,15 +1,15 @@
 ---
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import ProjectIcon from '../../components/ProjectIcon.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ProjectIcon from '../../../components/ProjectIcon.astro';
 import { getCollection, render } from 'astro:content';
 
-const locale = 'pt';
+const locale = 'en';
 
 export async function getStaticPaths() {
   const allPosts = await getCollection('posts');
-  const posts = allPosts.filter(p => !p.data.draft && !p.id.startsWith('en/'));
+  const posts = allPosts.filter(p => !p.data.draft && p.id.startsWith('en/'));
   return posts.map((post) => ({
-    params: { slug: post.id },
+    params: { slug: post.id.replace('en/', '') },
     props: { post },
   }));
 }
@@ -22,11 +22,10 @@ const projectIcons = {
   capivara: '🐷', estudos: '📚', descobertas: '💡',
 };
 const projectLabels = {
-  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio',
-  capivara: 'Capivara', estudos: 'Estudos', descobertas: 'Descobertas',
+  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfolio',
+  capivara: 'Capivara', estudos: 'Studies', descobertas: 'Discoveries',
 };
 
-// Get prev/next posts (same locale)
 const allPosts = await getCollection('posts');
 const localePosts = allPosts.filter(p => !p.data.draft && (p.data.lang || 'pt') === locale);
 localePosts.sort((a, b) => {
@@ -40,18 +39,18 @@ const nextPost = currentIndex > 0 ? localePosts[currentIndex - 1] : null;
 
 const coverImage = post.data.cover;
 const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
-const dateLocale = 'pt-BR';
-const readLabel = `${readingTime} min de leitura`;
-const backText = '← Voltar para timeline';
-const prevLabel = '← Post anterior';
-const nextLabel = 'Próximo post →';
-const isEn = false;
+const readLabel = `${readingTime} min read`;
+const backText = '← Back to timeline';
+const prevLabel = '← Previous post';
+const nextLabel = 'Next post →';
+function fmtDate(d) {
+  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
+}
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale}>
   <article data-project={post.data.project}>
     <div class="max-w-3xl mx-auto px-4 py-8">
-      <!-- Cover Image -->
       <div class="relative w-full aspect-[21/9] mb-10 rounded-2xl overflow-hidden border" style="border-color: var(--color-accent); box-shadow: var(--color-glow);">
         {coverImage ? (
           <img src={coverImage} alt={post.data.title} class="absolute inset-0 w-full h-full object-cover" />
@@ -69,15 +68,12 @@ const isEn = false;
         <div class="absolute bottom-0 left-0 right-0 h-1" style="background: linear-gradient(90deg, transparent, var(--color-accent), transparent);"></div>
       </div>
 
-      <!-- Header -->
       <header class="mb-12">
         <div class="flex items-center gap-2 text-sm mb-4" style="color: var(--color-accent);">
           <span>{projectIcons[post.data.project]} {projectLabels[post.data.project] || post.data.project}</span>
           <span class="opacity-40">·</span>
           <time datetime={(post.data.pubDate || post.data.date).toISOString()} style="color: var(--color-text-muted)">
-            {post.data.pubDate
-              ? post.data.pubDate.toLocaleDateString(dateLocale, { day: '2-digit', month: 'long', year: 'numeric' })
-              : post.data.date.toLocaleDateString(dateLocale, { day: '2-digit', month: 'long', year: 'numeric' })}
+            {post.data.pubDate ? fmtDate(post.data.pubDate) : fmtDate(post.data.date)}
           </time>
         </div>
 
@@ -88,14 +84,14 @@ const isEn = false;
         <div class="flex flex-wrap items-center gap-3 text-sm mb-6" style="color: var(--color-text-muted);">
           <span>📖 {readLabel}</span>
           <span class="w-1 h-1 rounded-full bg-current opacity-40" />
-          <a href="/" style="color: var(--color-accent); text-decoration: none;"
+          <a href="/en/" style="color: var(--color-accent); text-decoration: none;"
              class="hover:underline">{backText}</a>
         </div>
 
         <div class="flex flex-wrap gap-2">
           {post.data.tags.map((tag) => (
             <a
-              href={`/?tag=${tag}`}
+              href={`/en/?tag=${tag}`}
               class="px-3 py-1 text-xs rounded-full border transition-colors"
               style="border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-soft);"
             >#{tag}</a>
@@ -103,17 +99,15 @@ const isEn = false;
         </div>
       </header>
 
-      <!-- Content -->
       <div class="prose prose-lg max-w-none" style="color: var(--color-text);">
         <Content />
       </div>
 
-      <!-- Navigation: Prev / Next -->
       <nav class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
         <div class="grid grid-cols-2 gap-6">
           <div>
             {prevPost && (
-              <a href={`/post/${prevPost.id}`} class="group block no-underline!">
+              <a href={`/en/post/${prevPost.id.replace('en/', '')}`} class="group block no-underline!">
                 <span class="text-xs font-medium tracking-wider uppercase" style="color: var(--color-text-muted);">
                   {prevLabel}
                 </span>
@@ -126,7 +120,7 @@ const isEn = false;
           </div>
           <div class="text-right">
             {nextPost && (
-              <a href={`/post/${nextPost.id}`} class="group block no-underline!">
+              <a href={`/en/post/${nextPost.id.replace('en/', '')}`} class="group block no-underline!">
                 <span class="text-xs font-medium tracking-wider uppercase" style="color: var(--color-text-muted);">
                   {nextLabel}
                 </span>
@@ -140,7 +134,7 @@ const isEn = false;
         </div>
 
         <div class="mt-6 text-center">
-          <a href="/" class="inline-flex items-center gap-1 text-sm font-medium hover:underline no-underline!"
+          <a href="/en/" class="inline-flex items-center gap-1 text-sm font-medium hover:underline no-underline!"
              style="color: var(--color-accent);">
             {backText}
           </a>
@@ -151,93 +145,21 @@ const isEn = false;
 </BaseLayout>
 
 <style is:global>
-  article[data-project] .prose h2 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin-top: 2.5rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    color: var(--color-heading);
-    border-bottom: 1px solid var(--color-border);
-  }
-  article[data-project] .prose h3 {
-    font-size: 1.35rem;
-    font-weight: 600;
-    margin-top: 2rem;
-    margin-bottom: 0.75rem;
-    color: var(--color-text);
-  }
-  article[data-project] .prose p {
-    line-height: 1.8;
-    margin-bottom: 1.25rem;
-  }
-  article[data-project] .prose code {
-    font-size: 0.875rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
-    border: 1px solid var(--color-border);
-  }
-  article[data-project] .prose pre {
-    padding: 1.25rem;
-    border-radius: 12px;
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border);
-    overflow-x: auto;
-    margin-bottom: 1.5rem;
-  }
-  article[data-project] .prose pre code {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--color-text);
-  }
-  article[data-project] .prose a {
-    color: var(--color-accent);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
+  article[data-project] .prose h2 { font-size: 1.75rem; font-weight: 700; margin-top: 2.5rem; margin-bottom: 1rem; padding-bottom: 0.5rem; color: var(--color-heading); border-bottom: 1px solid var(--color-border); }
+  article[data-project] .prose h3 { font-size: 1.35rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; color: var(--color-text); }
+  article[data-project] .prose p { line-height: 1.8; margin-bottom: 1.25rem; }
+  article[data-project] .prose code { font-size: 0.875rem; padding: 0.2rem 0.4rem; border-radius: 4px; background: var(--color-accent-soft); color: var(--color-accent); border: 1px solid var(--color-border); }
+  article[data-project] .prose pre { padding: 1.25rem; border-radius: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); overflow-x: auto; margin-bottom: 1.5rem; }
+  article[data-project] .prose pre code { background: none; border: none; padding: 0; color: var(--color-text); }
+  article[data-project] .prose a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
   article[data-project] .prose a:hover { opacity: 0.8; }
-  article[data-project] .prose ul, article[data-project] .prose ol {
-    margin-bottom: 1.25rem;
-    padding-left: 1.5rem;
-  }
-  article[data-project] .prose li {
-    margin-bottom: 0.5rem;
-    line-height: 1.7;
-  }
-  article[data-project] .prose blockquote {
-    border-left: 3px solid var(--color-accent);
-    padding-left: 1rem;
-    margin: 1.5rem 0;
-    font-style: italic;
-    color: var(--color-text-muted);
-    background: var(--color-accent-soft);
-    padding: 1rem 1rem 1rem 1.5rem;
-    border-radius: 8px;
-  }
-  article[data-project] .prose img {
-    border-radius: 12px;
-    margin: 1.5rem auto;
-    border: 1px solid var(--color-border);
-  }
-  article[data-project] .prose hr {
-    border-color: var(--color-border);
-    margin: 2rem 0;
-  }
-  article[data-project] .prose strong {
-    color: var(--color-heading);
-  }
-  .prose .highlight-box {
-    background: var(--color-accent-soft);
-    border: 1px solid var(--color-accent);
-    border-radius: 12px;
-    padding: 1.25rem;
-    margin: 1.5rem 0;
-    color: var(--color-accent);
-    font-weight: 500;
-  }
+  article[data-project] .prose ul, article[data-project] .prose ol { margin-bottom: 1.25rem; padding-left: 1.5rem; }
+  article[data-project] .prose li { margin-bottom: 0.5rem; line-height: 1.7; }
+  article[data-project] .prose blockquote { border-left: 3px solid var(--color-accent); padding-left: 1rem; margin: 1.5rem 0; font-style: italic; color: var(--color-text-muted); background: var(--color-accent-soft); padding: 1rem 1rem 1rem 1.5rem; border-radius: 8px; }
+  article[data-project] .prose img { border-radius: 12px; margin: 1.5rem auto; border: 1px solid var(--color-border); }
+  article[data-project] .prose hr { border-color: var(--color-border); margin: 2rem 0; }
+  article[data-project] .prose strong { color: var(--color-heading); }
+  .prose .highlight-box { background: var(--color-accent-soft); border: 1px solid var(--color-accent); border-radius: 12px; padding: 1.25rem; margin: 1.5rem 0; color: var(--color-accent); font-weight: 500; }
   @media (max-width: 768px) {
     article[data-project] h1 { font-size: 1.5rem !important; }
     article[data-project] .prose h2 { font-size: 1.35rem !important; }

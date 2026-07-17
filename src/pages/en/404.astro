@@ -1,16 +1,15 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
 
-const locale = 'pt';
-const t = (await import('../lib/i18n')).getTranslations(locale);
+const t = (await import('../../lib/i18n')).getTranslations('en');
 ---
 
-<BaseLayout title={t['404'].title} description={t['404'].description} locale={locale}>
+<BaseLayout title={t['404'].title} description={t['404'].description} locale="en">
   <div class="max-w-md mx-auto text-center py-20">
     <p class="text-6xl mb-6">📭</p>
     <h1 class="text-2xl font-bold mb-2" style="color: var(--color-heading)">{t['404'].heading}</h1>
     <p class="mb-8" style="color: var(--color-text-muted)">{t['404'].message}</p>
-    <a href="/" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300"
+    <a href="/en/" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300"
       style="background: var(--color-accent); color: #fff;">
       {t['404'].backHome}
     </a>

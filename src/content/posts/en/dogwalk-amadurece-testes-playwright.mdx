@@ -1,0 +1,236 @@
+---
+title: "Dogwalk matures — Playwright tests as the quality backbone"
+description: "From zero tests to 853: how Playwright tests became the quality backbone of Dogwalk/PataPass, what we learned and what changed in the process."
+date: 2026-03-10 10:00:00 -03:00
+pubDate: 2026-07-13 23:00:00 -03:00
+lang: 'en'
+project: dogwalk
+tags: ["dogwalk", "playwright", "tests", "e2e", "vitest", "quality"]
+icon: "🐾"
+cover: /covers/dogwalk-amadurece-testes-playwright.webp
+featured: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+Dogwalk was born as an MVP — minimum, viable, and without tests. It's part of the game. When you're validating an idea, testing is a luxury. But when the marketplace starts moving real money (via Stripe Connect), when tutors trust their pets' data, when walkers depend on the platform for their schedule — then testing becomes a necessity, not a luxury.
+
+This post covers the journey from 0 → 853 tests, what I learned along the way, and how Playwright became the quality backbone of Dogwalk.
+
+## Phase 1: The chaos without tests
+
+In the beginning it was just React + Vite, rapid prototyping. Zero tests. Zero types. Zero guarantees.
+
+The flow was: write a feature, open `localhost:5173`, click manually, see if it broke. It worked while the app had 3 pages. When it passed 10 pages + authentication + Stripe + scheduling, it no longer cut it.
+
+```typescript
+// Real example: the first test I wrote — validate the app renders without crash
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import App from './App';
+
+describe('App', () => {
+  it('renders without crashing', () => {
+    render(<App />);
+    expect(screen.getByText(/dogwalk/i)).toBeDefined();
+  });
+});
+```
+
+Naive? Yes. But it was the first step.
+
+## Phase 2: Vitest on critical components
+
+I started with the core: authentication components, scheduling forms, price calculations (Stripe commission + walker fee).
+
+```typescript
+// Commission calculation test — money can't be wrong
+describe('CommissionCalculator', () => {
+  it('calculates 15% platform fee correctly', () => {
+    const result = calculateCommission(100.00);
+    expect(result.platformFee).toBe(15.00);
+    expect(result.walkerEarns).toBe(85.00);
+    expect(result.total).toBe(100.00);
+  });
+
+  it('handles Stripe Connect fee + platform fee stacking', () => {
+    const result = calculateWithStripe(85.00, 'connect');
+    // Stripe Connect: 2.9% + R$0.49
+    expect(result.stripeFee).toBeCloseTo(2.96, 1);
+    expect(result.walkerNet).toBeCloseTo(82.04, 1);
+  });
+
+  it('throws on negative values', () => {
+    expect(() => calculateCommission(-50)).toThrow();
+  });
+});
+```
+
+This phase was productive — 342 Vitest tests covering:
+- UI components (rendering, interaction, loading/empty/error states)
+- Custom hooks (useAuth, useStripe, useSchedule)
+- Utilities (formatting, calculation, validation)
+- State stores (Zustand)
+
+**Execution time: 12s.** Fast enough to run before each commit.
+
+## Phase 3: Playwright E2E — the game changer
+
+Unit tests guarantee the component works. But they don't guarantee the entire flow runs. An authentication error that only appears when the user logs in, schedules a walk, and tries to pay — no unit test catches that.
+
+That's where I turned to Playwright.
+
+```typescript
+// E2E test: full booking flow
+import { test, expect } from '@playwright/test';
+
+test('tutor books full walk: login → search → schedule → pay', async ({ page }) => {
+  // Login
+  await page.goto('/login');
+  await page.fill('[data-testid="email"]', 'tutor@teste.com');
+  await page.fill('[data-testid="password"]', 'senha_teste');
+  await page.click('[data-testid="login-btn"]');
+  await expect(page.locator('[data-testid="dashboard"]')).toBeVisible();
+
+  // Search walker
+  await page.goto('/search');
+  await page.fill('[data-testid="search-input"]', 'Pinheiros');
+  await page.click('[data-testid="search-btn"]');
+  await page.locator('[data-testid="walker-card"]').first().click();
+
+  // Schedule
+  await page.fill('[data-testid="date-input"]', '2026-03-15');
+  await page.fill('[data-testid="time-input"]', '14:00');
+  await page.click('[data-testid="schedule-btn"]');
+  await expect(page.locator('[data-testid="booking-confirmed"]')).toBeVisible();
+
+  // Payment
+  await page.click('[data-testid="pay-btn"]');
+  await page.fill('[data-testid="card-number"]', '4242424242424242');
+  await page.fill('[data-testid="card-expiry"]', '12/28');
+  await page.fill('[data-testid="card-cvc"]', '123');
+  await page.click('[data-testid="confirm-payment"]');
+  await expect(page.locator('[data-testid="payment-success"]')).toBeVisible();
+});
+```
+
+This single test already replaced 10 minutes of manual testing.
+
+### What the E2E tests cover (511 tests):
+
+| Group | Tests | What it tests |
+|-------|-------|---------------|
+| Auth | 42 | Login, registration, OAuth, refresh, logout, expired session |
+| Dashboard | 38 | Tutor/walker cards, metrics, health checks |
+| Search | 55 | Search, filters, geolocation, empty states |
+| Scheduling | 67 | Schedule, conflict, cancellation, re-scheduling |
+| Payment | 73 | Stripe Connect, credit card, PIX, split payments, refund |
+| Profile | 41 | Tutor editing, walker editing, photo, address |
+| Admin | 29 | Admin panel, users, transactions, reports |
+| Notifications | 23 | Push, email, in-app, preferences |
+| Mobile | 143 | Responsive 360px, touch targets, bottom nav, swipes |
+
+## Real metrics
+
+| Metric | Without tests | With Vitest | With Playwright |
+|--------|--------------|-------------|-----------------|
+| Execution time | N/A | 12s | 4min 23s |
+| Estimated coverage | 0% | ~45% | ~85% flows |
+| Bugs in production | ~8/month | ~3/month | 0-1/month |
+| Regression per release | 100% | ~40% | ~5% |
+| Deploy confidence | Low | Medium | High |
+| CI duration | 30s | 45s | 6min 12s |
+
+The cost in CI time (6 minutes vs 30 seconds) is real. But the gain in confidence is worth it — especially in flows involving money.
+
+## Lessons from the trenches
+
+### 1. Data-testid saves your life
+
+At first I tried selecting by text, CSS class, placeholder. Everything broke at the slightest refactor. Once I standardized `data-testid` on every interactive element, the tests became **resilient**.
+
+```tsx
+// Before: broke if the text changed
+<button className="btn-primary">Schedule walk</button>
+
+// After: never breaks
+<button data-testid="schedule-btn">Schedule walk</button>
+```
+
+### 2. Slow E2E tests don't get run
+
+If the test takes 6 minutes, the developer doesn't run it locally. Solution: separate into **smoke tests** (1 minute, run always) and **full suite** (6 minutes, only on CI and before release).
+
+```bash
+# Smoke — fast, runs locally
+npx playwright test --grep @smoke
+
+# Full — complete, CI only
+npx playwright test
+```
+
+### 3. Stripe in tests is a whole separate problem
+
+Stripe Connect requires a real card to test split payments. Solution: use `stripe-cli` with webhook forwarding + `4242` card in test mode. The trick is to **never** test in production.
+
+```bash
+# Forward Stripe test webhooks to local machine
+stripe listen --forward-to localhost:5173/api/stripe/webhook
+```
+
+### 4. Mobile-first testing
+
+Dogwalk has more mobile users than desktop. 143 mobile tests vs 368 desktop. I used `test.use({ viewport: { width: 375, height: 812 } })` as default and only override when testing desktop.
+
+### 5. Screenshots on every failure
+
+Playwright takes automatic screenshots on failure. But I also added `trace: 'on-first-retry'` for flaky tests — the trace shows every action, network request, and console error.
+
+```ts
+// playwright.config.ts
+export default defineConfig({
+  use: {
+    screenshot: 'only-on-failure',
+    trace: 'on-first-retry',
+    video: 'retain-on-failure',
+  },
+});
+```
+
+## The cold numbers
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Total tests | 0 | 853 |
+| Vitest tests | 0 | 342 |
+| Playwright tests | 0 | 511 |
+| Bugs in production | ~8/month | 0-1/month |
+| CI duration | 30s | 6min |
+| Critical flows coverage | 0% | 100% |
+| Deploy confidence | "praying" | "ship it" |
+
+## What's next
+
+853 tests is a good number, but there are still gaps:
+- **Performance tests** — Lighthouse CI to measure bundle impact
+- **Stripe Connect tests** — chargeback and dispute scenarios
+- **Accessibility tests** — axe-core integrated with Playwright
+- **Visual tests** — snapshot comparison to detect layout regression
+
+But for now, 853 tests, 0 critical bugs in the last 30 days. I'm satisfied.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Dogwalk && npx vitest run', output: '342 tests — 12s — 100% pass' },
+    { cmd: 'npx playwright test --grep @smoke', output: 'Smoke tests — 42 tests — 1min 12s' },
+    { cmd: 'npx playwright test --reporter=html', output: 'Full suite — 511 tests — 4min 23s' },
+    { cmd: 'npx playwright show-report', output: 'Open interactive HTML report' },
+    { cmd: 'stripe listen --forward-to localhost:5173/api/stripe/webhook', output: 'Forward Stripe test webhooks → local' },
+  ]}
+/>

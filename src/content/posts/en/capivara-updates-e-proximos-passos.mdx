@@ -1,0 +1,245 @@
+---
+title: "Capivara — Updates and Next Steps"
+description: "Exploring the current state of Capivara — learnings, challenges and discoveries."
+date: 2026-07-17 10:00:00 -03:00
+pubDate: 2026-07-17 23:00:00 -03:00
+project: capivara
+tags: ["capivara", "update", "progress"]
+icon: "🐷"
+cover: /covers/capivara-updates-e-proximos-passos.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+**Capivara** was born as a personal hub — a centralized place to manage my projects, access dashboards, monitor infra health, and it gradually became the operations center for everything I build. FastAPI + React, SQLite, Cloudflare Tunnel, JWT.
+
+In recent weeks the focus has been **trimming, organizing, and strengthening**. Capivara had grown chaotically — inline components hundreds of lines long, mixed routes, proxies that were no longer needed. It was time to refactor.
+
+## What happened
+
+### The great frontend refactoring (−83%)
+
+The heaviest milestone was taking a frontend of **2,085 lines** and reducing it to **359** — an 83% reduction without losing a single feature.
+
+```typescript
+// Dashboard.tsx: 994 → 262 lines (−74%)
+// AdminPage.tsx: 1,091 → 97 lines (−91%)
+```
+
+The secret? Extract inline components. Each Admin Panel tab was a 100-200 line function inside the page itself. Dashboard had 8 inline sections. I split everything into `components/dashboard/` and `components/admin/` — each component became a dedicated file with its own responsibility.
+
+```typescript
+// Before: everything inline in AdminPage.tsx
+function OverviewSection() { /* 150 lines here */ }
+function LogsSection() { /* 120 lines here */ }
+// 10 sections in the same file → 1,091 lines
+
+// After: pure orchestrator
+import { OverviewSection } from '../components/admin/OverviewSection';
+import { LogsSection } from '../components/admin/LogsSection';
+// AdminPage becomes 97 lines of imports + layout
+```
+
+### Ghost Component Pattern
+
+During the refactoring I discovered a dangerous pattern I called **Ghost Component**: components existed as files in `components/` but the pages still had **duplicate inline definitions**. The code worked (the inline version executed), but nobody knew which version was the real one.
+
+```bash
+# Diagnosis: compare exported files vs inline definitions
+grep -c 'export function' components/*.tsx
+grep -c '^function ' pages/*.tsx
+```
+
+The cause is simple: someone starts extracting a component (creates the file), copies the code, but forgets to remove the original from the page. The file becomes "undead" — it exists, is imported nowhere, and the page has two versions that can diverge.
+
+The lesson: **incomplete refactoring is worse than no refactoring at all**. If you're going to extract, extract fully — create the file, import it on the page, **remove the inline version**, test.
+
+### React Router v7 — the end of homebrew `window.location`
+
+Before, I used a custom routing system with `window.location` and manual listeners. It worked, but was fragile — any SPA navigation required manual state synchronization.
+
+```typescript
+// Before: homebrew and fragile
+function navigate(path: string) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+// After: React Router v7 with BrowserRouter
+<BrowserRouter>
+  <Routes>
+    <Route path="/" element={<Dashboard />} />
+    <Route path="/admin" element={<AdminPage />} />
+    <Route path="/login" element={<Login />} />
+    <Route path="/cadastro" element={<Register />} />
+    <Route path="/status" element={<StatusPage />} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+</BrowserRouter>
+```
+
+6 routes, real SPA navigation, no reload, no hacks. React Router handles everything — URL matching, history, link components.
+
+Each page is loaded with `React.lazy()` + `Suspense`, so the initial bundle dropped from **668 kB to 238 kB** — a 64% reduction in what the user downloads on first access.
+
+```typescript
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const StatusPage = lazy(() => import('./pages/StatusPage'))
+```
+
+### Schema Drift — the silent bug the security scan caught
+
+The admin panel queries Arachne data by reading **directly from its SQLite database**. The problem: Capivara and Arachne are independent projects, and Arachne's schema changes without Capivara knowing.
+
+```python
+# The silent error
+def _query_sqlite(db_path, sql, params):
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
+    except Exception as e:
+        log.warning("SQLite query failed: %s", e)
+        return []  # ← silent!
+```
+
+The security scan detected columns that no longer existed. The worst part: the error was caught and returned `[]` — the Arachne section in admin simply appeared empty, no crash, no visual feedback.
+
+I created a **schema drift guard** (`scripts/schema_drift_guard.sh`) that computes SHA256 hashes of SQLAlchemy definitions and compares them with a stored hash:
+
+```bash
+# The heart of schema_drift_guard.sh
+SCHEMA_HASH=$(python3 -c "
+import hashlib
+from database import Base
+import models
+lines = []
+for table_name in sorted(Base.metadata.tables.keys()):
+    table = Base.metadata.tables[table_name]
+    lines.append(f'TABLE: {table_name}')
+    for col_name, col in sorted(table.columns.items()):
+        col_repr = f'  {col_name}: {col.type!r} nullable={col.nullable}'
+        if col.primary_key: col_repr += ' PK'
+        lines.append(col_repr)
+print(hashlib.sha256('\\\\n'.join(lines).encode()).hexdigest())
+")
+```
+
+If the hash changed, the script alerts and updates the stored hash. I run it as a daily cron at 06:00.
+
+### Portfolio Data API — PostgreSQL 18 as persistence layer
+
+The **Portfolio running on Vercel** now persists real data via Cloudflare Tunnel → Capivara → local PostgreSQL 18.
+
+```
+Portfolio (Vercel) → Cloudflare Tunnel → Capivara:8001 → PG18:5432
+```
+
+Three public endpoints (no auth):
+
+- `POST /api/portifolio/public/messages` — contact form
+- `POST /api/portifolio/public/cv-downloads` — resume download tracking
+- `POST /api/portifolio/public/events` — monitoring events
+
+The code is straightforward: Pydantic schemas validate input, `psycopg2` persists, and each endpoint captures IP + User-Agent automatically. On the admin dashboard, I see received messages, downloads, and tracking events — all in real time.
+
+The database is PostgreSQL 18 running locally — I chose PG over SQLite because Portfolio may have real concurrent visitors, and PG handles simultaneous connections better.
+
+### ThemeToggle + Toast System
+
+Small UX improvements that make a difference:
+
+- **ThemeToggle**: light/dark switcher with `localStorage` persistence + `prefers-color-scheme` fallback. The state persists between sessions.
+
+```typescript
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => {
+    const stored = localStorage.getItem('capivara_theme')
+    if (stored) return stored === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+  // ...
+}
+```
+
+- **Toast system**: toast notifications throughout the app, integrated into Root.tsx. Supports 4 types (success, error, info, warning) with automatic 4-second fade-out. Visual feedback for actions like creating invites, saving settings.
+
+```typescript
+// Usage anywhere in the app
+import { toast } from '../components/common/Toast'
+toast('Invite created successfully!', 'success')
+```
+
+- **StatusPage**: public page at `/status` showing service health checks — useful for sharing with third parties without giving dashboard access. Loaded with lazy loading, so it doesn't affect the main bundle.
+
+- **ErrorBoundary**: crash protection for any part of the component tree. Each lazy route has its own boundary, so an error in admin doesn't take down the dashboard.
+
+```typescript
+<ErrorBoundary name="Admin">
+  <Suspense fallback={<PageLoader />}>
+    <AdminPage />
+  </Suspense>
+</ErrorBoundary>
+```
+
+## Learnings
+
+### 1. Refactoring is surgery, not demolition
+
+Extracting 18 components from 2 pages without breaking anything requires **atomic steps**: extract one component at a time, test, commit, repeat. I tried doing 3 at once and broke the TypeScript build. `tsc --noEmit` is your best friend — run it before and after each extraction.
+
+### 2. Third-party data needs schema validation
+
+When you query another project's database, **never trust the schema**. Use `PRAGMA table_info()` to validate columns BEFORE doing SELECT. Even better: create a versioned schema contract between projects.
+
+```typescript
+// Validate schema before querying
+const columns = await db.query("PRAGMA table_info('extractions')");
+const hasColumn = columns.some(c => c.name === 'page_id');
+if (!hasColumn) throw new Error('Schema mismatch: extractions missing page_id');
+```
+
+### 3. Inline components are disguised technical debt
+
+Every function you write inline in a 500+ line page is a component that will be extracted one day — and the later, the more expensive. The "I'll extract it later" pattern only works if you actually extract it **soon after**. Letting it accumulate turns into a 2,000-line snowball.
+
+### 4. A 2-service system is more fragile than 2 independent systems
+
+Capivara querying Arachne's SQLite is fragile precisely because **it works fine most of the time**. When it breaks (schema changes), it breaks silently. Versioned HTTP APIs are more expensive to implement, but much safer.
+
+## What's coming next
+
+Capivara is in a good place now — lean, organized, with tests passing (44/44 backend, 31/31 frontend) and a clean build (0 TypeScript errors). The next steps:
+
+- **2FA** — two-factor authentication for admin access (backend already supports it, needs the setup UI)
+- **WebSocket** — real-time notifications (health alerts, new invites)
+- **More integration with Arachne** — via HTTP API, not direct SQL
+- **Full dark mode** — ThemeToggle already exists, but some sections still need fine-tuning
+- **PWA** — manifest + service worker to install as an app
+
+```bash
+# Deploy remains simple
+cd ~/projetos/Capivara/frontend && pnpm build            # 238 kB initial bundle
+systemctl --user restart capivara-backend.service         # zero downtime
+```
+
+> _Lean code, healthy system, next feature on the way. Capivara grew, was pruned, and came back stronger._
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Capivara/frontend && pnpm build', output: 'vite v8.0.0 building for production...\\n✓ 42 modules transformed.\\n✓ built in 1.8s' },
+    { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\\n44 passed in 3.2s' },
+    { cmd: 'bash ~/projetos/Capivara/scripts/schema_drift_guard.sh', output: 'capivara-schema-guard: Schema hash matches: a1b2... — no drift detected' },
+    { cmd: 'systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\\n   Active: active (running)\\n   Port: 8001' },
+    { cmd: 'curl -s https://capivara.seu.pet/api/health/all | jq .', output: '{\\n  "status": "healthy",\\n  "services": {\\n    "capivara_backend": true,\\n    "tunnel": true\\n  }\\n}' },
+  ]}
+/>

@@ -1,0 +1,219 @@
+---
+title: "Dogwalk — the first idea of the pet marketplace"
+description: "Exploring the initial Dogwalk idea — lessons learned, challenges and discoveries."
+date: 2026-05-20
+pubDate: 2026-07-08 00:00:00 -03:00
+lang: 'en'
+project: dogwalk
+tags: ["dogwalk", "ideation", "beginning"]
+icon: "🐶"
+cover: /covers/dogwalk-a-primeira-ideia-do-marketplace-de-pets.webp
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Context
+
+It all started with a simple observation I made while walking Mel, my dog, in the neighborhood park. It was a Sunday morning, and I noticed something I'd never paid attention to before: within a 500-meter radius, there were **three pet shops**, two veterinary clinics, and at least ten people offering informal dog walking services.
+
+I had already looked for a dog walker a few times myself and always ran into the same problem — WhatsApp groups, friend recommendations, Instagram story posts that disappear in 24 hours. There was no centralized place where I could compare, schedule and pay for the service.
+
+At that moment, I sat on a bench, opened Notes and wrote: **"What if there was a pet services marketplace?"**
+
+## The real problem
+
+Before jumping into coding, I decided to talk to real people. I spent two weeks interviewing pet owners and service providers in my area. The results were enlightening:
+
+| Problem | Pet owners (%) | Providers (%) |
+|---------|----------------|---------------|
+| Difficulty finding a nearby professional | 78% | — |
+| Confusing WhatsApp scheduling | 65% | 72% |
+| Last-minute cancellations | 43% | 38% |
+| No quality guarantee | 57% | — |
+| Difficulty finding new clients | — | 81% |
+| Default/non-payment | — | 29% |
+
+What caught my attention was the asymmetry: owners complained about **not finding** trustworthy professionals, while providers complained about **not getting** new clients. Two sides of the same problem — but no one had built the bridge.
+
+```python
+# Quick simulation I ran to understand the market
+
+donos = 1000  # sample
+prestadores = 200
+
+# Owners who looked for a pet service in the last 3 months
+donos_ativos = donos * 0.73  # 73%
+
+# Providers with idle time > 10h/week
+ociosos = prestadores * 0.64  # 64%
+
+gap = (donos_ativos * 3) / (ociosos * 10)  # demand vs supply
+print(f"Demand/supply ratio: {gap:.1f}x")
+# → 3.4x — each professional could serve 3x more
+```
+
+The numbers showed something obvious: it wasn't a lack of market. It was a lack of **matching infrastructure**.
+
+## The first version: just a paper prototype
+
+Before any line of code, I drew the flow in a notebook. The original idea was lean:
+
+```
+[Provider] → Sign up → Offer service → Set price and area
+[Owner] → Search → Filter by distance → Schedule → Pay
+[System] → Notify both parties → Confirm → Release payment
+```
+
+It seems simple today, but at the time I spent a week refining this flow. One early decision that proved correct: **payment only after service completion confirmation**. No charging upfront. This built trust on both sides.
+
+```python
+# Payment logic defined in the prototype
+class Servico:
+    def __init__(self, prestador, dono, valor, data):
+        self.prestador = prestador
+        self.dono = dono
+        self.valor = valor
+        self.data = data
+        self.status = "pendente"  # pendente → confirmado → realizado → pago
+
+    def confirmar(self):
+        """Provider confirms availability"""
+        self.status = "confirmado"
+        # Notifies owner
+
+    def realizar(self):
+        """Service was completed"""
+        self.status = "realizado"
+        # Releases payment after 24h
+
+    def pagar(self):
+        """Releases the amount to the provider"""
+        if self.status == "realizado":
+            self.status = "pago"
+            return True
+        return False
+```
+
+## The reality check: pricing
+
+When I started researching pricing, the first shock hit. The pet services market in Brazil is **huge but fragmented**:
+
+| Service | Average price (SP) | Provider margin | Market commission |
+|---------|-------------------|-----------------|-------------------|
+| Dog walking (1h) | R$ 35-50 | 85% | 10-15% |
+| Bath and grooming | R$ 60-120 | 60% | 10-20% |
+| Pet hotel (daily) | R$ 50-100 | 70% | 15-20% |
+| Training (session) | R$ 80-150 | 90% | 10-15% |
+| Group walk | R$ 25-40 | 80% | 10-15% |
+
+With an average commission of 12%, each R$ 40 transaction generated R$ 4.80 in revenue. To sustain the business with R$ 10k/month in gross revenue, we'd need **~2,100 transactions/month**. Not trivial, but not impossible either — especially considering the Brazilian pet market moves R$ 60 billion/year.
+
+## The learning curve nobody talks about
+
+The first 30 days of ideation were intense:
+
+```
+Week 1: Market research and interviews
+Week 2: Flow prototype + validation with 5 friends
+Week 3: Competitor benchmarking (PetLove, DogHero, local competitors)
+Week 4: MVP definition + tech stack
+```
+
+The biggest lesson from this phase was: **having the prettiest platform in the world is useless if you don't solve the trust problem.** People trust their pets — which are family members — to strangers. This requires:
+
+1. **Identity verification** — ID, photo, social media
+2. **Cross-rating** — owner rates provider and vice versa
+3. **Guarantee** — insurance against accidents during service
+4. **History** — how many services, how long, reputation
+
+## The competitors I studied
+
+I mapped 5 direct and indirect competitors:
+
+| Competitor | Model | Strengths | Weaknesses |
+|------------|-------|-----------|------------|
+| DogHero | Boarding | Strong brand, investment | Hotel only, no standalone services |
+| PetLove | E-commerce | Logistics, assortment | No service marketplace |
+| Guiavet | Directory | Free, many professionals | No scheduling/payment |
+| Uber for pets (US) | On-demand | Scale, UX | Outside Brazil, no localization |
+| WhatsApp Groups | Informal | Free, local reach | Zero trust, no guarantee |
+
+None of them did **exactly** what I wanted: a full marketplace with scheduling, integrated payment, verification and geolocation.
+
+## What I decided to build
+
+After all this research, the MVP scope became clear:
+
+```python
+features_mvp = [
+    "Provider registration with verification",
+    "Geolocation-based search",
+    "Profile with photos and reviews",
+    "Calendar scheduling",
+    "Payment after confirmation",
+    "Integrated chat",
+    "Service history",
+]
+
+nice_to_have = [
+    "Optimized route for dog walker",
+    "Real-time GPS tracking",
+    "Pet photos during service",
+    "Monthly subscription plans",
+    "Integrated insurance",
+]
+
+print(f"MVP: {len(features_mvp)} features")
+print(f"Nice to have: {len(nice_to_have)} features")
+# → MVP: 7 features
+# → Nice to have: 5 features
+```
+
+## What I learned
+
+### 1. The problem really exists — it's not made up
+
+In all 20 interviews I conducted, people confirmed the pain point. I didn't have to convince anyone the problem existed. That was the biggest green flag.
+
+### 2. Pet market is not a niche — it's a continent
+
+R$ 60 billion/year in Brazil, growing 5-7% annually. 150 million pets. 67% of Brazilian households have at least one pet. This isn't a niche — it's infrastructure that's missing.
+
+### 3. Trust is the product, not scheduling
+
+The differentiator won't be having the best search system or the prettiest calendar. It will be **solving trust** — verifying who's on the other side, guaranteeing the service happens, having a dispute channel.
+
+### 4. Starting local is strategy, not limitation
+
+Instead of trying to be the pet services marketplace for all of Brazil, I decided to start in my area (neighborhood, then city). Service marketplaces are local by nature — nobody crosses town to walk their dog.
+
+### 5. The name Dogwalk came from a 5-minute brainstorm
+
+After a terrible list ("PetMatch", "AuAuGO", "PetService Pro", "DogIN"), the name Dogwalk just stuck. It was short, descriptive, easy to remember. The domain `seu.pet` was pure luck — I got it at auction for a ridiculously low price.
+
+## The numbers at the end of the first month
+
+| Metric | Value |
+|--------|-------|
+| Interviews conducted | 20 |
+| Competitors analyzed | 5 |
+| MVP features defined | 7 |
+| Discarded names | 23 |
+| Flow sketches | 12 |
+| Prototype lines | ~400 |
+| Coffee consumed | countless |
+
+> TL;DR: I discovered that the pet services market in Brazil is massive and fragmented, that trust is the real product, and that starting local is better than trying to scale too early. Dogwalk was born from an observation in the park and 20 conversations with real people. Now it's time to build.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/dogwalk && git init', output: 'Initialized empty Git repository' },
+    { cmd: 'git log --oneline', output: 'bb7e3f4 feat: estrutura inicial do projeto' },
+    { cmd: 'cat pesquisa_mercado.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\\\"Respondents: {len(d)}\\\"); print(f\\\"Interest: {sum(1 for r in d if r[\\\"interesse\\\"])/len(d)*100:.0f}%\\\")"', output: 'Respondents: 20\\nInterest: 85%' },
+    { cmd: 'find docs/ -name "*.md" | wc -l', output: '12' },
+  ]}
+/>

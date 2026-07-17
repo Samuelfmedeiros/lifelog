@@ -1,0 +1,191 @@
+---
+title: "Portfolio v3 — Vue 3.5 + Vite 8, the rebuild I needed"
+description: "Exploring the portfolio rebuild — lessons learned, challenges and discoveries."
+date: 2026-06-20 10:00:00 -03:00
+pubDate: 2026-07-13 06:00:00 -03:00
+lang: 'en'
+project: portfolio
+tags: ["portfolio", "vue", "vite", "refactor", "rebuild"]
+icon: "🚀"
+cover: /covers/portfolio-v3-vue-35-vite-8-o-rebuild-que-eu-precisava.webp
+---
+
+## Why?
+
+The portfolio v2 was serving me well — Next.js 16 + React 19, framer-motion, 5 built-in mini-games, 219 tests passing. But over time it accumulated complexity: SSR for an essentially static site, heavy bundle, and a feeling that I was using a bazooka to kill a fly.
+
+The last straw was when the build passed 2 minutes with Turbopack. For a personal portfolio, that's unacceptable.
+
+So I decided: complete rebuild, from scratch. Vue 3.5 + Vite 8. No SSR. No Next.js. No React. Just what I really needed.
+
+## The stack
+
+```json
+{
+  "dependencies": {
+    "@vueuse/core": "^14.3.0",
+    "gsap": "^3.15.0",
+    "lucide-vue-next": "^1.0.0",
+    "vue": "^3.5.34",
+    "vue-router": "4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@tailwindcss/vite": "^4.3.1",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.10.6",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12",
+    "vitest": "^4.1.9",
+    "vue-tsc": "^3.2.8"
+  }
+}
+```
+
+Vite 8 is insanely fast. The dev server starts in **~200ms**, HMR is instant — edit a .vue component and the screen updates before your finger leaves Ctrl+S. The build dropped from 2min+ to **~12 seconds**. Twelve.
+
+## What stayed (improved version)
+
+### Full i18n — pt/en/es
+
+The v2 translation system used next-intl, which added runtime overhead and a complex schema. In v3 I built it by hand — a `useI18n` composable with a local dictionary.
+
+```typescript
+// src/composables/useI18n.ts
+const locales: Record<string, Record<string, string>> = {
+  pt: { 'nav.home': 'Início', 'hero.title': 'Samuel Medeiros', ... },
+  en: { 'nav.home': 'Home', 'hero.title': 'Samuel Medeiros', ... },
+  es: { 'nav.home': 'Inicio', 'hero.title': 'Samuel Medeiros', ... },
+}
+
+function detectBrowserLang(): string {
+  const navLang = navigator.language?.slice(0, 2).toLowerCase()
+  if (navLang === 'en') return 'en'
+  if (navLang === 'es') return 'es'
+  return 'pt'
+}
+
+const _currentLang = ref(localStorage.getItem('lang') || detectBrowserLang())
+
+export function useI18n() {
+  function t(key: string): string {
+    return locales[_currentLang.value]?.[key] || locales.pt[key] || key
+  }
+  function setLang(lang: string) {
+    _currentLang.value = lang
+    localStorage.setItem('lang', lang)
+  }
+  return { t, setLang, currentLang, lang: _currentLang }
+}
+```
+
+510 lines of dictionary, zero external dependencies, instant switching without rebuild. Love it.
+
+### GSAP + 3-layer Parallax
+
+The cockpit animations are still the highlight. I adapted the multi-layer parallax system (L0-L3) from v2 to Vue using the `useGsap` composable:
+
+```typescript
+// src/composables/useGsap.ts
+export function useGsap() {
+  function parallaxLayer(el: Ref<HTMLElement | null>, speed: number) {
+    if (!import.meta.client) return
+    gsap.to(el.value, {
+      y: () => window.innerHeight * speed,
+      scrollTrigger: {
+        trigger: el.value,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: true,
+      },
+    })
+  }
+  return { parallaxLayer }
+}
+```
+
+### Tailwind CSS 4 + 6 color palettes
+
+Tailwind 4 with the new Vite plugin is a much better experience than the v3 PostCSS setup. Zero config, everything via `@import "tailwindcss"`.
+
+The 6 palettes (cyberpunk, nature, ocean, sunset, mono, retro) are controlled via CSS variables that `PalettePicker.vue` switches in real time. Each palette redefines `--color-primary`, `--color-accent`, etc. — no re-render, no flash.
+
+### Vue Router — pure lazy loading
+
+```typescript
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('./pages/HomePage.vue'),
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('./pages/NotFoundPage.vue'),
+  },
+]
+```
+
+Zero extra configuration. Native lazy loading from Vite + Vue Router. The NotFound page is &lt;1KB in the initial bundle.
+
+## What was left out
+
+- **SSR**: unnecessary for a portfolio. SEO is done via static meta tags in index.html and sitemap.xml.
+- **next-intl**: replaced by the homegrown composable. Less complexity, more control.
+- **framer-motion**: swapped for pure GSAP. Framer is great, but for scroll-driven animations, GSAP with ScrollTrigger is unbeatable.
+- **Mercado Pago / Stripe**: removed from the portfolio and kept only in Dogwalk. A portfolio isn't e-commerce.
+- **Supabase**: project data now comes from static JSON + GitHub API fallback. Less latency, zero cold starts.
+
+## Tests
+
+I migrated from Jest to Vitest + happy-dom (which runs 2x faster than jsdom for Vue components). Playwright E2E stayed — the interaction specs (terminal, language switching, palettes) are the same, I just adjusted selectors for the new data-testid.
+
+```bash
+# v2: npm run test → 38s with Jest
+# v3: pnpm test → 12s with Vitest
+```
+
+I ran all 122 tests from v3 — **0 failures** ✅ (including the 5 E2E mini-game tests, which are the most prone to break).
+
+## CI/CD
+
+GitHub Actions with 3 stages:
+
+```
+Push master
+  → CI: type-check (vue-tsc -b) → test (vitest run) → build (vite build)
+  → Deploy: npx vercel --prod
+  → Health check: curl https://portifolio-30.vercel.app → 200
+```
+
+PRs get automatic Vercel previews with a link commented on the PR. Dependabot enabled with auto-merge for patches.
+
+## What I learned
+
+1. **Not every project needs SSR.** A personal portfolio is the classic SPA case that works better without it. Less cost, less complexity, more performance.
+
+2. **Vite 8 is a leap.** The difference from 2min to 12s in build isn't incremental — it's a workflow change. You stop "using build time to get coffee" because the coffee hasn't even heated up.
+
+3. **Vue 3.5 with Composition API is as productive as React, but less verbose.** .vue templates with `<script setup>` + TypeScript are leaner than JSX for declarative UI. Vue's `v-model` still beats React's two-way binding in simplicity.
+
+4. **Keeping the right features is more important than adding more.** I cut Stripe, Supabase, Mercado Pago, and SSR servers. The portfolio became faster, cheaper to maintain, and easier to maintain.
+
+5. **GSAP + ScrollTrigger is still the best combo for web animations.** Nothing comes close in terms of timeline control, scrub, and 60fps performance even on mid-range devices.
+
+## Results
+
+- **Build:** ~12s (was 2min+)
+- **Dev server:** ~200ms (was ~8s)
+- **Bundle:** ~85KB gzipped (was ~240KB)
+- **Tests:** 122 passing, 12s total
+- **Deploy:** Automatic via CI (Vercel)
+- **Languages:** 3 (pt/en/es)
+- **Palettes:** 6
+- **Components:** 30+ (Hero, Navbar, Profile, Projects, Games, Contact, Terminal, Footer, etc.)
+
+The code is on [GitHub](https://github.com/Samuelfmedeiros/portifolio-3.0) and live at [portifolio-30.vercel.app](https://portifolio-30.vercel.app) 🚀
+
+> **TL;DR:** I swapped Next.js + React for Vue 3.5 + Vite 8, cut SSR and services I didn't need, and the portfolio became 20x faster to build, 3x smaller in bundle, and much more fun to maintain.

@@ -1,0 +1,263 @@
+---
+title: "First steps — infrastructure and the first lines of code"
+description: "After the idea came the hardest part: getting your hands dirty. How I chose React, Vite and FastAPI to build Dogwalk."
+date: 2026-05-28
+pubDate: 2026-07-12 00:00:00 -03:00
+lang: 'en'
+project: dogwalk
+tags:
+  - dogwalk
+  - react
+  - fastapi
+  - infra
+  - technology
+icon: 🐶
+cover: /covers/primeiros-passos-infra-dogwalk.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Having the idea was easy. Getting it off the ground was another story.
+
+Four days after the initial spark, I was ready to start coding for real. But first I needed to answer a crucial question: which stack to use?
+
+## The stack choice
+
+React 19 had just been released, Vite 8 promised instant builds, and FastAPI was the obvious choice for the backend — good performance, native typing with Pydantic, and automatic documentation.
+
+```bash
+# The command that started it all
+npm create vite@latest dogwalk -- --template react-ts
+cd dogwalk
+npm install
+```
+
+Seems simple now, but back then I faced some real struggles. ESLint configuration with React 19 was a fight, Vite 8 had just come out with some breaking changes, and Stripe made me lose an entire afternoon because I forgot to configure the webhook in the development environment.
+
+## Technology comparison
+
+Before committing, I made a comparison spreadsheet:
+
+| Criterion | React 19 | Vue 3.5 | Next.js | Svelte |
+|-----------|----------|---------|---------|--------|
+| Build tool | Vite 8 ⚡ | Vite 8 ⚡ | Webpack 🐢 | Vite 8 ⚡ |
+| SSR/SSG | ❌ Pure SPA | ❌ Pure SPA | ✅ Native SSR | ❌ Pure SPA |
+| TypeScript | ✅ Native | ✅ Native | ✅ Native | ✅ Native |
+| Learning curve | 🟢 Know it well | 🟡 Reasonable | 🟢 Know it well | 🟠 Would learn |
+| Ecosystem maturity | 🟢 Giant | 🟢 Large | 🟢 Large | 🟡 Growing |
+| Bundle size (base) | ~40 KB | ~33 KB | ~70 KB | ~5 KB |
+| **Verdict** | **✅ Chosen** | ⬅️ 2nd option | ❌ Overkill for SPA | ❌ Risk |
+
+**Backend:**
+
+| Criterion | FastAPI | Flask | Express | Django |
+|-----------|---------|-------|---------|--------|
+| Performance | 🟢 Async | 🟡 Sync | 🟢 Async | 🟡 Sync |
+| Typing | ✅ Pydantic | ❌ | ❌ (JS) | ✅ (medium) |
+| Auto docs | ✅ Swagger | ❌ | ❌ | ❌ |
+| Async DB | ✅ asyncpg | 🟡 gevent | ✅ Prisma | 🟡 |
+| ORM | ✅ SQLAlchemy | ✅ SQLAlchemy | ✅ Prisma | ✅ Own ORM |
+| Weight | 🟢 Light | 🟢 Light | 🟢 Light | 🔴 Heavy |
+| **Verdict** | **✅ Chosen** | ❌ No async | ❌ No typing | ❌ Too heavy |
+
+## The first route: user registration
+
+With the stack defined, I wrote the first real routes. User registration was the first endpoint connecting frontend and backend:
+
+```python
+# backend/app/routers/auth.py — first functional route
+from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, EmailStr
+import bcrypt
+from app.database import get_db
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: str  # 'tutor' | 'passeador'
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    created_at: str
+
+@router.post("/register", response_model=UserResponse)
+async def register(req: RegisterRequest):
+    if req.role not in ("tutor", "passeador"):
+        raise HTTPException(400, "Invalid role")
+
+    hashed = bcrypt.hashpw(
+        req.password.encode(), bcrypt.gensalt()
+    ).decode()
+
+    async with get_db() as db:
+        # Check if email already exists
+        existing = await db.fetchrow(
+            "SELECT id FROM users WHERE email = $1", req.email
+        )
+        if existing:
+            raise HTTPException(409, "Email already registered")
+
+        # Create user + profile in transaction
+        user = await db.fetchrow(
+            """INSERT INTO users (name, email, password_hash)
+               VALUES ($1, $2, $3)
+               RETURNING id, name, email, created_at""",
+            req.name, req.email, hashed
+        )
+
+        await db.execute(
+            """INSERT INTO profiles (user_id, name, role)
+               VALUES ($1, $2, $3)""",
+            user["id"], req.name, req.role
+        )
+
+        return {
+            "id": str(user["id"]),
+            "name": user["name"],
+            "email": user["email"],
+            "role": req.role,
+            "created_at": user["created_at"].isoformat(),
+        }
+```
+
+Using `asyncpg` directly (without ORM) was intentional — I wanted to feel the database before abstracting it. Only later did I add SQLAlchemy for more complex queries.
+
+## Docker and PostgreSQL
+
+The database ran in Docker from the start. The first `docker-compose.yml` was simple:
+
+```yaml
+# docker-compose.yml — version 0.1
+version: "3.9"
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: dogwalk
+      POSTGRES_USER: dogwalk
+      # optional: access configured via external env
+      POSTGRES_ACCESS: local_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+
+volumes:
+  pgdata:
+```
+
+The migrations volume mounted at `docker-entrypoint-initdb.d` made PostgreSQL run the schema SQLs on first initialization. It was hacky, but it worked.
+
+## The first migration (that survived)
+
+```sql
+-- backend/migrations/001_users_profiles.sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('tutor', 'passeador')),
+    phone TEXT,
+    avatar_url TEXT,
+    city TEXT,
+    rating DECIMAL(2,1) DEFAULT 0.0,
+    is_verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_profiles_user_id ON profiles(user_id);
+CREATE INDEX idx_profiles_city ON profiles(city);
+CREATE INDEX idx_profiles_role ON profiles(role);
+```
+
+This migration is the foundation of everything to this day. Sure, 15 more tables came later (pets, bookings, walks, gps_points, reviews, chat_messages, notifications, financial_transactions, etc.), but the `users + profiles` structure remained.
+
+## The early struggles
+
+Looking at the `deploy-workflow.sh` today, it seems like a decent script. But it was born from an entire Saturday trying to understand why the build broke in production but not dev.
+
+```bash
+#!/bin/bash
+# deploy-workflow.sh — version 0.1, 28/05/2026
+echo "🐶 Building Dogwalk..."
+npm run build && echo "✅ Build OK" || echo "❌ Build failed"
+```
+
+Yes, it was literally this at the beginning. It grew with conditionals, health checks, logs, and today it's about 80 lines. But every big script starts small.
+
+## Environment configuration
+
+Environment variable management was another learning curve. The first `.env` was minimal:
+
+```bash
+# .env — first version
+DOGWALK_JWT_CONFIG=dev-mode
+DOGWALK_DB_URL=postgresql+asyncpg://dogwalk@127.0.0.1:5432/dogwalk
+VITE_API_URL=http://localhost:8080
+# payment keys configured via env
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_exemplo
+```
+
+Then came the `EnvironmentFile=` in systemd, the separation of `.env.development` / `.env.production`, and `openssl rand -hex 32` to generate real secrets. But in the beginning, it was just this.
+
+## PostgreSQL and the first migration
+
+The database choice was PostgreSQL running in Docker. No complex ORM at the start — just pure SQL with asyncpg in FastAPI.
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    role TEXT CHECK (role IN ('tutor', 'passeador')) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+This was literally the first table. It still exists today, with a few more columns and a handful of indexes.
+
+## What I learned
+
+Project setup is treacherous — it feels like you're making progress when you're really just configuring tools. But without this foundation, everything else falls apart. Every hour spent on infrastructure upfront saved days of headaches later.
+
+### Pitfalls that left a mark
+
+1. **bind 0.0.0.0 vs 127.0.0.1** — In the beginning, uvicorn listened on `0.0.0.0`, exposing the backend on the local network. I fixed it to `127.0.0.1` and added `--no-server-header` to avoid leaking the version.
+
+2. **Timezone naive vs aware** — PostgreSQL rejects comparing `timestamp without time zone` with `datetime.now(timezone.utc)`. Solution: `datetime.now(timezone.utc).replace(tzinfo=None)`.
+
+3. **MemoryMax on WSL** — I set `MemoryMax=2G` in systemd and the backend restarted every 3 minutes. WSL2 doesn't support cgroup v2 properly. Removed the directive and everything became stable.
+
+4. **Rollup/Rolldown** — Vite 8 uses Rolldown (Rust). It doesn't accept imports at the end of files, and inline closures with block body in JSX break things. I had to extract subcomponents in several places.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Dogwalk/backend && source .venv/bin/activate && uvicorn app.main:app --reload --host 127.0.0.1 --port 8080', output: 'Start dev server' },
+    { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -m json.tool | head -20', output: 'Inspect automatic API documentation' },
+    { cmd: 'psql -d dogwalk -c "\\dt+"', output: 'List all tables with size' },
+    { cmd: 'docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"', output: 'Start database + count users' },
+    { cmd: "grep -r 'asyncpg' backend/app/ | wc -l", output: 'How many lines use asyncpg in the backend' },
+  ]}
+/>

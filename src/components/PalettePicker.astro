@@ -242,26 +242,46 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   function toggleTheme(e) {
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
+
     if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const x = e?.clientX ?? innerWidth/2, y = e?.clientY ?? innerHeight/2
+      const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
       const t = document.startViewTransition(() => setTheme(next))
       t.ready.then(() => {
-        const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
         document.documentElement.animate(
           { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-        )
-      }); return
+          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+        );
+      }).catch(() => {
+        // View Transition não completou — garante que o tema foi aplicado
+        setTheme(next)
+      });
+      return
     }
+
+    // Fallback: overlay com clip-path, lendo cor do tema destino via seletor
     if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // Cria um elemento temporário com o tema destino pra ler a cor real
+      const tmp = document.createElement('div')
+      tmp.setAttribute('data-theme', next)
+      tmp.style.display = 'none'
+      document.body.appendChild(tmp)
+      const bg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (next === 'light' ? '#f5f2eb' : '#0a0a0f')
+      tmp.remove()
+
       const o = document.createElement('div')
-      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);background:${next === 'light' ? '#f7f6f3' : '#0a0a0f'};transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
-      document.body.appendChild(o); o.offsetHeight
+      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
+      document.body.appendChild(o)
+      // Aplica o tema ANTES de expandir o círculo
+      setTheme(next)
+      // Força reflow e expande
+      o.offsetHeight
       const r = Math.hypot(Math.max(e.clientX, innerWidth-e.clientX), Math.max(e.clientY, innerHeight-e.clientY))
       o.style.clipPath = `circle(${r}px at ${e.clientX}px ${e.clientY}px)`
-      setTimeout(() => setTheme(next), 200)
       setTimeout(() => o.remove(), 550)
-    } else { setTheme(next) }
+    } else {
+      setTheme(next)
+    }
   }
 
   /* ─── Language ─── */
@@ -310,7 +330,14 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     }
     // Language
     if (t.closest('#rail-lang')) {
-      setLocale(currentLang === 'pt' ? 'en' : 'pt')
+      const next = currentLang === 'pt' ? 'en' : 'pt'
+      setLocale(next)
+      // Navigate to locale version of current page
+      const path = window.location.pathname
+      const newPath = next === 'en'
+        ? (path === '/' ? '/en/' : '/en' + path)
+        : path.replace(/^\/en/, '') || '/'
+      window.location.href = newPath
       return
     }
     // Click outside → close dropdown
