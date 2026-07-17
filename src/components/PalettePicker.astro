@@ -1,461 +1,327 @@
 ---
-// PalettePicker — Barra que abre pra ESQUERDA do toggle
-// Position: absolute → não empurra nada, funciona em qualquer navbar
+// ThemeRail — Controls: tema, cor (dropdown), idioma
+// Layout: [🌙] [🎨 ▼] [PT]
+// Paleta abre dropdown pra baixo com 6 dots
 import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 ---
 
 <div id="theme-rail" class="theme-rail">
-  <!-- Popover — absolute, fora do fluxo, abre à ESQUERDA do toggle -->
-  <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
-    <!-- 🎨 Cor -->
-    <button id="rail-cor" class="rail-btn" aria-label="Alternar cor" title="Alternar cor">
-      <span class="rail-btn-text">Cor</span>
-      <span class="rail-btn-emoji">🎨</span>
-    </button>
+  <!-- 🌙 Theme Toggle -->
+  <button id="rail-theme" class="rail-btn" aria-label="Alternar tema" title="Alternar tema">
+    <span id="rail-theme-icon" class="rail-icon">🌙</span>
+  </button>
 
-    <!-- 🌙/☀️ Tema — toggle switch animado -->
-    <button id="rail-theme" class="rail-toggle-switch" aria-label="Alternar tema" title="Alternar tema">
-      <span class="rail-toggle-track">
-        <span class="rail-toggle-thumb" id="rail-theme-thumb">
-          <span id="rail-theme-icon">🌙</span>
-        </span>
-      </span>
+  <!-- 🎨 Color Button (abre dropdown pra baixo) -->
+  <div class="rail-color-wrap">
+    <button id="rail-color" class="rail-btn rail-btn-color" aria-label="Paleta de cores" title="Paleta de cores">
+      <span class="rail-palette-indicator" id="rail-indicator"></span>
     </button>
-
-    <!-- 🇧🇷/🇺🇸 Idioma -->
-    <button id="rail-lang" class="rail-btn" aria-label="Alternar idioma" title="Alternar idioma">
-      <span class="rail-btn-text" id="rail-lang-text">PT</span>
-      <span class="rail-btn-emoji" id="rail-lang-emoji">🇧🇷</span>
-    </button>
+    <div id="rail-color-dropdown" class="rail-dropdown">
+      {PALETTES.map((p, i) => (
+        <button
+          id={`rail-palette-${i}`}
+          class="rail-dot"
+          style={`--dot-color: ${p.accentDark}`}
+          data-palette={p.id}
+          aria-label={`Paleta ${p.name}`}
+          title={p.name}
+        ></button>
+      ))}
+    </div>
   </div>
 
-  <!-- Botão toggle — MESMO TAMANHO, no fluxo normal -->
-  <button id="rail-toggle" class="rail-toggle" aria-label="Personalizar" title="Personalizar">
-    <span class="rail-toggle-inner">
-      <span id="rail-indicator" class="rail-indicator" style="background: #a78bfa"></span>
-      <span class="rail-toggle-icon">🎨</span>
-    </span>
+  <!-- PT/EN Language Toggle -->
+  <button id="rail-lang" class="rail-btn rail-btn-lang" aria-label="Alternar idioma" title="Alternar idioma">
+    <span id="rail-lang-text" class="rail-lang-text">PT</span>
   </button>
 </div>
 
-<script is:inline>
-(function() {
-  const LOCALE_KEY = 'lifelog-locale'
-
-  /* ═══════════════════════════════════════
-     Paletas (inline data)
-     ═══════════════════════════════════════ */
-  const PALETTES = [
-    {id:"purple",  name:"Roxo",    accentDark:"#a78bfa", accentLight:"#7c3aed", borderDark:"rgba(167,139,250,0.25)", borderLight:"rgba(124,58,237,0.2)", glowDark:"0 0 30px rgba(167,139,250,0.15)", glowLight:"0 4px 24px rgba(124,58,237,0.12)", tagBg:"rgba(167,139,250,0.12)", particleDark:"rgba(200,180,255,0.6)", particleLight:"rgba(124,58,237,0.15)", auraDark:"radial-gradient(ellipse at 30% 20%, rgba(167,139,250,0.06) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 80% 10%, rgba(124,58,237,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(167,139,250,0.06)", shadowLight:"0 4px 16px rgba(124,58,237,0.06)"},
-    {id:"cyan",    name:"Ciano",   accentDark:"#22d3ee", accentLight:"#0891b2", borderDark:"rgba(34,211,238,0.25)", borderLight:"rgba(8,145,178,0.2)", glowDark:"0 0 30px rgba(34,211,238,0.15)", glowLight:"0 4px 24px rgba(8,145,178,0.12)", tagBg:"rgba(34,211,238,0.12)", particleDark:"rgba(150,230,255,0.6)", particleLight:"rgba(8,145,178,0.15)", auraDark:"radial-gradient(ellipse at 20% 30%, rgba(34,211,238,0.06) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 70% 15%, rgba(8,145,178,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(34,211,238,0.06)", shadowLight:"0 4px 16px rgba(8,145,178,0.06)"},
-    {id:"emerald", name:"Verde",   accentDark:"#34d399", accentLight:"#059669", borderDark:"rgba(52,211,153,0.25)", borderLight:"rgba(5,150,105,0.2)", glowDark:"0 0 30px rgba(52,211,153,0.15)", glowLight:"0 4px 24px rgba(5,150,105,0.12)", tagBg:"rgba(52,211,153,0.12)", particleDark:"rgba(150,240,200,0.6)", particleLight:"rgba(5,150,105,0.15)", auraDark:"radial-gradient(ellipse at 40% 20%, rgba(52,211,153,0.05) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 60% 10%, rgba(5,150,105,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(52,211,153,0.06)", shadowLight:"0 4px 16px rgba(5,150,105,0.06)"},
-    {id:"amber",   name:"Âmbar",   accentDark:"#fbbf24", accentLight:"#d97706", borderDark:"rgba(251,191,36,0.25)", borderLight:"rgba(217,119,6,0.2)", glowDark:"0 0 30px rgba(251,191,36,0.15)", glowLight:"0 4px 24px rgba(217,119,6,0.12)", tagBg:"rgba(251,191,36,0.12)", particleDark:"rgba(255,220,150,0.6)", particleLight:"rgba(217,119,6,0.15)", auraDark:"radial-gradient(ellipse at 50% 30%, rgba(251,191,36,0.05) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 85% 10%, rgba(217,119,6,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(251,191,36,0.06)", shadowLight:"0 4px 16px rgba(217,119,6,0.06)"},
-    {id:"rose",    name:"Rosa",    accentDark:"#fb7185", accentLight:"#e11d48", borderDark:"rgba(251,113,133,0.25)", borderLight:"rgba(225,29,72,0.2)", glowDark:"0 0 30px rgba(251,113,133,0.15)", glowLight:"0 4px 24px rgba(225,29,72,0.12)", tagBg:"rgba(251,113,133,0.12)", particleDark:"rgba(255,180,200,0.6)", particleLight:"rgba(225,29,72,0.12)", auraDark:"radial-gradient(ellipse at 30% 40%, rgba(251,113,133,0.05) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 75% 15%, rgba(225,29,72,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(251,113,133,0.06)", shadowLight:"0 4px 16px rgba(225,29,72,0.06)"},
-    {id:"blue",    name:"Azul",    accentDark:"#60a5fa", accentLight:"#2563eb", borderDark:"rgba(96,165,250,0.25)", borderLight:"rgba(37,99,235,0.2)", glowDark:"0 0 30px rgba(96,165,250,0.15)", glowLight:"0 4px 24px rgba(37,99,235,0.12)", tagBg:"rgba(96,165,250,0.12)", particleDark:"rgba(160,200,255,0.6)", particleLight:"rgba(37,99,235,0.15)", auraDark:"radial-gradient(ellipse at 25% 25%, rgba(96,165,250,0.05) 0%, transparent 60%)", auraLight:"radial-gradient(ellipse at 65% 10%, rgba(37,99,235,0.04) 0%, transparent 50%)", shadowDark:"0 8px 32px rgba(96,165,250,0.06)", shadowLight:"0 4px 16px rgba(37,99,235,0.06)"},
-  ]
-  const STORAGE_KEY = 'lifelog-palette'
-  const THEME_KEY = 'lifelog-theme'
-  const DEFAULT = 'purple'
-
-  /* ─── Paletas ─── */
-  function getSavedPalette() {
-    try { const s = localStorage.getItem(STORAGE_KEY); if (s && PALETTES.some(p => p.id === s)) return s } catch {}
-    return DEFAULT
-  }
-
-  function setPalette(id, save = true) {
-    const p = PALETTES.find(p => p.id === id)
-    if (!p) return
-    const isDark = document.documentElement.getAttribute('data-theme') !== 'light'
-    const root = document.documentElement
-    const accent = isDark ? p.accentDark : p.accentLight
-
-    root.style.setProperty('--color-accent', accent)
-    root.style.setProperty('--color-accent-soft', p.tagBg)
-    root.style.setProperty('--color-glow', isDark ? p.glowDark : p.glowLight)
-    root.style.setProperty('--color-border', isDark ? p.borderDark : p.borderLight)
-    root.style.setProperty('--particle-color', isDark ? p.particleDark : p.particleLight)
-    root.style.setProperty('--aura-gradient', isDark ? p.auraDark : p.auraLight)
-    root.style.setProperty('--card-shadow', isDark ? p.shadowDark : p.shadowLight)
-
-    // Atualiza cor do toggle switch
-    const thumb = document.getElementById('rail-theme-thumb')
-    const track = document.querySelector('.rail-toggle-track')
-    if (thumb) thumb.style.background = accent
-    if (track) track.style.setProperty('--toggle-track-accent', accent)
-
-    const indicator = document.getElementById('rail-indicator')
-    if (indicator) indicator.style.background = p.accentDark
-
-    if (save) try { localStorage.setItem(STORAGE_KEY, id) } catch {}
-  }
-
-  let paletteIndex = PALETTES.findIndex(p => p.id === getSavedPalette())
-  if (paletteIndex === -1) paletteIndex = 0
-
-  function cyclePalette() {
-    paletteIndex = (paletteIndex + 1) % PALETTES.length
-    setPalette(PALETTES[paletteIndex].id)
-  }
-
-  /* ─── Tema ─── */
-  function getSavedTheme() {
-    try { return localStorage.getItem(THEME_KEY) } catch { return null }
-  }
-
-  function setTheme(theme, save = true) {
-    document.documentElement.setAttribute('data-theme', theme)
-    document.documentElement.classList.toggle('dark', theme !== 'light')
-    document.documentElement.classList.toggle('light', theme === 'light')
-    if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
-
-    const thumb = document.getElementById('rail-theme-thumb')
-    const icon = document.getElementById('rail-theme-icon')
-    if (thumb) {
-      if (theme === 'light') {
-        thumb.classList.add('light')
-      } else {
-        thumb.classList.remove('light')
-      }
-    }
-    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
-
-    setPalette(getSavedPalette(), false)
-  }
-
-  function toggleTheme(event) {
-    const current = document.documentElement.getAttribute('data-theme')
-    const newTheme = current === 'light' ? 'dark' : 'light'
-
-    if (document.startViewTransition) {
-      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        setTheme(newTheme); return
-      }
-      const x = event?.clientX ?? innerWidth / 2
-      const y = event?.clientY ?? innerHeight / 2
-      const t = document.startViewTransition(() => setTheme(newTheme))
-      t.ready.then(() => {
-        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
-        document.documentElement.animate(
-          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' },
-        )
-      })
-      return
-    }
-
-    if (event && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const overlay = document.createElement('div')
-      overlay.style.cssText = `
-        position: fixed; inset: 0; z-index: 9999;
-        pointer-events: none;
-        clip-path: circle(0px at ${event.clientX}px ${event.clientY}px);
-        background: ${newTheme === 'light' ? '#f7f6f3' : '#0a0a0f'};
-        transition: clip-path 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-      `
-      document.body.appendChild(overlay)
-      overlay.offsetHeight
-      const endR = Math.hypot(Math.max(event.clientX, innerWidth - event.clientX), Math.max(event.clientY, innerHeight - event.clientY))
-      overlay.style.clipPath = `circle(${endR}px at ${event.clientX}px ${event.clientY}px)`
-      setTimeout(() => setTheme(newTheme), 200)
-      setTimeout(() => overlay.remove(), 550)
-    } else {
-      setTheme(newTheme)
-    }
-  }
-
-  /* ─── Idioma ─── */
-  let currentLang = 'pt'
-
-  function getSavedLocale() {
-    try { const s = localStorage.getItem(LOCALE_KEY); if (s === 'pt' || s === 'en') return s } catch {}
-    return 'pt'
-  }
-
-  function setLocale(locale, save = true) {
-    currentLang = locale
-    document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
-    if (save) try { localStorage.setItem(LOCALE_KEY, locale) } catch {}
-    const text = document.getElementById('rail-lang-text')
-    const emoji = document.getElementById('rail-lang-emoji')
-    if (text) text.textContent = locale === 'en' ? 'EN' : 'PT'
-    if (emoji) emoji.textContent = locale === 'en' ? '🇺🇸' : '🇧🇷'
-    document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
-  }
-
-  function cycleLang() {
-    setLocale(currentLang === 'pt' ? 'en' : 'pt')
-  }
-
-  /* ─── Toggle popover ─── */
-  function togglePopover(e) {
-    e.stopPropagation()
-    const rail = document.getElementById('theme-rail')
-    const isOpen = rail.classList.contains('open')
-    if (isOpen) {
-      rail.classList.remove('open')
-    } else {
-      rail.classList.add('open')
-    }
-  }
-
-  /* ─── Init ─── */
-  const savedTheme = getSavedTheme() || 'dark'
-  setTheme(savedTheme, false)
-  setPalette(getSavedPalette(), false)
-  const savedLocale = getSavedLocale()
-  document.documentElement.setAttribute('lang', savedLocale === 'en' ? 'en' : 'pt-BR')
-  currentLang = savedLocale
-  const text = document.getElementById('rail-lang-text')
-  const emoji = document.getElementById('rail-lang-emoji')
-  if (text) text.textContent = savedLocale === 'en' ? 'EN' : 'PT'
-  if (emoji) emoji.textContent = savedLocale === 'en' ? '🇺🇸' : '🇧🇷'
-
-  /* ─── Listen for palette-reapply from FilterBar ─── */
-  document.addEventListener('lifelog-palette-reapply', function(e) {
-    const palette = e.detail && e.detail.palette;
-    if (palette) {
-      setPalette(palette, false)
-      paletteIndex = PALETTES.findIndex(p => p.id === palette)
-    }
-  });
-
-  /* ─── Eventos de clique ─── */
-  document.addEventListener('click', (e) => {
-    const rail = document.getElementById('theme-rail')
-    if (!rail) return
-
-    // Toggle button — funciona SEMPRE
-    const toggleBtn = e.target.closest('#rail-toggle')
-    if (toggleBtn) {
-      togglePopover(e)
-      return
-    }
-
-    // Se popover fechado, ignora
-    if (!rail.classList.contains('open')) return
-
-    // Clicou fora → fecha
-    if (!rail.contains(e.target)) {
-      rail.classList.remove('open')
-      return
-    }
-
-    // Cor
-    if (e.target.closest('#rail-cor')) {
-      cyclePalette()
-      return
-    }
-
-    // Tema
-    if (e.target.closest('#rail-theme')) {
-      toggleTheme(e)
-      return
-    }
-
-    // Idioma
-    if (e.target.closest('#rail-lang')) {
-      cycleLang()
-      return
-    }
-  })
-})()
-</script>
-
 <style>
   /* ═══════════════════════════════════════════
-     Theme Rail — Container
-     position: relative → ancora o popover absolute
+     Theme Rail — Inline controls + color dropdown
      ═══════════════════════════════════════════ */
   .theme-rail {
     display: flex;
     align-items: center;
-    position: relative;
-    z-index: 100;
-  }
-
-  /* ═══════════════════════════════════════════
-     Botão Toggle — Glass Pill (MESMO TAMANHO)
-     ═══════════════════════════════════════════ */
-  .rail-toggle {
-    all: unset;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 10px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    transition: all 0.2s ease;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    gap: 2px;
     flex-shrink: 0;
   }
-  .rail-toggle:hover {
-    background: var(--color-accent-soft);
-    border-color: var(--color-accent);
-    box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 20%, transparent);
-  }
-  .rail-toggle:active { transform: scale(0.94); }
-  :global([data-theme="light"]) .rail-toggle {
-    background: rgba(0,0,0,0.03);
-    border-color: rgba(0,0,0,0.06);
-  }
-  :global([data-theme="light"]) .rail-toggle:hover {
-    background: rgba(99,102,241,0.06);
-    border-color: #6366f1;
-    box-shadow: 0 0 16px rgba(99,102,241,0.15);
-  }
 
-  .rail-toggle-inner {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    line-height: 1;
-  }
-  .rail-indicator {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    transition: background 0.3s ease;
-    flex-shrink: 0;
-    box-shadow: 0 0 6px currentColor;
-  }
-  .rail-toggle-icon {
-    font-size: 1rem;
-    line-height: 1;
-  }
-
-  /* ═══════════════════════════════════════════
-     Popover — POSITION ABSOLUTE à esquerda do toggle
-     Não empurra nada — funciona em qualquer layout
-     ═══════════════════════════════════════════ */
-  .rail-popover {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    position: absolute;
-    right: calc(100% + 4px);
-    top: 50%;
-    transform: translateY(-50%);
-    max-width: 0;
-    overflow: hidden;
-    opacity: 0;
-    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    padding: 0;
-    white-space: nowrap;
-    pointer-events: none;
-  }
-  :global([data-theme="light"]) .rail-popover {
-    background: rgba(0,0,0,0.03);
-    border-color: rgba(0,0,0,0.06);
-  }
-
-  .theme-rail.open .rail-popover {
-    max-width: 300px;
-    opacity: 1;
-    padding: 4px 8px;
-    pointer-events: auto;
-  }
-
-  /* ═══════════════════════════════════════════
-     Botão padrão — nome + emoji
-     ═══════════════════════════════════════════ */
+  /* ─── Shared button style ─── */
   .rail-btn {
     all: unset;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
     border-radius: 8px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    line-height: 1;
     transition: all 0.2s ease;
     flex-shrink: 0;
-    white-space: nowrap;
-    opacity: 0.65;
+    opacity: 0.7;
+    position: relative;
   }
   .rail-btn:hover {
     opacity: 1;
     background: var(--color-accent-soft);
-    transform: scale(1.05);
+    transform: scale(1.08);
   }
-  .rail-btn:active { transform: scale(0.94); }
-
-  .rail-btn-text { letter-spacing: 0.02em; }
-  .rail-btn-emoji { font-size: 0.9rem; }
-
-  /* ═══════════════════════════════════════════
-     Toggle Switch — tema dark/light animado
-     ═══════════════════════════════════════════ */
-  .rail-toggle-switch {
-    all: unset;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    padding: 4px 6px;
-    border-radius: 8px;
-    transition: all 0.2s ease;
-  }
-  .rail-toggle-switch:hover {
-    background: var(--color-accent-soft);
+  .rail-btn:active { transform: scale(0.92); }
+  .rail-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+    pointer-events: none;
   }
 
-  .rail-toggle-track {
-    --toggle-track-accent: #a78bfa;
-    display: flex;
-    align-items: center;
-    width: 44px;
-    height: 22px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.08);
+  /* ─── Color button ─── */
+  .rail-color-wrap {
     position: relative;
-    transition: all 0.3s ease;
-    padding: 2px;
+    flex-shrink: 0;
   }
-  :global([data-theme="light"]) .rail-toggle-track {
-    background: rgba(0,0,0,0.06);
-    border-color: rgba(0,0,0,0.08);
+  .rail-btn-color {
+    font-size: 0;
   }
-
-  .rail-toggle-thumb {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .rail-palette-indicator {
+    display: block;
     width: 18px;
     height: 18px;
-    border-radius: 9px;
-    background: #a78bfa;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+    transition: all 0.3s ease;
+    pointer-events: none;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+
+  /* ─── Dropdown (abre pra baixo) ─── */
+  .rail-dropdown {
     position: absolute;
-    left: 2px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    font-size: 0.6rem;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    display: flex;
+    gap: 5px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 100;
+    white-space: nowrap;
+  }
+  .rail-dropdown.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ─── Palette dots ─── */
+  .rail-dot {
+    all: unset;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--dot-color);
+    opacity: 0.5;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+  }
+  .rail-dot:hover {
+    opacity: 0.9;
+    transform: scale(1.25);
+  }
+  .rail-dot:active { transform: scale(0.9); }
+  .rail-dot.active {
+    opacity: 1;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 50%, transparent);
+    transform: scale(1.2);
+  }
+
+  /* ─── Language ─── */
+  .rail-btn-lang {
+    min-width: 32px;
+    padding: 0 6px;
+  }
+  .rail-lang-text {
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.04em;
+    color: var(--color-accent);
     line-height: 1;
+    pointer-events: none;
   }
-  .rail-toggle-thumb.light {
-    left: 24px;
-    background: var(--color-accent-soft) !important;
+
+  /* ─── Mobile ─── */
+  @media (max-width: 768px) {
+    .rail-btn { width: 30px; height: 30px; }
+    .rail-icon { font-size: 1rem; }
+    .rail-palette-indicator { width: 16px; height: 16px; }
+    .rail-dot { width: 12px; height: 12px; }
+    .rail-btn-lang { min-width: 28px; padding: 0 5px; }
+    .rail-lang-text { font-size: 0.65rem; }
+    .rail-dropdown { padding: 6px 8px; gap: 4px; }
   }
-  .rail-toggle-thumb.light #rail-theme-icon {
-    filter: none;
-  }
-  .rail-toggle-thumb #rail-theme-icon {
-    filter: drop-shadow(0 0 1px rgba(0,0,0,0.3));
-  }
-  .rail-toggle-switch:hover .rail-toggle-thumb {
-    box-shadow: 0 1px 6px color-mix(in srgb, var(--toggle-track-accent) 50%, transparent);
+  @media (max-width: 480px) {
+    .rail-btn { width: 28px; height: 28px; }
+    .rail-icon { font-size: 0.9rem; }
+    .rail-palette-indicator { width: 14px; height: 14px; }
+    .rail-dot { width: 11px; height: 11px; }
+    .rail-btn-lang { min-width: 24px; padding: 0 4px; }
+    .rail-lang-text { font-size: 0.6rem; }
+    .rail-dropdown { padding: 5px 6px; gap: 3px; }
   }
 </style>
+
+<script is:inline>
+(function() {
+  const LOCALE_KEY = 'lifelog-locale'
+  const PALETTE_KEY = 'lifelog-palette'
+  const THEME_KEY = 'lifelog-theme'
+
+  const PALETTES = [
+    {id:"purple",name:"Roxo",aD:"#a78bfa",aL:"#7c3aed",bD:"rgba(167,139,250,0.25)",bL:"rgba(124,58,237,0.2)",gD:"0 0 30px rgba(167,139,250,0.15)",gL:"0 4px 24px rgba(124,58,237,0.12)",tB:"rgba(167,139,250,0.12)",pD:"rgba(200,180,255,0.6)",pL:"rgba(124,58,237,0.15)",aD2:"radial-gradient(ellipse at 30% 20%, rgba(167,139,250,0.06) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 80% 10%, rgba(124,58,237,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(167,139,250,0.06)",sL:"0 4px 16px rgba(124,58,237,0.06)"},
+    {id:"cyan",name:"Ciano",aD:"#22d3ee",aL:"#0891b2",bD:"rgba(34,211,238,0.25)",bL:"rgba(8,145,178,0.2)",gD:"0 0 30px rgba(34,211,238,0.15)",gL:"0 4px 24px rgba(8,145,178,0.12)",tB:"rgba(34,211,238,0.12)",pD:"rgba(150,230,255,0.6)",pL:"rgba(8,145,178,0.15)",aD2:"radial-gradient(ellipse at 20% 30%, rgba(34,211,238,0.06) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 70% 15%, rgba(8,145,178,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(34,211,238,0.06)",sL:"0 4px 16px rgba(8,145,178,0.06)"},
+    {id:"emerald",name:"Verde",aD:"#34d399",aL:"#059669",bD:"rgba(52,211,153,0.25)",bL:"rgba(5,150,105,0.2)",gD:"0 0 30px rgba(52,211,153,0.15)",gL:"0 4px 24px rgba(5,150,105,0.12)",tB:"rgba(52,211,153,0.12)",pD:"rgba(150,240,200,0.6)",pL:"rgba(5,150,105,0.15)",aD2:"radial-gradient(ellipse at 40% 20%, rgba(52,211,153,0.05) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 60% 10%, rgba(5,150,105,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(52,211,153,0.06)",sL:"0 4px 16px rgba(5,150,105,0.06)"},
+    {id:"amber",name:"Âmbar",aD:"#fbbf24",aL:"#d97706",bD:"rgba(251,191,36,0.25)",bL:"rgba(217,119,6,0.2)",gD:"0 0 30px rgba(251,191,36,0.15)",gL:"0 4px 24px rgba(217,119,6,0.12)",tB:"rgba(251,191,36,0.12)",pD:"rgba(255,220,150,0.6)",pL:"rgba(217,119,6,0.15)",aD2:"radial-gradient(ellipse at 50% 30%, rgba(251,191,36,0.05) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 85% 10%, rgba(217,119,6,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(251,191,36,0.06)",sL:"0 4px 16px rgba(217,119,6,0.06)"},
+    {id:"rose",name:"Rosa",aD:"#fb7185",aL:"#e11d48",bD:"rgba(251,113,133,0.25)",bL:"rgba(225,29,72,0.2)",gD:"0 0 30px rgba(251,113,133,0.15)",gL:"0 4px 24px rgba(225,29,72,0.12)",tB:"rgba(251,113,133,0.12)",pD:"rgba(255,180,200,0.6)",pL:"rgba(225,29,72,0.12)",aD2:"radial-gradient(ellipse at 30% 40%, rgba(251,113,133,0.05) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 75% 15%, rgba(225,29,72,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(251,113,133,0.06)",sL:"0 4px 16px rgba(225,29,72,0.06)"},
+    {id:"blue",name:"Azul",aD:"#60a5fa",aL:"#2563eb",bD:"rgba(96,165,250,0.25)",bL:"rgba(37,99,235,0.2)",gD:"0 0 30px rgba(96,165,250,0.15)",gL:"0 4px 24px rgba(37,99,235,0.12)",tB:"rgba(96,165,250,0.12)",pD:"rgba(160,200,255,0.6)",pL:"rgba(37,99,235,0.15)",aD2:"radial-gradient(ellipse at 25% 25%, rgba(96,165,250,0.05) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 65% 10%, rgba(37,99,235,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(96,165,250,0.06)",sL:"0 4px 16px rgba(37,99,235,0.06)"},
+  ]
+  function getP(id) { return PALETTES.find(p => p.id === id) || PALETTES[0] }
+
+  function getSaved(k, d) { try { const v = localStorage.getItem(k); if (v) return v } catch {} return d }
+  function save(k, v) { try { localStorage.setItem(k, v) } catch {} }
+
+  function isDark() { return document.documentElement.getAttribute('data-theme') !== 'light' }
+
+  /* ─── Palette ─── */
+  function applyPalette(id, persist) {
+    const p = getP(id)
+    const dark = isDark()
+    const root = document.documentElement
+    root.style.setProperty('--color-accent', dark ? p.aD : p.aL)
+    root.style.setProperty('--color-accent-soft', p.tB)
+    root.style.setProperty('--color-glow', dark ? p.gD : p.gL)
+    root.style.setProperty('--color-border', dark ? p.bD : p.bL)
+    root.style.setProperty('--particle-color', dark ? p.pD : p.pL)
+    root.style.setProperty('--aura-gradient', dark ? p.aD2 : p.aL2)
+    root.style.setProperty('--card-shadow', dark ? p.sD : p.sL)
+    // indicator dot
+    const ind = document.getElementById('rail-indicator')
+    if (ind) ind.style.background = dark ? p.aD : p.aL
+    // highlight dots
+    document.querySelectorAll('.rail-dot').forEach(el => {
+      el.classList.toggle('active', el.dataset.palette === id)
+    })
+    if (persist !== false) save(PALETTE_KEY, id)
+  }
+
+  /* ─── Theme ─── */
+  function setTheme(theme, persist) {
+    const root = document.documentElement
+    root.setAttribute('data-theme', theme)
+    root.classList.toggle('dark', theme !== 'light')
+    root.classList.toggle('light', theme === 'light')
+    const icon = document.getElementById('rail-theme-icon')
+    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
+    const pid = getSaved(PALETTE_KEY, 'purple')
+    applyPalette(pid, false)
+    if (persist !== false) save(THEME_KEY, theme)
+    document.dispatchEvent(new CustomEvent('lifelog-theme-change', { detail: { theme } }))
+  }
+
+  function toggleTheme(e) {
+    const cur = document.documentElement.getAttribute('data-theme')
+    const next = cur === 'light' ? 'dark' : 'light'
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const x = e?.clientX ?? innerWidth/2, y = e?.clientY ?? innerHeight/2
+      const t = document.startViewTransition(() => setTheme(next))
+      t.ready.then(() => {
+        const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+        )
+      }); return
+    }
+    if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const o = document.createElement('div')
+      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);background:${next === 'light' ? '#f7f6f3' : '#0a0a0f'};transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
+      document.body.appendChild(o); o.offsetHeight
+      const r = Math.hypot(Math.max(e.clientX, innerWidth-e.clientX), Math.max(e.clientY, innerHeight-e.clientY))
+      o.style.clipPath = `circle(${r}px at ${e.clientX}px ${e.clientY}px)`
+      setTimeout(() => setTheme(next), 200)
+      setTimeout(() => o.remove(), 550)
+    } else { setTheme(next) }
+  }
+
+  /* ─── Language ─── */
+  let currentLang = 'pt'
+  function setLocale(locale, persist) {
+    currentLang = locale
+    document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
+    const t = document.getElementById('rail-lang-text')
+    if (t) t.textContent = locale === 'en' ? 'EN' : 'PT'
+    if (persist !== false) save(LOCALE_KEY, locale)
+    document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
+  }
+
+  /* ─── Dropdown toggle ─── */
+  function toggleDropdown(e) {
+    e.stopPropagation()
+    const dd = document.getElementById('rail-color-dropdown')
+    if (!dd) return
+    const wasOpen = dd.classList.contains('open')
+    // close all dropdowns
+    document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+    if (!wasOpen) dd.classList.add('open')
+  }
+
+  /* ─── Init ─── */
+  const savedTheme = getSaved(THEME_KEY, 'dark')
+  setTheme(savedTheme, false)
+  const savedPalette = getSaved(PALETTE_KEY, 'purple')
+  applyPalette(savedPalette, false)
+  const savedLocale = getSaved(LOCALE_KEY, 'pt')
+  setLocale(savedLocale, false)
+
+  /* ─── Events ─── */
+  document.addEventListener('click', function(e) {
+    const t = e.target
+    // Theme
+    if (t.closest('#rail-theme')) { toggleTheme(e); return }
+    // Color button → toggle dropdown
+    if (t.closest('#rail-color')) { toggleDropdown(e); return }
+    // Palette dot inside dropdown
+    const dot = t.closest('.rail-dot')
+    if (dot && dot.dataset.palette) {
+      applyPalette(dot.dataset.palette)
+      document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+      return
+    }
+    // Language
+    if (t.closest('#rail-lang')) {
+      setLocale(currentLang === 'pt' ? 'en' : 'pt')
+      return
+    }
+    // Click outside → close dropdown
+    if (!t.closest('.rail-color-wrap')) {
+      document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+    }
+  })
+
+  document.addEventListener('lifelog-palette-reapply', function(e) {
+    const pid = e.detail && e.detail.palette
+    if (pid) applyPalette(pid, false)
+  })
+})()
+</script>
