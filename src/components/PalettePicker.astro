@@ -1,24 +1,41 @@
 ---
-// PalettePicker — Barra compacta com 3 ícones: Cor, Tema, Idioma
-// Abre/fecha como barra única horizontal
+// PalettePicker — Barra que abre pra ESQUERDA
+// Cada botão: nome + emoji. Tema = toggle switch colorido.
 import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 ---
 
 <div id="theme-rail" class="theme-rail">
-  <!-- Botão toggle — MESMO TAMANHO -->
+  <!-- Popover — VEM PRIMEIRO no HTML, RTL joga pra ESQUERDA do toggle -->
+  <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
+    <!-- 🎨 Cor -->
+    <button id="rail-cor" class="rail-btn" aria-label="Alternar cor" title="Alternar cor">
+      <span class="rail-btn-text">Cor</span>
+      <span class="rail-btn-emoji">🎨</span>
+    </button>
+
+    <!-- 🌙/☀️ Tema — toggle switch animado -->
+    <button id="rail-theme" class="rail-toggle-switch" aria-label="Alternar tema" title="Alternar tema">
+      <span class="rail-toggle-track">
+        <span class="rail-toggle-thumb" id="rail-theme-thumb">
+          <span id="rail-theme-icon">🌙</span>
+        </span>
+      </span>
+    </button>
+
+    <!-- 🇧🇷/🇺🇸 Idioma -->
+    <button id="rail-lang" class="rail-btn" aria-label="Alternar idioma" title="Alternar idioma">
+      <span class="rail-btn-text" id="rail-lang-text">PT</span>
+      <span class="rail-btn-emoji" id="rail-lang-emoji">🇧🇷</span>
+    </button>
+  </div>
+
+  <!-- Botão toggle — MESMO TAMANHO, VEM DEPOIS no HTML (RTL joga pra DIREITA) -->
   <button id="rail-toggle" class="rail-toggle" aria-label="Personalizar" title="Personalizar">
     <span class="rail-toggle-inner">
       <span id="rail-indicator" class="rail-indicator" style="background: #a78bfa"></span>
       <span class="rail-toggle-icon">🎨</span>
     </span>
   </button>
-
-  <!-- Popover — barra única com 3 ícones -->
-  <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
-    <button id="rail-cor" class="rail-icon-btn" aria-label="Cor" title="Alternar cor">Cor</button>
-    <button id="rail-theme" class="rail-icon-btn" aria-label="Tema" title="Alternar tema">Tema</button>
-    <button id="rail-lang" class="rail-icon-btn" aria-label="Idioma" title="Alternar idioma">PT</button>
-  </div>
 </div>
 
 <script is:inline>
@@ -61,6 +78,12 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     root.style.setProperty('--aura-gradient', isDark ? p.auraDark : p.auraLight)
     root.style.setProperty('--card-shadow', isDark ? p.shadowDark : p.shadowLight)
 
+    // Atualiza cor do toggle switch (thumb + track)
+    const thumb = document.getElementById('rail-theme-thumb')
+    const track = document.querySelector('.rail-toggle-track')
+    if (thumb) thumb.style.background = accent
+    if (track) track.style.setProperty('--toggle-track-accent', accent)
+
     const indicator = document.getElementById('rail-indicator')
     if (indicator) indicator.style.background = p.accentDark
 
@@ -85,6 +108,19 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     document.documentElement.classList.toggle('dark', theme !== 'light')
     document.documentElement.classList.toggle('light', theme === 'light')
     if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
+
+    // Atualiza toggle switch
+    const thumb = document.getElementById('rail-theme-thumb')
+    const icon = document.getElementById('rail-theme-icon')
+    if (thumb) {
+      if (theme === 'light') {
+        thumb.classList.add('light')
+      } else {
+        thumb.classList.remove('light')
+      }
+    }
+    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
+
     setPalette(getSavedPalette(), false)
   }
 
@@ -141,8 +177,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     currentLang = locale
     document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
     if (save) try { localStorage.setItem(LOCALE_KEY, locale) } catch {}
-    const btn = document.getElementById('rail-lang')
-    if (btn) btn.textContent = locale === 'en' ? 'EN' : 'PT'
+    const text = document.getElementById('rail-lang-text')
+    const emoji = document.getElementById('rail-lang-emoji')
+    if (text) text.textContent = locale === 'en' ? 'EN' : 'PT'
+    if (emoji) emoji.textContent = locale === 'en' ? '🇺🇸' : '🇧🇷'
     document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
   }
 
@@ -169,8 +207,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   const savedLocale = getSavedLocale()
   document.documentElement.setAttribute('lang', savedLocale === 'en' ? 'en' : 'pt-BR')
   currentLang = savedLocale
-  const langBtn = document.getElementById('rail-lang')
-  if (langBtn) langBtn.textContent = savedLocale === 'en' ? 'EN' : 'PT'
+  const text = document.getElementById('rail-lang-text')
+  const emoji = document.getElementById('rail-lang-emoji')
+  if (text) text.textContent = savedLocale === 'en' ? 'EN' : 'PT'
+  if (emoji) emoji.textContent = savedLocale === 'en' ? '🇺🇸' : '🇧🇷'
 
   /* ─── Listen for palette-reapply from FilterBar ─── */
   document.addEventListener('lifelog-palette-reapply', function(e) {
@@ -181,44 +221,41 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     }
   });
 
-  /* ─── Fechar popover ao clicar fora ─── */
+  /* ─── Eventos de clique ─── */
   document.addEventListener('click', (e) => {
     const rail = document.getElementById('theme-rail')
     if (!rail) return
 
-    // Toggle button — funciona SEMPRE, aberto ou fechado
+    // Toggle button — funciona SEMPRE
     const toggleBtn = e.target.closest('#rail-toggle')
     if (toggleBtn) {
       togglePopover(e)
       return
     }
 
-    // Se popover fechado, ignora outros cliques
+    // Se popover fechado, ignora
     if (!rail.classList.contains('open')) return
 
-    // Clicou fora do rail → fecha
+    // Clicou fora → fecha
     if (!rail.contains(e.target)) {
       rail.classList.remove('open')
       return
     }
 
     // Cor — cicla paleta
-    const corBtn = e.target.closest('#rail-cor')
-    if (corBtn) {
+    if (e.target.closest('#rail-cor')) {
       cyclePalette()
       return
     }
 
-    // Tema
-    const themeBtn = e.target.closest('#rail-theme')
-    if (themeBtn) {
+    // Tema — toggle switch
+    if (e.target.closest('#rail-theme')) {
       toggleTheme(e)
       return
     }
 
-    // Idioma
-    const langBtn = e.target.closest('#rail-lang')
-    if (langBtn) {
+    // Idioma — alterna PT/EN
+    if (e.target.closest('#rail-lang')) {
       cycleLang()
       return
     }
@@ -294,12 +331,12 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   /* ═══════════════════════════════════════════
-     Popover — barra única com 3 ícones
+     Popover — abre pra ESQUERDA (RTL)
      ═══════════════════════════════════════════ */
   .rail-popover {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     max-width: 0;
     overflow: hidden;
     opacity: 0;
@@ -309,7 +346,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     border-radius: 10px;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    margin-right: 0;
+    padding: 0;
   }
   :global([data-theme="light"]) .rail-popover {
     background: rgba(0,0,0,0.03);
@@ -317,37 +354,105 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   }
 
   .theme-rail.open .rail-popover {
-    max-width: 140px;
+    max-width: 280px;
     opacity: 1;
-    padding: 4px 6px;
-    margin-right: 4px;
-    border-width: 1px;
+    padding: 4px 8px;
+    margin-left: 4px;
   }
 
   /* ═══════════════════════════════════════════
-     3 ícones — todos iguais, compactos
+     Botão padrão — nome + emoji
      ═══════════════════════════════════════════ */
-  .rail-icon-btn {
+  .rail-btn {
+    all: unset;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    white-space: nowrap;
+    opacity: 0.65;
+  }
+  .rail-btn:hover {
+    opacity: 1;
+    background: var(--color-accent-soft);
+    transform: scale(1.04);
+  }
+  .rail-btn:active { transform: scale(0.94); }
+
+  .rail-btn-text { letter-spacing: 0.02em; }
+  .rail-btn-emoji { font-size: 0.9rem; }
+
+  /* ═══════════════════════════════════════════
+     Toggle Switch — tema dark/light animado
+     ═══════════════════════════════════════════ */
+  .rail-toggle-switch {
     all: unset;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 3px 8px;
-    border-radius: 6px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    line-height: 1;
-    transition: all 0.2s ease;
     flex-shrink: 0;
-    opacity: 0.6;
-    white-space: nowrap;
+    padding: 4px 6px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
   }
-  .rail-icon-btn:hover {
-    opacity: 1;
+  .rail-toggle-switch:hover {
     background: var(--color-accent-soft);
-    transform: scale(1.1);
   }
-  .rail-icon-btn:active { transform: scale(0.9); }
+
+  .rail-toggle-track {
+    --toggle-track-accent: #a78bfa;
+    display: flex;
+    align-items: center;
+    width: 44px;
+    height: 22px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+    transition: all 0.3s ease;
+    padding: 2px;
+  }
+  :global([data-theme="light"]) .rail-toggle-track {
+    background: rgba(0,0,0,0.06);
+    border-color: rgba(0,0,0,0.08);
+  }
+
+  .rail-toggle-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background: #a78bfa;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: absolute;
+    left: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    font-size: 0.6rem;
+    line-height: 1;
+  }
+  .rail-toggle-thumb.light {
+    left: 24px;
+    background: var(--color-accent-soft) !important;
+  }
+  .rail-toggle-thumb.light #rail-theme-icon {
+    filter: none;
+  }
+
+  .rail-toggle-thumb #rail-theme-icon {
+    filter: drop-shadow(0 0 1px rgba(0,0,0,0.3));
+  }
+
+  .rail-toggle-switch:hover .rail-toggle-thumb {
+    box-shadow: 0 1px 6px color-mix(in srgb, var(--toggle-track-accent) 50%, transparent);
+  }
 </style>
