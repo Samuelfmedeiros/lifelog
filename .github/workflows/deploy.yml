@@ -83,6 +83,9 @@ jobs:
       run: npx playwright install --with-deps chromium
 
     # ── Quality Gates ──────────────────────────────────────────
+    - name: PT/EN Sync check
+      run: python3 scripts/check-lang-sync.py
+
     - name: Astro type check
       continue-on-error: true
       run: pnpm astro check
