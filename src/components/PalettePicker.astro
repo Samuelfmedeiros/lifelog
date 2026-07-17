@@ -15,15 +15,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
 
   <!-- Popover — barra única com 3 ícones -->
   <div id="rail-popover" class="rail-popover" role="dialog" aria-label="Personalização">
-    <button id="rail-cor" class="rail-icon-btn" aria-label="Cor" title="Cor">
-      <span id="rail-cor-icon">🎨</span>
-    </button>
-    <button id="rail-theme" class="rail-icon-btn" aria-label="Tema" title="Tema">
-      <span id="rail-theme-icon">🌙</span>
-    </button>
-    <button id="rail-lang" class="rail-icon-btn" aria-label="Idioma" title="Idioma">
-      <span id="rail-lang-text">🇧🇷</span>
-    </button>
+    <button id="rail-cor" class="rail-icon-btn" aria-label="Cor" title="Alternar cor">Cor</button>
+    <button id="rail-theme" class="rail-icon-btn" aria-label="Tema" title="Alternar tema">Tema</button>
+    <button id="rail-lang" class="rail-icon-btn" aria-label="Idioma" title="Alternar idioma">PT</button>
   </div>
 </div>
 
@@ -91,8 +85,6 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     document.documentElement.classList.toggle('dark', theme !== 'light')
     document.documentElement.classList.toggle('light', theme === 'light')
     if (save) try { localStorage.setItem(THEME_KEY, theme) } catch {}
-    const icon = document.getElementById('rail-theme-icon')
-    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
     setPalette(getSavedPalette(), false)
   }
 
@@ -149,8 +141,8 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     currentLang = locale
     document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
     if (save) try { localStorage.setItem(LOCALE_KEY, locale) } catch {}
-    const el = document.getElementById('rail-lang-text')
-    if (el) el.textContent = locale === 'en' ? '🇺🇸' : '🇧🇷'
+    const btn = document.getElementById('rail-lang')
+    if (btn) btn.textContent = locale === 'en' ? 'EN' : 'PT'
     document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
   }
 
@@ -177,8 +169,8 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   const savedLocale = getSavedLocale()
   document.documentElement.setAttribute('lang', savedLocale === 'en' ? 'en' : 'pt-BR')
   currentLang = savedLocale
-  const langEl = document.getElementById('rail-lang-text')
-  if (langEl) langEl.textContent = savedLocale === 'en' ? '🇺🇸' : '🇧🇷'
+  const langBtn = document.getElementById('rail-lang')
+  if (langBtn) langBtn.textContent = savedLocale === 'en' ? 'EN' : 'PT'
 
   /* ─── Listen for palette-reapply from FilterBar ─── */
   document.addEventListener('lifelog-palette-reapply', function(e) {
@@ -336,14 +328,16 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    padding: 3px 8px;
     border-radius: 6px;
-    font-size: 0.95rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     line-height: 1;
     transition: all 0.2s ease;
     flex-shrink: 0;
     opacity: 0.6;
+    white-space: nowrap;
   }
   .rail-icon-btn:hover {
     opacity: 1;
