@@ -92,10 +92,10 @@ test.describe('Homepage', () => {
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 25 posts na timeline', async ({ page }) => {
+  test('deve exibir todos os 32 posts na timeline', async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(25);
+    await expect(cards).toHaveCount(32);
 
     // Verificar date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -197,7 +197,7 @@ test.describe('Arquivo', () => {
    ============================================= */
 
 test.describe('Sobre', () => {
-  test('mostra estatísticas: Posts=25, Projetos=6, Desde=2026', async ({ page }) => {
+  test('mostra estatísticas: Posts=32, Projetos=6, Desde=2026', async ({ page }) => {
     await page.goto('/sobre');
     await expect(page.locator('h1')).toContainText('Sobre o LifeLog');
 
@@ -212,7 +212,7 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '25' && v.label === 'Posts')).toBeTruthy();
+    expect(values.find(v => v.number === '32' && v.label === 'Posts')).toBeTruthy();
     // Projetos = unique projects with posts (6: arachne, dogwalk, portfolio, capivara, tatuengine, descobertas)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
@@ -244,7 +244,7 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com 25 posts', async ({ page }) => {
+  test('XML válido com todos os posts', async ({ page }) => {
     const response = await page.goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
@@ -255,7 +255,9 @@ test.describe('RSS Feed', () => {
     expect(text).toContain('<channel>');
 
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(25);
+    const ptCount = POSTS.length;
+    // RSS inclui PT + EN = 64 (32+32)
+    expect(items).toBe(ptCount * 2);
 
     // Todos os slugs e contexto de títulos presentes
     for (const post of POSTS) {
