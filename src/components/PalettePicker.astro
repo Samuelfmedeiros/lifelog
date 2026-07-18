@@ -121,6 +121,15 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     visibility: visible;
     transform: translateX(-50%) translateY(0);
   }
+  .rail-dropdown.drop-up {
+    top: auto;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%) translateY(4px);
+    transform-origin: bottom center;
+  }
+  .rail-dropdown.drop-up.open {
+    transform: translateX(-50%) translateY(0);
+  }
 
   /* ─── Palette dots ─── */
   .rail-dot {
@@ -188,6 +197,16 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     .rail-dropdown.open {
       transform: translateX(0) translateY(0);
     }
+    .rail-dropdown.drop-up {
+      left: auto; right: 0;
+      bottom: calc(100% + 6px);
+      top: auto;
+      transform: translateX(0) translateY(4px);
+      transform-origin: bottom right;
+    }
+    .rail-dropdown.drop-up.open {
+      transform: translateX(0) translateY(0);
+    }
   }
 </style>
 
@@ -252,46 +271,63 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   function toggleTheme(e) {
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const x = e?.clientX ?? innerWidth/2, y = e?.clientY ?? innerHeight/2
-      const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
+    // ─── Sem animação: troca direta ───
+    if (reduced) { setTheme(next); return }
+
+    // ─── View Transition API (Chromium) ───
+    if (document.startViewTransition) {
+      const x = e?.clientX ?? innerWidth / 2
+      const y = e?.clientY ?? innerHeight / 2
+      const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+
+      // Injeta <style> pra calar as animações padrão do VT (que brigam com clip-path)
+      const s = document.createElement('style')
+      s.textContent = `::view-transition-old(root){animation:none!important}::view-transition-new(root){animation:none!important;clip-path:circle(0 at ${x}px ${y}px)}`
+      document.head.appendChild(s)
+
       const t = document.startViewTransition(() => setTheme(next))
-      t.ready.then(() => {
+      const done = t.ready.then(() =>
         document.documentElement.animate(
-          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-        );
-      }).catch(() => {
-        // View Transition não completou — garante que o tema foi aplicado
-        setTheme(next)
-      });
+          { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+          { duration: 400, easing: 'cubic-bezier(0.22,1,0.36,1)', pseudoElement: '::view-transition-new(root)' }
+        ).finished
+      )
+      done.catch(() => setTheme(next)).finally(() => s.remove())
       return
     }
 
-    // Fallback: overlay com clip-path, lendo cor do tema destino via seletor
-    if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // Cria um elemento temporário com o tema destino pra ler a cor real
+    // ─── Fallback (Firefox/Safari) ───
+    if (e && e.clientX != null) {
+      // Lê a cor de fundo do tema destino sem reflow síncrono
       const tmp = document.createElement('div')
       tmp.setAttribute('data-theme', next)
-      tmp.style.display = 'none'
+      tmp.style.cssText = 'position:fixed;pointer-events:none;opacity:0'
       document.body.appendChild(tmp)
       const bg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (next === 'light' ? '#f5f2eb' : '#0a0a0f')
       tmp.remove()
 
-      const o = document.createElement('div')
-      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
-      document.body.appendChild(o)
-      // Aplica o tema ANTES de expandir o círculo
+      // Cria overlay com o tema ANTIGO (o que tá saindo)
+      const overlay = document.createElement('div')
+      overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0 at ${e.clientX}px ${e.clientY}px);transition:clip-path .4s cubic-bezier(.22,1,.36,1);will-change:clip-path`
+      document.body.appendChild(overlay)
       setTheme(next)
-      // Força reflow e expande
-      o.offsetHeight
-      const r = Math.hypot(Math.max(e.clientX, innerWidth-e.clientX), Math.max(e.clientY, innerHeight-e.clientY))
-      o.style.clipPath = `circle(${r}px at ${e.clientX}px ${e.clientY}px)`
-      setTimeout(() => o.remove(), 550)
-    } else {
-      setTheme(next)
+
+      // Duplo RAF: pinta o estado inicial no frame 1, expande no frame 2
+      // (sem offsetHeight — zero forced reflow)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const r2 = Math.hypot(Math.max(e.clientX, innerWidth - e.clientX), Math.max(e.clientY, innerHeight - e.clientY))
+          overlay.style.clipPath = `circle(${r2}px at ${e.clientX}px ${e.clientY}px)`
+        })
+      })
+      setTimeout(() => overlay.remove(), 450)
+      return
     }
+
+    // ─── Sem coordenadas de clique: troca direta ───
+    setTheme(next)
   }
 
   /* ─── Language ─── */
@@ -313,7 +349,14 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const wasOpen = dd.classList.contains('open')
     // close all dropdowns
     document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
-    if (!wasOpen) dd.classList.add('open')
+    if (!wasOpen) {
+      // Detecta se tem espaço embaixo — se não, abre pra cima
+      const wrap = dd.parentElement
+      const rect = wrap.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      dd.classList.toggle('drop-up', spaceBelow < 120)
+      dd.classList.add('open')
+    }
   }
 
   /* ─── Init ─── */
