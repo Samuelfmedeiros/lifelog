@@ -92,10 +92,10 @@ test.describe('Homepage', () => {
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 32 posts na timeline', async ({ page }) => {
+  test('deve exibir todos os 33 posts na timeline', async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(32);
+    await expect(cards).toHaveCount(33);
 
     // Verificar date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -212,7 +212,7 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '32' && v.label === 'Posts')).toBeTruthy();
+    expect(values.find(v => v.number === '33' && v.label === 'Posts')).toBeTruthy();
     // Projetos = unique projects with posts (6: arachne, dogwalk, portfolio, capivara, tatuengine, descobertas)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
