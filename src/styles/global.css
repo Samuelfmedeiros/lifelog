@@ -552,7 +552,7 @@ body {
     padding: 0 1rem;
     height: auto;
     min-height: 3.75rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.25rem;
   }
 
@@ -702,15 +702,19 @@ body {
 /* Celular pequeno */
 @media (max-width: 480px) {
   .navbar-inner {
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
     padding: 0.5rem 0.75rem;
     height: auto;
+    overflow-x: auto;
   }
 
   .navbar-links {
-    width: 100%;
-    justify-content: center;
-    flex-wrap: wrap;
+    width: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .navbar-link {
