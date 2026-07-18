@@ -106,6 +106,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     padding: 8px 10px;
     background: color-mix(in srgb, var(--color-bg) 95%, transparent);
     backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--color-border);
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.25);
@@ -166,19 +167,27 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     .rail-btn { width: 30px; height: 30px; }
     .rail-icon { font-size: 1rem; }
     .rail-palette-indicator { width: 16px; height: 16px; }
-    .rail-dot { width: 12px; height: 12px; }
+    .rail-dot { width: 16px; height: 16px; }
     .rail-btn-lang { min-width: 28px; padding: 0 5px; }
     .rail-lang-text { font-size: 0.65rem; }
-    .rail-dropdown { padding: 6px 8px; gap: 4px; }
+    .rail-dropdown { padding: 7px 9px; gap: 5px; }
   }
   @media (max-width: 480px) {
-    .rail-btn { width: 28px; height: 28px; }
-    .rail-icon { font-size: 0.9rem; }
-    .rail-palette-indicator { width: 14px; height: 14px; }
-    .rail-dot { width: 11px; height: 11px; }
-    .rail-btn-lang { min-width: 24px; padding: 0 4px; }
-    .rail-lang-text { font-size: 0.6rem; }
-    .rail-dropdown { padding: 5px 6px; gap: 3px; }
+    .rail-btn { width: 30px; height: 30px; }
+    .rail-icon { font-size: 0.95rem; }
+    .rail-palette-indicator { width: 16px; height: 16px; }
+    .rail-dot { width: 18px; height: 18px; }
+    .rail-btn-lang { min-width: 28px; padding: 0 5px; }
+    .rail-lang-text { font-size: 0.65rem; }
+    .rail-dropdown {
+      padding: 8px 10px; gap: 6px;
+      left: auto; right: 0;
+      transform: translateX(0) translateY(-4px);
+      transform-origin: top right;
+    }
+    .rail-dropdown.open {
+      transform: translateX(0) translateY(0);
+    }
   }
 </style>
 
@@ -242,43 +251,33 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   function toggleTheme(e) {
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const x = e?.clientX ?? innerWidth/2, y = e?.clientY ?? innerHeight/2
-      const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
+    // Se startViewTransition existe e NÃO é mobile small (possível jank)
+    if (document.startViewTransition && !reduced && innerWidth > 480) {
       const t = document.startViewTransition(() => setTheme(next))
-      t.ready.then(() => {
-        document.documentElement.animate(
-          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-        );
-      }).catch(() => {
-        // View Transition não completou — garante que o tema foi aplicado
-        setTheme(next)
-      });
+      // Deixa o crossfade padrão do ViewTransition — sem clip-path manual
+      // O crossfade nativo é GPU-accelerado e muito mais fluido
+      t.ready.catch(() => setTheme(next))
       return
     }
 
-    // Fallback: overlay com clip-path, lendo cor do tema destino via seletor
-    if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // Cria um elemento temporário com o tema destino pra ler a cor real
-      const tmp = document.createElement('div')
-      tmp.setAttribute('data-theme', next)
-      tmp.style.display = 'none'
-      document.body.appendChild(tmp)
-      const bg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (next === 'light' ? '#f5f2eb' : '#0a0a0f')
-      tmp.remove()
-
+    // Fallback universal: overlay fade-out → troca → fade-in
+    if (!reduced) {
+      const bg = next === 'light' ? '#f5f2eb' : '#12121a'
       const o = document.createElement('div')
-      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
+      o.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.15s ease;background:' + bg
       document.body.appendChild(o)
-      // Aplica o tema ANTES de expandir o círculo
-      setTheme(next)
-      // Força reflow e expande
-      o.offsetHeight
-      const r = Math.hypot(Math.max(e.clientX, innerWidth-e.clientX), Math.max(e.clientY, innerHeight-e.clientY))
-      o.style.clipPath = `circle(${r}px at ${e.clientX}px ${e.clientY}px)`
-      setTimeout(() => o.remove(), 550)
+      // Força 1 frame com overlay invisível (sem reflow — apenas composição)
+      requestAnimationFrame(() => {
+        o.style.opacity = '1'
+        // Quando a opacidade chegar em 1, troca o tema e fade out
+        setTimeout(() => {
+          setTheme(next)
+          o.style.opacity = '0'
+          setTimeout(() => o.remove(), 200)
+        }, 180)
+      })
     } else {
       setTheme(next)
     }
