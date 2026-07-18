@@ -180,11 +180,15 @@ const allLabel = isEn ? 'All' : 'Todos';
 
   let postsData = buildPostIndex();
 
-  // Rebuild on DOM changes
+  // Rebuild on DOM changes — observa o body todo pq posts são renderizados depois deste script
   if (window.MutationObserver) {
-    const obs = new MutationObserver(() => { postsData = buildPostIndex(); });
-    const target = document.getElementById('filter-bar');
-    if (target) obs.observe(target, { childList: true, subtree: true });
+    const obs = new MutationObserver(() => {
+      postsData = buildPostIndex();
+      filterPosts(); // re-aplica filtro com os posts agora no DOM
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    // Desliga depois de 3s (já deve ter capturado tudo)
+    setTimeout(() => obs.disconnect(), 3000);
   }
 
   // ===== Project pill click =====
@@ -331,7 +335,13 @@ const allLabel = isEn ? 'All' : 'Todos';
 
   // ===== Init =====
   setBarAccent('all');
-  filterPosts(); // Garante filtro aplicado desde o início
+  // Deferred: posts só entram no DOM depois que este script executa
+  setTimeout(() => filterPosts(), 0);
+  requestAnimationFrame(() => {
+    // Reforço no próximo paint — DOM definitivamente completo
+    postsData = buildPostIndex();
+    filterPosts();
+  });
 
   // Preserva scroll horizontal da barra quando paleta/tema muda
   let savedScroll = 0;
