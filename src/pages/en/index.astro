@@ -61,7 +61,7 @@ const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os
               date={post.data.date}
               project={post.data.project}
               tags={post.data.tags}
-              slug={`/en/post/${post.id.replace('en/', '')}`}
+              slug={post.id}
               icon={post.data.icon}
               cover={post.data.cover}
               index={i}
