@@ -27,10 +27,12 @@ const proj = getProject(project);
 const projectLabel = proj?.label || project;
 const projectIcon = proj?.icon || icon || '📝';
 const readMore = isEn ? 'Continue reading' : 'Continuar lendo';
+const postSlug = isEn ? slug.replace(/^en\//, '') : slug;
+const postHref = isEn ? `/en/post/${postSlug}/` : `/post/${slug}/`;
 ---
 
 <article class="post-card group" data-project={project} style={index !== undefined ? `--card-index: ${index}` : ''}>
-  <a href={slug.startsWith('http') ? slug : slug} class="no-underline! block">
+  <a href={postHref} class="no-underline! block">
     <!-- Cover thumbnail -->
     <div class="cover-wrap">
       {cover ? (
