@@ -232,6 +232,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       el.classList.toggle('active', el.dataset.palette === id)
     })
     if (persist !== false) save(PALETTE_KEY, id)
+    document.dispatchEvent(new CustomEvent('lifelog-palette-change', { detail: { palette: id } }))
   }
 
   /* ─── Theme ─── */

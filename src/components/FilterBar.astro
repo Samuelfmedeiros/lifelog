@@ -331,6 +331,17 @@ const allLabel = isEn ? 'All' : 'Todos';
 
   // ===== Init =====
   setBarAccent('all');
+  filterPosts(); // Garante filtro aplicado desde o início
+
+  // Preserva scroll horizontal da barra quando paleta/tema muda
+  let savedScroll = 0;
+  const saveScroll = () => { if (bar) savedScroll = bar.scrollLeft; };
+  const restoreScroll = () => { if (bar && savedScroll > 0) { requestAnimationFrame(() => { bar.scrollLeft = savedScroll; }); }};
+  document.addEventListener('lifelog-theme-change', restoreScroll);
+  document.addEventListener('lifelog-palette-change', restoreScroll);
+  document.addEventListener('lifelog-palette-reapply', restoreScroll);
+  // Salva scroll antes de qualquer clique em pills (que podem disparar eventos)
+  bar?.addEventListener('scroll', saveScroll, { passive: true });
 })();
 </script>
 
