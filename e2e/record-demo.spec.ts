@@ -1,6 +1,7 @@
 import { test, chromium } from '@playwright/test';
 
-const URL = 'https://lifelog-sepia.vercel.app';
+// Use local dev server ou fallback pra produção
+const URL = process.env.E2E_BASE_URL || 'http://localhost:4321';
 
 test('record full demo video', async () => {
   const browser = await chromium.launch();
@@ -10,79 +11,82 @@ test('record full demo video', async () => {
   });
   const page = await context.newPage();
 
+  test.setTimeout(90_000);
+
   // 1. Homepage
-  await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(3000);
+  await page.goto(URL, { waitUntil: 'networkidle', timeout: 15_000 });
+  await page.waitForTimeout(2000);
   
-  // Scroll slowly
+  // Scroll suave
   await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'smooth' }));
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(1000);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  await page.waitForTimeout(500);
+
+  // 2. Alternar tema
+  const themeBtn = page.locator('#rail-theme');
+  await themeBtn.waitFor({ state: 'visible', timeout: 5000 });
+  await themeBtn.click();
+  await page.waitForTimeout(1500);
+  await themeBtn.click();
+  await page.waitForTimeout(1500);
+
+  // 3. Abrir palette de cores
+  const colorBtn = page.locator('#rail-color');
+  await colorBtn.click();
   await page.waitForTimeout(800);
 
-  // 2. Toggle theme (dark)
-  const themeBtn = page.locator('#rail-theme');
-  if (await themeBtn.isVisible()) {
-    await themeBtn.click();
-    await page.waitForTimeout(2500);
+  // Pega o primeiro dot disponível (evita depender de synthwave)
+  const firstDot = page.locator('.rail-dot').first();
+  if (await firstDot.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await firstDot.click();
+    await page.waitForTimeout(1000);
   }
 
-  // 3. Open color palette
-  const colorBtn = page.locator('#rail-color');
-  if (await colorBtn.isVisible()) {
-    await colorBtn.click();
-    await page.waitForTimeout(1200);
-    
-    // Pick synthwave
-    const sw = page.locator('.rail-dot[data-palette="synthwave"]');
-    if (await sw.isVisible()) {
-      await sw.click();
-      await page.waitForTimeout(2000);
-    }
-  }
+  // Fecha dropdown
+  await page.locator('#rail-theme').click();
+  await page.waitForTimeout(500);
 
-  // 4. Back to light
-  if (await themeBtn.isVisible()) {
-    await themeBtn.click();
-    await page.waitForTimeout(2000);
-  }
+  // 4. Homepage de novo (após interagir)
+  await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 10_000 });
+  await page.waitForTimeout(1000);
 
-  // 5. Filter by Arachne
+  // 5. Filtrar por Arachne
   const arachnePill = page.locator('[data-filter-project="arachne"]');
-  if (await arachnePill.isVisible()) {
+  if (await arachnePill.isVisible({ timeout: 3000 }).catch(() => false)) {
     await arachnePill.click();
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000);
   }
-  // Reset
+  // Reset all
   const allPill = page.locator('[data-filter-project="all"]');
-  if (await allPill.isVisible()) {
+  if (await allPill.isVisible({ timeout: 2000 }).catch(() => false)) {
     await allPill.click();
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(500);
   }
 
   // 6. Archive
-  await page.goto(URL + '/arquivo/', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-
-  // 7. Click first post
-  const firstPost = page.locator('a[href^="/post/"]').first();
-  if (await firstPost.isVisible()) {
-    await firstPost.click();
-    await page.waitForTimeout(3000);
-  }
-  await page.evaluate(() => window.scrollBy({ top: 300, behavior: 'smooth' }));
-  await page.waitForTimeout(1000);
-
-  // 8. About
-  await page.goto(URL + '/sobre/', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-
-  // 9. English
-  await page.goto(URL + '/en/', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(2000);
-  await page.evaluate(() => window.scrollBy({ top: 400, behavior: 'smooth' }));
+  await page.goto(URL + '/arquivo/', { waitUntil: 'domcontentloaded', timeout: 10_000 });
   await page.waitForTimeout(1500);
 
+  // 7. Clicar no primeiro post
+  const firstPost = page.locator('a[href^="/post/"]').first();
+  if (await firstPost.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await firstPost.click();
+    await page.waitForTimeout(2000);
+  }
+  await page.evaluate(() => window.scrollBy({ top: 300, behavior: 'smooth' }));
+  await page.waitForTimeout(800);
+
+  // 8. Sobre
+  await page.goto(URL + '/sobre/', { waitUntil: 'domcontentloaded', timeout: 10_000 });
+  await page.waitForTimeout(1500);
+
+  // 9. English
+  await page.goto(URL + '/en/', { waitUntil: 'domcontentloaded', timeout: 10_000 });
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => window.scrollBy({ top: 400, behavior: 'smooth' }));
+  await page.waitForTimeout(1000);
+
   await browser.close();
-  console.log('Demo video recorded');
+  console.log('✅ Demo video recorded');
 });
