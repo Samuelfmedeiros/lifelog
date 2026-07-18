@@ -252,33 +252,43 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   function toggleTheme(e) {
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    // Se startViewTransition existe e NÃO é mobile small (possível jank)
-    if (document.startViewTransition && !reduced && innerWidth > 480) {
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const x = e?.clientX ?? innerWidth/2, y = e?.clientY ?? innerHeight/2
+      const r = Math.hypot(Math.max(x, innerWidth-x), Math.max(y, innerHeight-y))
       const t = document.startViewTransition(() => setTheme(next))
-      // Deixa o crossfade padrão do ViewTransition — sem clip-path manual
-      // O crossfade nativo é GPU-accelerado e muito mais fluido
-      t.ready.catch(() => setTheme(next))
+      t.ready.then(() => {
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+        );
+      }).catch(() => {
+        // View Transition não completou — garante que o tema foi aplicado
+        setTheme(next)
+      });
       return
     }
 
-    // Fallback universal: overlay fade-out → troca → fade-in
-    if (!reduced) {
-      const bg = next === 'light' ? '#f5f2eb' : '#12121a'
+    // Fallback: overlay com clip-path, lendo cor do tema destino via seletor
+    if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // Cria um elemento temporário com o tema destino pra ler a cor real
+      const tmp = document.createElement('div')
+      tmp.setAttribute('data-theme', next)
+      tmp.style.display = 'none'
+      document.body.appendChild(tmp)
+      const bg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (next === 'light' ? '#f5f2eb' : '#0a0a0f')
+      tmp.remove()
+
       const o = document.createElement('div')
-      o.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.15s ease;background:' + bg
+      o.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0px at ${e.clientX}px ${e.clientY}px);transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)`
       document.body.appendChild(o)
-      // Força 1 frame com overlay invisível (sem reflow — apenas composição)
-      requestAnimationFrame(() => {
-        o.style.opacity = '1'
-        // Quando a opacidade chegar em 1, troca o tema e fade out
-        setTimeout(() => {
-          setTheme(next)
-          o.style.opacity = '0'
-          setTimeout(() => o.remove(), 200)
-        }, 180)
-      })
+      // Aplica o tema ANTES de expandir o círculo
+      setTheme(next)
+      // Força reflow e expande
+      o.offsetHeight
+      const r = Math.hypot(Math.max(e.clientX, innerWidth-e.clientX), Math.max(e.clientY, innerHeight-e.clientY))
+      o.style.clipPath = `circle(${r}px at ${e.clientX}px ${e.clientY}px)`
+      setTimeout(() => o.remove(), 550)
     } else {
       setTheme(next)
     }
@@ -332,12 +342,26 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     if (t.closest('#rail-lang')) {
       const next = currentLang === 'pt' ? 'en' : 'pt'
       setLocale(next)
-      // Navigate to locale version of current page
       const path = window.location.pathname
       const newPath = next === 'en'
         ? (path === '/' ? '/en/' : '/en' + path)
         : path.replace(/^\/en/, '') || '/'
-      window.location.href = newPath
+
+      // Transição suave antes de navegar
+      if (document.startViewTransition) {
+        document.startViewTransition(() => {
+          window.location.href = newPath
+        })
+      } else {
+        // Fallback: fade-out rápido via overlay
+        const o = document.createElement('div')
+        o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--color-bg);opacity:0;transition:opacity 0.15s ease;pointer-events:none'
+        document.body.appendChild(o)
+        requestAnimationFrame(() => {
+          o.style.opacity = '1'
+          setTimeout(() => { window.location.href = newPath }, 180)
+        })
+      }
       return
     }
     // Click outside → close dropdown
