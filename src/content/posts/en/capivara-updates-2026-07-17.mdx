@@ -1,0 +1,216 @@
+---
+title: "Capivara — The Stories the Refactoring Didn't Tell"
+description: "Under the hood of an 83% frontend refactoring: Ghost Components, silent schema drift, the two-systemd war, the phantom Umami proxy, and other pains that don't fit in a changelog."
+date: 2026-07-17 10:00:00 -03:00
+pubDate: 2026-07-18 00:00:00 -03:00
+project: capivara
+tags: ["capivara", "refactoring", "ghost-components", "react-router", "schema-drift", "systemd", "devops"]
+icon: "🐷"
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Every refactoring has two versions: the one that makes it into the changelog (83% line reduction, React Router implemented, 10 components extracted) and the one that lives in terminal logs — debugging schema drift at 3 AM, NRestarts piling up in journalctl, the symlink that Next.js silently deletes on build.
+
+This is the second version.
+
+## The Ghost Component Nobody Saw
+
+When I started refactoring Capivara's frontend, I knew Dashboard.tsx had 994 lines and AdminPage.tsx had 1,091. The plan was simple: extract components. But something bugged me — some imports already pointed to `components/dashboard/` and `components/admin/`, yet the functions were still defined inline in the pages.
+
+```typescript
+// components/dashboard/DogwalkSection.tsx — exists, exported
+export function DogwalkSection() { /* ... */ }
+
+// pages/Dashboard.tsx — 200 lines later... another definition
+function DogwalkSection() { /* ... inline version nobody knows is identical */ }
+```
+
+The code worked because the inline version was the one that executed. The file in `components/` was a zombie — it existed, had code, but nobody imported it. I called this the **Ghost Component** pattern: a component that exists as a file but isn't used, while the page carries an inline copy that can diverge.
+
+I found 3 ghost components by grepping for `^function` in page files and comparing with `components/*.tsx`:
+
+```bash
+# The diagnosis
+$ grep -c 'export function' components/*/*.tsx    # 17 exports
+$ grep -c '^function ' pages/*.tsx                # 8 inline functions
+```
+
+Of the 8 inline functions, 3 already had file versions. Someone had started the extraction and stopped halfway — the inline code remained the "source of truth" while the files gathered dust.
+
+**Lesson learned:** incomplete refactoring is worse than no refactoring. Extracting a component has 4 steps that must run in sequence without skipping any:
+
+1. Create the component file
+2. Import it in the page
+3. **Remove the inline definition**
+4. Run `tsc --noEmit` to confirm
+
+Skip step 3 and you've set a trap for whoever comes next.
+
+## Schema Drift — The Error That Wasn't
+
+Capivara's admin panel reads Arachne data directly from its SQLite database. It's practical but dangerous. The `_query_sqlite` helper catches every exception and returns `[]`:
+
+```python
+def _query_sqlite(db_path: Path, sql: str, params: tuple = ()) -> list[dict]:
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(sql, params)
+        rows = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception as e:
+        log.warning("SQLite query failed on %s: %s", db_path, e)
+        return []  # ← silent!
+```
+
+Arachne's schema evolves without telling Capivara. The security scan reported three `no such column` occurrences:
+
+| Query | Wrong column | Correct column |
+|-------|-------------|----------------|
+| `extractions` | `extractor` | `page_id, author` |
+| `pipelines` | `status` | `last_run_status` |
+
+The worst part was the user experience: the Arachne tab in the admin simply appeared empty. No error, no toast, no indicator — `[]` is a valid result. It looked like Arachne was offline, when in reality the SQL was broken.
+
+Each visit to the tab burned 1-2 warnings in journalctl, but nobody reads journal in production. For weeks the Arachne panel was "empty" without anyone knowing why.
+
+The fix was twofold: fix the queries and create a **schema drift guard** that hashes SQLAlchemy definitions:
+
+```python
+SCHEMA_HASH = hashlib.sha256('\n'.join(
+    f'TABLE: {t}\n' + '\n'.join(
+        f'  {c.name}: {c.type!r} nullable={c.nullable}'
+        + (' PK' if c.primary_key else '')
+        for c in sorted(t.columns, key=lambda x: x.name)
+    )
+    for t in sorted(Base.metadata.tables.values(), key=lambda x: x.name)
+).encode()).hexdigest()
+```
+
+It runs as a daily cron. If the hash changes, it alerts before the admin panel breaks.
+
+## The Two-Systemd War (NRestarts=869)
+
+One day I noticed Capivara had weeks of uptime, yet `systemctl status` showed something bizarre:
+
+```
+● capivara.service — Capivara API (FastAPI)
+   Active: activating (auto-restart) (Result: exit-code)
+   NRestarts: 869
+```
+
+**869 restart attempts.** Each one failing with `address already in use` because the user-level `capivara-backend.service` was already running on port 8001.
+
+Capivara had *two* systemd services fighting over the same port:
+
+- **System-level:** `/etc/systemd/system/capivara.service` — 869 restarts
+- **User-level:** `~/.config/systemd/user/capivara-backend.service` — active, healthy
+
+The root cause? Someone had copied the user service to system-level (`sudo cp capivara-backend.service /etc/systemd/system/capivara.service`). The system-level tried to start, found port 8001 taken, exit code 1, `Restart=always` → infinite loop.
+
+```bash
+# The diagnosis
+$ ss -tlnp | grep 8001
+# → PID X (user-level)
+$ systemctl show capivara -p MainPID --value
+# → 0 (system-level never managed to start)
+$ systemctl show capivara -p NRestarts --value
+# → 869
+```
+
+Worst part: the HTTP health check responded fine (through the user-level service), so **no alert ever fired**. The system-level burned CPU with restart loops and nobody knew.
+
+Fix: stop and disable the system-level service. Never copy service files to `/etc/systemd/system/` again.
+
+## The Phantom Proxy That Next.js Keeps Deleting
+
+Umami analytics is a Next.js app compiled as `standalone` (`output: 'standalone'`). The build creates a symlink:
+
+```
+.next/standalone/projetos/umami/.next/static
+  → ../../../../.next/static
+```
+
+This symlink **disappears every time the build reruns**. Next.js cleans the standalone directory and recreates it without the symlink. Result: CSS/JS assets 404, page goes blank (infinite spinner), Umami looks broken.
+
+```bash
+# Diagnosis: 404 on asset
+$ curl -s -o /dev/null -w "%{http_code}" \
+  http://localhost:3100/_next/static/chunks/main.js
+# → 404  ← symlink is gone
+
+# Fix
+$ rm -f /home/samuel/projetos/umami/.next/standalone/projetos/umami/.next/static
+$ ln -s /home/samuel/projetos/umami/.next/static \
+  /home/samuel/projetos/umami/.next/standalone/projetos/umami/.next/static
+$ systemctl --user restart umami
+```
+
+It's now documented as a post-build checklist item. I don't trust my memory on this one.
+
+## React Router v7 — The 64% Bundle Cut
+
+Migrating from hand-rolled `window.location` routing to React Router v7 was the most visible milestone of the refactoring. The manual routing worked, but was fragile:
+
+```typescript
+// Before: hand-rolled
+function navigate(path: string) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+```
+
+Each SPA navigation required manual state synchronization. A `popstate` would trigger a render that didn't always capture the right state. React Router handles this natively.
+
+The real win came from lazy loading. Each route loads with `React.lazy()` + `Suspense`:
+
+```typescript
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const StatusPage = lazy(() => import('./pages/StatusPage'))
+```
+
+The initial bundle dropped from **668 kB to 238 kB** — a 64% reduction in what the user downloads on first visit. The Arachne admin tab, with all its direct SQL queries, loads 35 kB only when the user clicks on it.
+
+## Lessons That Don't Fit in a Changelog
+
+Refactoring 2,085 lines across two pages without breaking any feature seems like magic, but it isn't. It's a surgical process that requires:
+
+1. **Atomic steps** — extract one component at a time, run `tsc`, visual check, commit. Trying 3 at once breaks the build.
+
+2. **Diagnostic tools** — `grep` for ghost components, `PRAGMA table_info()` to validate schemas, `ss`/`systemctl` to detect process wars.
+
+3. **Document what went wrong** — the Umami symlink, the dual systemd, the schema drift. These bugs will come back if not documented.
+
+4. **Silence is not health** — when the admin returns `[]` without error, something may be broken. Always question empty data.
+
+```bash
+# Post-refactoring checks
+$ wc -l frontend/src/pages/Dashboard.tsx frontend/src/pages/AdminPage.tsx
+# 262 + 109 = 371 lines (was: 2,085)
+
+$ cd backend && python -m pytest -q
+# 44 passed in 3.2s
+
+$ systemctl --user status capivara-backend
+# ● active (running) · NRestarts: 0 (finally!)
+```
+
+> *Not every problem shows up in a health check. Sometimes the system returns 200 but has 869 restarts in its history, a ghost component waiting to diverge, and a symlink that disappeared on the last build. Documenting what went wrong is what separates a fragile system from a resilient one.*
+
+---
+
+## Useful Commands
+
+<Terminal
+  lines={[
+    { cmd: 'grep -c \'^function \' frontend/src/pages/*.tsx', output: '0' },
+    { cmd: 'systemctl show capivara -p NRestarts --value', output: '0' },
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/_next/static/chunks/main.js', output: '200' },
+    { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\n44 passed in 3.2s' },
+  ]}
+/>
