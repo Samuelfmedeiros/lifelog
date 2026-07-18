@@ -70,21 +70,21 @@ test.describe('Theme Rail', () => {
     await expect(html).toHaveAttribute('lang', /^pt/);
   });
 
-  test('controls are after Sobre and before CTA in navbar-links', async ({ page }) => {
+  test('controls are after CTA in navbar-links', async ({ page }) => {
     const links = page.locator('.navbar-links > *');
     const count = await links.count();
 
     // Ordem dentro de navbar-links:
     // [0] Início, [1] Arquivo, [2] Sobre,
-    // [3] #theme-rail (controls),
-    // [last] CTA Portfólio
+    // [3] 🚀 Portfólio CTA,
+    // [4] #theme-rail (controls)
     const sobre = links.nth(2);
-    const rail = links.nth(3);
-    const cta = links.nth(count - 1);
+    const cta = links.nth(3);
+    const rail = links.nth(4);
 
     await expect(sobre).toHaveAttribute('href', '/sobre');
-    await expect(rail).toHaveId('theme-rail');
     await expect(cta).toHaveClass(/cta/);
+    await expect(rail).toHaveId('theme-rail');
   });
 
   test('localStorage persists palette after reload', async ({ page }) => {

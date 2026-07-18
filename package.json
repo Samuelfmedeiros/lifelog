@@ -10,7 +10,7 @@
     "astro": "astro",
     "cleanup": "bash scripts/cleanup-post.sh",
     "cleanup:dist": "bash scripts/cleanup-post.sh --dist",
-    "test": "playwright test --config e2e/playwright.config.ts",
+    "test": "vitest run && playwright test --config e2e/playwright.config.ts",
     "test:headed": "playwright test --headed --config e2e/playwright.config.ts",
     "test:debug": "playwright test --debug --config e2e/playwright.config.ts"
   },
@@ -23,7 +23,8 @@
     "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1"
+    "@playwright/test": "^1.61.1",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=22.0.0",
