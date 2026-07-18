@@ -174,6 +174,9 @@ jobs:
         check_url "/sitemap.xml" "/sitemap.xml"
         check_url "/arquivo/"    "/arquivo/"
         check_url "/sobre/"      "/sobre/"
+        check_url "/en/"         "/en/"
+        check_url "/en/archive/" "/en/archive/"
+        check_url "/en/about/"   "/en/about/"
         echo ""
 
         # ── Todas as rotas de post ─────────────────────────────────
@@ -191,6 +194,17 @@ jobs:
         done
         echo ""
 
+
+        echo "── EN post routes ──"
+        for mdx_en in src/content/posts/en/*.mdx; do
+          SLUG_EN=$(basename "$mdx_en" .mdx)
+          if head -30 "$mdx_en" | grep -qE '^draft:\s*true'; then
+            echo "  ⏭️  /en/post/$SLUG_EN/ — draft, pulando"
+            continue
+          fi
+          check_url "/en/post/$SLUG_EN/" "/en/post/$SLUG_EN/"
+        done
+        echo ""
         # ── Resultado ──────────────────────────────────────────────
         echo "═══ Resumo: $TOTAL_OK ✅ | $TOTAL_FAIL ❌ ═══"
         [ "$FAIL" = "0" ] && echo "✅ All health checks passed" || exit 1
