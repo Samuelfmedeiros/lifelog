@@ -1,0 +1,76 @@
+---
+title: "LifeLog — o ritmo diário e o sistema de capas AI"
+description: "Estabelecendo a frequência de postagens diárias e resolvendo o pipeline de geração de capas por IA com Cloudflare Workers + FLUX.1 Schnell."
+date: 2026-07-19 11:00:00 -03:00
+pubDate: 2026-07-19 12:00:00 -03:00
+project: descobertas
+tags: ["lifelog", "capa", "ai", "workflow", "automacao"]
+icon: "📝"
+cover: /covers/lifelog-ritmo-diario-capa-ai.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O desafio das postagens diárias
+
+Quando criei o LifeLog, a ideia era documentar a jornada em tempo real — não posts espaçados, mas um registro consistente do que está sendo construído, aprendido e descoberto a cada dia.
+
+O problema é que a vida de dev é corrida: entre refatorar 83% do frontend do Capivara, debugar NaN no treinamento do TatuEngine, e configurar geofencing no Dogwalk, sentar pra escrever um post acaba ficando pro dia seguinte. E pro próximo. E de repente passou uma semana.
+
+A solução não é "ter mais tempo" — é ter um sistema que elimina o atrito de publicar. E a maior fonte de atrito era a capa.
+
+## O gargalo das capas
+
+Cada post do LifeLog tem uma capa gerada por IA — um wallpaper temático de 16:9 que representa o projeto do post. O sistema usa um **Cloudflare Worker** rodando **FLUX.1 Schnell** (via Replicate), chamado pelo script `scripts/generate-cover.py`.
+
+O fluxo era:
+
+1. Escrever o post em MDX
+2. Rodar `python3 scripts/generate-cover.py <slug>` pra gerar a capa
+3. Adicionar `cover: /covers/<slug>.webp` no frontmatter
+4. Buildar e deployar
+
+Mas o passo 2 e 3 eram manuais — fácil de pular. Resultado: o post mais recente (`capivara-updates-2026-07-17`) foi pro ar sem capa, mostrando só o placeholder.
+
+## A correção
+
+Resolvi o problema imediatamente gerando a capa e adicionando o campo no frontmatter. O script funciona bem — 577KB de arte AI num estilo tropical tech (tema Capivara, âmbar/laranja):
+
+```bash
+python3 scripts/generate-cover.py capivara-updates-2026-07-17
+```
+
+Mas o importante não foi só consertar — foi **estabelecer o processo**:
+
+- **Postagens todos os dias** — não importa o tamanho, o importante é o registro
+- **Capa obrigatória** — sem `cover:` no frontmatter, o post não é publicado
+- **Script `--all`** — `python3 scripts/generate-cover.py --all` gera capas pendentes de uma vez
+
+## O ecossistema em 19 de julho
+
+Falando em registro diário, aqui vai o raio-X de hoje:
+
+| Projeto | Status |
+|---------|--------|
+| **Arachne** (:9000) | Scraping + RAG + MCP tools — 25 ferramentas, visão multimodal |
+| **Capivara** (:8001) | Refatoração de 83% do frontend completa, schema drift corrigido |
+| **PataPass/Dogwalk** | Geofencing, multi-cidade, testes E2E sólidos |
+| **Portfolio** | Jogos reformulados, redesign de identidade |
+| **TatuEngine** | Wave Field Theory, pipeline Teacher-Student, 128 testes Python |
+| **LifeLog** | 🎯 Foco em consistência — posts diários a partir de hoje |
+
+<Terminal 
+  command="python3 scripts/generate-cover.py --list-missing"
+  output="📋 Posts sem capa (0):
+✅ Todos os posts têm capa!"
+/>
+
+## O que vem por aí
+
+O plano agora é:
+1. **Manter o ritmo** — um post por dia, mesmo que curto
+2. **Pipeline de capas automático** — idealmente o CI/CD gerar a capa se o post não tiver uma
+3. **Backfill** — preencher os dias que ficaram sem post
+
+Afinal, o nome é **Life**Log — não LifeWeekLog.
