@@ -34,7 +34,9 @@ const allLabel = isEn ? 'All' : 'Todos';
         aria-label={searchAria}
       />
       <span class="search-hint"><kbd>⌘</kbd><kbd>K</kbd></span>
+      <button id="search-clear" class="search-clear" aria-label="Limpar busca">×</button>
     </div>
+    <span id="result-count" class="result-count"></span>
   </div>
 
   <!-- Row 2: Pills + Year -->
@@ -112,6 +114,9 @@ const allLabel = isEn ? 'All' : 'Todos';
   let activeProject = 'all';
   let activeYear = 'all';
   let activeSearch = '';
+  let debounceTimer = null;
+  const resultCountEl = document.getElementById('result-count');
+  const clearBtn = document.getElementById('search-clear');
 
   function setBarAccent(projectId) {
     if (projectId === 'all') {
@@ -150,21 +155,6 @@ const allLabel = isEn ? 'All' : 'Todos';
     }
   }
 
-  // ===== Fuse.js (self-hosted) =====
-  let fusePromise = null;
-  function getFuse(postsData) {
-    if (!fusePromise) {
-      fusePromise = import('/vendor/fuse.mjs').then(
-        (mod) => new mod.default(postsData, {
-          threshold: 0.4,
-          distance: 100,
-          minMatchCharLength: 2,
-        })
-      );
-    }
-    return fusePromise;
-  }
-
   // ===== Build post index from DOM =====
   function buildPostIndex() {
     const posts = document.querySelectorAll('.post-card');
@@ -184,7 +174,12 @@ const allLabel = isEn ? 'All' : 'Todos';
   if (window.MutationObserver) {
     const obs = new MutationObserver(() => {
       postsData = buildPostIndex();
-      filterPosts(); // re-aplica filtro com os posts agora no DOM
+      if (activeSearch.length >= 2) {
+        fuzzySearch(activeSearch);
+      } else {
+        filterPosts();
+        updateResultCount();
+      }
     });
     obs.observe(document.body, { childList: true, subtree: true });
     // Desliga depois de 3s (já deve ter capturado tudo)
@@ -229,10 +224,16 @@ const allLabel = isEn ? 'All' : 'Todos';
     });
   });
 
-  // ===== Search =====
+  // ===== Search with debounced fuzzy =====
   searchInput.addEventListener('input', () => {
     activeSearch = searchInput.value.trim();
-    filterPosts();
+    clearBtn?.classList.toggle('show', !!activeSearch);
+    clearTimeout(debounceTimer);
+    if (activeSearch.length >= 2) {
+      debounceTimer = setTimeout(() => fuzzySearch(activeSearch), 150);
+    } else {
+      debounceTimer = setTimeout(() => { filterPosts(); updateResultCount(); }, 50);
+    }
   });
 
   searchInput.addEventListener('keydown', (e) => {
@@ -240,7 +241,11 @@ const allLabel = isEn ? 'All' : 'Todos';
       searchInput.blur();
       searchInput.value = '';
       activeSearch = '';
+      clearBtn?.classList.remove('show');
+      clearTimeout(debounceTimer);
       filterPosts();
+      updateResultCount();
+      syncURL();
     }
   });
 
@@ -251,10 +256,9 @@ const allLabel = isEn ? 'All' : 'Todos';
     }
   });
 
-  // ===== Filter logic =====
+  // ===== Filter logic (project + year only; search goes via fuzzySearch) =====
   function filterPosts() {
-    postsData = buildPostIndex(); // sempre fresco — posts são renderizados depois do FilterBar
-    const searchLower = activeSearch.toLowerCase();
+    postsData = buildPostIndex();
 
     postsData.forEach((pd) => {
       const yearMatch = pd.dateText.match(/\d{4}/);
@@ -262,20 +266,16 @@ const allLabel = isEn ? 'All' : 'Todos';
 
       const matchProject = activeProject === 'all' || pd.project === activeProject;
       const matchYear = activeYear === 'all' || year === activeYear;
+      const visible = matchProject && matchYear;
 
-      let matchSearch = true;
-      if (searchLower) {
-        matchSearch =
-          pd.title.toLowerCase().includes(searchLower) ||
-          pd.desc.toLowerCase().includes(searchLower) ||
-          pd.tags.some(t => t.toLowerCase().includes(searchLower)) ||
-          pd.project?.includes(searchLower);
-      }
-
-      const visible = matchProject && matchYear && matchSearch;
+      pd.el.classList.toggle('filter-hidden', !visible);
       pd.el.style.display = visible ? '' : 'none';
     });
 
+    updateGroupVisibility();
+  }
+
+  function updateGroupVisibility() {
     document.querySelectorAll('.date-separator').forEach(sep => {
       let next = sep.nextElementSibling;
       let hasVisible = false;
@@ -296,51 +296,158 @@ const allLabel = isEn ? 'All' : 'Todos';
     }
   }
 
-  // ===== Fuzzy search =====
+  // ===== Fuzzy search (Fuse.js) =====
   async function fuzzySearch(query) {
-    const q = query.toLowerCase();
-    if (q.length < 2) return filterPosts();
-    postsData = buildPostIndex(); // fresco sempre
+    const q = query.toLowerCase().trim();
+    if (q.length < 2) { filterPosts(); updateResultCount(); return; }
+    postsData = buildPostIndex();
+
+    // First filter by project + year
+    const filtered = postsData.filter(pd => {
+      const yearMatch = pd.dateText.match(/\d{4}/);
+      const year = yearMatch ? yearMatch[0] : '';
+      return (activeProject === 'all' || pd.project === activeProject) &&
+             (activeYear === 'all' || year === activeYear);
+    });
 
     try {
-      const fuse = await getFuse(postsData);
+      const mod = await import('/vendor/fuse.mjs');
+      const fuse = new mod.default(filtered, {
+        keys: ['title', 'desc', 'tags', 'project'],
+        threshold: 0.4,
+        distance: 100,
+        minMatchCharLength: 2,
+      });
       const results = fuse.search(q);
       const matchedEls = new Set(results.map(r => r.item.el));
 
       postsData.forEach(pd => {
-        if (pd.el.style.display === 'none') return;
-        pd.el.style.display = matchedEls.has(pd.el) ? '' : 'none';
+        const match = matchedEls.has(pd.el);
+        pd.el.classList.toggle('filter-hidden', !match);
+        pd.el.style.display = match ? '' : 'none';
       });
-
-      document.querySelectorAll('.date-separator').forEach(sep => {
-        let next = sep.nextElementSibling;
-        let hasVisible = false;
-        while (next && !next.classList.contains('date-separator')) {
-          if (next.classList.contains('post-card') && next.style.display !== 'none') {
-            hasVisible = true;
-            break;
-          }
-          next = next.nextElementSibling;
-        }
-        sep.style.display = hasVisible ? '' : 'none';
-      });
-
-      const emptyEl = document.getElementById('empty-state');
-      const visiblePosts = postsData.filter(p => p.el.style.display !== 'none').length;
-      if (emptyEl) emptyEl.style.display = visiblePosts === 0 ? '' : 'none';
     } catch (e) {
-      filterPosts();
+      // Fallback: basic includes
+      postsData.forEach(pd => {
+        const match = pd.title.toLowerCase().includes(q) ||
+                     pd.desc.toLowerCase().includes(q) ||
+                     pd.tags.some(t => t.toLowerCase().includes(q)) ||
+                     pd.project?.includes(q);
+        pd.el.classList.toggle('filter-hidden', !match);
+        pd.el.style.display = match ? '' : 'none';
+      });
+    }
+
+    updateGroupVisibility();
+    updateResultCount();
+  }
+
+  // ===== Result count =====
+  function updateResultCount() {
+    postsData = buildPostIndex();
+    const visible = postsData.filter(p => p.el.style.display !== 'none').length;
+    const total = postsData.length;
+    if (resultCountEl) {
+      if (visible < total || activeSearch || activeProject !== 'all' || activeYear !== 'all') {
+        resultCountEl.textContent = `${visible} de ${total}`;
+        resultCountEl.classList.add('visible');
+      } else {
+        resultCountEl.classList.remove('visible');
+      }
     }
   }
 
+  // ===== URL sync =====
+  function syncURL() {
+    const params = new URLSearchParams();
+    if (activeSearch) params.set('q', activeSearch);
+    if (activeProject !== 'all') params.set('project', activeProject);
+    if (activeYear !== 'all') params.set('year', activeYear);
+    const qs = params.toString();
+    const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    history.replaceState(null, '', url);
+  }
+
+  function readURLParams() {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q');
+    const project = params.get('project');
+    const year = params.get('year');
+    if (q && searchInput) {
+      searchInput.value = q;
+      activeSearch = q;
+      clearBtn?.classList.add('show');
+    }
+    if (project && project !== 'all') {
+      const btn = document.querySelector(`[data-filter-project="${project}"]`);
+      if (btn) {
+        pills.forEach(b => { b.setAttribute('data-active', 'false'); b.ariaChecked = 'false'; });
+        btn.setAttribute('data-active', 'true');
+        btn.ariaChecked = 'true';
+        activeProject = project;
+        setBarAccent(project);
+        setGlobalTheme(project);
+      }
+    }
+    if (year && year !== 'all') {
+      const btn = document.querySelector(`[data-filter-year="${year}"]`);
+      if (btn) {
+        yearPills.forEach(b => { b.setAttribute('data-active', 'false'); b.ariaChecked = 'false'; });
+        btn.setAttribute('data-active', 'true');
+        btn.ariaChecked = 'true';
+        activeYear = year;
+      }
+    }
+  }
+
+  // ===== Tag click delegation =====
+  document.addEventListener('click', function(e) {
+    const tag = e.target.closest('.post-card .tag');
+    if (tag) {
+      e.preventDefault();
+      const tagText = tag.textContent.trim();
+      searchInput.value = tagText;
+      activeSearch = tagText;
+      clearBtn?.classList.add('show');
+      clearTimeout(debounceTimer);
+      fuzzySearch(tagText);
+      syncURL();
+    }
+  });
+
   // ===== Init =====
-  setBarAccent('all');
+  readURLParams();
+  setBarAccent(activeProject);
+
   // Deferred: posts só entram no DOM depois que este script executa
-  setTimeout(() => filterPosts(), 0);
+  setTimeout(() => {
+    filterPosts();
+    updateResultCount();
+  }, 0);
   requestAnimationFrame(() => {
-    // Reforço no próximo paint — DOM definitivamente completo
     postsData = buildPostIndex();
     filterPosts();
+    updateResultCount();
+  });
+
+  // Clear button
+  clearBtn?.addEventListener('click', () => {
+    searchInput.value = '';
+    activeSearch = '';
+    clearBtn.classList.remove('show');
+    clearTimeout(debounceTimer);
+    filterPosts();
+    updateResultCount();
+    syncURL();
+    searchInput.focus();
+  });
+
+  // Sync URL on pill clicks
+  pills.forEach(btn => {
+    btn.addEventListener('click', () => setTimeout(syncURL, 0));
+  });
+  yearPills.forEach(btn => {
+    btn.addEventListener('click', () => setTimeout(syncURL, 0));
   });
 
   // Preserva scroll horizontal da barra quando paleta/tema muda
@@ -591,5 +698,50 @@ const allLabel = isEn ? 'All' : 'Todos';
     .year-pills {
       margin-left: 0;
     }
+  }
+
+  /* ════════ Result Count ════════ */
+  .result-count {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .result-count.visible {
+    opacity: 0.7;
+  }
+
+  /* ════════ Clear Button ════════ */
+  .search-clear {
+    all: unset;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+  .search-clear:hover {
+    color: var(--color-text);
+    background: rgba(255,255,255,0.08);
+  }
+  .search-clear.show { display: flex; }
+
+  /* ════════ Post Animation ════════ */
+  .post-card {
+    transition: opacity 0.25s ease, transform 0.25s ease !important;
+  }
+  .post-card.filter-hidden {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
   }
 </style>
