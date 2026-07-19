@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProjectIcon from '../../components/ProjectIcon.astro';
+import TagCloud from '../../components/TagCloud.astro';
 import { getCollection } from 'astro:content';
 
 const locale = 'en';
@@ -22,12 +23,27 @@ for (const post of posts) {
   projectCount.set(p, (projectCount.get(p) || 0) + 1);
 }
 
+// Collect all tags with counts
+const tagCount = new Map();
+for (const post of posts) {
+  const tags = post.data.tags;
+  if (tags && Array.isArray(tags)) {
+    for (const tag of tags) {
+      const t = tag.trim().toLowerCase();
+      if (t) tagCount.set(t, (tagCount.get(t) || 0) + 1);
+    }
+  }
+}
+const tagsList = [...tagCount.entries()].map(([name, count]) => ({ name, count }));
+
 const t = (await import('../../lib/i18n')).getTranslations(locale);
 ---
 
 <BaseLayout title={t.archive.pageTitle} description={t.archive.description} locale={locale}>
   <h1 class="text-3xl font-extrabold mb-2" style="color: var(--color-heading)">{t.archive.title}</h1>
   <p class="mb-8" style="color: var(--color-text-muted)">{posts.length} posts total</p>
+
+  <TagCloud tags={tagsList} locale={locale} />
 
   <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12">
     {[...projectCount.entries()].map(([proj, count]) => (

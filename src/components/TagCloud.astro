@@ -1,0 +1,140 @@
+---
+// TagCloud — Nuvem de tags clicáveis, estilo glass
+// Props: tags: { name: string; count: number }[], locale?: string
+
+export interface Props {
+  tags: { name: string; count: number }[];
+  locale?: string;
+}
+
+const { tags, locale } = Astro.props;
+const isEn = locale === 'en';
+const title = isEn ? 'Browse by tags' : 'Navegar por tags';
+const homeHref = isEn ? '/en/' : '/';
+const emptyText = isEn ? 'No tags yet' : 'Nenhuma tag ainda';
+
+// Ordena por frequência (mais usada primeiro) e limita a 50
+const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
+---
+
+<div class="tag-cloud">
+  <h3 class="tag-cloud-title">{title}</h3>
+  {sorted.length > 0 ? (
+    <div class="tag-cloud-pills">
+      {sorted.map((tag) => (
+        <a
+          href={`${homeHref}?q=${encodeURIComponent(tag.name)}`}
+          class="tag-cloud-pill"
+          style={`--tag-count: ${Math.min(tag.count / 10, 1)}`}
+          title={`${tag.count} post${tag.count !== 1 ? 's' : ''}`}
+        >
+          {tag.name}
+          <span class="tag-count">{tag.count}</span>
+        </a>
+      ))}
+    </div>
+  ) : (
+    <p class="tag-cloud-empty">{emptyText}</p>
+  )}
+</div>
+
+<style>
+  .tag-cloud {
+    margin-bottom: 2.5rem;
+    padding: 1rem 1.25rem;
+    border-radius: 16px;
+    background: var(--filter-bar-bg, rgba(18, 18, 24, 0.55));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
+    transition: background 0.4s ease, border-color 0.4s ease;
+  }
+
+  .tag-cloud-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.75rem;
+    opacity: 0.6;
+  }
+
+  .tag-cloud-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .tag-cloud-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    text-decoration: none;
+    font-family: inherit;
+    line-height: 1.5;
+  }
+
+  .tag-cloud-pill:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    transform: translateY(-1px);
+  }
+
+  .tag-cloud-pill:active {
+    transform: scale(0.95);
+  }
+
+  .tag-count {
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0 4px;
+    min-width: 14px;
+    text-align: center;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-muted);
+    opacity: 0.6;
+    line-height: 1.4;
+  }
+
+  .tag-cloud-empty {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    opacity: 0.4;
+  }
+
+  /* Light theme */
+  [data-theme="light"] .tag-cloud {
+    background: rgba(255, 255, 255, 0.65);
+    border-color: rgba(0, 0, 0, 0.05);
+  }
+  [data-theme="light"] .tag-cloud-pill {
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+  [data-theme="light"] .tag-cloud-pill:hover {
+    background: var(--color-accent-soft);
+  }
+
+  /* Mobile */
+  @media (max-width: 480px) {
+    .tag-cloud {
+      padding: 0.75rem 0.875rem;
+      border-radius: 14px;
+    }
+    .tag-cloud-pill {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+    }
+  }
+</style>

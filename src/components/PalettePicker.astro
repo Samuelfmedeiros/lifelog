@@ -116,7 +116,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     opacity: 0;
     visibility: hidden;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 100;
+    z-index: 1000;
     white-space: nowrap;
   }
   .rail-dropdown.open {
@@ -219,6 +219,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   const PALETTE_KEY = 'lifelog-palette'
   const THEME_KEY = 'lifelog-theme'
 
+  // ═══════════════════════════════════════
+  // PALETTES — must match src/lib/palettes.ts (single source of truth)
+  // ═══════════════════════════════════════
   const PALETTES = [
     {id:"purple",name:"Roxo",aD:"#a78bfa",aL:"#7c3aed",bD:"rgba(167,139,250,0.25)",bL:"rgba(124,58,237,0.2)",gD:"0 0 30px rgba(167,139,250,0.15)",gL:"0 4px 24px rgba(124,58,237,0.12)",tB:"rgba(167,139,250,0.12)",pD:"rgba(200,180,255,0.6)",pL:"rgba(124,58,237,0.15)",aD2:"radial-gradient(ellipse at 30% 20%, rgba(167,139,250,0.06) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 80% 10%, rgba(124,58,237,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(167,139,250,0.06)",sL:"0 4px 16px rgba(124,58,237,0.06)"},
     {id:"cyan",name:"Ciano",aD:"#22d3ee",aL:"#0891b2",bD:"rgba(34,211,238,0.25)",bL:"rgba(8,145,178,0.2)",gD:"0 0 30px rgba(34,211,238,0.15)",gL:"0 4px 24px rgba(8,145,178,0.12)",tB:"rgba(34,211,238,0.12)",pD:"rgba(150,230,255,0.6)",pL:"rgba(8,145,178,0.15)",aD2:"radial-gradient(ellipse at 20% 30%, rgba(34,211,238,0.06) 0%, transparent 60%)",aL2:"radial-gradient(ellipse at 70% 15%, rgba(8,145,178,0.04) 0%, transparent 50%)",sD:"0 8px 32px rgba(34,211,238,0.06)",sL:"0 4px 16px rgba(8,145,178,0.06)"},
