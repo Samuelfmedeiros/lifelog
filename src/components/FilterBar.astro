@@ -5,8 +5,9 @@ import { PROJECTS } from '../lib/projects';
 export interface Props {
   years: string[];
   locale?: string;
+  availableProjects?: string[]; // se passado, só mostra pills desses projetos
 }
-const { years, locale } = Astro.props;
+const { years, locale, availableProjects } = Astro.props;
 const isEn = locale === 'en';
 const searchPlaceholder = isEn ? 'Search posts...' : 'Buscar posts...';
 const searchAria = isEn ? 'Search posts' : 'Buscar posts';
@@ -42,7 +43,9 @@ const allLabel = isEn ? 'All' : 'Todos';
   <!-- Row 2: Pills + Year -->
   <div class="filter-row">
     <div class="filter-pills" role="radiogroup" aria-label={filterAria}>
-      {[{ id: 'all', label: allLabel }, ...PROJECTS].map((p) => (
+      {[{ id: 'all', label: allLabel }, ...PROJECTS].filter(
+        p => p.id === 'all' || !availableProjects || availableProjects.includes(p.id)
+      ).map((p) => (
         <button
           class="pill"
           data-filter-project={p.id}
@@ -89,7 +92,9 @@ const allLabel = isEn ? 'All' : 'Todos';
   const pills = document.querySelectorAll('[data-filter-project]');
   const yearPills = document.querySelectorAll('[data-filter-year]');
 
-  // ===== Project accent colors (single source — matches themes.css) =====
+  // ═══════════════════════════════════════
+  // PROJECT_ACCENTS — must match src/lib/projects.ts (single source of truth)
+  // ═══════════════════════════════════════
   const PROJECT_ACCENTS = {
     arachne: '#7c3aed',
     dogwalk: '#22c55e',

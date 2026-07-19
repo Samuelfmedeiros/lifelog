@@ -50,6 +50,9 @@ const footerText = dataLocale === 'en'
         document.documentElement.classList.toggle('light', savedTheme === 'light')
         var isDark = savedTheme !== 'light'
         var savedPalette = localStorage.getItem('lifelog-palette') || 'purple'
+        // ═══════════════════════════════════════
+        // PALETTES — must match src/lib/palettes.ts (single source of truth)
+        // ═══════════════════════════════════════
         var PALETTES = {
           purple: {aD:'#a78bfa', aL:'#7c3aed'},
           cyan: {aD:'#22d3ee', aL:'#0891b2'},

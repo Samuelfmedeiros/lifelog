@@ -28,6 +28,9 @@ for (const [dateKey, dayPosts] of dateMap) {
 const getPubDate = (p) => p.data.pubDate || p.data.date;
 const years = [...new Set(posts.map(p => getPubDate(p).getFullYear().toString()))].sort().reverse();
 
+// Projetos que têm posts
+const availableProjects = [...new Set(posts.map(p => p.data.project).filter(Boolean))];
+
 const t = (await import('../lib/i18n')).getTranslations(locale);
 const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--color-accent)">Samuel Medeiros</strong>';
 ---
@@ -39,7 +42,7 @@ const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--co
     <p class="text-sm mt-2" style="color: var(--color-text-muted)">{t.home.subtitle}</p>
   </section>
 
-  <FilterBar years={years} locale={locale} />
+  <FilterBar years={years} locale={locale} availableProjects={availableProjects} />
 
   <div class="timeline">
     {grouped.length === 0 && (
