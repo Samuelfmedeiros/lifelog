@@ -10,12 +10,16 @@ export async function GET() {
     { loc: '/', changefreq: 'weekly', priority: '1.0' },
     { loc: '/arquivo', changefreq: 'weekly', priority: '0.8' },
     { loc: '/sobre', changefreq: 'monthly', priority: '0.5' },
-    ...posts.map((post) => ({
-      loc: `/post/${post.id}`,
-      lastmod: post.data.date.toISOString().split('T')[0],
-      changefreq: 'monthly' as const,
-      priority: '0.6',
-    })),
+    ...posts.map((post) => {
+      const isEn = post.id.startsWith('en/');
+      const slug = isEn ? post.id.replace('en/', '') : post.id;
+      return {
+        loc: isEn ? `/en/post/${slug}` : `/post/${slug}`,
+        lastmod: post.data.date.toISOString().split('T')[0],
+        changefreq: 'monthly' as const,
+        priority: '0.6',
+      };
+    }),
   ];
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
