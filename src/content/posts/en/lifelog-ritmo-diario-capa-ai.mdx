@@ -1,0 +1,78 @@
+---
+title: "LifeLog — the daily rhythm and the AI cover system"
+description: "Establishing daily posting frequency and solving the AI cover generation pipeline with Cloudflare Workers + FLUX.1 Schnell."
+date: 2026-07-19 11:00:00 -03:00
+pubDate: 2026-07-19 12:00:00 -03:00
+project: descobertas
+tags: ["lifelog", "cover", "ai", "workflow", "automation"]
+icon: "📝"
+cover: /covers/lifelog-ritmo-diario-capa-ai.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The daily posting challenge
+
+When I created LifeLog, the idea was to document the journey in real time — not spaced-out posts, but a consistent record of what's being built, learned, and discovered every day.
+
+The problem is the dev life is hectic: between refactoring 83% of Capivara's frontend, debugging NaN in TatuEngine training, and configuring geofencing on Dogwalk, sitting down to write a post keeps getting pushed to tomorrow. And the next day. And suddenly a week goes by.
+
+The solution isn't "having more time" — it's having a system that eliminates the friction to publish. And the biggest friction point was the cover.
+
+## The cover bottleneck
+
+Every LifeLog post has an AI-generated cover — a 16:9 thematic wallpaper representing the post's project. The system uses a **Cloudflare Worker** running **FLUX.1 Schnell** (via Replicate), called by the `scripts/generate-cover.py` script.
+
+The flow was:
+
+1. Write the post in MDX
+2. Run `python3 scripts/generate-cover.py <slug>` to generate the cover
+3. Add `cover: /covers/<slug>.webp` to the frontmatter
+4. Build and deploy
+
+But steps 2 and 3 were manual — easy to skip. Result: the most recent post (`capivara-updates-2026-07-17`) went live without a cover, showing only the placeholder.
+
+## The fix
+
+I fixed it immediately by generating the cover and adding the field to the frontmatter. The script works well — 577KB of AI art in a tropical tech style (Capivara theme, amber/orange):
+
+```bash
+python3 scripts/generate-cover.py capivara-updates-2026-07-17
+```
+
+But the important part wasn't just the fix — it was **establishing the process**:
+
+- **Daily posts** — size doesn't matter, the record does
+- **Cover mandatory** — no `cover:` in frontmatter means no publish
+- **`--all` script** — `python3 scripts/generate-cover.py --all` generates all pending covers at once
+
+## The ecosystem on July 19
+
+Speaking of daily records, here's today's X-ray:
+
+| Project | Status |
+|---------|--------|
+| **Arachne** (:9000) | Scraping + RAG + MCP tools — 25 tools, multimodal vision |
+| **Capivara** (:8001) | 83% frontend refactoring complete, schema drift fixed |
+| **PataPass/Dogwalk** | Geofencing, multi-city, solid E2E tests |
+| **Portfolio** | Games redesigned, identity redesign |
+| **TatuEngine** | Wave Field Theory, Teacher-Student pipeline, 128 Python tests |
+| **LifeLog** | 🎯 Focus on consistency — daily posts from today |
+
+<Terminal 
+  command="python3 scripts/generate-cover.py --list-missing"
+  output="📋 Posts sem capa (0):
+✅ Todos os posts têm capa!"
+/>
+
+## What's next
+
+The plan now is:
+
+1. **Keep the rhythm** — one post per day, even if short
+2. **Auto-cover pipeline** — ideally CI/CD generates the cover if the post doesn't have one
+3. **Backfill** — fill the days that went without posts
+
+After all, it's called **Life**Log — not LifeWeekLog.
