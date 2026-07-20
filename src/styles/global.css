@@ -17,23 +17,15 @@ html {
 }
 
 /* ========================================
-   View Transitions API — Circle-Wipe Theme Switch
+   View Transitions API — Crossfade Theme Switch
    ======================================== */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
-::view-transition-new(root) {
-  z-index: 9999;
-}
-
-/* Fallback crossfade quando o circle-wipe não se aplicar */
+/* Deixa o crossfade nativo do VT funcionar — sem animation:none */
 ::view-transition-old(root) {
+  mix-blend-mode: normal;
   z-index: 1;
 }
 ::view-transition-new(root) {
+  mix-blend-mode: normal;
   z-index: 2;
 }
 
