@@ -54,17 +54,19 @@ const footerText = dataLocale === 'en'
         // PALETTES — must match src/lib/palettes.ts (single source of truth)
         // ═══════════════════════════════════════
         var PALETTES = {
-          purple: {aD:'#a78bfa', aL:'#7c3aed'},
-          cyan: {aD:'#22d3ee', aL:'#0891b2'},
-          emerald: {aD:'#34d399', aL:'#059669'},
-          amber: {aD:'#fbbf24', aL:'#d97706'},
-          rose: {aD:'#fb7185', aL:'#e11d48'},
-          blue: {aD:'#60a5fa', aL:'#2563eb'},
+          purple: {aD:'#a78bfa', aL:'#7c3aed', tB:'rgba(167,139,250,0.12)', bD:'rgba(167,139,250,0.25)', bL:'rgba(124,58,237,0.2)', gD:'0 0 30px rgba(167,139,250,0.15)', gL:'0 4px 24px rgba(124,58,237,0.12)'},
+          cyan: {aD:'#22d3ee', aL:'#0891b2', tB:'rgba(34,211,238,0.12)', bD:'rgba(34,211,238,0.25)', bL:'rgba(8,145,178,0.2)', gD:'0 0 30px rgba(34,211,238,0.15)', gL:'0 4px 24px rgba(8,145,178,0.12)'},
+          emerald: {aD:'#34d399', aL:'#059669', tB:'rgba(52,211,153,0.12)', bD:'rgba(52,211,153,0.25)', bL:'rgba(5,150,105,0.2)', gD:'0 0 30px rgba(52,211,153,0.15)', gL:'0 4px 24px rgba(5,150,105,0.12)'},
+          amber: {aD:'#fbbf24', aL:'#d97706', tB:'rgba(251,191,36,0.12)', bD:'rgba(251,191,36,0.25)', bL:'rgba(217,119,6,0.2)', gD:'0 0 30px rgba(251,191,36,0.15)', gL:'0 4px 24px rgba(217,119,6,0.12)'},
+          rose: {aD:'#fb7185', aL:'#e11d48', tB:'rgba(251,113,133,0.12)', bD:'rgba(251,113,133,0.25)', bL:'rgba(225,29,72,0.2)', gD:'0 0 30px rgba(251,113,133,0.15)', gL:'0 4px 24px rgba(225,29,72,0.12)'},
+          blue: {aD:'#60a5fa', aL:'#2563eb', tB:'rgba(96,165,250,0.12)', bD:'rgba(96,165,250,0.25)', bL:'rgba(37,99,235,0.2)', gD:'0 0 30px rgba(96,165,250,0.15)', gL:'0 4px 24px rgba(37,99,235,0.12)'},
         }
         var p = PALETTES[savedPalette] || PALETTES.purple
-        var accent = isDark ? p.aD : p.aL
         var root = document.documentElement
-        root.style.setProperty('--color-accent', accent)
+        root.style.setProperty('--color-accent', isDark ? p.aD : p.aL)
+        root.style.setProperty('--color-accent-soft', p.tB)
+        root.style.setProperty('--color-glow', isDark ? p.gD : p.gL)
+        root.style.setProperty('--color-border', isDark ? p.bD : p.bL)
       } catch(e) {
         document.documentElement.setAttribute('data-theme', 'dark')
       }

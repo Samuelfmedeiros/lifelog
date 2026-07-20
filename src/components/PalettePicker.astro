@@ -280,60 +280,37 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
     // ─── Sem animação: troca direta ───
-    if (reduced) { setTheme(next); return }
+    if (reduced || (e && e.clientX == null)) { setTheme(next); return }
 
-    // ─── View Transition API (Chromium) ───
+    // ─── View Transition API (Chromium) — crossfade nativo ───
     if (document.startViewTransition) {
-      const x = e?.clientX ?? innerWidth / 2
-      const y = e?.clientY ?? innerHeight / 2
-      const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
-
-      // Injeta <style> pra calar as animações padrão do VT (que brigam com clip-path)
-      const s = document.createElement('style')
-      s.textContent = `::view-transition-old(root){animation:none!important}::view-transition-new(root){animation:none!important;clip-path:circle(0 at ${x}px ${y}px)}`
-      document.head.appendChild(s)
-
       const t = document.startViewTransition(() => setTheme(next))
-      const done = t.ready.then(() =>
-        document.documentElement.animate(
-          { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 400, easing: 'cubic-bezier(0.22,1,0.36,1)', pseudoElement: '::view-transition-new(root)' }
-        ).finished
-      )
-      done.catch(() => setTheme(next)).finally(() => s.remove())
+      // Só espera a transição terminar — sem clip-path custom que briga com o VT
+      t.finished.catch(() => setTheme(next))
       return
     }
 
-    // ─── Fallback (Firefox/Safari) ───
-    if (e && e.clientX != null) {
-      // Lê a cor de fundo do tema destino sem reflow síncrono
-      const tmp = document.createElement('div')
-      tmp.setAttribute('data-theme', next)
-      tmp.style.cssText = 'position:fixed;pointer-events:none;opacity:0'
-      document.body.appendChild(tmp)
-      const bg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (next === 'light' ? '#f5f2eb' : '#0a0a0f')
-      tmp.remove()
+    // ─── Fallback (Firefox/Safari) — fade out/in via overlay ───
+    // Pega a bg do tema ANTIGO (que tá saindo) pra usar no overlay
+    const tmp = document.createElement('div')
+    tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0;data-theme:${cur}`
+    document.body.appendChild(tmp)
+    const oldBg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (cur === 'light' ? '#f5f2eb' : '#0a0a0f')
+    tmp.remove()
 
-      // Cria overlay com o tema ANTIGO (o que tá saindo)
-      const overlay = document.createElement('div')
-      overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bg};clip-path:circle(0 at ${e.clientX}px ${e.clientY}px);transition:clip-path .4s cubic-bezier(.22,1,.36,1);will-change:clip-path`
-      document.body.appendChild(overlay)
-      setTheme(next)
+    const overlay = document.createElement('div')
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg};opacity:1;transition:opacity 0.35s ease;will-change:opacity`
+    document.body.appendChild(overlay)
 
-      // Duplo RAF: pinta o estado inicial no frame 1, expande no frame 2
-      // (sem offsetHeight — zero forced reflow)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const r2 = Math.hypot(Math.max(e.clientX, innerWidth - e.clientX), Math.max(e.clientY, innerHeight - e.clientY))
-          overlay.style.clipPath = `circle(${r2}px at ${e.clientX}px ${e.clientY}px)`
-        })
-      })
-      setTimeout(() => overlay.remove(), 450)
-      return
-    }
-
-    // ─── Sem coordenadas de clique: troca direta ───
     setTheme(next)
+
+    // Fade out overlay revelando o novo tema
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '0'
+      })
+    })
+    setTimeout(() => overlay.remove(), 400)
   }
 
   /* ─── Language ─── */
@@ -376,10 +353,15 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   /* ─── Events ─── */
   document.addEventListener('click', function(e) {
     const t = e.target
+    const themeBtn = document.getElementById('rail-theme')
+    const colorBtn = document.getElementById('rail-color')
+    const colorWrap = document.getElementById('rail-color-wrap')
+    const langBtn = document.getElementById('rail-lang')
+
     // Theme
-    if (t.closest('#rail-theme')) { toggleTheme(e); return }
+    if (themeBtn && (t === themeBtn || themeBtn.contains(t))) { toggleTheme(e); return }
     // Color button → toggle dropdown
-    if (t.closest('#rail-color')) { toggleDropdown(e); return }
+    if (colorBtn && (t === colorBtn || colorBtn.contains(t))) { toggleDropdown(e); return }
     // Palette dot inside dropdown
     const dot = t.closest('.rail-dot')
     if (dot && dot.dataset.palette) {
@@ -388,7 +370,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       return
     }
     // Language
-    if (t.closest('#rail-lang')) {
+    if (langBtn && (t === langBtn || langBtn.contains(t))) {
       const next = currentLang === 'pt' ? 'en' : 'pt'
       setLocale(next)
       const path = window.location.pathname
@@ -414,7 +396,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       return
     }
     // Click outside → close dropdown
-    if (!t.closest('.rail-color-wrap')) {
+    if (!colorBtn || !colorBtn.parentElement?.contains(t)) {
       document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
     }
   })
