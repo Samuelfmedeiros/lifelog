@@ -2,7 +2,7 @@
 
 > Blog pessoal estilo devlog — documentando a jornada de Samuel Medeiros
 >
-> **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Fuse.js 7 · Playwright
+> **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
 > **Status:** ✅ Operacional — 70 posts · 5 E2E specs · i18n PT/EN
 
@@ -75,7 +75,7 @@ lifelog/
 │   ├── content/posts/             # 70 MDX posts
 │   ├── components/                # 8 componentes Astro
 │   │   ├── PostCard.astro         # Card da timeline (capa + info + tags)
-│   │   ├── FilterBar.astro        # Busca + filtro ano/projeto (Fuse.js)
+│   │   ├── FilterBar.astro        # Busca + filtro ano/projeto (índice JSON embutido)
 │   │   ├── PostLayout.astro       # Layout compartilhado de posts
 │   │   ├── PalettePicker.astro    # Seletor de 6 paletas + dark/light
 │   │   ├── TagCloud.astro         # Nuvem de tags com contagem
