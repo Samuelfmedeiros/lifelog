@@ -299,19 +299,29 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       if (!btn) return
       const rect = btn.getBoundingClientRect()
       const ddW = dd.offsetWidth || 200
+      const ddH = dd.offsetHeight || 50
+      const margin = 8
+
       // Center under button
       let left = rect.left + (rect.width / 2) - (ddW / 2)
-      // Clamp to viewport
-      left = Math.max(8, Math.min(left, window.innerWidth - ddW - 8))
+      left = Math.max(margin, Math.min(left, window.innerWidth - ddW - margin))
+
       const spaceBelow = window.innerHeight - rect.bottom
-      const ddH = dd.offsetHeight || 50
-      if (spaceBelow >= ddH + 12) {
+      const spaceAbove = rect.top
+
+      if (spaceBelow >= ddH + margin) {
         // Abre pra baixo
         dd.style.top = (rect.bottom + 6) + 'px'
         dd.classList.remove('drop-up')
+      } else if (spaceAbove >= ddH + margin) {
+        // Abre pra cima com viewport clamp
+        let topVal = rect.top - ddH - 6
+        if (topVal < margin) topVal = margin
+        dd.style.top = topVal + 'px'
+        dd.classList.add('drop-up')
       } else {
-        // Abre pra cima
-        dd.style.top = (rect.top - ddH - 6) + 'px'
+        // Tela muito pequena — centraliza verticalmente
+        dd.style.top = Math.max(margin, (window.innerHeight - ddH) / 2) + 'px'
         dd.classList.add('drop-up')
       }
       dd.style.left = left + 'px'

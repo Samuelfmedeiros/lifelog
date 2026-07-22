@@ -67,6 +67,28 @@ const footerText = dataLocale === 'en'
         root.style.setProperty('--color-accent-soft', p.tB)
         root.style.setProperty('--color-glow', isDark ? p.gD : p.gL)
         root.style.setProperty('--color-border', isDark ? p.bD : p.bL)
+
+        // Scroll restoration manual — evita conflito com scroll nativo do browser
+        try { history.scrollRestoration = 'manual' } catch(e) {}
+        // Restaura scroll imediatamente se disponível
+        var sy = parseInt(sessionStorage.getItem('lifelog-scroll'), 10)
+        if (!isNaN(sy) && sy > 0) {
+          sessionStorage.removeItem('lifelog-scroll')
+          var maxY = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0)
+          if (sy <= maxY) {
+            window.scrollTo(0, sy)
+          } else {
+            // Aguarda conteúdo carregar se scroll > altura atual
+            var maxAttempts = 15
+            var checkFn = function(n) {
+              if (n >= maxAttempts) return
+              var curMax = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0)
+              if (sy <= curMax) { window.scrollTo(0, sy); return }
+              requestAnimationFrame(function() { checkFn(n + 1) })
+            }
+            requestAnimationFrame(function() { checkFn(0) })
+          }
+        }
       } catch(e) {
         document.documentElement.setAttribute('data-theme', 'dark')
       }
@@ -167,28 +189,6 @@ const footerText = dataLocale === 'en'
     [data-theme="light"] .glass { background: rgba(255,255,255,0.8); border-color: #efeee9; }
     [data-theme="light"] footer { border-top-color: #efeee9; }
   </style>
-    <!-- Scroll restoration after language switch -->
-    <script is:inline>
-      (function() {
-        var y = parseInt(sessionStorage.getItem('lifelog-scroll'), 10)
-        if (!isNaN(y) && y > 0) {
-          sessionStorage.removeItem('lifelog-scroll')
-          var maxAttempts = 15
-          function tryScroll(n) {
-            // Só scrolla se a página já tiver altura suficiente
-            var maxY = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0)
-            if (y <= maxY) {
-              window.scrollTo(0, y)
-              return
-            }
-            if (n < maxAttempts) setTimeout(tryScroll, 100, n + 1)
-          }
-          // Começa depois da página renderizar
-          if (document.readyState === 'complete') setTimeout(tryScroll, 150, 0)
-          else window.addEventListener('load', function() { setTimeout(tryScroll, 150, 0) })
-        }
-      })()
-    </script>
     <!-- Navbar scroll shadow -->
     <script is:inline>
       (function() {
