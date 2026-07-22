@@ -6,8 +6,9 @@ export interface Props {
   years: string[];
   locale?: string;
   availableProjects?: string[]; // se passado, só mostra pills desses projetos
+  searchIndex?: string; // JSON stringified — embedded no HTML, sem fetch
 }
-const { years, locale, availableProjects } = Astro.props;
+const { years, locale, availableProjects, searchIndex } = Astro.props;
 const isEn = locale === 'en';
 const searchPlaceholder = isEn ? 'Search posts...' : 'Buscar posts...';
 const searchAria = isEn ? 'Search posts' : 'Buscar posts';
@@ -84,6 +85,8 @@ const allLabel = isEn ? 'All' : 'Todos';
     )}
   </div>
 </div>
+
+{searchIndex && <script id="search-index-data" type="application/json" set:html={searchIndex}></script>}
 
 <script is:inline>
 (function() {
@@ -176,20 +179,8 @@ const allLabel = isEn ? 'All' : 'Todos';
   let postsData = buildPostIndex();
 
   // Rebuild on DOM changes — observa o body todo pq posts são renderizados depois deste script
-  if (window.MutationObserver) {
-    const obs = new MutationObserver(() => {
-      postsData = buildPostIndex();
-      if (activeSearch.length >= 2) {
-        fuzzySearch(activeSearch);
-      } else {
-        filterPosts();
-        updateResultCount();
-      }
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-    // Desliga depois de 3s (já deve ter capturado tudo)
-    setTimeout(() => obs.disconnect(), 3000);
-  }
+  // MutationObserver removido — causava loop com alterações de display nas buscas
+  // Se precisar reativar no futuro, verificar interação com filterPosts/fuzzySearch
 
   // ===== Project pill click =====
   pills.forEach(btn => {
@@ -301,50 +292,56 @@ const allLabel = isEn ? 'All' : 'Todos';
     }
   }
 
-  // ===== Fuzzy search (Fuse.js) =====
-  async function fuzzySearch(query) {
+  // ===== Fuzzy search (no Fuse.js — word-boundary match) =====
+  function fuzzySearch(query) {
     const q = query.toLowerCase().trim();
     if (q.length < 2) { filterPosts(); updateResultCount(); return; }
-    postsData = buildPostIndex();
 
-    // First filter by project + year
-    const filtered = postsData.filter(pd => {
+    postsData = buildPostIndex();
+    const index = getSearchIndex();
+    if (!index || index.length === 0) { filterPosts(); updateResultCount(); return; }
+
+    const qTerms = q.split(/\s+/).filter(Boolean);
+
+    // Build set of matching slugs from JSON index — word-level match
+    const matchedSlugs = new Set();
+    for (const entry of index) {
+      const haystack = [entry.title, entry.description, ...entry.tags, entry.project]
+        .join(' ').toLowerCase();
+      const matchAll = qTerms.every(term => {
+        const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp('\\b' + escaped + '\\b', 'i').test(haystack);
+      });
+      if (matchAll) matchedSlugs.add(entry.slug);
+    }
+
+
+    postsData.forEach(pd => {
+      const link = pd.el.querySelector('a[href]');
+      const href = link?.getAttribute('href') || '';
+      const slug = href.replace(/^\/post\//, '').replace(/\/$/, '');
+
       const yearMatch = pd.dateText.match(/\d{4}/);
       const year = yearMatch ? yearMatch[0] : '';
-      return (activeProject === 'all' || pd.project === activeProject) &&
-             (activeYear === 'all' || year === activeYear);
+      const byProject = activeProject === 'all' || pd.project === activeProject;
+      const byYear = activeYear === 'all' || year === activeYear;
+      const bySearch = matchedSlugs.has(slug);
+
+      const visible = byProject && byYear && bySearch;
+      pd.el.classList.toggle('filter-hidden', !visible);
+      pd.el.style.display = visible ? '' : 'none';
     });
-
-    try {
-      const mod = await import('/vendor/fuse.mjs');
-      const fuse = new mod.default(filtered, {
-        keys: ['title', 'desc', 'tags', 'project'],
-        threshold: 0.4,
-        distance: 100,
-        minMatchCharLength: 2,
-      });
-      const results = fuse.search(q);
-      const matchedEls = new Set(results.map(r => r.item.el));
-
-      postsData.forEach(pd => {
-        const match = matchedEls.has(pd.el);
-        pd.el.classList.toggle('filter-hidden', !match);
-        pd.el.style.display = match ? '' : 'none';
-      });
-    } catch (e) {
-      // Fallback: basic includes
-      postsData.forEach(pd => {
-        const match = pd.title.toLowerCase().includes(q) ||
-                     pd.desc.toLowerCase().includes(q) ||
-                     pd.tags.some(t => t.toLowerCase().includes(q)) ||
-                     pd.project?.includes(q);
-        pd.el.classList.toggle('filter-hidden', !match);
-        pd.el.style.display = match ? '' : 'none';
-      });
-    }
 
     updateGroupVisibility();
     updateResultCount();
+  }
+
+  // ===== Read search index from embedded JSON script tag =====
+  function getSearchIndex() {
+    const el = document.getElementById('search-index-data');
+    if (!el) return [];
+    try { return JSON.parse(el.textContent); }
+    catch { return [] }
   }
 
   // ===== Result count =====
