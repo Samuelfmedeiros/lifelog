@@ -59,10 +59,13 @@ const POSTS = loadPosts();
 
 const PROJECT_PILLS = [
   'Todos', 'Arachne', 'Dogwalk', 'Portfólio', 'Capivara',
-  'TatuEngine', 'Descobertas',
+  'TatuEngine', 'LifeLog', 'Descobertas',
 ];
 
 const NAV_LINKS = ['Início', 'Arquivo', 'Sobre'];
+
+// Unique projects with posts
+const UNIQUE_PROJECTS = [...new Set(POSTS.map(p => p.project).filter(Boolean))];
 
 // Helper: count visible post cards
 async function visiblePosts(page: any) {
@@ -216,7 +219,7 @@ test.describe('Sobre', () => {
     // Projetos = unique projects with posts (6: arachne, dogwalk, portfolio, capivara, tatuengine, descobertas)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
-    expect(projValue?.number).toBe('6');
+    expect(projValue?.number).toBe(String(UNIQUE_PROJECTS.length));
     expect(parseInt(projValue!.number || '0')).toBeGreaterThanOrEqual(4);
     expect(values.find(v => v.label === 'Desde')).toBeTruthy();
   });
