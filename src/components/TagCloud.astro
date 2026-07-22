@@ -74,9 +74,9 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 500;
-    color: var(--color-text-muted);
-    background: transparent;
-    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
     cursor: pointer;
     transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
     text-decoration: none;
@@ -87,7 +87,7 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
   .tag-cloud-pill:hover {
     color: var(--color-accent);
     border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
     transform: translateY(-1px);
   }
 
@@ -119,11 +119,8 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     background: rgba(255, 255, 255, 0.65);
     border-color: rgba(0, 0, 0, 0.05);
   }
-  [data-theme="light"] .tag-cloud-pill {
-    border-color: rgba(0, 0, 0, 0.08);
-  }
   [data-theme="light"] .tag-cloud-pill:hover {
-    background: var(--color-accent-soft);
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
 
   /* Mobile */
