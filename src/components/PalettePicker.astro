@@ -256,60 +256,19 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
 
     // ─── Sem animação: troca direta ───
-    if (reduced || (e && e.clientX == null)) { setTheme(next); return }
+    if (reduced) { setTheme(next); return }
 
-    const x = e.clientX
-    const y = e.clientY
-    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-
-    // ─── View Transition API (Chromium) — circular reveal clip-path PURO ───
-    // Desliga o crossfade padrão do VT pra não brigar com o clip-path
+    // ─── View Transition API (Chromium) — crossfade suave nativo ───
     if (document.startViewTransition) {
-      const style = document.createElement('style')
-      style.textContent =
-        '::view-transition-old(root){animation:none!important}' +
-        '::view-transition-new(root){animation:none!important;mix-blend-mode:normal!important}'
-      document.head.appendChild(style)
-
-      const t = document.startViewTransition(() => setTheme(next))
-      t.ready.then(() => {
-        document.documentElement.animate(
-          {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${radius + 50}px at ${x}px ${y}px)`
-            ]
-          },
-          { duration: 500, easing: 'ease-out', pseudoElement: '::view-transition-new(root)' }
-        )
-      })
-      t.finished.then(() => style.remove()).catch(() => setTheme(next))
+      document.startViewTransition(() => setTheme(next))
       return
     }
 
-    // ─── Fallback (Firefox/Safari) — circular reveal via overlay clip-path ───
-    const tmp = document.createElement('div')
-    tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0`
-    tmp.setAttribute('data-theme', cur)
-    document.body.appendChild(tmp)
-    const oldBg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (cur === 'light' ? '#f5f2eb' : '#0a0a0f')
-    tmp.remove()
-
-    const overlay = document.createElement('div')
-    overlay.style.cssText =
-      `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg};` +
-      `clip-path:circle(0px at ${x}px ${y}px)`
-    overlay.style.willChange = 'clip-path'
-    document.body.appendChild(overlay)
-
+    // ─── Fallback (Firefox/Safari) — opacity crossfade ───
+    const html = document.documentElement
+    html.style.transition = 'background-color 0.35s ease, color 0.35s ease'
     setTheme(next)
-
-    requestAnimationFrame(() => {
-      overlay.style.transition = 'clip-path 500ms ease-out'
-      overlay.style.clipPath = `circle(${radius + 50}px at ${x}px ${y}px)`
-    })
-
-    setTimeout(() => overlay.remove(), 600)
+    setTimeout(() => { html.style.transition = '' }, 400)
   }
 
   /* ─── Language ─── */
