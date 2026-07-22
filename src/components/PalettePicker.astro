@@ -96,12 +96,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 40%, transparent);
   }
 
-  /* ─── Dropdown (abre pra baixo) ─── */
+  /* ─── Dropdown (abre pra baixo, posicionado por JS fixed) ─── */
   .rail-dropdown {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
+    position: fixed;
     display: flex;
     gap: 5px;
     padding: 8px 10px;
@@ -115,23 +112,18 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     box-shadow: 0 8px 32px rgba(0,0,0,0.25);
     opacity: 0;
     visibility: hidden;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 1000;
     white-space: nowrap;
+    transform: translateY(-4px);
+    pointer-events: none;
+    margin: 0;
   }
   .rail-dropdown.open {
     opacity: 1;
     visibility: visible;
-    transform: translateX(-50%) translateY(0);
-  }
-  .rail-dropdown.drop-up {
-    top: auto;
-    bottom: calc(100% + 6px);
-    transform: translateX(-50%) translateY(4px);
-    transform-origin: bottom center;
-  }
-  .rail-dropdown.drop-up.open {
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
+    pointer-events: auto;
   }
 
   /* ─── Palette dots ─── */
@@ -193,22 +185,6 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     .rail-lang-text { font-size: 0.65rem; }
     .rail-dropdown {
       padding: 8px 10px; gap: 6px;
-      left: auto; right: 0;
-      transform: translateX(0) translateY(-4px);
-      transform-origin: top right;
-    }
-    .rail-dropdown.open {
-      transform: translateX(0) translateY(0);
-    }
-    .rail-dropdown.drop-up {
-      left: auto; right: 0;
-      bottom: calc(100% + 6px);
-      top: auto;
-      transform: translateX(0) translateY(4px);
-      transform-origin: bottom right;
-    }
-    .rail-dropdown.drop-up.open {
-      transform: translateX(0) translateY(0);
     }
   }
 </style>
@@ -282,35 +258,54 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     // ─── Sem animação: troca direta ───
     if (reduced || (e && e.clientX == null)) { setTheme(next); return }
 
-    // ─── View Transition API (Chromium) — crossfade nativo ───
+    // ─── View Transition API (Chromium) — circular reveal nativo ───
     if (document.startViewTransition) {
+      const x = e.clientX
+      const y = e.clientY
+      const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
       const t = document.startViewTransition(() => setTheme(next))
-      // Só espera a transição terminar — sem clip-path custom que briga com o VT
+      // Pseudo-elemento ::view-transition-new(root) começa circle(0) → circle(radius)
+      t.ready.then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`]
+          },
+          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+        )
+      })
       t.finished.catch(() => setTheme(next))
       return
     }
 
-    // ─── Fallback (Firefox/Safari) — fade out/in via overlay ───
-    // Pega a bg do tema ANTIGO (que tá saindo) pra usar no overlay
+    // ─── Fallback (Firefox/Safari) — circular reveal via overlay clip-path ───
+    const x = e.clientX
+    const y = e.clientY
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+
+    // Pega a bg do tema ANTIGO
     const tmp = document.createElement('div')
-    tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0;data-theme:${cur}`
+    tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0`
+    tmp.setAttribute('data-theme', cur)
     document.body.appendChild(tmp)
     const oldBg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (cur === 'light' ? '#f5f2eb' : '#0a0a0f')
     tmp.remove()
 
     const overlay = document.createElement('div')
-    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg};opacity:1;transition:opacity 0.35s ease;will-change:opacity`
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg}`
+    overlay.style.clipPath = `circle(0px at ${x}px ${y}px)`
+    overlay.style.willChange = 'clip-path'
     document.body.appendChild(overlay)
 
+    // Troca o tema DEBAIXO do overlay
     setTheme(next)
 
-    // Fade out overlay revelando o novo tema
+    // Anima o círculo expandindo — revela o novo tema por baixo
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        overlay.style.opacity = '0'
-      })
+      overlay.style.transition = 'clip-path 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
+      overlay.style.clipPath = `circle(${radius}px at ${x}px ${y}px)`
     })
-    setTimeout(() => overlay.remove(), 400)
+
+    setTimeout(() => overlay.remove(), 550)
   }
 
   /* ─── Language ─── */
@@ -330,14 +325,33 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const dd = document.getElementById('rail-color-dropdown')
     if (!dd) return
     const wasOpen = dd.classList.contains('open')
-    // close all dropdowns
-    document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+    // close all dropdowns first
+    document.querySelectorAll('.rail-dropdown.open').forEach(el => {
+      el.classList.remove('open')
+      el.style.top = ''
+      el.style.left = ''
+    })
     if (!wasOpen) {
-      // Detecta se tem espaço embaixo — se não, abre pra cima
-      const wrap = dd.parentElement
-      const rect = wrap.getBoundingClientRect()
+      const btn = document.getElementById('rail-color')
+      if (!btn) return
+      const rect = btn.getBoundingClientRect()
+      const ddW = dd.offsetWidth || 200
+      // Center under button
+      let left = rect.left + (rect.width / 2) - (ddW / 2)
+      // Clamp to viewport
+      left = Math.max(8, Math.min(left, window.innerWidth - ddW - 8))
       const spaceBelow = window.innerHeight - rect.bottom
-      dd.classList.toggle('drop-up', spaceBelow < 120)
+      const ddH = dd.offsetHeight || 50
+      if (spaceBelow >= ddH + 12) {
+        // Abre pra baixo
+        dd.style.top = (rect.bottom + 6) + 'px'
+        dd.classList.remove('drop-up')
+      } else {
+        // Abre pra cima
+        dd.style.top = (rect.top - ddH - 6) + 'px'
+        dd.classList.add('drop-up')
+      }
+      dd.style.left = left + 'px'
       dd.classList.add('open')
     }
   }
@@ -366,7 +380,11 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const dot = t.closest('.rail-dot')
     if (dot && dot.dataset.palette) {
       applyPalette(dot.dataset.palette)
-      document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+      document.querySelectorAll('.rail-dropdown.open').forEach(el => {
+        el.classList.remove('open')
+        el.style.top = ''
+        el.style.left = ''
+      })
       return
     }
     // Language
@@ -374,9 +392,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       const next = currentLang === 'pt' ? 'en' : 'pt'
       setLocale(next)
       const path = window.location.pathname
+      const search = window.location.search  // preserva ?q=&project=
       const newPath = next === 'en'
-        ? (path === '/' ? '/en/' : '/en' + path)
-        : path.replace(/^\/en/, '') || '/'
+        ? (path === '/' ? '/en/' : '/en' + path) + search
+        : (path.replace(/^\/en/, '') || '/') + search
 
       // Transição suave antes de navegar
       if (document.startViewTransition) {
@@ -397,7 +416,11 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     }
     // Click outside → close dropdown
     if (!colorBtn || !colorBtn.parentElement?.contains(t)) {
-      document.querySelectorAll('.rail-dropdown.open').forEach(el => el.classList.remove('open'))
+      document.querySelectorAll('.rail-dropdown.open').forEach(el => {
+        el.classList.remove('open')
+        el.style.top = ''
+        el.style.left = ''
+      })
     }
   })
 
