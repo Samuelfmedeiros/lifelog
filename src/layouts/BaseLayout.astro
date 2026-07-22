@@ -189,5 +189,26 @@ const footerText = dataLocale === 'en'
         }
       })()
     </script>
+    <!-- Navbar scroll shadow -->
+    <script is:inline>
+      (function() {
+        var nav = document.querySelector('.navbar')
+        if (!nav) return
+        var ticking = false
+        function checkScroll() {
+          var scrolled = window.scrollY > 20
+          nav.classList.toggle('navbar-scrolled', scrolled)
+          ticking = false
+        }
+        window.addEventListener('scroll', function() {
+          if (!ticking) {
+            requestAnimationFrame(checkScroll)
+            ticking = true
+          }
+        }, { passive: true })
+        // Check on load
+        checkScroll()
+      })()
+    </script>
 </body>
 </html>
