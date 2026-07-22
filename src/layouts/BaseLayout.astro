@@ -168,24 +168,26 @@ const footerText = dataLocale === 'en'
     [data-theme="light"] footer { border-top-color: #efeee9; }
   </style>
     <!-- Scroll restoration after language switch -->
-  <script is:inline>
-    (function() {
-      try {
-        var saved = JSON.parse(sessionStorage.getItem('lifelog-scroll'))
-        if (saved && saved.path === window.location.pathname + window.location.search) {
+    <script is:inline>
+      (function() {
+        var y = parseInt(sessionStorage.getItem('lifelog-scroll'), 10)
+        if (!isNaN(y) && y > 0) {
           sessionStorage.removeItem('lifelog-scroll')
-          if (saved.scrollY > 0) {
-            // Espera renderizar + fonts carregarem, depois scrolla
-            function doScroll() { window.scrollTo(0, saved.scrollY) }
-            if (document.readyState === 'complete') {
-              requestAnimationFrame(doScroll)
-            } else {
-              window.addEventListener('load', function() { requestAnimationFrame(doScroll) })
+          var maxAttempts = 15
+          function tryScroll(n) {
+            // Só scrolla se a página já tiver altura suficiente
+            var maxY = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0)
+            if (y <= maxY) {
+              window.scrollTo(0, y)
+              return
             }
+            if (n < maxAttempts) setTimeout(tryScroll, 100, n + 1)
           }
+          // Começa depois da página renderizar
+          if (document.readyState === 'complete') setTimeout(tryScroll, 150, 0)
+          else window.addEventListener('load', function() { setTimeout(tryScroll, 150, 0) })
         }
-      } catch(e) {}
-    })()
-  </script>
+      })()
+    </script>
 </body>
 </html>
