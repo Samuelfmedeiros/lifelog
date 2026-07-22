@@ -17,9 +17,9 @@ html {
 }
 
 /* ========================================
-   View Transitions API — Crossfade Theme Switch
+   View Transitions API — Circular Theme Reveal
    ======================================== */
-/* Deixa o crossfade nativo do VT funcionar — sem animation:none */
+/* Animação clip-path circle no ::view-transition-new(root) */
 ::view-transition-old(root) {
   mix-blend-mode: normal;
   z-index: 1;
@@ -27,6 +27,8 @@ html {
 ::view-transition-new(root) {
   mix-blend-mode: normal;
   z-index: 2;
+  /* Começa invisível, a animação JS revela */
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -144,6 +146,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  flex-wrap: nowrap;
 }
 
 .navbar-link {
@@ -561,6 +564,7 @@ body {
 
   .navbar-links {
     gap: 0.125rem;
+    flex-wrap: nowrap;
   }
 
   .navbar-link {

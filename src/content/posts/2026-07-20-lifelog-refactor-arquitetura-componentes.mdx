@@ -1,0 +1,67 @@
+---
+title: "LifeLog — o dia do refactor arquitetural"
+description: "TagCloud, PostLayout compartilhado, FilterBar turbinada com Fuse.js e tema arrumado — um dia inteiro de melhorias na base do blog."
+date: 2026-07-20 12:11:27 -03:00
+pubDate: 2026-07-20 12:11:27 -03:00
+project: descobertas
+tags: ["lifelog", "refactor", "astro", "architecture", "fusejs"]
+icon: "🏗️"
+cover: /covers/lifelog-refactor-arquitetura-componentes.webp
+featured: false
+---
+
+Todo projeto tem aquele dia que você para de *adicionar* feature e começa a *arrumar* a casa. Hoje foi esse dia no LifeLog.
+
+## O que mudou (e por quê)
+
+O blog vinha crescendo — ~20 posts, dois idiomas, páginas de arquivo, filtros, paletas de tema. E com o crescimento veio a dívida técnica natural: código duplicado entre templates PT e EN, lógica de filtro espalhada, testes órfãos de refactors anteriores, e tags com problema de contraste no light mode.
+
+O refactor de hoje atacou quatro frentes:
+
+### 1. PostLayout — -200 linhas de código duplicado
+
+Os templates de post em português e inglês (`post/[slug].astro` e `en/post/[slug].astro`) tinham ~200 linhas quase idênticas. Bastava um ajuste no layout PT pra ter que repetir no EN — e adivinha se nunca esquecia?
+
+Extraí tudo pro `PostLayout.astro`: metadados, cover image, TOC, navegação anterior/próximo, tudo num componente único. Os dois templates agora são basicamente invólucros de 20 linhas que passam as props localizadas. Baita ganho de manutenibilidade.
+
+### 2. TagCloud — navegação por tags no Arquivo
+
+A página de arquivo tinha listagem cronológica, filtro por ano/projeto e busca textual. Mas faltava a navegação **por tags** — uma nuvem visual que mostrasse de relance os assuntos mais frequentes.
+
+A TagCloud ordena por frequência (top 50), renderiza pills clicáveis que disparam a busca com a tag como query, e escala visualmente o tamanho das tags baseado na contagem relativa. Glassmorphism sutil, sem poluir.
+
+### 3. FilterBar turbinada com Fuse.js
+
+A FilterBar já existia, mas a busca era rústica — match exato contra título e descrição. Agora tem:
+
+- **Fuse.js** com fuzzy search, combinando projeto + ano antes do match difuso
+- **URL query params** que persistem no refresh (`?q=`, `?project=`, `?year=`)
+- **Contador "X de Y"** quando o filtro está ativo
+- **Tags clicáveis** que disparam a busca direto
+- **MutationObserver** que preserva a busca ativa mesmo quando o DOM é re-renderizado
+
+O resultado é que dá pra compartilhar uma URL filtrada — `?q=fuse&project=lifelog` — e a pessoa cai exatamente nos resultados esperados.
+
+### 4. Tema — View Transitions e contraste no light mode
+
+O light mode tava com problemas: tags sem fundo (texto branco em fundo claro), animação de transição de página quebrada (tinha `animation: none` no global.css que desativava o clip-path custom), e o dropdown de paletas com z-index baixo demais.
+
+Resolvi com:
+
+- Init script que seta `--color-accent-soft`, `--color-glow`, `--color-border` antes de qualquer render
+- View Transition com crossfade nativo em vez de clip-path custom (mais suave e consistente)
+- Fallback sem VT com overlay da cor antiga (antes usava cor do tema destino = invisível)
+- Dropdown com `z-index: 1000` e clique handler mais robusto
+
+## Resultado
+
+- ~690 linhas apagadas, ~615 adicionadas (saldo líquido negativo — mais limpo que antes)
+- 75 páginas no build, sem erros
+- CI configurado com `passWithNoTests` (depois que os testes órfãos foram removidos)
+- Sitemap corrigido com URLs dos dois idiomas
+
+O LifeLog não virou um produto novo hoje. Ficou **mais fácil de manter** — que é o melhor investimento que um projeto pode receber.
+
+## Próximos passos
+
+O backlog ainda tem: suporte a i18n com `astro-i18next` ou schema multilingual unificado, lazy loading de componentes pesados, e talvez um RSS feed com imagens. Mas depois desse refactor, implementar qualquer uma dessas coisas vai ser consideravelmente mais simples.

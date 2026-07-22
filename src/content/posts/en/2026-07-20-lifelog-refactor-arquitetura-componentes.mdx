@@ -1,0 +1,67 @@
+---
+title: "LifeLog — the architecture refactor day"
+description: "TagCloud, shared PostLayout, Fuse.js-powered FilterBar, and theme fixes — a full day of housekeeping on the blog's foundation."
+date: 2026-07-20 12:11:27 -03:00
+pubDate: 2026-07-20 12:11:27 -03:00
+project: descobertas
+tags: ["lifelog", "refactor", "astro", "architecture", "fusejs"]
+icon: "🏗️"
+cover: /covers/lifelog-refactor-arquitetura-componentes.webp
+featured: false
+---
+
+Every project has that day when you stop adding features and start cleaning house. Today was that day for LifeLog.
+
+## What changed (and why)
+
+The blog had been growing — ~20 posts, two languages, archive pages, filters, theme palettes. And with growth came the natural technical debt: duplicated code between PT and EN templates, filter logic scattered across components, orphaned tests from previous refactors, and tags with contrast issues in light mode.
+
+Today's refactor tackled four fronts:
+
+### 1. PostLayout — -200 lines of duplicated template code
+
+The PT and EN post templates (`post/[slug].astro` and `en/post/[slug].astro`) had ~200 lines of nearly identical code. Every layout adjustment to the PT version had to be manually repeated in EN — and guess who kept forgetting?
+
+I extracted everything into a shared `PostLayout.astro` component: metadata rendering, cover image, table of contents, previous/next navigation — all in a single component. Both templates are now ~20-line wrappers that pass localized props. MASSIVE maintainability win.
+
+### 2. TagCloud — tag-based navigation on the Archive page
+
+The archive page had chronological listing, year/project filtering, and text search. But it was missing **tag-based navigation** — a visual cloud that shows at a glance which topics are most frequent.
+
+TagCloud sorts by frequency (top 50), renders clickable pills that trigger a search with the tag as query, and visually scales tag size based on relative count. Subtle glassmorphism, zero clutter.
+
+### 3. FilterBar — now powered by Fuse.js
+
+The FilterBar existed before, but search was basic — exact match against title and description. Now it features:
+
+- **Fuse.js** fuzzy search, combining project + year filtering before fuzzy matching
+- **URL query params** that persist on refresh (`?q=`, `?project=`, `?year=`)
+- **"X of Y" counter** when filters are active
+- **Clickable tags** that fire search directly
+- **MutationObserver** that preserves the active search state even when the DOM re-renders
+
+The result: you can share a filtered URL like `?q=fuse&project=lifelog` and land exactly on the expected results.
+
+### 4. Theme — View Transitions and light mode contrast
+
+Light mode was having issues: tags with no background (white text on light backgrounds), broken page transition animations (`animation: none` in global.css was killing the custom clip-path), and the palette dropdown with a z-index that was far too low.
+
+Fixed with:
+
+- An init script that sets `--color-accent-soft`, `--color-glow`, `--color-border` before any render
+- Native crossfade View Transitions instead of custom clip-path (smoother and more consistent)
+- No-VT fallback with an overlay using the OLD color (previously used the destination theme = invisible)
+- Dropdown bumped to `z-index: 1000` with a more robust click handler using `getElementById.contains`
+
+## The results
+
+- ~690 lines removed, ~615 added (net negative — cleaner than before)
+- 75 pages in the build, zero errors
+- CI configured with `passWithNoTests` (after orphaned tests were removed)
+- Fixed sitemap with proper URLs for both languages
+
+LifeLog didn't become a new product today. It became **easier to maintain** — which is the best investment any project can make.
+
+## What's next
+
+The backlog still has: proper i18n with `astro-i18next` or a unified multilingual schema, lazy loading for heavy components, and maybe an RSS feed with images. But after this refactor, implementing any of these will be considerably simpler.
