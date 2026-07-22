@@ -59,7 +59,7 @@ const POSTS = loadPosts();
 
 const PROJECT_PILLS = [
   'Todos', 'Arachne', 'Dogwalk', 'Portfólio', 'Capivara',
-  'TatuEngine', 'Segurança', 'LifeLog', 'Estudos', 'Descobertas',
+  'TatuEngine', 'Descobertas',
 ];
 
 const NAV_LINKS = ['Início', 'Arquivo', 'Sobre'];
@@ -92,10 +92,10 @@ test.describe('Homepage', () => {
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test('deve exibir todos os 33 posts na timeline', async ({ page }) => {
+  test(`deve exibir todos os ${POSTS.length} posts na timeline`, async ({ page }) => {
     await page.goto('/');
     const cards = page.locator('.post-card');
-    await expect(cards).toHaveCount(33);
+    await expect(cards).toHaveCount(POSTS.length);
 
     // Verificar date-separators (timeline)
     const separators = page.locator('.date-separator');
@@ -105,7 +105,7 @@ test.describe('Homepage', () => {
   test('deve ter filtros: busca textual e pills de projeto', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#filter-search')).toBeVisible();
-    // Project pills — per-project buttons (10: Todos + 9 projects)
+    // Project pills — per-project buttons (7: Todos + 6 projects com posts)
     const projectPills = page.locator('[data-filter-project]');
     expect(await projectPills.count()).toBe(PROJECT_PILLS.length);
   });
@@ -153,7 +153,7 @@ test.describe('Páginas de Posts', () => {
       await expect(page.locator('time')).toBeVisible();
 
       // Tags
-      const tags = page.locator('a[href^="/?tag="]');
+      const tags = page.locator('a[href^="/?q="]');
       expect(await tags.count()).toBeGreaterThanOrEqual(1);
 
       // Breadcrumb "timeline"
@@ -212,7 +212,7 @@ test.describe('Sobre', () => {
         label: c.querySelector('p:last-child')?.textContent?.trim(),
       }))
     );
-    expect(values.find(v => v.number === '33' && v.label === 'Posts')).toBeTruthy();
+    expect(values.find(v => v.number === String(POSTS.length) && v.label === 'Posts')).toBeTruthy();
     // Projetos = unique projects with posts (6: arachne, dogwalk, portfolio, capivara, tatuengine, descobertas)
     const projValue = values.find(v => v.label === 'Projetos');
     expect(projValue).toBeTruthy();
@@ -322,11 +322,11 @@ test.describe('Filtros', () => {
     expect(await visiblePosts(page)).toBe(POSTS.length);
   });
 
-  test('filtro de texto "Estudos" não encontra posts (nenhum estudo publicado)', async ({ page }) => {
-    await page.locator('#filter-search').fill('Estudo');
+  test('filtro de texto aleatório não encontra posts', async ({ page }) => {
+    await page.locator('#filter-search').fill('xyz-nada-aqui-999');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
-    expect(count).toBe(0); // nenhum post de estudos publicado
+    expect(count).toBe(0);
   });
 
   test('estado vazio quando nenhum post corresponde', async ({ page }) => {
@@ -342,18 +342,7 @@ test.describe('Filtros', () => {
     expect(await visiblePosts(page)).toBe(expected);
   });
 
-  test('filtro de projeto Segurança mostra 0 posts (ainda sem posts)', async ({ page }) => {
-    await page.locator('[data-filter-project="seguranca"]').click();
-    await page.waitForTimeout(200);
-    expect(await visiblePosts(page)).toBe(0);
-  });
-
-  test('filtro de projeto LifeLog mostra 0 posts (ainda sem posts)', async ({ page }) => {
-    await page.locator('[data-filter-project="lifelog"]').click();
-    await page.waitForTimeout(200);
-    expect(await visiblePosts(page)).toBe(0);
-  });
-});
+})
 
 /* =============================================
    7. Navegação
@@ -512,33 +501,13 @@ test.describe('TatuEngine', () => {
 });
 
 /* =============================================
-   12. Segurança
+   12. Pattern files — existência de SVGs de tema
    ============================================= */
 
-test.describe('Segurança', () => {
-  test('pill Segurança existe na home', async ({ page }) => {
-    await page.goto('/');
-    const pill = page.locator('[data-filter-project="seguranca"]');
-    await expect(pill).toBeVisible();
-    await expect(pill).toContainText('Segurança');
-  });
-
+test.describe('Patterns', () => {
   test('pattern shield.svg existe', async ({ page }) => {
     const response = await page.goto('/patterns/shield.svg');
     expect(response?.ok()).toBeTruthy();
-  });
-});
-
-/* =============================================
-   13. LifeLog como projeto
-   ============================================= */
-
-test.describe('LifeLog como Projeto', () => {
-  test('pill LifeLog existe na home', async ({ page }) => {
-    await page.goto('/');
-    const pill = page.locator('[data-filter-project="lifelog"]');
-    await expect(pill).toBeVisible();
-    await expect(pill).toContainText('LifeLog');
   });
 
   test('pattern scribble.svg existe', async ({ page }) => {
@@ -548,7 +517,7 @@ test.describe('LifeLog como Projeto', () => {
 });
 
 /* =============================================
-   14. Erro 404
+   13. Erro 404
    ============================================= */
 
 test.describe('404', () => {
