@@ -72,8 +72,8 @@ const { Content, headings } = await render(post);
           {post.data.tags.map((tag) => (
             <a
               href={`/${locale === 'en' ? 'en/' : ''}?q=${tag}`}
-              class="px-3 py-1 text-xs rounded-full border transition-colors"
-              style="border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-soft);"
+              class="px-3 py-1 text-xs rounded-full border transition-colors no-underline!"
+              style="border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent);"
             >#{tag}</a>
           ))}
         </div>

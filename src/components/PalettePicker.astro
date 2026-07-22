@@ -258,31 +258,16 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     // ─── Sem animação: troca direta ───
     if (reduced || (e && e.clientX == null)) { setTheme(next); return }
 
-    // ─── View Transition API (Chromium) — circular reveal nativo ───
+    // ─── View Transition API (Chromium) — crossfade nativo suave ───
     if (document.startViewTransition) {
-      const x = e.clientX
-      const y = e.clientY
-      const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
       const t = document.startViewTransition(() => setTheme(next))
-      // Pseudo-elemento ::view-transition-new(root) começa circle(0) → circle(radius)
-      t.ready.then(() => {
-        document.documentElement.animate(
-          {
-            clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`]
-          },
-          { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-        )
-      })
+      // Não briga com clip-path — deixa o crossfade default do VT rolar
       t.finished.catch(() => setTheme(next))
       return
     }
 
-    // ─── Fallback (Firefox/Safari) — circular reveal via overlay clip-path ───
-    const x = e.clientX
-    const y = e.clientY
-    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-
-    // Pega a bg do tema ANTIGO
+    // ─── Fallback (Firefox/Safari) — fade out/in via overlay ───
+    // Pega a bg do tema ANTIGO (que tá saindo) pra usar no overlay
     const tmp = document.createElement('div')
     tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0`
     tmp.setAttribute('data-theme', cur)
@@ -291,21 +276,19 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     tmp.remove()
 
     const overlay = document.createElement('div')
-    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg}`
-    overlay.style.clipPath = `circle(0px at ${x}px ${y}px)`
-    overlay.style.willChange = 'clip-path'
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg};opacity:1;transition:opacity 0.35s ease;will-change:opacity`
     document.body.appendChild(overlay)
 
     // Troca o tema DEBAIXO do overlay
     setTheme(next)
 
-    // Anima o círculo expandindo — revela o novo tema por baixo
+    // Fade out overlay revelando o novo tema
     requestAnimationFrame(() => {
-      overlay.style.transition = 'clip-path 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
-      overlay.style.clipPath = `circle(${radius}px at ${x}px ${y}px)`
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '0'
+      })
     })
-
-    setTimeout(() => overlay.remove(), 550)
+    setTimeout(() => overlay.remove(), 400)
   }
 
   /* ─── Language ─── */
@@ -396,6 +379,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       const newPath = next === 'en'
         ? (path === '/' ? '/en/' : '/en' + path) + search
         : (path.replace(/^\/en/, '') || '/') + search
+
+      // Salva scroll pra restaurar na página nova
+      try { sessionStorage.setItem('lifelog-scroll', JSON.stringify({ path: path + search, scrollY: window.scrollY })) } catch (e) {}
 
       // Transição suave antes de navegar
       if (document.startViewTransition) {

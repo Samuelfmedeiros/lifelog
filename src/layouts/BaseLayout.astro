@@ -167,5 +167,19 @@ const footerText = dataLocale === 'en'
     [data-theme="light"] .glass { background: rgba(255,255,255,0.8); border-color: #efeee9; }
     [data-theme="light"] footer { border-top-color: #efeee9; }
   </style>
-  </body>
+    <!-- Scroll restoration after language switch -->
+  <script is:inline>
+    (function() {
+      try {
+        var saved = JSON.parse(sessionStorage.getItem('lifelog-scroll'))
+        if (saved && saved.path === window.location.pathname + window.location.search) {
+          sessionStorage.removeItem('lifelog-scroll')
+          if (saved.scrollY > 0) {
+            requestAnimationFrame(function() { window.scrollTo(0, saved.scrollY) })
+          }
+        }
+      } catch(e) {}
+    })()
+  </script>
+</body>
 </html>
