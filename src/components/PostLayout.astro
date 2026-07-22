@@ -71,9 +71,9 @@ const { Content, headings } = await render(post);
         <div class="flex flex-wrap gap-2">
           {post.data.tags.map((tag) => (
             <a
+              ref={el => { if (el) el.style.cssText = `border-color:var(--color-accent);color:var(--color-accent);background:color-mix(in srgb,var(--color-accent) 20%,var(--color-bg))` }}
               href={`/${locale === 'en' ? 'en/' : ''}?q=${tag}`}
-              class="px-3 py-1 text-xs rounded-full border transition-colors no-underline!"
-              style="border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent);"
+              class="px-3 py-1 text-xs rounded-full border border-solid no-underline! transition-[background,opacity] duration-200 hover:opacity-80"
             >#{tag}</a>
           ))}
         </div>

@@ -75,19 +75,18 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-    text-decoration: none;
-    font-family: inherit;
+    background: color-mix(in srgb, var(--color-accent) 15%, var(--color-bg));
+    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--color-bg));
+    text-decoration: none !important;
+    transition: all 0.15s ease;
+    white-space: nowrap;
     line-height: 1.5;
   }
 
   .tag-cloud-pill:hover {
     color: var(--color-accent);
     border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 28%, var(--color-bg));
     transform: translateY(-1px);
   }
 
@@ -120,7 +119,7 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     border-color: rgba(0, 0, 0, 0.05);
   }
   [data-theme="light"] .tag-cloud-pill:hover {
-    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 22%, var(--color-bg));
   }
 
   /* Mobile */

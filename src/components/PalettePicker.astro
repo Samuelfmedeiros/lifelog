@@ -258,27 +258,15 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     // ─── Sem animação: troca direta ───
     if (reduced || (e && e.clientX == null)) { setTheme(next); return }
 
-    const x = e.clientX
-    const y = e.clientY
-    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
-
-    // ─── View Transition API (Chromium) — circular reveal nativo ───
+    // ─── View Transition API (Chromium) — crossfade nativo, zero stutter ───
     if (document.startViewTransition) {
       const t = document.startViewTransition(() => setTheme(next))
-      t.ready.then(() => {
-        document.documentElement.animate(
-          {
-            clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`]
-          },
-          { duration: 500, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', pseudoElement: '::view-transition-new(root)' }
-        )
-      })
+      // Crossfade padrão do VT é GPU-accelerado e fluido — não briga com clip
       t.finished.catch(() => setTheme(next))
       return
     }
 
-    // ─── Fallback (Firefox/Safari) — circular reveal via overlay clip-path ───
-    // Pega a bg do tema ANTIGO (que tá saindo)
+    // ─── Fallback (Firefox/Safari) — fade overlay smooth ───
     const tmp = document.createElement('div')
     tmp.style.cssText = `position:fixed;pointer-events:none;opacity:0`
     tmp.setAttribute('data-theme', cur)
@@ -287,21 +275,18 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     tmp.remove()
 
     const overlay = document.createElement('div')
-    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg}`
-    overlay.style.clipPath = `circle(0px at ${x}px ${y}px)`
-    overlay.style.willChange = 'clip-path'
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${oldBg};opacity:1;will-change:opacity`
     document.body.appendChild(overlay)
 
-    // Troca o tema DEBAIXO do overlay
     setTheme(next)
 
-    // Anima o círculo expandindo — revela o novo tema por baixo
+    // Transição opacity butter-smooth
     requestAnimationFrame(() => {
-      overlay.style.transition = 'clip-path 500ms cubic-bezier(0.22, 1, 0.36, 1)'
-      overlay.style.clipPath = `circle(${radius}px at ${x}px ${y}px)`
+      overlay.style.transition = 'opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1)'
+      overlay.style.opacity = '0'
     })
 
-    setTimeout(() => overlay.remove(), 550)
+    setTimeout(() => overlay.remove(), 400)
   }
 
   /* ─── Language ─── */
@@ -393,8 +378,8 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
         ? (path === '/' ? '/en/' : '/en' + path) + search
         : (path.replace(/^\/en/, '') || '/') + search
 
-      // Salva scroll pra restaurar na página nova — usa o DESTINO como chave
-      try { sessionStorage.setItem('lifelog-scroll', JSON.stringify({ path: newPath, scrollY: window.scrollY })) } catch (e) {}
+      // Salva scroll pra restaurar na página nova
+      try { sessionStorage.setItem('lifelog-scroll', window.scrollY) } catch (e) {}
 
       // Navegação direta — sem VT/fade pra evitar layout shift na navbar
       window.location.href = newPath
