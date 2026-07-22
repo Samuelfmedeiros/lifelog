@@ -175,7 +175,13 @@ const footerText = dataLocale === 'en'
         if (saved && saved.path === window.location.pathname + window.location.search) {
           sessionStorage.removeItem('lifelog-scroll')
           if (saved.scrollY > 0) {
-            requestAnimationFrame(function() { window.scrollTo(0, saved.scrollY) })
+            // Espera renderizar + fonts carregarem, depois scrolla
+            function doScroll() { window.scrollTo(0, saved.scrollY) }
+            if (document.readyState === 'complete') {
+              requestAnimationFrame(doScroll)
+            } else {
+              window.addEventListener('load', function() { requestAnimationFrame(doScroll) })
+            }
           }
         }
       } catch(e) {}
