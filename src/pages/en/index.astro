@@ -11,6 +11,14 @@ const posts = allPosts.filter(p => !p.data.draft && p.id.startsWith('en/'));
 const sortDate = (p) => p.data.pubDate?.getTime() || p.data.date.getTime();
 posts.sort((a, b) => sortDate(b) - sortDate(a));
 
+// Search index: build at compile time
+const searchIndex = posts.filter(p => !p.data.draft).map(p => ({
+  id: p.id, slug: p.id.replace(/^(en\/)?/, ''),
+  title: p.data.title, description: p.data.description,
+  tags: p.data.tags, project: p.data.project,
+  date: (p.data.pubDate || p.data.date).toISOString().slice(0, 10),
+}));
+
 const grouped = [];
 const dateMap = new Map();
 for (const post of posts) {
@@ -44,7 +52,7 @@ const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os
     <p class="text-sm mt-2" style="color: var(--color-text-muted)">{t.home.subtitle}</p>
   </section>
 
-  <FilterBar years={years} locale={locale} availableProjects={availableProjects} />
+  <FilterBar years={years} locale={locale} availableProjects={availableProjects} searchIndex={JSON.stringify(searchIndex)} />
 
   <div class="timeline">
     {grouped.length === 0 && (

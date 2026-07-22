@@ -308,7 +308,7 @@ test.describe('Filtros', () => {
   test('filtro de projeto + busca combinados (Dogwalk + infra)', async ({ page }) => {
     await page.locator('[data-filter-project="dogwalk"]').click();
     await page.waitForTimeout(100);
-    await page.locator('#filter-search').fill('infra');
+    await page.locator('#filter-search').fill('infraestrutura');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
     expect(count).toBe(1); // só primeiros-passos-infra-dogwalk
