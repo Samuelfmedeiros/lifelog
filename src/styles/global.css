@@ -17,17 +17,17 @@ html {
 }
 
 /* ========================================
-   View Transitions API — Smooth Theme Crossfade
+   View Transitions API — Circular Reveal + Crossfade
    ======================================== */
-/* Crossfade suave via VT nativa. Sem clip-path (stutter em GPU low-end). */
+/* Não suprime o crossfade padrão — ele roda junto com o clip-path reveal
+   via JS animate(). O crossfade dá a transição suave de cores (compositor),
+   o clip-path adiciona a direção (revelar a partir do clique).
+   mix-blend-mode:normal evita flash branco. */
 ::view-transition-old(root) {
   mix-blend-mode: normal;
-  z-index: 1;
 }
 ::view-transition-new(root) {
   mix-blend-mode: normal;
-  z-index: 2;
-  /* Default VT crossfade — animação suave nativa */
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,37 @@
+---
+title: "Overhaul de animações — micro-interações, stagger nos cards e scroll shadow"
+description: "Sistematei as animações do LifeLog: stagger nos cards, scroll shadow no navbar, micro-interações em tags/pills/search, e uma easing curve única pra tudo."
+date: 2026-07-23T12:00:00 -03:00
+pubDate: 2026-07-23 12:00:00 -03:00
+project: lifelog
+tags: [animation, css, performance, ux, refactoring]
+icon: "🎨"
+cover: /covers/animacao-overhaul-micro-interacoes-stagger.webp
+featured: false
+---
+
+Ontem eu simplifiquei a animação de tema pra crossfade. Hoje fui além e sistematizei **todas** as animações do LifeLog num sistema coeso — não só o tema, mas cards, navbar, tags, filtros e busca.
+
+## O que mudou
+
+No commit [`df29f71`](https://github.com/Samuelfmedeiros/lifelog/commit/df29f71) eu toquei 3 arquivos principais (`PalettePicker.astro`, `BaseLayout.astro`, `global.css`) e padronizei o que antes era um monte de animação jogada:
+
+- **Card stagger** — os posts na timeline agora entram com um fadeIn + translateY sequencial, cada card com 60ms de delay via `--card-index`. A entrada parece uma fileira de dominós caindo, mas ao contrário — um por um aparecendo.
+- **Navbar com scroll shadow** — quando você rola a página, a navbar ganha uma sombra sutil e muda a cor da borda inferior. Usei `requestAnimationFrame` throttled pra não ficar chamando evento de scroll o tempo todo.
+- **Tags com glow no hover** — as tags dos projetos nos cards agora têm `scale(1.05)` + um brilho sutil quando passam o mouse. A sensação é de que o card "responde" ao toque.
+- **Filter pills** — os botões de filtro na FilterBar ganharam um `translateY(-1px)` sutil no hover, com easing spring cúbico. Não é exagero, é aquele detalhe que você percebe quando presta atenção.
+- **Search focus com glow dinâmico** — quando o campo de busca recebe foco, ele escala 1% e ganha um glow que usa `color-mix()` com a cor de destaque do tema. Dinâmico, reativo, sem hardcoded color.
+
+## A curva de easing secreta
+
+O maior ganho técnico foi padronizar **todas** as transições do site pra uma única curva cúbica: `cubic-bezier(0.16, 1, 0.3, 1)`.
+
+Essa curva é um spring suave — começa rápida, desacelera naturalmente. Antes eu tinha `ease` aqui, `ease-out` ali, `0.2s` num canto, `0.35s` noutro. O resultado era uma sensação inconsistente. Agora tudo responde no mesmo ritmo. O cérebro da usuária percebe — mesmo que inconscientemente — que o sistema é coeso.
+
+## Micro-interações importam
+
+Pode parecer frescura, mas micro-interações são o que separa um site que parece "vivo" de um que parece "estático". Um card que entra com stagger, uma tag que reage ao hover, uma navbar que responde ao scroll — tudo isso comunica cuidado.
+
+E o melhor: **72 inserções, 61 deleções**. Menos código que antes, mais resultado. Não é sempre que isso acontece.
+
+Fora isso, o `fix(ui): dropdown viewport clamping` garante que o seletor de paletas nunca sai da tela — ele abre pra cima, pra baixo ou centralizado dependendo do espaço disponível. E o scroll restoration foi movido pro `<head>` pra executar antes do primeiro paint, eliminando um pulo de 150ms na troca de idioma.
