@@ -254,18 +254,19 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    // ─── Sem animação: troca direta ───
     if (reduced) { setTheme(next); return }
 
-    // Usa coordenadas do clique (e.currentTarget é document no handler delegado)
-    const x = e.clientX
-    const y = e.clientY
+    // ── Centro do botão de tema (não coordenada do mouse) ──
+    const btn = document.getElementById('rail-theme')
+    if (!btn) { setTheme(next); return }
+    const rect = btn.getBoundingClientRect()
+    const x = Math.round(rect.left + rect.width / 2)
+    const y = Math.round(rect.top + rect.height / 2)
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
 
-    // ─── View Transition API (Chromium) — circular reveal + crossfade nativo ───
-    // O crossfade padrão do VT roda junto (GPU composited, transição suave de cores).
-    // O clip-path via animate() adiciona a direção "revelar a partir do clique".
+    // ─── View Transition API (Chromium) — circular reveal clip-path ───
+    // CSS global já suprime crossfade padrão (animation:none).
+    // Clip-path passado direto no animate() — sem style tag.
     if (document.startViewTransition) {
       const t = document.startViewTransition(() => setTheme(next))
       t.ready.then(() => {
@@ -276,7 +277,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
               `circle(${radius + 50}px at ${x}px ${y}px)`
             ]
           },
-          { duration: 650, easing: 'cubic-bezier(0.16,1,0.3,1)', pseudoElement: '::view-transition-new(root)' }
+          { duration: 400, easing: 'cubic-bezier(0.16,1,0.3,1)', pseudoElement: '::view-transition-new(root)' }
         )
       })
       t.finished.catch(() => setTheme(next))
@@ -284,20 +285,24 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
     }
 
     // ─── Fallback (Firefox/Safari) — overlay circular reveal via clip-path ───
-    // Usa var(--color-bg) direto em vez de getComputedStyle (evita layout thrash).
+    const tmp = document.createElement('div')
+    tmp.style.cssText = 'position:fixed;pointer-events:none;opacity:0'
+    tmp.setAttribute('data-theme', cur)
+    document.body.appendChild(tmp)
+    const oldBg = getComputedStyle(tmp).getPropertyValue('--color-bg').trim() || (cur === 'light' ? '#f5f2eb' : '#0a0a0f')
+    tmp.remove()
+
     const overlay = document.createElement('div')
     overlay.style.cssText =
       `position:fixed;inset:0;z-index:9999;pointer-events:none;` +
-      `background:var(--color-bg);clip-path:circle(0px at ${x}px ${y}px)`
+      `background:${oldBg};clip-path:circle(0px at ${x}px ${y}px)`
     document.body.appendChild(overlay)
-
     setTheme(next)
-
     requestAnimationFrame(() => {
-      overlay.style.transition = 'clip-path 650ms cubic-bezier(0.16,1,0.3,1)'
+      overlay.style.transition = 'clip-path 400ms cubic-bezier(0.16,1,0.3,1)'
       overlay.style.clipPath = `circle(${radius + 50}px at ${x}px ${y}px)`
     })
-    setTimeout(() => overlay.remove(), 750)
+    setTimeout(() => overlay.remove(), 500)
   }
 
   /* ─── Language ─── */

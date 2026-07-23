@@ -17,17 +17,18 @@ html {
 }
 
 /* ========================================
-   View Transitions API — Circular Reveal + Crossfade
+   View Transitions API — Circular Theme Reveal (clip-path)
    ======================================== */
-/* Não suprime o crossfade padrão — ele roda junto com o clip-path reveal
-   via JS animate(). O crossfade dá a transição suave de cores (compositor),
-   o clip-path adiciona a direção (revelar a partir do clique).
+/* Suprime crossfade padrão do VT — a animação fica por conta do JS
+   clip-path no ::view-transition-new(root) via document.documentElement.animate()
    mix-blend-mode:normal evita flash branco. */
 ::view-transition-old(root) {
-  mix-blend-mode: normal;
+  animation: none !important;
+  mix-blend-mode: normal !important;
 }
 ::view-transition-new(root) {
-  mix-blend-mode: normal;
+  animation: none !important;
+  mix-blend-mode: normal !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
