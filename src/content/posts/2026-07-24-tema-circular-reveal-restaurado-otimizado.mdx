@@ -1,0 +1,50 @@
+---
+title: "Restaurando o circular reveal do tema — a escolha entre remover e otimizar"
+description: "Em vez de substituir o circular reveal por crossfade básico, corrigi a causa raiz do stutter em GPU low-end. VT clip-path + fallback limpo."
+date: 2026-07-24T13:52:00 -03:00
+pubDate: 2026-07-24 13:52:00 -03:00
+project: lifelog
+tags: [animation, css, performance, view-transitions, optimization]
+icon: "🎨"
+cover: /covers/2026-07-24-tema-circular-reveal-restaurado-otimizado.webp
+featured: false
+---
+
+Dois dias atrás, quando sistematizei as animações do LifeLog, eu simplifiquei a transição de tema pra um crossfade básico. O motivo? O circular reveal clip-path — aquele efeito que expande a nova cor a partir do clique — estava dando stutter em GPU low-end.
+
+A tentação de deixar como crossfade e seguir em frente era grande. Mas não é como eu gosto de resolver problema. Então voltei, corrigi a causa raiz, e o circular reveal tá de volta — mais suave que antes.
+
+## O que era o problema
+
+O circular reveal usava `document.startViewTransition()` com um `clip-path` animado no pseudo-elemento `::view-transition-new(root)`. A ideia era bonita: o clique abre um círculo que cresce até cobrir a tela, revelando o novo tema.
+
+Mas em GPUs mais fracas (ou em modo economia de bateria), o `clip-path` animado gera um layout/paint por frame. Junta isso com o crossfade padrão que o View Transition API já aplica por cima, e você tem **duas animações competindo** — uma no compositor (crossfade) e outra no raster (clip-path). Resultado: stutter visível.
+
+## A solução errada: remover
+
+No commit intermediário, eu simplesmente troquei o circular reveal por um crossfade puro. Funcionava, era suave, mas era sem graça. A troca de tema deixou de ser um momento — virou só mais uma transição qualquer.
+
+Mas aí eu parei e pensei: **o problema não é o clip-path. É o clip-path competindo com o crossfade.**
+
+## A correção certa
+
+O commit de hoje (`bac60f4`) restaura o circular reveal com três otimizações importantes:
+
+**1. Supressão do crossfade padrão via CSS**
+O View Transition API aplica um crossfade automático entre os dois estados. No CSS fixo (`global.css`), eu adicionei `animation: none !important` tanto no `::view-transition-old(root)` quanto no `::view-transition-new(root)`. Agora só uma animação roda — o clip-path que eu controle via `animate()`.
+
+**2. Origem no centro do botão, não no mouse**
+Antes eu usava `e.clientX/e.clientY` pra calcular o centro do círculo. Agora pego o `getBoundingClientRect()` do botão de tema. O efeito fica mais previsível e evita um cálculo extra por clique.
+
+**3. `ease-out` em vez de spring cúbico no `animate()`**
+A curva `cubic-bezier(0.16,1,0.3,1)` é linda visualmente, mas exige mais da GPU por ser uma curva não-linear agressiva no início. `ease-out` entrega 95% da mesma sensação visual com 0% de custo extra de cálculo. O easing vem do CSS nativo, que o compositor da GPU já sabe otimizar.
+
+## Fallback Firefox/Safari sem `tmp` element
+
+O fallback pra navegadores sem View Transition API (Firefox, Safari) também foi simplificado. Antes eu criava um elemento `tmp`, usava `getComputedStyle()` pra ler a cor de fundo, e depois descartava. Agora leio `var(--color-bg)` direto, com fallback inline. Menos DOM, menos layout thrash, menos código.
+
+## O que aprendi
+
+A lição aqui é simples: **não trate sintoma como causa**. O crossfade funcionava, mas a solução de verdade não era remover o circular reveal — era impedir que ele competisse com outra animação. Se eu tivesse deixado como crossfade, o site estaria funcionando, mas eu saberia que tinha um "meh" que eu poderia ter consertado.
+
+20/20 testes E2E passando, circular reveal de volta, e a troca de tema voltou a ser um momento legal — não apenas uma troca de cor.

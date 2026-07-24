@@ -4,7 +4,8 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
-> **Status:** ✅ Operacional — 70 posts · 5 E2E specs · i18n PT/EN
+> **Status:** ✅ Operacional — 70+ posts · 5 E2E specs · i18n PT/EN
+> **Pipeline:** 📖 Narrative-First (desde 24/07) — auto-post diário desativado
 
 ---
 
@@ -130,6 +131,47 @@ lifelog/
 - **GitHub:** https://github.com/Samuelfmedeiros/lifelog
 - **Deploy:** Push na master → CI/CD → Vercel
 - **Gerenciador:** pnpm 10+
+
+---
+
+## 📖 Narrative-First Pipeline (desde 24/07/2026)
+
+**Auto-post diário (cron `6d90ce`) foi DESATIVADO.** Posts de changelog agregado não existem mais.
+
+### Regras
+
+1. **Cada post é um capítulo** — Setup → Conflito → Resolução. Sem arco narrativo, não publica.
+2. **Um projeto por post** — Nunca agregar 2+ projetos no mesmo post.
+3. **Código real** — Extraído do repositório com `search_files`/`read_file`. Nada de memória.
+4. **Métricas verificáveis** — Números de commits, testes, build time. Nunca inventados.
+5. **PT + EN** — Sempre bilíngue. Manter `project` ID em português.
+
+### Grade de Conteúdo (sugestão)
+
+| Dia | Projeto | História |
+|-----|---------|----------|
+| Sex 24/07 | LifeLog | "De auto-post a narrativa" |
+| Sáb 25/07 | Dogwalk | Saga CI/CD |
+| Dom 26/07 | Arachne | Multi-engine fallback |
+| Seg 27/07 | Capivara | Dashboard analytics |
+| Ter 28/07 | Portfólio | Vue 3.5 rebuild |
+| Qua 29/07 | TatuEngine | BitMamba 1B |
+| Qui 30/07 | Descobertas | FTS5 + sqlite-vec |
+
+A grade é sugestão — se surgir história melhor,优先. Samuel revisa antes de publicar.
+
+### Template
+
+Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, TerminalWidget.
+
+### Pipeline de Criação
+
+1. Verificar grade → qual projeto hoje?
+2. Pesquisar estado real (commits recentes, PRs, bugs, decisões)
+3. Escrever rascunho seguindo template
+4. Gerar capa (`python3 scripts/generate-cover.py <slug>`)
+5. Build + verificar
+6. Samuel revisa → publicar / editar / pular
 
 ---
 

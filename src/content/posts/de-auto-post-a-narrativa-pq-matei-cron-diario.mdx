@@ -1,0 +1,111 @@
+---
+title: "De auto-post a narrativa — porque matei o cron diário"
+description: "O momento em que percebi que meu blog de devlogs estava produzindo relatórios, não histórias — e como resolvi isso matando o robô que escrevia posts sozinho."
+date: 2026-07-24 00:00:00 -03:00
+pubDate: 2026-07-24 00:00:00 -03:00
+project: lifelog
+tags: [lifelog, narrativa, decisão, pipeline]
+icon: "📖"
+cover: /covers/de-auto-post-a-narrativa-pq-matei-cron-diario.webp
+featured: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O post que não existiria
+
+Se esse post fosse escrito pelo sistema que ele critica, ele **nunca teria sido criado**. O robô diário olhava commits, não intenções. Ele via o `git log` das últimas 24 horas, não o *porquê* das coisas.
+
+E é exatamente esse o problema que a gente vai matar hoje.
+
+## 🧠 Como a gente chegou aqui
+
+O LifeLog nasceu como um blog automático. A ideia original era simples: todo dia ao meio-dia, um cron job olhava os commits de todos os projetos, resumia o que aconteceu nas últimas 24 horas, gerava um post no formato MDX, criava uma capa via Cloudflare AI, committava e fazia deploy.
+
+O fluxo era elegante:
+
+```python
+# pseudo-código do pipeline antigo
+commits = coletar_commits_24h(projetos)
+post = resumir(commits)          # LLM transforma commits em texto
+cover = gerar_capa_via_worker(post.slug)
+git_commit(post + cover)
+git_push()
+```
+
+Funcionava. E funcionava bem — o blog nunca ficou desatualizado porque *algo* era publicado todo santo dia. O problema não era técnico. Era de **propósito**.
+
+### O problema invisível
+
+Um dia desses eu li um dos posts gerados e pensei: *"Isso é um relatório, não uma história."*
+
+O post dizia:
+
+> "Hoje no Dogwalk: corrigido bug no login, adicionado teste de integração, refatorado o hook de autenticação. No Arachne: pipeline multi-engine passou de 4 para 6 provedores. No Capivara: novo dashboard de analytics..."
+
+E daí? **Quem se importa?**
+
+Cada um desses itens é uma história por si só. O bug no login do Dogwalk foi 3 dias de debug, 2 PRs descartados, uma descoberta sobre bcrypt em Node 22. Isso **sim** merece um post. Mas no formato agregado, virava uma linha.
+
+Pior: o formato diário **impedia** que histórias maiores surgissem. Se cada dia tem um post sobre todos os projetos, nunca sobra espaço pra mergulhar em *um* projeto de verdade.
+
+## 🔧 A decisão difícil
+
+Matei o cron.
+
+Não foi trivial — admito que hesitei. O cron rodava há 5 dias sem falhar. Post automático todo santo dia é tentador pra quem tem medo de blog vazio. Mas eu percebi que **ter post não é o mesmo que ter conteúdo**.
+
+O que eu quero do LifeLog:
+
+1. **Histórias que ensinem** — código real, decisões reais, erros reais
+2. **Um projeto por vez** — cada post mergulha fundo em *um* tópico
+3. **Narrativa, não relatório** — setup → conflito → resolução
+4. **Agenda semanal, não diária** — 7 histórias planejadas, não 7 relatórios aleatórios
+
+Troquei o cron por uma grade de conteúdo:
+
+```
+Sex 24/07 → LifeLog:      "De auto-post a narrativa"
+Sáb 25/07 → Dogwalk:      "Saga do CI/CD — o debug que virou guerra"
+Dom 26/07 → Arachne:      "Multi-engine fallback: como 4 camadas viram 1 pipeline"
+Seg 27/07 → Capivara:     "O dia que o dashboard virou operação"
+Ter 28/07 → Portfólio:    "Vue 3.5 — o rebuild que não era só design"
+Qua 29/07 → TatuEngine:   "BitMamba 1B: treinar um SSM do zero"
+Qui 30/07 → Descobertas:  "FTS5 + sqlite-vec: busca híbrida que mudou o RAG"
+```
+
+Cada uma dessas histórias existe nos meus repositórios. Elas só estavam soterradas em commits.
+
+### Como ficou o pipeline
+
+O novo fluxo troca automação por intencionalidade:
+
+<Terminal commands={[
+  { cmd: '# ANTES: cron diário automático', description: 'Pipeline antigo' },
+  { cmd: 'python3 ~/.hermes/scripts/lifelog-auto-post.py', description: 'Gerava post automático todo dia 12h' },
+  { cmd: '', description: '' },
+  { cmd: '# DEPOIS: pesquisa + escrita + revisão', description: 'Pipeline novo' },
+  { cmd: 'cat docs/narrative-template.md', description: 'Template narrativo de 6 blocos' },
+  { cmd: 'search_files "def handle_login" --path ~/projetos/Dogwalk/', description: 'Pesquisar código real do projeto' },
+  { cmd: 'pnpm build && pnpm exec playwright test --config e2e/playwright.config.ts', description: 'Verificar antes de publicar' },
+]} />
+
+## 💡 O que aprendi
+
+Automação não substitui curadoria. O cron gerava posts — mas **não gerava narrativa**. A diferença é sutil no código e gigante no resultado:
+
+| Aspecto | Auto-post | Narrative-First |
+|---------|-----------|-----------------|
+| Frequência | Todo dia | Quando tem história |
+| Conteúdo | Commits agregados | Um mergulho por projeto |
+| Leitura | Relatório | Capítulo |
+| Relevância | Datada | Duradoura |
+| Código | Menção superficial | Extraído real do repositório |
+
+O cron não tá morto — tá pausado (job `6d90ce55741c`). Se um dia eu sentir falta de post automático, ele volta. Mas por enquanto, quero ver **quantas histórias** a gente consegue contar, não **quantos posts** a gente consegue gerar.
+
+## 🎯 O que vem a seguir
+
+O plano tá documentado em `docs/plans/2026-07-24-narrative-overhaul.md` e o template narrativo em `docs/narrative-template.md`. O próximo post já tem história marcada: a saga do CI/CD do Dogwalk que começou com "vou só mudar o workflow" e terminou com "isso daqui é um caso de estudo".
+
+Amanhã eu conto como foi.
