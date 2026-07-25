@@ -253,31 +253,41 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
   function toggleTheme(e) {
     const cur = document.documentElement.getAttribute('data-theme')
     const next = cur === 'light' ? 'dark' : 'light'
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reduced) { setTheme(next); return }
 
-    // ─── View Transition API (Chromium) — crossfade nativo GPU ───
-    // Sem clip-path, sem WAAPI, sem style tag. O crossfade padrão
-    // do VT roda no compositor (GPU) — zero jank garantido.
     if (document.startViewTransition) {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setTheme(next); return
+      }
+      const x = e?.clientX ?? innerWidth / 2
+      const y = e?.clientY ?? innerHeight / 2
       const t = document.startViewTransition(() => setTheme(next))
-      t.finished.catch(() => setTheme(next))
+      t.ready.then(() => {
+        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' },
+        )
+      })
       return
     }
 
-    // ─── Fallback (Firefox/Safari) — fade overlay ───
-    const bg = next === 'light' ? '#f5f2eb' : '#0a0a0f'
-    const o = document.createElement('div')
-    o.style.cssText = 'position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.15s ease;background:' + bg
-    document.body.appendChild(o)
-    requestAnimationFrame(() => {
-      o.style.opacity = '1'
-      setTimeout(() => {
-        setTheme(next)
-        o.style.opacity = '0'
-        setTimeout(() => o.remove(), 200)
-      }, 180)
-    })
+    // ─── Fallback (sem VT) — overlay clip-path circular ───
+    if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const overlay = document.createElement('div')
+      overlay.style.cssText =
+        'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
+        'clip-path:circle(0px at ' + e.clientX + 'px ' + e.clientY + 'px);' +
+        'background:' + (next === 'light' ? '#f7f6f3' : '#0a0a0f') + ';' +
+        'transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)'
+      document.body.appendChild(overlay)
+      overlay.offsetHeight // force layout
+      const endR = Math.hypot(Math.max(e.clientX, innerWidth - e.clientX), Math.max(e.clientY, innerHeight - e.clientY))
+      overlay.style.clipPath = 'circle(' + endR + 'px at ' + e.clientX + 'px ' + e.clientY + 'px)'
+      setTimeout(() => setTheme(next), 200)
+      setTimeout(() => overlay.remove(), 550)
+    } else {
+      setTheme(next)
+    }
   }
 
   /* ─── Language ─── */
