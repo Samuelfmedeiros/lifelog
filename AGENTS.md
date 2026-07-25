@@ -184,4 +184,4 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 
 ---
 
-*Última atualização: 2026-07-21 · Docs Maintenance Diário*
+*Última atualização: 2026-07-25 · Docs Maintenance Diário*
