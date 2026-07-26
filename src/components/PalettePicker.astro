@@ -268,7 +268,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
         const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
         document.documentElement.animate(
           { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-          { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' },
+          { duration: 600, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', pseudoElement: '::view-transition-new(root)' },
         )
       })
       t.finished.catch(() => setTheme(next)).finally(() => { animating = false })
@@ -282,7 +282,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
         'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
         'clip-path:circle(0px at ' + e.clientX + 'px ' + e.clientY + 'px);' +
         'background:' + (next === 'light' ? '#f7f6f3' : '#0a0a0f') + ';' +
-        'transition:clip-path 0.5s cubic-bezier(0.4,0,0.2,1)'
+        'transition:clip-path 0.5s cubic-bezier(0.34,1.56,0.64,1)'
       document.body.appendChild(overlay)
       overlay.offsetHeight // force layout
       const endR = Math.hypot(Math.max(e.clientX, innerWidth - e.clientX), Math.max(e.clientY, innerHeight - e.clientY))
