@@ -1,0 +1,127 @@
+---
+title: "Dogwalk — 3 Bugs, 1 Commit, 1379 Testes"
+description: "Como um endpoint público que dava 401, um bundle que crashava e 42 erros no console viraram um commit só"
+category: samuel-projects
+date: 2026-07-25 10:00:00 -03:00
+pubDate: 2026-07-25 00:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, debugging, react, mapbox-gl, performance]
+icon: "🐶"
+cover: /covers/dogwalk-3-bugs-1-commit.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Tinha três bugs abertos no kanban há dias. Nada crítico isoladamente, mas juntos criavam uma experiência merda: visitante via perfil de passeador e tomava 401, o mapa crashava sem motivo aparente, e o console vivia cheio de warning. Decidi resolver os três de uma vez.
+
+## DW-050 — O endpoint público que pedia login
+
+O `/profiles/walkers` é um endpoint público — qualquer visitante pode ver os passeadores disponíveis. Mas o `api.js` tinha um interceptador que **sempre** tentava renovar o token antes de qualquer request:
+
+```javascript
+// Antes: toda request passava pelo refresh token
+async function request(url, opts = {}) {
+  const token = await refreshIfNeeded()  // 401 se sem token
+  headers.Authorization = `Bearer ${token}`
+  return fetch(url, { headers, ...opts })
+}
+```
+
+Problema: se o usuário não tava logado, `refreshIfNeeded()` falhava e o request nunca acontecia — mesmo sendo um endpoint que não precisa de auth.
+
+A solução foi adicionar um flag `opts.public`:
+
+```javascript
+async function request(url, opts = {}) {
+  if (!opts.public) {
+    const token = await refreshIfNeeded()
+    headers.Authorization = `Bearer ${token}`
+  }
+  return fetch(url, { headers, ...opts })
+}
+```
+
+E marcar os 4 consumidores de `/profiles/walkers` com `{ public: true }`. **1379 testes continuaram passando.** Esse tipo de mudança é o mais gostoso de fazer — simples, sem side effect, e resolve o problema na raiz.
+
+## DW-036 — O bundle que crashava sem motivo
+
+`ClusterLayer` e `HeatmapLayer` são componentes que renderizam centenas de pontos no mapa. De repente, começaram a crashar com `s.addSource is not a function` — o método `addSource` simplesmente não existia no objeto `map`.
+
+```jsx
+// Antes (quebrado):
+function ClusterLayer({ map, ... }) {
+  map.addSource('clusters', { ... })  // ❌ crash intermitente
+}
+```
+
+O problema era sutil: o `map` que o componente recebia era o `ref` do MapLibre (`{ current: null }` → `{ current: instância }`), não a instância diretamente. Quando o React re-renderizava antes do ref estar populado, `map` virava o objeto `ref` vazio.
+
+```jsx
+// Depois (corrigido):
+function ClusterLayer({ mapRef, ... }) {
+  const map = mapRef.current
+  if (!map || !map.isStyleLoaded()) return null
+  try {
+    map.addSource('clusters', { ... })
+  } catch (e) {
+    console.warn('ClusterLayer: source already exists', e)
+  }
+}
+```
+
+A correção teve 3 partes:
+1. **Guard `isStyleLoaded()`** — não tenta adicionar source antes do mapa estar pronto
+2. **Try/catch** — se o source já existe (re-render), não quebra
+3. **mapRef.current** — usa o valor atualizado do ref, não o objeto ref
+
+## DW-053 — 42 erros no console zerados
+
+Depois de resolver DW-036, fui atrás dos outros warnings. O console do DevTools vivia lotado:
+
+```
+❌ isLoaded is not a function (IsochroneLayer)
+❌ addSource is not a function (HeatmapLayer, ClusterLayer)
+⚠️ Style not loaded (Polyline, vários layers)
+```
+
+Cada um era uma variação do mesmo padrão: o componente tentava acessar o mapa antes dele estar pronto. Aplicando o mesmo padrão `isStyleLoaded` + `mapRef.current` em **5 componentes**, os erros foram de 42 pra **zero absoluto**.
+
+```jsx
+// Padrão que resolveu todos:
+if (!map || !map.isStyleLoaded()) return null
+```
+
+## O que aprendi
+
+1. **Interceptador de auth global é faca de dois gumes** — prático pra 90% dos casos, mas os 10% de endpoints públicos precisam de escape. Um simples `opts.public` resolve, mas você precisa lembrar que ele existe.
+
+2. **Ref vs instância é o erro de React que mais derruba mapa** — o MapLibre (e qualquer lib que recebe um DOM element) expõe a instância via `.current`. Se você passar o ref direto, o componente filho recebe o objeto `{ current: null }` e o método não existe.
+
+3. **`isStyleLoaded()` é o guardião do MapLibre** — sem ele, qualquer operação no estilo (addSource, addLayer, setPaintProperty) pode crashar se o estilo ainda não terminou de carregar. Colocar esse guard em TODO componente de mapa deveria ser padrão.
+
+## Métricas
+
+| Bug | Arquivos | Linhas | Testes |
+|:----|:---------|-------:|-------:|
+| DW-050 | api.js + 4 consumers | +3 linhas | 1379 ✅ |
+| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refatoradas | 1379 ✅ |
+| DW-053 | IsochroneLayer + Polyline + layers | ~20 linhas | 1379 ✅ |
+
+Total: **5 arquivos, 141 novas, 146 removidas. Zero testes quebrados.**
+
+## O que vem a seguir
+
+- [ ] Aplicar `isStyleLoaded` nos layers que ainda não têm (MapRouteLine, etc.)
+- [ ] Criar hook `useMapGuard()` pra não repetir o padrão manualmente
+- [ ] Auditoria de todos os endpoints públicos vs privados no backend
+
+<Terminal
+  title="~/dogwalk — bash"
+  commands={[
+    { cmd: 'git show cd31f0dd --stat', description: 'Ver as mudanças do commit dos 3 bugs' },
+    { cmd: 'npx vitest run | tail -5', description: 'Rodar testes — 1379 passando' },
+    { cmd: 'grep -r "opts.public" src/services/api.js', description: 'Ver o padrão public endpoint' },
+    { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'Ver todos os guards de mapa' },
+  ]}
+/>

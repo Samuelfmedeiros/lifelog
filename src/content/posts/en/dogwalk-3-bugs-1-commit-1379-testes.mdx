@@ -1,0 +1,119 @@
+---
+title: "Dogwalk — 3 Bugs, 1 Commit, 1379 Tests"
+description: "How a public endpoint that returned 401, a bundle that crashed, and 42 console errors became a single commit"
+category: samuel-projects
+date: 2026-07-25 10:00:00 -03:00
+pubDate: 2026-07-25 00:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, debugging, react, mapbox-gl, performance]
+icon: "🐶"
+cover: /covers/dogwalk-3-bugs-1-commit.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There were three bugs sitting in the kanban for days. Nothing critical on their own, but together they created a terrible experience: visitors browsing walker profiles got a 401, the map crashed randomly, and the console was full of warnings. I decided to fix all three at once.
+
+## DW-050 — The public endpoint that asked for login
+
+`/profiles/walkers` is a public endpoint — any visitor can browse available walkers. But `api.js` had an interceptor that **always** tried to refresh the token before every request:
+
+```javascript
+// Before: every request went through token refresh
+async function request(url, opts = {}) {
+  const token = await refreshIfNeeded()  // 401 if no token
+  headers.Authorization = `Bearer ${token}`
+  return fetch(url, { headers, ...opts })
+}
+```
+
+Problem: if the user wasn't logged in, `refreshIfNeeded()` failed and the request never happened — even though the endpoint doesn't need auth.
+
+The fix was a simple `opts.public` flag:
+
+```javascript
+async function request(url, opts = {}) {
+  if (!opts.public) {
+    const token = await refreshIfNeeded()
+    headers.Authorization = `Bearer ${token}`
+  }
+  return fetch(url, { headers, ...opts })
+}
+```
+
+Marked the 4 consumers of `/profiles/walkers` with `{ public: true }`. **All 1379 tests kept passing.**
+
+## DW-036 — The bundle that crashed for no reason
+
+`ClusterLayer` and `HeatmapLayer` render hundreds of points on the map. Suddenly they started crashing with `s.addSource is not a function`.
+
+```jsx
+// Before (broken):
+function ClusterLayer({ map, ... }) {
+  map.addSource('clusters', { ... })  // ❌ intermittent crash
+}
+```
+
+The issue was subtle: the `map` prop was actually a React ref (`{ current: null }` → `{ current: instance }`), not the instance directly. When React re-rendered before the ref was populated, `map` was the empty ref object.
+
+```jsx
+// After (fixed):
+function ClusterLayer({ mapRef, ... }) {
+  const map = mapRef.current
+  if (!map || !map.isStyleLoaded()) return null
+  try {
+    map.addSource('clusters', { ... })
+  } catch (e) {
+    console.warn('ClusterLayer: source already exists', e)
+  }
+}
+```
+
+3 fixes in one: guard `isStyleLoaded()`, try/catch for re-renders, proper `mapRef.current` access.
+
+## DW-053 — 42 console errors to zero
+
+After fixing DW-036, I went after the remaining warnings. The DevTools console was flooded:
+
+```
+❌ isLoaded is not a function (IsochroneLayer)
+❌ addSource is not a function (HeatmapLayer, ClusterLayer)
+⚠️ Style not loaded (Polyline, various layers)
+```
+
+Each was a variation of the same pattern: component accessing the map before it was ready. Applying the `isStyleLoaded` + `mapRef.current` pattern across **5 components** dropped errors from 42 to **absolute zero**.
+
+## Lessons learned
+
+1. **Global auth interceptors are double-edged** — convenient for 90% of cases, but public endpoints need an escape hatch. A simple `opts.public` solves it, but you need to remember it exists.
+
+2. **Ref vs instance is the #1 React map bug** — MapLibre exposes the instance via `.current`. Passing the ref directly gives the child `{ current: null }`.
+
+3. **`isStyleLoaded()` is MapLibre's guardian** — without it, any style operation can crash before the style loads. Should be standard on EVERY map component.
+
+## Metrics
+
+| Bug | Files | Lines Changed | Tests |
+|:----|:------|:-------------:|------:|
+| DW-050 | api.js + 4 consumers | +3 lines | 1379 ✅ |
+| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refactored | 1379 ✅ |
+| DW-053 | IsochroneLayer + Polyline + layers | ~20 lines | 1379 ✅ |
+
+Total: **5 files, 141 added, 146 removed. Zero broken tests.**
+
+## What's next
+
+- [ ] Apply `isStyleLoaded` to remaining layers (MapRouteLine, etc.)
+- [ ] Create a `useMapGuard()` hook to avoid repeating the pattern
+- [ ] Audit all public vs private backend endpoints
+
+<Terminal
+  title="~/dogwalk — bash"
+  commands={[
+    { cmd: 'git show cd31f0dd --stat', description: 'See the 3-bug commit changes' },
+    { cmd: 'npx vitest run | tail -5', description: 'Run tests — 1379 passing' },
+    { cmd: 'grep -r "opts.public" src/services/api.js', description: 'See the public endpoint pattern' },
+    { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'See all map guards' },
+  ]}
+/>
