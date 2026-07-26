@@ -17,10 +17,18 @@ html {
 }
 
 /* ========================================
-   View Transitions API — Padrão + clip-path via WAAPI
+   View Transitions API — Wipe horizontal (ambos temas visíveis)
    ======================================== */
-/* Crossfade padrão do VT roda junto com clip-path animado via WAAPI.
-   NADA de animation:none — deixa o navegador gerenciar. */
+/* old(root) fica estático — sem crossfade. O tema antigo permanece
+   visível enquanto o novo é revelado via wipe horizontal.
+   new(root) ganha clip-path inset() animado via WAAPI no toggleTheme. */
+::view-transition-old(root) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+::view-transition-new(root) {
+  mix-blend-mode: normal !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
