@@ -132,7 +132,7 @@ def generate_cover(slug, project="descobertas"):
         f"{style['prompt_suffix']}. "
         f"Mood: technological, immersive, atmospheric. "
         f"Color palette: {', '.join(style['colors'])}. "
-        f"No text, no typography, no letters, no UI elements."
+        f"ABSOLUTELY NO TEXT, no typography, no letters, no words, no UI elements, no watermark, no signature."
     )
 
     log(f"Gerando capa para '{slug}' (projeto: {project})...")
