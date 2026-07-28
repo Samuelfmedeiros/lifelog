@@ -1,0 +1,123 @@
+---
+title: "Blindando o Hermes — ai-jail, bwrap e o dia que os secrets pararam de vazar"
+description: "Meu assistente Hermes tem acesso a tudo: tokens de API, chaves Stripe, credenciais de banco. Um comando errado no terminal() e vazava tudo. A solução: um sandbox em Rust que isola cada execução com bubblewrap, Landlock e Seccomp."
+date: 2026-07-28 10:00:00 -03:00
+pubDate: 2026-07-28 10:00:00 -03:00
+project: seguranca
+tags: [seguranca, ai-jail, sandbox, herm es, bwrap, secrets]
+icon: "🔒"
+cover: /covers/blindando-hermes-ai-jail.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O Hermes podia vazar minha vida a qualquer momento
+
+Meu assistente Hermes executa comandos no terminal o tempo todo: `npm install`, `pip install`, scripts Python arbitrários. E ele tem acesso a **tudo** — tokens de API, chaves Stripe, credenciais de banco, secrets do Bitwarden SM.
+
+Um comando malicioso num pacote npm, um script Python com `os.environ`, um `curl` acidental pra um endpoint errado — e pronto. Os secrets iam parar onde não deviam.
+
+Precisava de uma barreira. Não dava pra confiar só em "tomar cuidado".
+
+## 🧠 Conhecendo o ai-jail
+
+O [ai-jail](https://github.com/akitaonrails/ai-jail) é um sandbox em Rust que combina três camadas de isolamento:
+
+- **bubblewrap** — namespace de usuário, monta só o que precisa
+- **Landlock** — restringe acesso a arquivos a nível de kernel (Linux 5.13+)
+- **Seccomp** — filtra syscalls específicas
+
+A ideia: cada comando que o Hermes roda, roda dentro de uma jaula. O projeto tem permissão de escrita, mas `~/.env`, `secrets/`, `*.pem` — tudo mascarado ou negado.
+
+## 🔧 A luta — três modos, um hook e um playbook
+
+### Modo 1: normal
+
+O padrão. O projeto fica read-write, home é tmpfs (some no final), e as regras de segurança do `.ai-jail` filtram o que não pode.
+
+```bash
+jail npm install
+jail python3 script.py
+```
+
+### Modo 2: worker (--worker)
+
+Para tarefas descartáveis. Sem GPU, sem Docker, sem display. O worker do Kanban entra automaticamente nesse modo.
+
+```bash
+jail --worker python3 analyze.py
+```
+
+### Modo 3: lockdown (--lockdown)
+
+Tudo read-only. Sem rede. Sem GPU. Só o binário e as libs. Pra deploy em produção, restore de banco, operações críticas.
+
+```bash
+jail --lockdown pg_restore ...
+jail --lockdown alembic upgrade head
+```
+
+### O hook automático
+
+A gota d'água foi ter que lembrar de digitar `jail` antes de cada comando. Instalei um hook no `~/.bashrc.d/jail-auto.sh` que detecta quando entro num diretório com `.ai-jail` e ativa o sandbox **automaticamente** — npm, pip, python, pnpm, cargo viram jail sem eu pensar.
+
+```bash
+# ~/.bashrc.d/jail-auto.sh (resumido)
+enter_project() {
+  if [ -f "$PWD/.ai-jail/config.toml" ]; then
+    alias npm='jail npm'
+    alias pip='jail pip'
+    alias python3='jail python3'
+  fi
+}
+cd() { builtin cd "$@" && enter_project; }
+```
+
+Quando saio do projeto, os aliases somem. Zero overhead mental.
+
+### O IR Playbook
+
+Pra completar, criei um playbook de resposta a incidentes (`~/.hermes/scripts/ir-playbook.sh`) com 5 cenários:
+
+| Playbook | Gatilho | Ação |
+|----------|---------|------|
+| Port exposed | Porta inesperada aberta | Bloqueia no iptables + notifica |
+| Disk critical | Disco < 10% | Limpa cache + alerta |
+| Backup fail | Backup não rodou | Re-tenta + escalate |
+| Breach | Suspeita de invasão | Isola + captura evidências |
+| Secrets leak | Secret vazou | Roda rotação + Bitwarden SM |
+
+E o [Gitleaks](https://github.com/gitleaks/gitleaks) no CI do TatuEngine — toda vez que alguém faz commit com credencial, o CI reprova automático.
+
+## 💡 Resolução
+
+O sandbox hoje tá integrado em três camadas:
+
+1. **Terminal() do Hermes** — comandos diretos rodam via `jail`
+2. **Workers (delegate_task/Kanban)** — modo worker automático, sem GPU/Docker
+3. **Arachne** — sandbox para stages de pipeline (code, math, jsonata) e browser
+
+E o melhor: quando `jail --dry-run python3 script.py` mostra o que vai montar, você vê exatamente o que cada comando pode acessar. Nada de "esperar dar merda pra descobrir".
+
+## 📊 Métricas
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| Superfície de ataque | Tudo acessível | Só o necessário |
+| Modos de proteção | 0 | 3 (normal, worker, lockdown) |
+| Secrets mascarados no home | 0 | 15+ (.env, *.pem, secrets/) |
+| Playbooks de IR | 0 | 5 |
+| Falsos positivos (comandos quebrados pelo jail) | — | 0 até agora |
+
+## 🎯 Aprendizados
+
+- **Segurança não é feature, é camada** — não adianta colocar no final. O ai-jail foi configurado antes de qualquer worker em produção.
+- **O hook automático foi o que salvou** — se dependesse de lembrar de digitar `jail`, metade dos comandos rodava sem proteção.
+- **Sandbox não atrapalha produtividade** — no WSL, o jail adiciona ~1.4s por comando. Aceitável pra não vazar a chave da Stripe.
+
+<Terminal commands={[
+  { cmd: 'jail --dry-run python3 script.py', description: 'Mostra binds antes de executar' },
+  { cmd: 'jail --lockdown alembic upgrade head', description: 'Lockdown mode para operações críticas' },
+  { cmd: 'jail --worker python3 analyze.py', description: 'Worker mode (sem GPU/Docker)' },
+]} />

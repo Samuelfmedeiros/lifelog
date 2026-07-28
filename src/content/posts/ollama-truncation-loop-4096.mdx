@@ -1,0 +1,119 @@
+---
+title: "Ollama Truncation Loop — ou: como 4096 tokens de contexto me fizeram perder 2h de debug"
+description: "O Hermes entrava em loop de continuation 4x seguidas antes de desistir. A causa: o Ollama, por padrão, só aloca 4096 tokens de contexto — independente do modelo suportar 262K. Aprendi na marra que num_ctx do modelo ≠ num_ctx do slot."
+date: 2026-07-28 10:30:00 -03:00
+pubDate: 2026-07-28 10:30:00 -03:00
+project: estudos
+tags: [ollama, llm, debugging, context-length, wsl]
+icon: "📚"
+cover: /covers/ollama-truncation-loop-4096.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O Hermes desistiu de responder 4 vezes seguidas
+
+Eu tinha acabado de configurar o Ollama como fallback local pro Hermes. Modelo qwen3.5:4b — suporta 262.144 tokens de contexto nativamente. Mais que suficiente pro system prompt de ~4K tokens.
+
+Só que o Hermes entrava em loop. Toda resposta era "incompleta", ele tentava continuation, gerava mais 1 token, loop de novo, 4 tentativas, "Processing stopped: Response remained truncated after 4 continuation attempts."
+
+Debug mode ligado. O que estava acontecendo?
+
+## 🧠 O problema: dois números diferentes de contexto
+
+O Ollama tem **dois** valores de `num_ctx`:
+
+1. **O context length do modelo** — o que o GGUF suporta. `ollama show qwen3.5:4b` mostra `context length: 262144`.
+2. **O context length do slot de inferência** — o que o Ollama realmente aloca na RAM. **Default: 4096.**
+
+Eles são **independentes**. O Ollama podia estar rodando um modelo que suporta 256K num slot de 4K — e ele trunca o prompt sem aviso no stdout. Só aparece nos logs internos:
+
+```
+ollama[...]: WARN truncating input prompt  limit=4095  prompt=49379  keep=4  new=4095
+ollama[...]: slot update_slots: n_ctx_slot = 4096, n_tokens = 4095
+ollama[...]: slot print_timing: eval time = 0.00 ms / 1 tokens  ← SÓ 1 TOKEN
+```
+
+O prompt de 49.379 tokens (system prompt do Hermes + histórico) era truncado para 4.095. O modelo recebia um fragmento sem sentido. Gerava 1 token. O Hermes via resposta incompleta e tentava continuation. O novo prompt também era truncado. Loop infinito.
+
+## 🔧 A luta — encontrando a agulha no palheiro
+
+### Tentativa 1: Ler o stdout do Ollama
+
+O `ollama run` não mostra nada. Silêncio total na saída padrão. Os warnings de truncamento vão pro **journald**:
+
+```bash
+journalctl -u ollama --since "10:00" --no-pager | grep -E "(truncat|n_ctx|eval time)"
+```
+
+Foi aí que vi o `n_ctx_slot = 4096`. A peça do quebra-cabeça.
+
+### Tentativa 2: Confirmar via API direta
+
+```bash
+curl -s http://localhost:11434/api/generate -d '{
+  "model": "qwen3.5:4b",
+  "prompt": "teste",
+  "stream": false,
+  "options": {"num_predict": 50}
+}' | python3 -m json.tool
+```
+
+Reproduzi o problema: `eval_count = 1`, `total_duration = 24s`. O modelo passava 24 segundos pensando... pra gerar 1 token.
+
+### Tentativa 3: Criar variante custom
+
+A documentação oficial do Ollama diz que slots usam `num_ctx=2048` por padrão. Na versão que eu tava (0.5.x), são **4096**. Mas a solução é a mesma:
+
+```bash
+ollama create qwen3.5-hermes -f <(echo -e "FROM qwen3.5:4b\nPARAMETER num_ctx 65536")
+```
+
+Depois configurei o Hermes pra usar `qwen3.5-hermes` em vez de `qwen3.5:4b`.
+
+### Opção alternativa: systemd override
+
+Se eu quisesse aplicar globalmente pra todos os modelos:
+
+```ini
+# /etc/systemd/system/ollama.service.d/override.conf
+[Service]
+Environment="OLLAMA_CONTEXT_LENGTH=65536"
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+```
+
+## 💡 Resolução
+
+Duas coisas que aprendi (e documentei na skill `wsl-llm-local-ops`):
+
+1. **Sempre criar variante custom** com `num_ctx` explícito pra qualquer modelo que o Hermes vai usar. O padrão é enganoso.
+2. **Verificar pelo journald**, não pelo stdout do Ollama. Os warnings de truncamento só aparecem lá.
+
+Depois do fix: respostas completas, zero loops de continuation, ~30 tokens/segundo de geração.
+
+## 📊 Métricas
+
+| Métrica | Antes (4K) | Depois (64K) |
+|---------|-----------|-------------|
+| Contexto disponível | 4.096 tokens | 65.536 tokens |
+| Tokens por resposta | 1 (truncado) | ~500+ (completo) |
+| Loops de continuation | 4 por pergunta | 0 |
+| Consumo de RAM | ~2 GB | ~4 GB |
+| Velocidade de geração | 0.04 tok/s (só 1 token) | ~30 tok/s |
+
+## 🎯 Aprendizados
+
+- **`ollama show` mostra o que o modelo suporta, não o que o slot aloca** — dois números completamente diferentes.
+- **Sempre testar via API direta** (`/api/generate`) quando algo parece errado. O CLI do Ollama esconde os warnings.
+- **Documentar o fix imediatamente** — criei a skill `wsl-llm-local-ops` com o passo-a-passo completo no mesmo dia. Nunca mais vou cair nessa.
+- **LLM debugging é 90% log, 10% código.** Se o Hermes tivesse mostrado o warning do Ollama, teria resolvido em 5 minutos. Levou 2h.
+
+<Terminal commands={[
+  { cmd: 'ollama create modelo-hermes -f <(echo -e "FROM modelo\\nPARAMETER num_ctx 65536")', description: 'Cria variante custom com contexto maior' },
+  { cmd: 'journalctl -u ollama --since "10:00" --no-pager | grep -E "(truncat|n_ctx|eval time)"', description: 'Diagnostica truncamento nos logs do Ollama' },
+  { cmd: 'curl -s http://localhost:11434/api/generate -d \'{"model":"modelo","prompt":"teste","stream":false}\' | python3 -m json.tool', description: 'Testa API direta do Ollama' },
+]} />
