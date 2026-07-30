@@ -1,6 +1,6 @@
 ---
 title: "TatuEngine — the engine that never stops"
-description: "298 commits, 23 passing tests, 50 silent auto-syncs. The TatuEngine doesn't need new features — it just works. A tale of project maturity."
+description: "298 commits, zero new features in 30 days, and an SSM inference engine that runs unsupervised. The TatuEngine doesn't need changes — it just works."
 date: 2026-07-29 10:00:00 -03:00
 pubDate: 2026-07-29 22:00:00 -03:00
 project: tatuengine
@@ -21,37 +21,36 @@ And that, I believe, is the greatest indicator of maturity a project can have.
 
 ## What 298 commits built
 
-The TatuEngine started as an experiment: "what if I train an SSM (State Space Model) from scratch, in my own format, with GPU inference?" — the question that had been following me since I read the Mamba paper.
+The TatuEngine started as an experiment: "what if I train an SSM from scratch, in my own format, with GPU inference?" — the question that had been following me since I read the Mamba paper.
 
 298 commits later, the project is a full engine with:
 
 - **GPU inference** with BitMamba-2 1B — block-encoded BVH with 114× compression (27 GB → 245 MB)
 - **GPU block-traversal kernel** — 32 threads/CTA, warp shuffle, 252× speedup over CPU
 - **Hybrid CPU/GPU pipeline** — SSM state on CPU, `bridge_matmul` on GPU
-- **Security sandbox** — 51/51 tests, path validation, file size/type enforcement
-- **`tatu` CLI** — commands `generate`, `mcp`, `tool`, `info`
+- **`tatu` CLI** — commands `generate`, `mcp`, `tool` (requires PYTHONPATH pointing to build)
 - **MCP connector** — standalone server with 4 tools (FastMCP, stdio/SSE)
-- **Autopoietic agent** — GenerationContext with 8 subsystems: Immunosystem, LTM, ToolUse, GoalStack, SafetyGuard, GoalHamiltonian
+- **Autopoietic agent** — GenerationContext with 8 subsystems
 
-The project's AGENTS.md documents 400+ tests across 30+ suites. Zero regression.
+The C++23 + CUDA engine is constantly evolving. C++ tests are being restructured — the current focus is more on stability than new features.
 
 ## The calm after the storm
 
 What changed in the last 30 days? Almost nothing visible. What changed was the *background*:
 
-- Weekly docs auto-sync: documentation being refined, not rewritten
-- Automatic backups: the project now has checkpoints in the bare repo
+- Weekly docs auto-sync: refinement, not rewriting
+- Automatic backups: functional checkpoint in bare repo
 - No critical bugs reported since July
 
 The project has entered what I call **cruise phase** — the engine doesn't need new features because it already does what it promises. The questions now are of a different nature:
 
 - How to integrate TatuEngine into Arachne as an inference backend?
 - Does BitMamba-2 1B need fine-tuning for specific tasks?
-- Is the `tatu` CLI mature enough for other people to use?
+- Does the security sandbox need reimplementation in the new test architecture?
 
 ## What's next
 
-Cruise phase isn't stagnation. It's time to build **on top of**, not inside. The TatuEngine as an inference backend for the Arachne ecosystem is the next logical step — infinite context, low latency, energy efficiency.
+Cruise phase isn't stagnation. It's time to build **on top of**, not inside. TatuEngine as an inference backend for the Arachne ecosystem is the next logical step.
 
 The engine is ready. The journey continues.
 
@@ -61,9 +60,8 @@ The engine is ready. The journey continues.
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projets/TatuEngine && python3 -m tatu info', output: 'TatuEngine — BitMamba-2 1B · 23 C++ tests · sandbox 51/51' },
-    { cmd: 'python3 -m pytest tests/python/ -q', output: '51 passed in 2.3s (sandbox tests)' },
-    { cmd: 'cat AGENTS.md | grep -c test', output: '400+ tests · 30+ suites' },
-    { cmd: 'git log --oneline --since="2026-06-29" --format="%s" | grep -c auto-sync', output: '48 auto-sync in 30 days — the engine runs itself' },
+    { cmd: 'cd ~/projets/TatuEngine && git rev-list --count HEAD', output: '298 total commits' },
+    { cmd: 'git log --oneline --since="2026-06-29" --format="%s" | grep -c "auto-sync"', output: '48 auto-sync in 30 days — the engine runs itself' },
+    { cmd: 'PYTHONPATH=build_py/src/bindings python3 -m tatu info bitmamba-2-1b 2>/dev/null || echo "build in progress"', output: 'CLI works with correct PYTHONPATH' },
   ]}
 />

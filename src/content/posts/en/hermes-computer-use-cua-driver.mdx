@@ -1,10 +1,10 @@
 ---
-title: "The day Hermes learned to use my PC without stealing my cursor"
-description: "Computer use was always unstable — clicks that didn't land, types that lost context, broken permissions. Until cua-driver 0.10 aligned the permission modes and desktop control became real."
+title: "The potential of computer use in Hermes — what July's commits promise"
+description: "In July, 8 commits improved Hermes' computer use: permission modes, desktop control, voice barge-in. The code exists — but on WSL, an X11 server is still needed to actually run it."
 date: 2026-07-30 10:00:00 -03:00
 pubDate: 2026-07-30 22:00:00 -03:00
 project: descobertas
-tags: [hermes, computer-use, cua-driver, desktop-control, voice]
+tags: [hermes, computer-use, cua-driver, wsl, wslg]
 icon: "💡"
 cover: /covers/hermes-computer-use-cua-driver.webp
 featured: false
@@ -13,71 +13,55 @@ lang: en
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-Hermes always had computer use. From the start, one of the most ambitious tools for the agent: controlling the mouse and keyboard like a human would.
+July was a month of cleanup for Hermes. Computer use — the tool that lets the agent control mouse and keyboard — received 8 improvement commits. But there's a catch: on WSL, where the infrastructure runs, it still doesn't fully work.
 
-In practice, it was a gamble. It clicked the wrong spot, the type lost context, the gateway permission broke. It worked sometimes — enough to show potential, not enough to trust.
+## What the commits brought
 
-## Three problems, one system
+Four main changes landed in the Hermes repository:
 
-Hermes' computer use is a three-layer sandwich: the gateway (receives the command), cua-driver (executes on the OS), and the agent (decides what to do). Each layer had its own problem.
+### 1. Permission modes aligned
 
-### 1. Permission modes misaligned
+cua-driver 0.10 introduced `standard`, `explicit`, and `yolo` — restriction levels for clicking, typing, and screen capture. Hermes' gateway used a different session-key format than what the driver expected, so standard mode became "none mode" and the click never happened.
 
-cua-driver 0.10 introduced a permission mode system: `standard`, `explicit`, `yolo` — each with a different restriction level for clicking, typing, screen capture. The problem was that Hermes' gateway used a different session-key namespace, so when the agent said "standard mode", the driver received "none mode" and blocked everything.
-
-```
-Gateway saves session-key as:
-  user:default:session:abc123
-
-cua-driver 0.10 expects:
-  user::session:abc123
-
-They never match → permission denied → click never happens
+```python
+# Gateway saved:  user:default:session:abc123
+# cua-driver 0.10 expected:  user::session:abc123
+# → they never matched → permission denied
 ```
 
-Commit `871404095` fixed it: align the session-key namespace between gateway and driver.
+Commit `871404095` aligned the namespaces. Now when the agent asks for "standard mode", the driver understands "standard mode".
 
-### 2. Desktop control without stealing focus
+### 2. Desktop control in background
 
-This was the most frustrating one. When Hermes clicked something, the mouse focus jumped to the target — I lost what I was doing. Commit `94d1dff50` introduced desktop control routing: the driver now routes input to the right app without bringing the window forward.
-
-```typescript
-// Before: clicking VSCode brought it to the foreground
-computer_use.click({ element: 14 })
-// → VSCode gains focus, your cursor disappears
-
-// After: the click reaches VSCode, but your cursor never moves
-computer_use.click({ element: 14 }, { delivery_mode: 'background' })
-// → VSCode receives the click, you keep working
-```
-
-The secret is `delivery_mode: 'background'` — the input reaches the target process, but the OS doesn't swap focus. It sounds like magic, but it's just using the correct accessibility APIs on Windows/Linux.
+Commit `94d1dff50` added `delivery_mode: 'background'` — the click reaches the target process, but the OS doesn't swap window focus. Hermes clicks on VSCode, and the user's cursor never moves.
 
 ### 3. Full-duplex voice barge-in
 
-This was a bonus that came along: `e0233f8fc` — full-duplex voice barge-in. Before, if Hermes was generating a response and I said "stop", it would finish talking first. Now audio capture is full-duplex: it listens while it speaks.
+Before (`e0233f8fc`), Hermes listened and replied in turns: it spoke, I waited, it stopped, I spoke. Now audio capture is full-duplex — it listens while generating and can be interrupted mid-response.
 
-In practice: "Hermes, open VSCode in the Dogwalk folder" → it starts replying "Sure, I'll open..." → "No wait, the Arachne folder instead" → it interrupts and corrects the path.
+### 4. Windows input routing
 
-It sounds like a detail, but full-duplex changes the feel of a conversation. From turn-taking (each one waits their turn) to natural interruption (like two people talking).
+Commits like `7bc995666` and `50e27abdd` fixed Windows manifest paths in WSL and hid cua-driver subprocess consoles — groundwork that prepared the integration.
 
-## The real gain
+## The problem: WSL has no X11
 
-After these three fixes, computer use went from "works sometimes" to "reliable enough to delegate."
-
-Today I do:
+All these changes are in the code. `hermes computer-use doctor` confirms: cua-driver 0.12.6 is installed, the daemon starts, the UNIX socket is created. But on WSL, there's no X11 server running.
 
 ```
-"Hermes, open the last Playwright report for Dogwalk"
-→ It opens VSCode, navigates to the project, opens the HTML report, takes a screenshot
-→ All in the background — my cursor never moves
-
-"Hermes, click 'Create Pull Request'"
-→ It goes to GitHub, fills the form, submits the PR
-→ I keep coding
+❌ X11 is not reachable; UI inspection and event injection will fail.
+❌ screen capture will fail.
+→ Set DISPLAY (X11)
 ```
 
-Each individual fix seems small. A namespace, a delivery_mode, a full-duplex. Together they turned an experimental tool into something I use every day without thinking.
+WSL does have **WSLg** — a built-in X11 server from Microsoft — but it needs `DISPLAY=:0` in the environment. I configured this in Hermes' `.env`. After a restart, cua-driver can see the screen (1920×1080 confirmed via xwininfo) and use AT-SPI to inspect elements.
+
+## What's needed to make it work
+
+1. A `/restart` on Hermes' gateway to reload `.env` with `DISPLAY=:0`
+2. Confirm the embedded cua-driver (not the manual one) starts with X11 access
+3. Test real capture + background click
+
+The path is paved. The 8 commits are real. Just the restart is missing.
 
 ---
 
@@ -86,7 +70,7 @@ Each individual fix seems small. A namespace, a delivery_mode, a full-duplex. To
 <Terminal
   lines={[
     { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 computer use commits in July' },
-    { cmd: 'hermes computer-use doctor', output: 'cua-driver diagnosis: permission mode, health, version' },
-    { cmd: 'grep -r "delivery_mode" ~/.hermes/', output: 'Background delivery mode — the secret to desktop control' },
+    { cmd: 'cat ~/.hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configured, waiting for restart' },
+    { cmd: 'hermes gateway restart', output: 'Restart needed to enable X11 in cua-driver' },
   ]}
 />
