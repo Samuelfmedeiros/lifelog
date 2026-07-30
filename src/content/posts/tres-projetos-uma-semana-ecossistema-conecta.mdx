@@ -1,0 +1,111 @@
+---
+title: "Três projetos, uma semana — o ecossistema começa a se conectar"
+description: "Push notifications no Capivara, computer use no Hermes, PWA offline, Cloudflare auth migration. Julho foi o mês em que cada projeto ganhou a integração que faltava — e o ecossistema inteiro ficou mais coeso."
+date: 2026-07-30 10:00:00 -03:00
+pubDate: 2026-07-30 22:00:00 -03:00
+project: descobertas
+tags: [pwa, push-notifications, ecossistema, integracao, capivara, hermes, dogwalk]
+icon: "💡"
+cover: /covers/tres-projetos-uma-semana-ecossistema-conecta.webp
+featured: false
+lang: pt
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Construir projetos isolados é fácil. Conectar eles num ecossistema que se reforça — isso é o verdadeiro desafio.
+
+Julho estava acabando e eu tinha 5 projetos em produção, cada um com sua stack, seu deploy, suas credenciais. O Capivara no WSL com PostgreSQL, o Dogwalk no Cloudflare Pages, o Hermes com gateway multi-plataforma, o Arachne com MCP, o Portfólio na Vercel.
+
+Cada um funcionava bem sozinho. Mas juntos? Era um arquipélago — ilhas separadas por credenciais diferentes, ports conflitando, deploys manuais.
+
+Essa semana, três coisas mudaram.
+
+## Capivara vira PWA de verdade
+
+O Capivara sempre foi meu hub pessoal — dashboard financeiro, health checks, telemetria. Mas era um site comum. Abria no browser, funcionava, só.
+
+A primeira grande mudança foi o **PWA offline completo** com push notifications. Service worker registrando cache, manifest com ícones, e notificações push via VAPID keys que disparam direto do backend FastAPI.
+
+```python
+# Capivara — push notification via WebPush
+from pywebpush import webpush, WebPushException
+
+def send_push(subscription: dict, title: str, body: str):
+    payload = json.dumps({
+        "title": title,
+        "body": body,
+        "icon": "/icon-192.png",
+        "badge": "/badge-72.png",
+    })
+    try:
+        webpush(
+            subscription_info=subscription,
+            data=payload,
+            vapid_private_key=VAPID_PRIVATE,
+            vapid_claims={"sub": "mailto:admin@seu.pet"}
+        )
+    except WebPushException as ex:
+        if ex.response and ex.response.status_code == 410:
+            # subscription expirou — remover do banco
+            delete_subscription(subscription)
+```
+
+Com isso, o dashboard do Capivara agora:
+- Notifica quando um health check falha (mesmo com browser fechado)
+- Funciona offline — dados financeiros cacheados pro dia
+- Exporta CSV com um clique (dashboard financeiro → planilha)
+
+A migração de `husky` pra `lefthook` veio junto — hooks de git que funcionam no WSL sem `PATH` maluco. Parece detalhe, mas todo dev WSL sabe como husky quebra em ambiente Windows.
+
+## Hermes: computer use que não rouba o cursor
+
+O Hermes sempre teve computer use, mas era instável — cliques que não chegavam, tipo que perdia contexto, permissão quebrada no gateway. A atualização pro `cua-driver 0.10` com alinhamento de permission modes resolveu:
+
+- **Desktop control** roteia entrada pro app certo sem roubar foco
+- **Full-duplex voice barge-in** — posso interromper o Hermes enquanto ele gera resposta
+- **Cron scrub** — todas as chamadas GitHub auth foram corrigidas pra não vazar tokens em logs
+
+O ganho real? Posso delegar tarefas de UI pro Hermes em background enquanto continuo trabalhando. Ele abre VSCode, clica, digita — e meu cursor nunca sai do lugar.
+
+## Dogwalk: Cloudflare auth unificado
+
+O Dogwalk tinha um problema chato: usava `CLOUDFLARE_API_KEY` em alguns scripts e `CLOUDFLARE_API_TOKEN` em outros. Quando um expirava, o deploy quebrava silenciosamente.
+
+A migração foi simples no código, trabalhosa no rastreamento:
+
+```bash
+# Antes: 3 formas diferentes de autenticar Cloudflare
+# 1. Script antigo: API_KEY via header X-Auth-Key
+# 2. Deploy novo: API_TOKEN via header Authorization: Bearer
+# 3. Wrangler: ~/.wrangler/config/default.toml
+
+# Depois: UMA forma — API_TOKEN em todo lugar
+# E CLOUDFLARE_EMAIL só onde a API_KEY ainda é obrigatória
+```
+
+Foram 7 commits só de limpeza de auth. Mas desde então, zero falha de deploy por credencial.
+
+## O que ficou
+
+O ecossistema não está \"pronto\" — nunca vai estar. Mas as ilhas começaram a virar pontes:
+
+1. **Capivara** → notifica push quando servidor cai
+2. **Hermes** → computer use confiável pra gerenciar tudo
+3. **Dogwalk** → deploy sem credencial quebrada
+4. **Arachne** → MCP connectors integrados
+5. **Portfólio** → CI/CD com health check automático
+
+Cada peça ainda funciona sozinha. Mas juntas, elas começam a se parecer com um sistema.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/Capivara && git log --oneline --since="2026-07-14" --format="%s" | head -5', output: 'feat: PWA + push + export CSV + uptime chart' },
+    { cmd: 'cd ~/projetos/Dogwalk && git log --oneline --since="2026-07-14" --format="%s" | grep fix | head -3', output: 'fix: Cloudflare auth migration + health endpoint' },
+    { cmd: 'curl -s https://capivara.seu.pet/health/all | python3 -m json.tool', output: 'Capivara health: all green' },
+  ]}
+/>
