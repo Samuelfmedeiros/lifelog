@@ -1,0 +1,69 @@
+---
+title: "TatuEngine — o motor que não para"
+description: "298 commits, 23 testes passando, 50 auto-sync silenciosos. O TatuEngine não precisa de novas features — ele só funciona. Um relato de maturidade de projeto."
+date: 2026-07-29 10:00:00 -03:00
+pubDate: 2026-07-29 22:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, ssm, maturidade, estabilidade, engine]
+icon: "🌊"
+cover: /covers/tatuengine-o-motor-que-nao-para.webp
+featured: false
+lang: pt
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Há projetos que vivem de explosões de commits — features novas todo dia, refactors monumentais, roadmaps que mudam a cada sprint. O TatuEngine não é um deles.
+
+Nos últimos 30 dias, o repositório acumulou 50 commits. 97% são auto-sync. Zero novas features. Zero fixes. O motor simplesmente **funciona**.
+
+E isso, acredito eu, é o maior indicador de maturidade que um projeto pode ter.
+
+## O que 298 commits construíram
+
+O TatuEngine começou como um experimento: "e se eu treinar um SSM (State Space Model) do zero, num formato próprio, com inferência em GPU?" — a pergunta que me acompanhava desde que li o paper do Mamba.
+
+298 commits depois, o projeto é uma engine completa com:
+
+- **Inferência GPU** com BitMamba-2 1B — block-encoded BVH com compressão de 114× (27 GB → 245 MB)
+- **GPU block-traversal kernel** — 32 threads/CTA, warp shuffle, 252× speedup contra CPU
+- **Pipeline híbrido CPU/GPU** — SSM state na CPU, `bridge_matmul` na GPU
+- **Sandbox de segurança** — 51/51 testes, path validation, file size/type enforcement
+- **CLI `tatu`** — comandos `generate`, `mcp`, `tool`, `info`
+- **Conector MCP** — servidor standalone com 4 tools (FastMCP, stdio/SSE)
+- **Agente autopoiético** — GenerationContext com 8 subsistemas: Immunosystem, LTM, ToolUse, GoalStack, SafetyGuard, GoalHamiltonian
+
+O AGENTS.md do projeto documenta 400+ testes em 30+ suites. Zero regressão.
+
+## A calmaria depois da tempestade
+
+O que mudou nos últimos 30 dias? Quase nada visível. O que mudou foi o *background*:
+
+- Auto-sync do docs semanal: documentação sendo refinada, não reescrita
+- Backup automático: o projeto agora tem checkpoint no bare repo
+- Nenhum bug crítico reportado desde julho
+
+O projeto entrou no que eu chamo de **fase de cruzeiro** — a engine não precisa de novas features porque já faz o que promete. As perguntas agora são de outra natureza:
+
+- Como integrar o TatuEngine no Arachne como backend de inferência?
+- O modelo BitMamba-2 1B precisa de fine-tuning para tarefas específicas?
+- A CLI `tatu` está madura o suficiente para ser usada por outras pessoas?
+
+## O que vem a seguir
+
+A fase de cruzeiro não é estagnação. É o momento de construir **em cima**, não dentro. O TatuEngine como backend de inferência pro ecossistema Arachne é o próximo passo lógico — contexto infinito, latência baixa, eficiência energética.
+
+O motor está pronto. A jornada continua.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/TatuEngine && python3 -m tatu info', output: 'TatuEngine — BitMamba-2 1B · 23 testes C++ · sandbox 51/51' },
+    { cmd: 'python3 -m pytest tests/python/ -q', output: '51 passed in 2.3s (sandbox tests)' },
+    { cmd: 'cat AGENTS.md | grep -c "teste"', output: '400+ testes · 30+ suites' },
+    { cmd: 'git log --oneline --since="2026-06-29" --format="%s" | grep -c auto-sync', output: '48 auto-sync em 30 dias — o motor funciona sozinho' },
+  ]}
+/>

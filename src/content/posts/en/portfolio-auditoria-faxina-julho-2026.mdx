@@ -1,0 +1,114 @@
+---
+title: "Portfolio — the July audit that turned into spring cleaning"
+description: "July 2026 was the month my portfolio stopped getting new features and started fixing the ones it already had. A deep audit revealed 10 problems — from Pix to focus trap — and by the end, deployment was more automated than ever."
+date: 2026-07-28 10:00:00 -03:00
+pubDate: 2026-07-28 22:00:00 -03:00
+project: portfolio
+tags: [audit, pix, focus-trap, cicd, vercel, quality]
+icon: "🚀"
+cover: /covers/portfolio-auditoria-faxina-julho-2026.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+The last post ended with a promise: "in July, the portfolio would get Stripe + Mercado Pago integration". Such is a dev's life — what I planned got pushed to August, and July became the month of spring cleaning.
+
+## The Pix that wouldn't go through
+
+It all started with a silent bug. The Pix donation button generated a BR Code, but banks rejected it. The EMV 2022 payload simply wouldn't validate.
+
+After hours of debugging, I found the culprit: `String.fromCharCode`. I was using it to convert field *lengths* into characters — exactly what the EMV spec asks for, right? Wrong. `String.fromCharCode` produces **Unicode codepoints**, not decimal digits. A length of 14 became `\x0E` (shift out), not `"14"`.
+
+```typescript
+// ❌ BEFORE — String.fromCharCode produces control codepoints
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+const maiLen = String.fromCharCode(mai.length);
+
+// ✅ AFTER — decimal digits with padding, as EMV spec actually expects
+const keyLen = String(key.length).padStart(2, "0");
+const keyField = `01${keyLen}${key}`;
+const maiLen = String(mai.length).padStart(2, "0");
+```
+
+There was also a `slice(0, -4)` that removed the `6304` CRC placeholder — except `6304` **is the actual CRC seed**, not a placeholder. Removed the slice, and CRC started computing over the full payload.
+
+Two broken components (`SupportButton.tsx` and `PixDonate.tsx`), a 26-line fix, several hours lost. But Pix finally worked.
+
+## Focus trap: the UX nightmare
+
+The CV download modal had a subtle problem: every time you typed in any field, focus jumped back to the button that opened the modal. Each keystroke — *click* — back to the trigger.
+
+The root cause was in `useFocusTrap`. `onClose` was in the `useEffect` dependency array, and since it was an arrow function recreated every render, the effect would run cleanup (stealing focus back to the trigger) and setup (focusing the first element) on **every typed character**.
+
+```typescript
+// ❌ BEFORE — onClose in deps recreates the effect on every render
+useEffect(() => {
+  // setup: focus first element
+  // cleanup: steal focus back to trigger
+  return () => { triggerRef.current?.focus(); };
+}, [active, onClose, containerRef]);
+
+// ✅ AFTER — ref avoids stale closure without recreating the effect
+const onCloseRef = useRef(onClose);
+onCloseRef.current = onClose;
+
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onCloseRef.current();
+    }
+  };
+  // ...
+}, [active, containerRef]); // onClose intentionally removed
+```
+
+The `useRef` pattern for callbacks is something I knew but that slipped through in the rush to deliver the redesign. A reminder: **every function passed as a prop to an effect hook deserves a ref**.
+
+## The audit that became spring cleaning
+
+On July 21st, I sat down for a quality audit. The result was a list of 10 issues:
+
+1. **CV download**: used `fs.appendFileSync` — breaks on Vercel (serverless = no persistent filesystem). Migrated to Capivara API.
+2. **Terminal**: `commandHistoryRef` with no growth limit — 100 entries max. Tracking fixed (`external_link` → `terminal_command`).
+3. **Analytics**: `window.umami` typed as `any` — cleaned up with proper type augmentation.
+4. **ErrorBoundary**: silent errors → now reports via `/api/contact-notify`.
+5. **ContactForm**: clipboard with `execCommand` fallback for HTTPS. Rate limit with visible countdown.
+6. **AppWrapper**: dead code — only rendered `children`. Removed.
+7. **Layout**: placeholder verification tags removed.
+8. **Navbar**: empty games icon → 🎮.
+9. **Loading skeleton**: improved visual consistency.
+10. **Pix**: the bug that started it all.
+
+Build: 0 errors, 0 warnings. Tests: 218 pass.
+
+## Auto-deploy: the real win
+
+Mid-spring cleaning, one feature that actually shipped: automatic CI deployment. The `deploy.yml` workflow had existed since July 12th, but it was missing health checks and rollback.
+
+Today's pipeline:
+1. Push to master
+2. GitHub Actions installs pnpm, builds, tests
+3. Deploy to Vercel
+4. Automatic health check (verifies homepage + 404 + assets)
+5. If health check fails → rollback to last stable deploy
+
+29,241 lines of `package-lock.json` swept from the repository (project uses pnpm, not npm). The repo shrank, and CI started running in seconds.
+
+## What I learned
+
+July was the month of "done is better than perfect, but done requires maintenance." Stripe + Mercado Pago are still on the list — but the portfolio is more solid than ever. 218 tests, 0 build errors, automatic deployment, and a Pix that finally works.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projets/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
+    { cmd: 'npm test', output: 'Tests: 218 PASS, 0 FAIL' },
+    { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'The hook that taught useRef + useEffect' },
+    { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'July in 10 commits — pure spring cleaning' },
+  ]}
+/>
