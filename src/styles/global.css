@@ -15,15 +15,10 @@
 html {
   scroll-behavior: smooth;
 }
-
 /* ========================================
-   View Transitions API — Wipe horizontal (ambos temas visíveis)
+   View Transitions API — Circular reveal
    ======================================== */
-/* old(root) fica estático — sem crossfade. O tema antigo permanece
-   visível enquanto o novo é revelado via wipe horizontal.
-   new(root) ganha clip-path inset() animado via WAAPI no toggleTheme. */
 ::view-transition-old(root) {
-  animation: none !important;
   mix-blend-mode: normal !important;
 }
 ::view-transition-new(root) {
@@ -304,7 +299,7 @@ body {
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 500;
-  background: var(--color-accent-soft);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-accent);
   border: 1px solid transparent;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -312,7 +307,7 @@ body {
 }
 
 .tag:hover {
-  background: var(--color-accent-soft);
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
   border-color: var(--color-accent);
   transform: scale(1.05);
   box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 25%, transparent);

@@ -266,18 +266,13 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       const t = document.startViewTransition(() => setTheme(next))
       animating = true
       t.ready.then(() => {
-        // Wipe horizontal — cortina abre do ponto do clique
-        // inset(top, right, bottom, left). Começa como fenda no clique,
-        // termina totalmente aberta. old(root) fica estático (animation:none)
-        // então o tema antigo é visível atrás enquanto o novo é revelado.
-        const clipLeft = Math.min(x, innerWidth)  // borda esquerda da fenda
-        const clipRight = Math.min(innerWidth - x, innerWidth) // borda direita
+        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
         document.documentElement.animate(
           { clipPath: [
-            `inset(0 ${clipRight}px 0 ${clipLeft}px)`,
-            `inset(0 0 0 0)`
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${r}px at ${x}px ${y}px)`
           ]},
-          { duration: 700, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', pseudoElement: '::view-transition-new(root)' },
+          { duration: 600, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', pseudoElement: '::view-transition-new(root)' },
         )
       })
       t.finished.catch(() => setTheme(next)).finally(() => { animating = false })
