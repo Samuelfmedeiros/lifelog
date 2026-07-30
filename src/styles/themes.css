@@ -254,7 +254,6 @@ html[data-theme="light"] .filter-bar.filter-bar {
    ☀️ Tags
    ======================================== */
 [data-theme="light"] .tag {
-  background: var(--color-accent-soft);
   color: var(--color-accent);
 }
 
