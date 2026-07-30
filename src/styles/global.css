@@ -17,11 +17,15 @@ html {
 }
 /* ========================================
    View Transitions API — Circular reveal
+   Duração da crossfade padrão casada com o WAAPI (600ms)
+   pra evitar "trava" no meio da animação
    ======================================== */
 ::view-transition-old(root) {
   mix-blend-mode: normal !important;
 }
 ::view-transition-new(root) {
+  animation-duration: 600ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   mix-blend-mode: normal !important;
 }
 
