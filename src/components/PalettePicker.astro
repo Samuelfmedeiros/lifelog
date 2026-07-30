@@ -272,7 +272,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
             `circle(0px at ${x}px ${y}px)`,
             `circle(${r}px at ${x}px ${y}px)`
           ]},
-          { duration: 600, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', pseudoElement: '::view-transition-new(root)' },
+          { duration: 600, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', pseudoElement: '::view-transition-new(root)' },
         )
       })
       t.finished.catch(() => setTheme(next)).finally(() => { animating = false })
@@ -288,7 +288,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
         'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
         'clip-path:circle(0px at ' + fx + 'px ' + fy + 'px);' +
         'background:' + (next === 'light' ? '#f7f6f3' : '#0a0a0f') + ';' +
-        'transition:clip-path 0.5s cubic-bezier(0.34,1.56,0.64,1)'
+        'transition:clip-path 0.5s cubic-bezier(0.16,1,0.3,1)'
       document.body.appendChild(overlay)
       overlay.offsetHeight // force layout
       const endR = Math.hypot(
