@@ -1,0 +1,121 @@
+---
+title: "The QR Code That Didn't Pay — String.fromCharCode, Control Codepoints, and an Invisible Pix"
+description: "I added Pix to my portfolio with BR Code generation. Only the QR Code didn't work in any banking app. The culprit: String.fromCharCode generating control characters instead of decimal digits in EMV 2022 length fields."
+date: 2026-07-28 10:00:00 -03:00
+pubDate: 2026-07-28 10:00:00 -03:00
+project: portfolio
+tags: [javascript, debugging, pix, payments, encoding]
+icon: "💳"
+cover: /covers/pix-br-code-stringfromcharcode.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The QR Code Everyone Ignored
+
+I added Pix support to my portfolio. Donation button, BR Code generation, pretty QR Code on screen. Only one problem: **no banking app recognized the code.**
+
+Mercado Pago and Stripe worked fine. But the Pix BR Code — which was supposed to be the simplest — simply didn't exist for banking apps. The QR Code rendered, the scan worked, but the payload was rejected as "invalid" with zero error messages.
+
+I started to suspect it wasn't the QR Code itself, but the bytes being generated.
+
+## 🧠 The EMV 2022 Format
+
+The BR Code (Pix) follows the **EMV® Merchant-Presented QR** standard — a binary specification defining how payment data is encoded. Each field has a structure:
+
+```
+[Tag: 2 digits] + [Length: 2 digits] + [Value]
+```
+
+Example for a Pix key (email):
+```
+01 — "Pix key" tag
+12 — length (12 characters)
+user@email.com — the value
+```
+
+The field length is a **zero-padded decimal number**. If the value is 12 characters, the length field should be `"12"`, not the byte `0x0C`.
+
+And there's the first mistake.
+
+## 🔧 The Struggle — String.fromCharCode is Not toString()
+
+The original code used:
+
+```javascript
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+```
+
+`String.fromCharCode(12)` doesn't return `"12"` — it returns the Unicode character whose **codepoint** is 12, which is **`\x0C` (Form Feed)**. An invisible control character.
+
+EMV 2022 expects **decimal digits**. `"12"` (two bytes: 0x31, 0x32), not `"\x0C"` (one byte: 0x0C).
+
+The same error repeated across **4 fields**: Pix key, Merchant Account Information, merchant name, and city. All used `String.fromCharCode(length)` to generate the length field.
+
+```javascript
+// Before (WRONG):
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+const maiLen = String.fromCharCode(mai.length);
+const nameField = `59${String.fromCharCode(trimmedName.length)}${trimmedName}`;
+const cityField = `60${String.fromCharCode(trimmedCity.length)}${trimmedCity}`;
+
+// After (CORRECT):
+const keyLen = String(key.length).padStart(2, "0");
+const keyField = `01${keyLen}${key}`;
+const maiLen = String(mai.length).padStart(2, "0");
+const nameLen = String(trimmedName.length).padStart(2, "0");
+const nameField = `59${nameLen}${trimmedName}`;
+const cityLen = String(trimmedCity.length).padStart(2, "0");
+const cityField = `60${cityLen}${trimmedCity}`;
+```
+
+The fix is trivial in hindsight: `String(n).padStart(2, "0")` instead of `String.fromCharCode(n)`. But it's the kind of error that **the eye doesn't catch in code review** — the code looks right, the logic seems right, but the encoding is fundamentally broken.
+
+### The Second Bug: slice(0, -4)
+
+There was a second, subtler problem:
+
+```javascript
+const crc = crc16(payload);
+return payload.slice(0, -4) + crc;  // WRONG
+```
+
+The Pix CRC16 is calculated **including** the `"6304"` placeholder in the payload. The spec says the CRC replaces the placeholder — but that means the placeholder stays in the original payload, the CRC is calculated over it, and **the result replaces the last 4 characters**.
+
+`slice(0, -4)` removed the placeholder before concatenating the CRC. The CRC calculated over the payload **without** the placeholder didn't match what banking apps expected.
+
+```javascript
+const crc = crc16(payload);
+return payload + crc;  // CORRECT — placeholder "6304" is already in the payload
+```
+
+## 💡 Resolution
+
+Two lines that changed everything:
+
+1. `String(key.length).padStart(2, "0")` instead of `String.fromCharCode(key.length)`
+2. `payload + crc` instead of `payload.slice(0, -4) + crc`
+
+After the fix, the BR Code was recognized by **4 different banking apps** on the first try.
+
+## 📊 Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Banking apps that accept | 0/4 | 4/4 |
+| Control characters in payload | 4 | 0 |
+| Pix generator lines | 38 | 40 |
+| Debug time | ~2h | — |
+
+## 🎯 Lessons Learned
+
+- **`String.fromCharCode` is not `Number.toString`** — one generates Unicode codepoints, the other generates decimal digits. Seems obvious, but when you're coding a binary payload, your mind goes to the wrong place.
+- **Always test with real data** — the QR Code rendered beautifully in the browser, but only a real banking app revealed the problem.
+- **Read the spec twice** — the `slice(0, -4)` error came from not fully understanding how the EMV 2022 CRC works.
+
+<Terminal commands={[
+  { cmd: 'String.fromCharCode(12)', description: 'Returns form feed (0x0C), not "12"' },
+  { cmd: 'String(12).padStart(2, "0")', description: 'Returns "12" — what EMV 2022 expects' },
+  { cmd: '"12".charCodeAt(0) === 0x31', description: 'Decimal digit 1 = byte 0x31' },
+]} />

@@ -1,0 +1,114 @@
+---
+title: "Portfolio — a auditoria que virou faxina de julho"
+description: "Julho de 2026 foi o mês em que o portfólio parou de ganhar features novas e começou a corrigir as que já tinha. Uma auditoria profunda revelou 10 problemas — do Pix ao focus trap — e no fim o deploy ficou mais automático do que nunca."
+date: 2026-07-28 10:00:00 -03:00
+pubDate: 2026-07-28 22:00:00 -03:00
+project: portfolio
+tags: [auditoria, pix, focus-trap, cicd, vercel, quality]
+icon: "🚀"
+cover: /covers/portfolio-auditoria-faxina-julho-2026.webp
+featured: false
+lang: pt
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+O último post terminava com promessa: "em julho, o portfólio ganharia integração com Stripe + Mercado Pago". A vida de dev tem dessas — o que planejei foi empurrado pra agosto, e julho virou o mês da faxina.
+
+## O Pix que não passava
+
+Tudo começou com um bug silencioso. O botão de doação Pix gerava um código BR Code, mas os bancos recusavam. O payload EMV 2022 simplesmente não validava.
+
+Depois de horas debugando, encontrei a causa: `String.fromCharCode`. Eu estava usando esse método para converter o *comprimento* dos campos em caracteres — exatamente o que o spec EMV pede, certo? Errado. `String.fromCharCode` produz **codepoints Unicode**, não dígitos decimais. Um campo de length 14 virava `\x0E` (shift out), não `"14"`.
+
+```typescript
+// ❌ ANTES — String.fromCharCode produz codepoints de controle
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+const maiLen = String.fromCharCode(mai.length);
+
+// ✅ DEPOIS — dígitos decimais com padding, como o spec EMV realmente espera
+const keyLen = String(key.length).padStart(2, "0");
+const keyField = `01${keyLen}${key}`;
+const maiLen = String(mai.length).padStart(2, "0");
+```
+
+Tinha também um `slice(0, -4)` que removia o placeholder `6304` do CRC — só que `6304` **é o CRC inicial**, não um placeholder. Removi o slice e o CRC passou a ser calculado sobre o payload completo.
+
+Dois componentes quebrados (`SupportButton.tsx` e `PixDonate.tsx`), um fix de 26 linhas, várias horas perdidas. Mas o Pix finalmente funcionou.
+
+## Focus trap: o pesadelo de UX
+
+O modal de currículo tinha um problema sutil: ao digitar qualquer campo, o foco voltava pro botão que abriu o modal. Cada tecla — *click* — de volta pro trigger.
+
+A root cause estava no `useFocusTrap`. O `onClose` era passado como dependência do `useEffect`, e como ele era uma arrow function recriada a cada render, o efeito executava cleanup (que roubava o foco) e setup (que focava o primeiro elemento) a **cada caractere digitado**.
+
+```typescript
+// ❌ ANTES — onClose na dep array recria o efeito a cada render
+useEffect(() => {
+  // setup: foca primeiro elemento
+  // cleanup: rouba foco de volta pro trigger
+  return () => { triggerRef.current?.focus(); };
+}, [active, onClose, containerRef]);
+
+// ✅ DEPOIS — ref evita stale closure sem recriar o efeito
+const onCloseRef = useRef(onClose);
+onCloseRef.current = onClose;
+
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onCloseRef.current();
+    }
+  };
+  // ...
+}, [active, containerRef]); // onClose removida intencionalmente
+```
+
+O padrão `useRef` pra callback é algo que eu conhecia, mas que escapou na pressa de entregar o redesign. Serviu de lembrete: **toda função passada como prop pra um hook de efeito merece uma ref**.
+
+## A auditoria que virou faxina
+
+No dia 21 de julho, sentei pra fazer uma auditoria de qualidade. O resultado foi uma lista de 10 problemas:
+
+1. **CV download**: usava `fs.appendFileSync` — quebra no Vercel (serverless = sem filesystem persistente). Migrei pra Capivara API.
+2. **Terminal**: `commandHistoryRef` sem limite de crescimento — 100 entradas máx. Tracking corrigido (`external_link` → `terminal_command`).
+3. **Analytics**: `window.umami` tipado como `any` — type augmentation limpo.
+4. **ErrorBoundary**: erros silenciosos → agora reporta via `/api/contact-notify`.
+5. **ContactForm**: clipboard com fallback `execCommand` pra HTTPS. Rate limit com contagem regressiva visível.
+6. **AppWrapper**: dead code — só renderizava `children`. Removido.
+7. **Layout**: verification tags placeholder removidas.
+8. **Navbar**: ícone games vazio → 🎮.
+9. **Loading skeleton**: visual consistency melhorada.
+10. **Pix**: o bug que começou tudo.
+
+Build: 0 errors, 0 warnings. Testes: 218 pass.
+
+## Deploy automático: o verdadeiro ganho
+
+No meio da faxina, uma feature que realmente ficou pronta: o deploy automático via CI. Desde 12 de julho o workflow `deploy.yml` já existia, mas faltava o health check e rollback.
+
+O pipeline hoje:
+1. Push na master
+2. GitHub Actions instala pnpm, builda, testa
+3. Deploy na Vercel
+4. Health check automático (verifica homepage + 404 + assets)
+5. Se health check falhar → rollback pro último deploy estável
+
+Foram 29.241 linhas de `package-lock.json` varridas do repositório (projeto usa pnpm, não npm). O repositório encolheu de tamanho, e o CI passou a rodar em segundos.
+
+## O que aprendi
+
+Julho foi o mês do "feito é melhor que perfeito, mas feito exige manutenção". O Stripe + Mercado Pago continuam na lista — mas o portfólio está mais sólido do que nunca. 218 testes, 0 erros de build, deploy automático, e um Pix que finalmente funciona.
+
+---
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cd ~/projetos/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
+    { cmd: 'npm test', output: 'Testes: 218 PASS, 0 FAIL' },
+    { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'O hook que virou lição de useRef + useEffect' },
+    { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'Julho em 10 commits — faxina pura' },
+  ]}
+/>
