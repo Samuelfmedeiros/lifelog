@@ -1,0 +1,117 @@
+---
+title: "The Quality Week — 10 fixes my portfolio deserved"
+description: "Broken Pix BR Code, focus trap stealing keyboard input, scroll jumping sections — a deep audit fixed everything at once."
+date: 2026-07-28 19:00:00 -03:00
+pubDate: 2026-07-29 06:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "quality", "debug", "pix", "refactor"]
+icon: "🚀"
+cover: /covers/2026-07-28-semana-da-qualidade-portfolio.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The calm after the rebuild
+
+The portfolio v3 was live. Vue 3.5 + Vite 8, build in 12 seconds, 122 tests passing, everything beautiful. But two weeks later, I started noticing: small things weren't working.
+
+Pix wasn't generating valid codes. The CV modal wouldn't let me type. Smooth scroll was skipping sections. Nothing critical alone, but together it felt like the site was neglected.
+
+I could fix each one separately. But I chose differently: **one deep audit, all at once**.
+
+## What was broken
+
+### Pix BR Code — `String.fromCharCode` is the villain
+
+The Pix BR Code is a text payload with TLV (Tag-Length-Value) fields. The length of each field **is not a Unicode character** — it's a decimal number with zero padding.
+
+```typescript
+// Before (broken):
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+// String.fromCharCode(10) = '\n' (line feed), not '10'
+
+// After (fixed):
+const keyLen = String(key.length).padStart(2, "0");
+const keyField = `01${keyLen}${key}`;
+```
+
+`String.fromCharCode` converts the number to a Unicode codepoint. `key.length` being 10 turns into `\n` (line feed) instead of `"10"`. The payload arrived at the bank with invalid length fields — Pix silently rejected.
+
+The same bug appeared in **4 fields** (Pix key, Merchant Name, Merchant City, and the CRC that used `slice(0, -4)` instead of concatenating). Commit `977eaf6` fixed them all.
+
+### Focus trap stealing the keyboard
+
+The CV modal has a form. When trying to type, the project modal's focus trap conflicted — one modal's `onMouseDown` intercepted the other's, and focus jumped back to background.
+
+```bash
+git show 83efb93  # fix: focus trap stealing focus while typing
+git show 0d7c218  # fix: remove duplicate Escape handlers
+```
+
+### Smooth scroll race condition
+
+Clicking a nav link triggered animation before the hash updated. If you clicked two links fast, the first scroll never finished and the second started from a halfway point.
+
+```bash
+git show 3b31bc4  # navigationRef pauses observer during smooth-scroll
+git show 8782a3d  # handleNavClick sets activeSection on click
+```
+
+### +6 more in one day
+
+Commit `713a556` (`refactor: deep audit — 10 quality fixes`) consolidated:
+
+- CV download: `fs.appendFileSync` failed on Vercel → migrated to Capivara API
+- Terminal: history with cap + fixed tracking (`external_link` → `terminal_command`)
+- Analytics: `window.umami` with `as any` → clean type augmentation
+- ErrorBoundary: now reports errors via `/api/contact-notify`
+- ContactForm: clipboard with `execCommand` fallback for HTTPS/localhost
+- Rate limit with countdown + disabled button
+- CV modal success state uses `var(--success)` instead of hardcoded `text-emerald-400`
+- Download icon added to CV modal header
+
+## The commit message that documents everything
+
+The `713a556` commit message is intentionally long — each fix has the _what_ and the _why_. Future debugging thanks me.
+
+```
+refactor: deep audit — 10 quality fixes
+
+1. CV download: replaces fs.appendFileSync with Capivara API
+2. Terminal: history + commandHistoryRef with cap (100/50)
+3. Terminal: fixed tracking type
+4. AnalyticsTracker: type augmentation, remove as any
+5. ErrorBoundary: reports errors via /api/contact-notify
+6. ErrorBoundary: reset reloads the page
+7. ContactForm: clipboard with execCommand fallback
+8. ContactForm: rate limit with countdown
+9. CV modal success state uses var(--success)
+10. Download icon in CV modal header
+```
+
+## Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Valid Pix BR Code | ❌ No | ✅ Yes |
+| Focus trap modals | Conflicting | Isolated |
+| E2E link audit | Expected 200 on 404 | ✅ Correct 404 |
+| Lint + type errors | 7 warnings | 0 |
+| CI health check | Manual | Automatic |
+
+## What I learned
+
+1. **`String.fromCharCode` ≠ `String(n).padStart(2, '0')`** — obvious in hindsight, but cost a rejected Pix to discover.
+2. **Focus trap in React with multiple modals** needs a single controller, not one hook per modal.
+3. **Consolidated audit > one-off fixes** — solved 10 problems in 1 commit instead of 10 separate PRs. Less noise, more context.
+4. **E2E link tests don't test Pix code** — no test caught the bug because the payload was valid in format, invalid in content. I need a schema validator.
+
+<Terminal
+  lines={[
+    { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 files, 26 insertions' },
+    { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total fixes post-audit' },
+    { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Deploy health check' },
+    { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Tests passing after fixes' },
+  ]}
+/>

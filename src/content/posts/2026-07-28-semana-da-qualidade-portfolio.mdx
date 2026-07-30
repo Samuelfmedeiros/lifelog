@@ -1,0 +1,120 @@
+---
+title: "A Semana da Qualidade — 10 correções que o portfólio merecia"
+description: "Pix BR Code quebrado, focus trap roubando o teclado, scroll que pulava seção — uma auditoria profunda resolveu tudo de uma vez."
+date: 2026-07-28 19:00:00 -03:00
+pubDate: 2026-07-29 06:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "qualidade", "debug", "pix", "refactor"]
+icon: "🚀"
+cover: /covers/2026-07-28-semana-da-qualidade-portfolio.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A calmaria depois do rebuild
+
+O portfólio v3 tava no ar. Vue 3.5 + Vite 8, build em 12 segundos, 122 testes passando, tudo lindo. Mas duas semanas depois, comecei a notar: coisas pequenas não funcionavam.
+
+O Pix não gerava código válido. O modal de currículo não deixava digitar. O scroll suave pulava seção. Nada crítico isoladamente, mas juntos pareciam que o site tava desleixado.
+
+Eu podia corrigir cada um separado. Mas decidi fazer diferente: **uma auditoria profunda, de uma vez**.
+
+## O que estava quebrado
+
+### Pix BR Code — `String.fromCharCode` é a vilã
+
+O Pix BR Code é um payload de texto com campos TLV (Tag-Length-Value). O length de cada campo **não é um caractere Unicode** — é um número decimal com padding zero.
+
+```typescript
+// Antes (quebrado):
+const keyField = `01${String.fromCharCode(key.length)}${key}`;
+// String.fromCharCode(10) = '\n' (line feed), não '10'
+
+// Depois (correto):
+const keyLen = String(key.length).padStart(2, "0");
+const keyField = `01${keyLen}${key}`;
+```
+
+`String.fromCharCode` converte o número em codepoint Unicode. `key.length` sendo 10 vira `\n` (line feed) em vez de `"10"`. O payload chegava no banco com campos de tamanho inválido — Pix rejeitado silenciosamente.
+
+O mesmo bug aparecia em **4 campos** (chave Pix, Merchant Name, Merchant City, e o CRC que usava `slice(0, -4)` em vez de concatenar o CRC no final). O commit `977eaf6` corrigiu todos.
+
+### Focus trap roubando o teclado
+
+O modal de CV tem um formulário. Quando tentava digitar, o focus trap do modal de projeto entrava em conflito — o `onMouseDown` de um modal interceptava o `onMouseDown` do outro, e o foco voltava pro background.
+
+```typescript
+// Raiz: dois handlers Escape competindo
+// ProjectModal e TimelineModal tinham listeners duplicados
+git show 83efb93  # fix: focus trap roubando foco ao digitar
+git show 0d7c218  # fix: remove duplicate Escape handlers
+```
+
+### Smooth scroll com race condition
+
+Clicar num link de navegação disparava animação antes do hash atualizar. Se clicasse rápido em dois links, o primeiro scroll nunca terminava e o segundo começava de um ponto intermediário.
+
+```typescript
+// Fix: pausar observer durante animação
+git show 3b31bc4  # navigationRef pausa observer durante smooth-scroll
+git show 8782a3d  # handleNavClick seta activeSection no click
+```
+
+### +6 problemas no mesmo dia
+
+O commit `refactor: auditoria profunda — 10 correções de qualidade` (`713a556`) consolidou:
+
+- CV download: `fs.appendFileSync` falhava no Vercel → migrado pra Capivara API
+- Terminal: history com cap e tracking corrigido (`external_link` → `terminal_command`)
+- Analytics: `window.umami` com `as any` → type augmentation limpo
+- ErrorBoundary: agora reporta erros via `/api/contact-notify`
+- ContactForm: clipboard com fallback `execCommand` pra HTTPS/localhost
+- Rate limit com contagem regressiva + botão desabilitado
+- Modal CV: success state usa `var(--success)` em vez de `text-emerald-400` fixo
+- Ícone Download adicionado no header do modal CV
+
+## O commit que documenta tudo
+
+A mensagem do commit `713a556` é longa de propósito — cada correção tem o _o quê_ e o _por quê_. Debugging futuro agradece.
+
+```
+refactor: auditoria profunda — 10 correções de qualidade
+
+1. CV download: substitui fs.appendFileSync pela Capivara API
+2. Terminal: history + commandHistoryRef com cap (100/50)
+3. Terminal: tracking tipo corrigido
+4. AnalyticsTracker: type augmentation, remove as any
+5. ErrorBoundary: reporta erros via /api/contact-notify
+6. ErrorBoundary: reset recarrega a página
+7. ContactForm: clipboard com fallback execCommand
+8. ContactForm: rate limit com contagem regressiva
+9. Modal CV: success state usa var(--success)
+10. Ícone Download no header do modal CV
+```
+
+## Métricas
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| Pix BR Code válido | ❌ Não | ✅ Sim |
+| Focus trap modais | Conflito | Isolado |
+| E2E links-audit | Esperava 200 em 404 | ✅ 404 correto |
+| Lint + type errors | 7 warnings | 0 |
+| CI health check | Manual | Automático |
+
+## O que aprendi
+
+1. **`String.fromCharCode` não é `String(n).padStart(2, '0')`** — parecia óbvio depois, mas custou um Pix rejeitado pra descobrir.
+2. **Focus trap em React com múltiplos modais** precisa de um único controller, não um hook por modal.
+3. **Auditoria consolidada > correções pontuais** — resolvi 10 problemas em 1 commit em vez de 10 PRs separados. Menos ruído, mais contexto.
+4. **Teste E2E de link não testa código Pix** — nenhum teste pegou o bug porque o payload era válido em formato, inválido em conteúdo. Preciso de um validador de schema.
+
+<Terminal
+  lines={[
+    { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 arquivos, 26 inserções' },
+    { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
+    { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Health check do deploy' },
+    { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Testes passando após correções' },
+  ]}
+/>
