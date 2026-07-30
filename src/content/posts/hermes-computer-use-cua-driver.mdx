@@ -1,10 +1,10 @@
 ---
-title: "O dia que o Hermes aprendeu a mexer no PC sem roubar meu cursor"
-description: "Computer use sempre foi instável — cliques que não chegavam, tipo que perdia contexto, permissão quebrada. Até o cua-driver 0.10 alinhar os permission modes e o desktop control virar realidade."
+title: "O potencial do computer use no Hermes — o que os commits de julho prometem"
+description: "Em julho, 8 commits melhoraram o computer use do Hermes: permission modes, desktop control, voice barge-in. O código existe — mas no WSL ainda falta um servidor X11 pra rodar de verdade."
 date: 2026-07-30 10:00:00 -03:00
 pubDate: 2026-07-30 22:00:00 -03:00
 project: descobertas
-tags: [hermes, computer-use, cua-driver, desktop-control, voice]
+tags: [hermes, computer-use, cua-driver, wsl, wslg]
 icon: "💡"
 cover: /covers/hermes-computer-use-cua-driver.webp
 featured: false
@@ -13,71 +13,55 @@ lang: pt
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-O Hermes sempre teve computer use. Desde o começo, uma das ferramentas mais ambiciosas do agente: controlar o mouse e teclado do computador como um humano faria.
+Julho foi um mês de arrumação no Hermes. O computer use — ferramenta que permite ao agente controlar mouse e teclado — recebeu 8 commits de melhoria. Mas tem um porém: no WSL, onde a infraestrutura roda, isso ainda não funciona de verdade.
 
-Na prática, era uma aposta. Clicava no lugar errado, o tipo perdia contexto, a permissão do gateway quebrava. Funcionava às vezes — o suficiente pra mostrar potencial, não o suficiente pra confiar.
+## O que os commits trouxeram
 
-## Três problemas, um sistema
+Foram 4 mudanças principais no repositório do Hermes:
 
-O computer use do Hermes é um sanduíche de três camadas: o gateway (que recebe o comando), o cua-driver (que executa no SO), e o agente (que decide o que fazer). Cada camada tinha seu próprio problema.
+### 1. Permission modes alinhados
 
-### 1. Permission modes desalinhados
+O cua-driver 0.10 introduziu `standard`, `explicit` e `yolo` — níveis de restrição pra clicar, digitar e capturar tela. O gateway do Hermes usava um formato de session-key diferente do que o driver esperava, então o modo standard virava "modo none" e o clique nunca acontecia.
 
-O cua-driver 0.10 introduziu um sistema de permission modes: `standard`, `explicit`, `yolo` — cada um com um nível diferente de restrição pra clicar, digitar, capturar tela. O problema é que o gateway do Hermes usava um namespace diferente pra session-key, então quando o agente dizia "modo standard", o driver recebia "modo none" e bloqueava tudo.
-
-```
-Gateway salva session-key como:
-  user:default:session:abc123
-
-cua-driver 0.10 espera:
-  user::session:abc123
-
-Nunca batem → permissão negada → clique não acontece
+```python
+# Gateway salvava:  user:default:session:abc123
+# cua-driver 0.10 esperava:  user::session:abc123
+# → nunca batiam → permissão negada
 ```
 
-O commit `871404095` resolveu: alinhar o namespace de session-key entre gateway e driver.
+O commit `871404095` alinhou os namespaces. A partir dali, quando o agente pede "modo standard", o driver entende "modo standard".
 
-### 2. Desktop control sem roubar foco
+### 2. Desktop control em background
 
-Esse era o mais frustrante. Quando o Hermes clicava em algo, o foco do mouse pulava pro alvo — eu perdia o que estava fazendo. O commit `94d1dff50` introduziu o roteamento de desktop control: o driver agora roteia a entrada pro app certo sem trazer a janela pra frente.
+O commit `94d1dff50` adicionou o `delivery_mode: 'background'` — o clique chega no processo alvo, mas o sistema operacional não troca o foco da janela. O Hermes clica no VSCode, e o cursor de quem tá trabalhando nunca sai do lugar.
 
-```typescript
-// Antes: clicar no VSCode trazia ele pro primeiro plano
-computer_use.click({ element: 14 })
-// → VSCode ganha foco, seu cursor desaparece
+### 3. Voice barge-in full-duplex
 
-// Depois: o clique chega no VSCode, mas seu cursor nunca sai do lugar
-computer_use.click({ element: 14 }, { delivery_mode: 'background' })
-// → VSCode recebe o clique, você continua trabalhando
-```
+Antes (`e0233f8fc`), o Hermes escutava e respondia em turnos: ele falava, eu esperava, ele parava, eu falava. Agora a captura de áudio é full-duplex — ele escuta enquanto gera resposta e pode ser interrompido no meio.
 
-O segredo é o `delivery_mode: 'background'` — o input chega no processo alvo, mas o sistema operacional não troca o foco. Parece mágica, mas é só usar as APIs de accessibility corretas do Windows/Linux.
+### 4. Roteamento de input no Windows
 
-### 3. Full-duplex voice barge-in
+Commits como `7bc995666` e `50e27abdd` corrigiram caminhos de manifest no WSL e esconderam os consoles dos subprocessos do cua-driver no Windows — melhorias que prepararam o terreno pra integração.
 
-Esse foi um extra que veio junto: `e0233f8fc` — voice barge-in full-duplex. Antes, se o Hermes estivesse gerando uma resposta e eu falasse "para", ele terminava de falar primeiro. Agora a captura de áudio é full-duplex: ele escuta enquanto fala.
+## O problema: WSL não tem X11
 
-Na prática, isso significa: "Hermes, abre o VSCode na pasta do Dogwalk" → ele começa a responder "Claro, vou abrir..." → "Não, na verdade na pasta do Arachne" → ele interrompe e corrige o caminho.
-
-Parece detalhe, mas full-duplex muda a sensação de conversa. De turn-taking (cada um espera sua vez) pra interrupção natural (como duas pessoas conversando).
-
-## O ganho real
-
-Depois desses três fixes, o computer use passou de "funciona às vezes" pra "confiável o suficiente pra delegar".
-
-Hoje eu faço:
+Todas essas mudanças estão no código. O `hermes computer-use doctor` confirma: o cua-driver 0.12.6 tá instalado, o daemon sobe, o socket UNIX cria. Mas no WSL, não tem servidor X11 rodando.
 
 ```
-"Hermes, abre o Playwright report do último teste do Dogwalk"
-→ Ele abre o VSCode, navega até o projeto, abre o report HTML, tira um screenshot
-→ Tudo em background — meu cursor nunca sai do lugar
-
-"Hermes, clica em 'Create Pull Request'"
-→ Ele vai no GitHub, preenche o formulário, submete o PR
-→ Eu continuo codando
+❌ X11 is not reachable; UI inspection and event injection will fail.
+❌ screen capture will fail.
+→ Set DISPLAY (X11)
 ```
 
-Cada fix individual parece pequeno. Um namespace, um delivery_mode, um full-duplex. Juntos, transformaram uma ferramenta experimental em algo que eu uso todo dia sem pensar.
+O WSL tem **WSLg** — um servidor X11 embutido da Microsoft — mas ele precisa ser ativado com `DISPLAY=:0` no ambiente. Configurei isso no `.env` do Hermes. Depois de um restart, o cua-driver consegue enxergar a tela (1920×1080 confirmado via xwininfo) e usar AT-SPI pra inspecionar elementos.
+
+## O que falta pra funcionar
+
+1. Um `/restart` no gateway do Hermes pra recarregar o `.env` com `DISPLAY=:0`
+2. Confirmar que o cua-driver embutido (não o manual) sobe com acesso ao X11
+3. Testar captura real + clique em background
+
+O caminho está pavimentado. Os 8 commits são reais. Falta só o restart.
 
 ---
 
@@ -86,7 +70,7 @@ Cada fix individual parece pequeno. Um namespace, um delivery_mode, um full-dupl
 <Terminal
   lines={[
     { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 commits de computer use em julho' },
-    { cmd: 'hermes computer-use doctor', output: 'Diagnóstico do cua-driver: permission mode, health, versão' },
-    { cmd: 'grep -r "delivery_mode" ~/.hermes/', output: 'Background delivery mode — o segredo do desktop control' },
+    { cmd: 'cat ~/.hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configurado, aguardando restart' },
+    { cmd: 'hermes gateway restart', output: 'Restart necessário pra ativar o X11 no cua-driver' },
   ]}
 />
