@@ -17,16 +17,18 @@ html {
 }
 /* ========================================
    View Transitions API — Circular reveal
-   Duração da crossfade padrão casada com o WAAPI (600ms)
-   pra evitar "trava" no meio da animação
+   Baseado em Rjk-Jami/theme_changing_template
+   animation:none desliga crossfade padrão que briga com o clip-path
    ======================================== */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
 ::view-transition-old(root) {
-  mix-blend-mode: normal !important;
+  z-index: 1;
 }
 ::view-transition-new(root) {
-  animation-duration: 600ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  mix-blend-mode: normal !important;
+  z-index: 9999;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -272,7 +272,7 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
             `circle(0px at ${x}px ${y}px)`,
             `circle(${r}px at ${x}px ${y}px)`
           ]},
-          { duration: 600, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', pseudoElement: '::view-transition-new(root)' },
+          { duration: 800, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' },
         )
       })
       t.finished.catch(() => setTheme(next)).finally(() => { animating = false })
