@@ -263,6 +263,9 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
       }
       const x = e?.clientX ?? lastTouchX ?? innerWidth / 2
       const y = e?.clientY ?? lastTouchY ?? innerHeight / 2
+      // Desliga CSS transitions durante o VT — o snapshot new precisa
+      // capturar o tema FINAL, não o estado intermediário da cor
+      document.documentElement.classList.add('vt-running')
       const t = document.startViewTransition(() => setTheme(next))
       animating = true
       t.ready.then(() => {
@@ -275,7 +278,10 @@ import { PALETTES, DEFAULT_PALETTE } from '../lib/palettes'
           { duration: 800, easing: 'cubic-bezier(0.12, 0.75, 0.1, 1)', pseudoElement: '::view-transition-new(root)' },
         )
       })
-      t.finished.catch(() => setTheme(next)).finally(() => { animating = false })
+      t.finished.catch(() => setTheme(next)).finally(() => {
+        animating = false
+        document.documentElement.classList.remove('vt-running')
+      })
       return
     }
 
