@@ -31,13 +31,13 @@ html {
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
+  mix-blend-mode: normal;
 }
 ::view-transition-old(root) {
   z-index: 1;
 }
 ::view-transition-new(root) {
   z-index: 9999;
-  mix-blend-mode: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -46,6 +46,15 @@ html {
   ::view-transition-new(*) {
     animation: none !important;
   }
+}
+
+/* Durante o View Transition, desliga CSS transitions dos elementos —
+   senão o snapshot new é capturado no estado INTERMEDIÁRIO da cor
+   (body tem transition: background-color 0.35s) e o círculo revela
+   a cor errada (escura/marrom) em vez do tema final */
+html.vt-running,
+html.vt-running * {
+  transition: none !important;
 }
 
 /* Transição suave nas cores dos elementos principais */
