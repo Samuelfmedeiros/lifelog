@@ -20,6 +20,14 @@ html {
    Baseado em Rjk-Jami/theme_changing_template
    animation:none desliga crossfade padrão que briga com o clip-path
    ======================================== */
+/* Container VT acima de TUDO — navbar (z:50, backdrop-filter) e dropdown
+   (z:1000) criam camadas próprias do compositor; sem z-index alto aqui o
+   snapshot animado roda ATRÁS deles ("animação no fundo") */
+::view-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+}
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
