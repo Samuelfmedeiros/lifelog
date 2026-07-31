@@ -1,0 +1,111 @@
+---
+title: "A história do LifeLog — como nasceu o blog que documenta tudo"
+description: "158 commits, 49 posts bilíngues, 4 engines de tema, 59 capas AI, e uma decisão que mudou tudo: matar o robô que escrevia posts sozinho."
+date: 2026-07-31 10:00:00 -03:00
+pubDate: 2026-07-31 14:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "narrativa", "arquitetura", "astro", "open-design", "e2e"]
+icon: "📖"
+cover: /covers/a-historia-do-lifelog.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O blog que não era o centro
+
+No começo de julho de 2026, eu tinha seis projetos ativos — Arachne, Dogwalk, Capivara, Portfólio, TatuEngine, e uma lista crescente de descobertas técnicas. Cada um com seu repositório, seu CI/CD, seu conjunto de bugs e decisões. Eu sabia que o dia seguinte teria sido melhor se eu lembrasse o que aprendi hoje.
+
+Foi assim que o LifeLog nasceu: não como "mais um blog", mas como **o diário de bordo do ecossistema**.
+
+## 🧠 Contexto — por que mais um blog?
+
+Eu já tive blogs antes. WordPress, Ghost, Medium — todos morreram depois do terceiro post. A diferença agora era o **motivo**: eu não queria escrever pra audiência, queria escrever pra **mim mesmo do futuro**.
+
+O prompt era simples: um devlog que documenta a jornada de construção do ecossistema Samuel. Sem SEO, sem analytics, sem monetização. Só a história.
+
+A stack era óbvia: **Astro** — SSG nativo, MDX pra conteúdo, zero JS no build. Tailwind pra estilo, TypeScript pra sanidade. E o deploy mais simples possível: Vercel, push na main, pronto.
+
+O primeiro commit foi em 4 de julho:
+
+```
+b5152e8 Initial commit: LifeLog Astro site com Playwright E2E tests
+```
+
+O nome "LifeLog" veio de life + log — o registro da vida de um ecossistema digital. A primeira versão era funcional mas espartana: uma timeline de posts, um tema claro/escuro simples, e 3 E2E tests.
+
+## 🔧 A luta — 4 temas em 2 semanas
+
+O que parecia um projeto simples (tabela + posts) virou um laboratório de UI/UX. Nos primeiros 10 dias, eu reescrevi o sistema de temas **4 vezes**:
+
+1. **CSS custom properties** — simples, mas sem transição entre temas
+2. **Clip-path circular reveal** — bonito, mas stutterava no Chromium
+3. **Crossfade VT nativo** — suave, mas quebrava em mobile
+4. **View Transition API + clip-path fallback** — finalmente estável
+
+Cada iteração era uma batalha contra o `stutter` — aquele micro-travamento que ninguém pede mas todo mundo sente. A View Transition API (VT) do Chromium era a saída, mas precisava de `animation:none` no `new(root)` pra não conflitar com o crossfade:
+
+```css
+/* Depois de 4 iterações — o tema que finalmente funcionou */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  z-index: 100;
+}
+```
+
+Paralelo ao tema, veio a **search**. Comecei com Fuse.js — 7KB minificado, funcionava. Mas quando o número de posts passou de 30, o bundle começou a pesar. Substituí por um índice JSON embutido no HTML com word-boundary match. Zero dependência, zero JS extra no build.
+
+```typescript
+// O índice de busca — embutido no HTML como JSON, sem Fuse.js
+const index = JSON.parse(
+  document.getElementById('search-index')?.textContent || '[]'
+);
+// word-boundary match: "/b" + query + "/b"
+```
+
+E pra completar o trio de problemas: **as tags**. O Tailwind 4 com `color-mix` e temas claro/escuro exigia hacks de opacidade que quebravam em um dos temas. A solução veio com `color-mix(in srgb, var(--color-accent) 12%, transparent)` — que funciona nos dois temas sem precisar de fallback.
+
+## 💡 Resolução — quando matei o robô
+
+No dia 19 de julho, o blog já tinha 20+ posts. Mas algo estava errado: os posts eram **relatórios**, não histórias. Eu estava automatizando a escrita com um cron diário que agregava commits e gerava changelogs.
+
+Foi quando eu percebi: **ninguém quer ler changelog**. Nem eu.
+
+No dia 24 de julho, eu matei o cron de auto-post e publiquei o post que explica a virada: *"De auto-post a narrativa — porque matei o cron diário"*.
+
+A partir daí, cada post virou um capítulo: Setup → Conflito → Resolução. Código real do repositório, extraído com `git show`, nada de memória. E a grade semanal passou a ser: um projeto por dia, uma história por post.
+
+No final de julho, o LifeLog também ganhou **Open Design** — um design system formal com DESIGN.md (16KB), tokens CSS, e craft rules. Cada paleta de cor, cada componente, cada transição documentada num contrato de design que o próprio site consome.
+
+## 📊 Métricas
+
+| Métrica | 04/07 (nascimento) | 31/07 (hoje) |
+|---------|-------------------|--------------|
+| Commits | 1 | 158 |
+| Posts | 3 | 50 (+50 EN) |
+| E2E specs | 1 | 4 |
+| Componentes | 3 | 8 |
+| Paletas de cor | 1 | 6 |
+| Capas AI | 0 | 59 |
+| Temas (iterações) | 1 | 4 |
+| Build time | ~30s | ~15s |
+
+## 🎯 Aprendizados
+
+A maior lição não foi técnica — foi sobre **o que vale a pena automatizar**. Automatizar deploy? Sim. Automatizar testes? Sim. Automatizar a escrita de posts? Não — porque aí você perde a história.
+
+O LifeLog me ensinou que documentar o trabalho não é sobre relatar o que foi feito, mas sobre **contar por que foi feito assim**.
+
+<Terminal
+  lines={[
+    { cmd: 'ls src/content/posts/ | wc -l', output: '50 — total de posts PT' },
+    { cmd: 'ls src/content/posts/en/ | wc -l', output: '50 — total de posts EN' },
+    { cmd: 'git rev-list --count HEAD', output: '158 commits desde o início' },
+    { cmd: 'ls e2e/*.spec.ts', output: 'lifelog.spec.ts  record-demo.spec.ts  theme-mobile.spec.ts  theme-rail.spec.ts' },
+    { cmd: 'pnpm build 2>&1 | tail -3', output: '[build] 108 page(s) built in 10.29s' },
+  ]}
+/>
