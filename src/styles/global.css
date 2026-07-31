@@ -30,6 +30,11 @@ html {
 ::view-transition-new(root) {
   z-index: 9999;
 }
+/* Isola o stacking context do par de imagens — sem isso o blend
+   plus-lighter padrão vaza entre old/new e causa flash no meio da animação */
+::view-transition-image-pair(root) {
+  isolation: isolate;
+}
 
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
