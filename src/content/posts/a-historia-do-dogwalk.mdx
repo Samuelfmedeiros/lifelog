@@ -1,0 +1,90 @@
+---
+title: "A história do Dogwalk — do marketplace de pets ao CI/CD com 1456 testes"
+description: "970 commits, 1456 testes, Stripe Connect, Open Design, e a saga de transformar um marketplace de pets em uma plataforma que não quebra no deploy."
+date: 2026-08-01 10:00:00 -03:00
+pubDate: 2026-08-01 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "ci-cd", "testes", "stripe", "open-design"]
+icon: "🐶"
+cover: /covers/a-historia-do-dogwalk.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O app que não podia quebrar no deploy
+
+Todo projeto tem um momento em que você percebe: **não dá mais pra fazer deploy no medo**. No Dogwalk esse momento chegou duas vezes — primeiro quando o build quebrou por causa de um npm-cli.js sem permissão de execução, e depois quando 1456 testes passaram a ser a régua pra qualquer mudança.
+
+Mas o Dogwalk não nasceu assim. Nasceu como um marketplace de pets que precisava provar que funcionava.
+
+## 🧠 Contexto — do zero ao marketplace
+
+O primeiro commit foi em 24 de abril de 2026:
+
+```
+73a610f5 DogWalk/PataPass: clean initial commit
+```
+
+A ideia era simples: conectar donos de pets a walkers (passeadores). O dono agenda um passeio, um walker aceita, e os dois acompanham o passeio em tempo real com GPS. A stack: React 19 + Vite no front, FastAPI + PostgreSQL no back, pagamento via Stripe Connect, e deploy no Cloudflare Pages.
+
+O problema é que "simples" nunca é simples quando envolve **GPS em tempo real, geofencing, pagamentos e dois tipos de usuário** (tutor e walker).
+
+## 🔧 A luta — quando o build quebrou no WSL
+
+A saga mais memorável foi o **build quebrado no WSL**. O `which npm` no ambiente do Samuel resolvia pro npm do Windows (`/mnt/c/Program Files/nodejs/npm`) em vez do npm do Hermes node. E o CMD.EXE com caminho UNC quebrava tudo:
+
+```
+Cannot find module 'C:\Windows\scripts\verify-csp.cjs'
+```
+
+A causa raiz: o `npm-cli.js` do Hermes node estava sem permissão de execução (`-rw-------`). O fix foi cirúrgico:
+
+```bash
+chmod +x ~/.hermes/node/lib/node_modules/npm/bin/npm-cli.js
+```
+
+Mas a lição maior veio daí: **deploy não pode depender de um ambiente específico**. Foi quando o projeto ganhou scripts de deploy manual e CI local — pra quando o GitHub Actions estivesse offline, a plataforma ainda subisse.
+
+Paralelo a isso, veio a **visual reformulation**: o UniversalHeader role-aware (navegação diferente pra Tutor vs Walker), o DesktopSidebar com Tailwind v4, o refactor do TutorDashboard (464 → 298 linhas) e WalkerDashboard (807 → 409 linhas). Tudo seguindo um DESIGN.md criado com o padrão Open Design — tokens CSS, role themes, e uma galeria de componentes em `components.html`.
+
+## 💡 Resolução — 1456 testes como régua
+
+O ponto de virada foi a semana de testes. Cinco componentes gigantes ganharam cobertura real:
+
+| Componente | Linhas | Testes | Cobertura |
+|-----------|--------|--------|-----------|
+| Domain skeletons | 614 | 22 | **100%** |
+| WalkerRequests | 633 | 17 | 88% |
+| Scheduling | 687 | 5 | 70% |
+| ActiveWalkInterface | 874 | 10 | 56% |
+| MetricsDashboard | 724 | 5 | 44% |
+
+E o Scheduling foi otimizado com `useCallback`/`useMemo` — 7 handlers memorizados, 5 valores derivados.
+
+O resultado: **1456/1456 testes passando, 93 arquivos, build 100% limpo** — e a confiança de que qualquer mudança que quebrasse algo seria pega antes do deploy.
+
+## 📊 Métricas
+
+| Métrica | 24/04 (nascimento) | 31/07 (hoje) |
+|---------|-------------------|--------------|
+| Commits | 1 | 970 |
+| Testes | 0 | 1456 (93 arquivos) |
+| Cobertura top-5 | — | 44–100% |
+| Stack | ideia | React 19 + FastAPI + PG |
+| Deploy | — | Cloudflare Pages CI/CD |
+
+## 🎯 Aprendizados
+
+O Dogwalk ensinou que **qualidade não é um feature — é uma decisão de arquitetura**. Depois de quebrar o build no WSL por causa de um arquivo sem permissão, o projeto passou a ter: CI local + remoto, scripts de deploy manual, e uma suíte de testes que impede regressão.
+
+E o Open Design provou que design system não é luxo: quando o WalkerDashboard foi refatorado com tokens e componentes documentados, perdeu 48% das linhas sem perder nenhuma feature.
+
+<Terminal
+  lines={[
+    { cmd: 'git rev-list --count HEAD', output: '970 commits desde o início' },
+    { cmd: 'pnpm test 2>&1 | tail -1', output: '1456 passed, 93 files' },
+    { cmd: 'git log --reverse --format="%ad" --date=short | head -1', output: '2026-04-24 — o nascimento' },
+    { cmd: 'chmod +x ~/.hermes/node/lib/node_modules/npm/bin/npm-cli.js', output: 'o fix que desbloqueou o build no WSL' },
+  ]}
+/>
