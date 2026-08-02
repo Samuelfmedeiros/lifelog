@@ -46,8 +46,12 @@
 
 ## Fase 4 — Novos Horizontes
 
-- [ ] `@axe-core/playwright` — contraste + semântica HTML
-- [ ] VRT `toHaveScreenshot()` — toggles dark/light + mobile
+- [x] `@axe-core/playwright` — contraste + semântica HTML
+  - Commit `0de7167`: 7 testes (home/arquivo/sobre/post dark+light) + 8 correções WCAG
+  - Corrigidos: contraste `.cta`/pill/`pre`/terminal/tag-count, heading-order (h3→h2), landmark-unique (aria-label navbar)
+- [x] VRT `toHaveScreenshot()` — toggles dark/light + mobile
+  - Commits `4c80bfa` + `6d08aa1`: 4 snapshots (home dark/light, navbar, mobile)
+  - Pitfalls: networkidle nunca resolve (WebSocket Vite) → domcontentloaded; fonts.ready pode travar → Promise.race 1.5s; `*.png` no gitignore ignorava baselines → exceção adicionada
 
 ## Fase 5 — Segurança Contínua (adicionada 01/08/2026)
 
@@ -56,29 +60,32 @@
 
 ### 5.1 SCA — Auditoria de Dependências (muito baixa)
 
-- [ ] Adicionar `pnpm audit` no CI, logo antes de `pnpm test`
-- [ ] Bloqueia build se biblioteca do frontend tiver CVE conhecida
+- [x] Adicionar `pnpm audit` no CI, logo antes de `pnpm test` (commit `fa4339c`)
+- [x] Bloqueia build se biblioteca do frontend tiver CVE conhecida
+  - `pnpm update` zerou 4 CVEs (astro 7.0.6→7.1.6, svgo, fast-xml-parser, postcss)
 
 ### 5.2 SAST — Análise Estática com ESLint (baixa)
 
-- [ ] Instalar `eslint-plugin-security`
-- [ ] Varredura passiva: ReDoS (regex perigosas), manipulação insegura de objetos
-- [ ] Alerta no editor + CI
+- [x] Instalar `eslint-plugin-security` (commit `7f3c595`)
+- [x] Varredura passiva: ReDoS (regex perigosas), manipulação insegura de objetos
+- [x] Alerta no editor + CI
+  - `pnpm lint`: 0 errors, 20 warnings (falsos positivos detect-object-injection)
 
 ### 5.3 DAST — Validação de Headers com Playwright (média)
 
-- [ ] Teste global de infraestrutura que requisita a home e valida:
+- [x] Teste global de infraestrutura que requisita a home e valida:
   - `Strict-Transport-Security` (HSTS) presente
   - `Content-Security-Policy` (CSP) configurada (anti-XSS)
   - `X-Frame-Options` ativo (anti-clickjacking)
-- [ ] Integrar na suíte E2E existente (1 teste novo)
+- [x] Integrar na suíte E2E existente (1 teste novo)
+  - Commit `91b6b81`: `e2e/security-headers.spec.ts` (6 testes) + vercel.json com headers
 
-## Estado Atual (baseline)
+## Estado Atual (final — 02/08/2026)
 
-- 68 testes E2E (55 lifelog + 10 theme-rail + 2 record-demo + 1 theme-mobile)
-- 6 testes Vitest (projects.test.ts)
-- Total: 74 testes
-- Build: 110 pages, 0 erros
+- 165 testes E2E (161 + 4 VRT) + 7 a11y dentro da suíte
+- 35 testes Vitest (projects.test.ts data-driven)
+- Total: 200 testes
+- Build: 110 pages, 0 erros · Lint: 0 errors · Audit: 0 CVEs
 
 ## Comandos
 
