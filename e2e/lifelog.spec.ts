@@ -57,15 +57,18 @@ function loadPosts(): PostData[] {
 // 🚀 Carregado dinamicamente! Testes nunca mais desatualizados.
 const POSTS = loadPosts();
 
-const PROJECT_PILLS = [
-  'Todos', 'Arachne', 'Dogwalk', 'Portfólio', 'Capivara',
-  'TatuEngine', 'LifeLog', 'Descobertas',
-];
+// Pills dinâmicas: 'all' + projetos únicos reais (ordem estável do DOM)
+// data-filter-project usa o ID minúsculo (matches src/lib/projects.ts)
+const PROJECT_ORDER_IDS = ['arachne', 'dogwalk', 'portfolio', 'capivara', 'tatuengine', 'seguranca', 'lifelog', 'estudos', 'descobertas'];
+const PROJECT_LABELS: Record<string, string> = {
+  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio', capivara: 'Capivara',
+  tatuengine: 'TatuEngine', seguranca: 'Segurança', lifelog: 'LifeLog', estudos: 'Estudos', descobertas: 'Descobertas',
+};
+const UNIQUE_PROJECTS = [...new Set(POSTS.map(p => p.project).filter(Boolean))];
+const PROJECT_PILLS = ['all', ...PROJECT_ORDER_IDS.filter(p => UNIQUE_PROJECTS.includes(p))];
+const PROJECT_PILL_LABELS = PROJECT_PILLS.map(p => p === 'all' ? 'Todos' : PROJECT_LABELS[p]);
 
 const NAV_LINKS = ['Início', 'Arquivo', 'Sobre'];
-
-// Unique projects with posts
-const UNIQUE_PROJECTS = [...new Set(POSTS.map(p => p.project).filter(Boolean))];
 
 // Helper: count visible post cards
 async function visiblePosts(page: any) {
@@ -108,14 +111,14 @@ test.describe('Homepage', () => {
   test('deve ter filtros: busca textual e pills de projeto', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#filter-search')).toBeVisible();
-    // Project pills — per-project buttons (7: Todos + 6 projects com posts)
+    // Project pills — Todos + todos os projetos únicos com posts (dinâmico)
     const projectPills = page.locator('[data-filter-project]');
     expect(await projectPills.count()).toBe(PROJECT_PILLS.length);
   });
 
   test('deve exibir pills para todos os projetos', async ({ page }) => {
     await page.goto('/');
-    for (const label of PROJECT_PILLS) {
+    for (const label of PROJECT_PILL_LABELS) {
       await expect(page.locator(`[data-filter-project]`, { hasText: label })).toBeVisible();
     }
   });
