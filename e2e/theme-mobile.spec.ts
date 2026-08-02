@@ -18,7 +18,7 @@ test('mobile theme check', async ({ page }) => {
             break;
           }
         }
-      } catch(e) {}
+      } catch(e) { /* styleSheet cross-origin */ }
     }
     return {
       numStyleSheets: sheets.length,

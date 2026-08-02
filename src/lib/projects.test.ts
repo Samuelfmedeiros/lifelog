@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PROJECTS, getProject, PROJECT_ACCENTS, type ProjectDef } from '../lib/projects';
+import { PROJECTS, getProject, PROJECT_ACCENTS } from '../lib/projects';
 
 describe('projects.ts — data-driven', () => {
   it('PROJECTS contains exactly the 9 registered projects', () => {

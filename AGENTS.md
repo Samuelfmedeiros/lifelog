@@ -51,7 +51,7 @@
 
 ### CI/CD
 - **GitHub Actions** (`deploy.yml`) — Validate → Build → Test → Deploy → Health check → Notify
-- **Testes:** Playwright E2E (5 specs: lifelog, record-demo, theme-mobile, theme-rail)
+- **Testes:** 196 passando (161 E2E + 35 Vitest)
 - **Sync checker:** CI verifica sync PT/EN, health check inclui rotas EN
 - **Deploy:** Vercel (build remoto, sem --prebuilt)
 - **Ferramentas:** `pnpm` (Node 22+, corepack)

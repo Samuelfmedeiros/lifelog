@@ -104,13 +104,13 @@ export function getSavedPaletteId(): string {
   try {
     const saved = localStorage.getItem(STORAGE_PALETTE_KEY)
     if (saved && PALETTES.some(p => p.id === saved)) return saved
-  } catch {}
+  } catch { /* storage indisponível */ }
   return DEFAULT_PALETTE
 }
 
 /** Save palette id to localStorage */
 export function savePaletteId(id: string) {
-  try { localStorage.setItem(STORAGE_PALETTE_KEY, id) } catch {}
+  try { localStorage.setItem(STORAGE_PALETTE_KEY, id) } catch { /* storage indisponível */ }
 }
 
 /** Apply palette CSS variables onto document root */
