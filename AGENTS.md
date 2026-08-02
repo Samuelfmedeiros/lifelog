@@ -4,7 +4,7 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
-> **Status:** ✅ Operacional — 70+ posts · 7 E2E specs · 200 testes · i18n PT/EN
+> **Status:** ✅ Operacional — 51 posts bilíngues (102 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — auto-post diário desativado
 
 ---
@@ -23,7 +23,7 @@
 ## ✅ Features Implementadas
 
 ### Conteúdo
-- **70 posts MDX** — 5 projetos (Arachne, Dogwalk, Capivara, Portfólio, TatuEngine) + estudos + descobertas
+- **51 posts bilíngues** (102 arquivos MDX: 51 PT + 51 EN) — projetos Arachne, Dogwalk, Capivara, Portfólio, TatuEngine + estudos + descobertas
 - **i18n PT/EN** — Engine i18n custom, páginas espelhadas, sync checker no CI
 - **Categorias:** 9 projetos registrados (`src/lib/projects.ts`) com cores, ícones e grupos
 - **Capas AI** — Geração via Cloudflare Workers AI (FLUX.1 Schnell), script `scripts/generate_cover.py`
@@ -31,7 +31,7 @@
 
 ### Interface
 - **Timeline grid** — Home com filtros por ano/projeto, DateSeparator
-- **FilterBar** — Busca fuzzy com Fuse.js 7.4 (self-hosted /vendor/), URL params, result count
+- **FilterBar** — Busca textual com embedded search index (JSON gerado no build via getCollection, embedado no HTML), URL params, result count
 - **TagCloud** — Navegação por tags com contagem
 - **PalettePicker** — 6 paletas de cor + dark/light toggle com persistência
 - **TerminalWidget** — Terminal interativo na página Sobre (15+ comandos)
@@ -73,7 +73,7 @@
 lifelog/
 ├── src/
 │   ├── content.config.ts          # Schema Zod: título, data, projeto, tags, capa
-│   ├── content/posts/             # 70 MDX posts
+│   ├── content/posts/             # 51 posts bilíngues (PT + en/)
 │   ├── components/                # 8 componentes Astro
 │   │   ├── PostCard.astro         # Card da timeline (capa + info + tags)
 │   │   ├── FilterBar.astro        # Busca + filtro ano/projeto (índice JSON embutido)
@@ -91,9 +91,9 @@ lifelog/
 │   │   └── 404.astro
 │   ├── lib/                       # i18n.js, palettes.ts, projects.ts
 │   └── styles/                    # global.css, themes.css
-├── e2e/                           # 5 Playwright E2E specs
+├── e2e/                           # 7 Playwright E2E specs
 ├── scripts/                       # Geração de capas, sync checker, demos
-├── public/covers/                 # 14+ capas AI (webp, 21:9)
+├── public/covers/                 # 61 capas AI (webp, 21:9)
 ├── .github/workflows/deploy.yml   # CI/CD Pipeline
 ├── astro.config.mjs               # Config Astro + Tailwind + MDX
 └── package.json
@@ -104,7 +104,7 @@ lifelog/
 ## 🧪 Testes
 
 - **Playwright E2E** (7 specs):
-  - `lifelog.spec.ts` — Suite principal (70+ posts, filtros, RSS, 404, health)
+  - `lifelog.spec.ts` — Suite principal (51 posts bilíngues, filtros, RSS, 404, health)
   - `theme-rail.spec.ts` — Theme Rail seletor (getByLabel)
   - `record-demo.spec.ts` — Gravação de demo
   - `theme-mobile.spec.ts` — Tema no mobile (diagnóstico)
@@ -180,10 +180,10 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 
 ## 🗺️ Próximos Passos
 
-- [ ] Vitest unit tests (componentes)
+- [x] Vitest unit tests (componentes) — 35 testes data-driven (02/08/2026)
 - [ ] PWA (service worker + offline)
 - [ ] Mais paletas de cor
-- [ ] Busca full-text com Astro content layer
+- [x] Busca full-text — embedded search index no build (22/07/2026)
 
 ---
 
