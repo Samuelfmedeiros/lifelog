@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { readdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -91,16 +91,16 @@ async function visiblePostTitles(page: any) {
    ============================================= */
 
 test.describe('Homepage', () => {
-  test('deve carregar com título e descrição', async ({ page }) => {
-    await page.goto('/');
+  test('deve carregar com título e descrição', async ({ page, goto }) => {
+    await goto('/');
     await expect(page).toHaveTitle(/LifeLog/);
-    await expect(page.locator('h1')).toContainText('LifeLog');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('LifeLog');
     await expect(page.locator('h1 + p + p')).toContainText('Dev · Projetos · Estudos · Descobertas');
   });
 
-  test(`deve exibir todos os ${POSTS.length} posts na timeline`, async ({ page }) => {
-    await page.goto('/');
-    const cards = page.locator('.post-card');
+  test(`deve exibir todos os ${POSTS.length} posts na timeline`, async ({ page, goto }) => {
+    await goto('/');
+    const cards = page.getByRole('article');
     await expect(cards).toHaveCount(POSTS.length);
 
     // Verificar date-separators (timeline)
@@ -108,23 +108,23 @@ test.describe('Homepage', () => {
     expect(await separators.count()).toBeGreaterThanOrEqual(5);
   });
 
-  test('deve ter filtros: busca textual e pills de projeto', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('#filter-search')).toBeVisible();
+  test('deve ter filtros: busca textual e pills de projeto', async ({ page, goto }) => {
+    await goto('/');
+    await expect(page.getByLabel(/Buscar posts|Search posts/)).toBeVisible();
     // Project pills — Todos + todos os projetos únicos com posts (dinâmico)
     const projectPills = page.locator('[data-filter-project]');
     expect(await projectPills.count()).toBe(PROJECT_PILLS.length);
   });
 
-  test('deve exibir pills para todos os projetos', async ({ page }) => {
-    await page.goto('/');
+  test('deve exibir pills para todos os projetos', async ({ page, goto }) => {
+    await goto('/');
     for (const label of PROJECT_PILL_LABELS) {
       await expect(page.locator(`[data-filter-project]`, { hasText: label })).toBeVisible();
     }
   });
 
-  test('deve ter links de navegação no header', async ({ page }) => {
-    await page.goto('/');
+  test('deve ter links de navegação no header', async ({ page, goto }) => {
+    await goto('/');
     const nav = page.locator('nav');
     for (const label of NAV_LINKS) {
       await expect(nav.locator('a', { hasText: label })).toBeVisible();
@@ -139,7 +139,7 @@ test.describe('Homepage', () => {
 
 test.describe('Páginas de Posts', () => {
   for (const post of POSTS) {
-    test(`"${post.slug}" deve renderizar corretamente`, async ({ page }) => {
+    test(`"${post.slug}" deve renderizar corretamente`, async ({ page, goto }) => {
       const response = await page.goto(`/post/${post.slug}/`);
       expect(response?.status()).toBe(200);
 
@@ -149,7 +149,7 @@ test.describe('Páginas de Posts', () => {
 
       // Header do post
       await expect(page.locator('article[data-project]')).toBeVisible();
-      await expect(page.locator('h1').first()).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
 
       // Tema do projeto via data-project
       const themeAttr = await page.locator('article').getAttribute('data-project');
@@ -178,23 +178,23 @@ test.describe('Páginas de Posts', () => {
    ============================================= */
 
 test.describe('Arquivo', () => {
-  test('mostra título e stats', async ({ page }) => {
-    await page.goto('/arquivo');
-    await expect(page.locator('h1')).toContainText('Arquivo');
+  test('mostra título e stats', async ({ page, goto }) => {
+    await goto('/arquivo');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Arquivo');
   });
 
-  test('agrupa posts por ano', async ({ page }) => {
-    await page.goto('/arquivo');
+  test('agrupa posts por ano', async ({ page, goto }) => {
+    await goto('/arquivo');
     const yearSections = page.locator('h2');
     expect(await yearSections.count()).toBeGreaterThanOrEqual(1);
   });
 
-  test('links de posts navegam corretamente', async ({ page }) => {
-    await page.goto('/arquivo');
+  test('links de posts navegam corretamente', async ({ page, goto }) => {
+    await goto('/arquivo');
     const firstLink = page.locator('section.mb-10 a[href^="/post/"]').first();
     await firstLink.click();
     await page.waitForURL(/\/post\//);
-    await expect(page.locator('h1')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   });
 });
 
@@ -203,9 +203,9 @@ test.describe('Arquivo', () => {
    ============================================= */
 
 test.describe('Sobre', () => {
-  test('mostra estatísticas: Posts=32, Projetos=6, Desde=2026', async ({ page }) => {
-    await page.goto('/sobre');
-    await expect(page.locator('h1')).toContainText('Sobre o LifeLog');
+  test('mostra estatísticas: Posts=32, Projetos=6, Desde=2026', async ({ page, goto }) => {
+    await goto('/sobre');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sobre o LifeLog');
 
     // 3 stat cards em grid-cols-3
     const statCards = page.locator('.grid.grid-cols-3 > div');
@@ -227,8 +227,8 @@ test.describe('Sobre', () => {
     expect(values.find(v => v.label === 'Desde')).toBeTruthy();
   });
 
-  test('links: Portfolio e RSS', async ({ page }) => {
-    await page.goto('/sobre');
+  test('links: Portfolio e RSS', async ({ page, goto }) => {
+    await goto('/sobre');
 
     // Portfolio link — use the content ul's portfolio link
     const portfolioLink = page.locator('article a[href*="samuelmedeiros"]').first();
@@ -239,8 +239,8 @@ test.describe('Sobre', () => {
     await expect(rssLink).toBeVisible();
   });
 
-  test('terminal widget interativo funciona', async ({ page }) => {
-    await page.goto('/sobre');
+  test('terminal widget interativo funciona', async ({ page, goto }) => {
+    await goto('/sobre');
     await expect(page.locator('.terminal-widget')).toBeVisible();
   });
 });
@@ -250,8 +250,8 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com todos os posts', async ({ page }) => {
-    const response = await page.goto('/rss.xml');
+  test('XML válido com todos os posts', async ({ page, goto }) => {
+    const response = await goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
 
@@ -277,13 +277,13 @@ test.describe('RSS Feed', () => {
    ============================================= */
 
 test.describe('Filtros', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+  test.beforeEach(async ({ page, goto }) => {
+    await goto('/');
   });
 
   test('busca textual filtra posts', async ({ page }) => {
     const dogwalkCount = POSTS.filter(p => p.project === 'dogwalk').length;
-    await page.locator('#filter-search').fill('Dogwalk');
+    await page.getByLabel(/Buscar posts|Search posts/).fill('Dogwalk');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
     expect(count).toBeGreaterThanOrEqual(dogwalkCount);
@@ -311,7 +311,7 @@ test.describe('Filtros', () => {
   test('filtro de projeto + busca combinados (Dogwalk + infra)', async ({ page }) => {
     await page.locator('[data-filter-project="dogwalk"]').click();
     await page.waitForTimeout(100);
-    await page.locator('#filter-search').fill('infraestrutura');
+    await page.getByLabel(/Buscar posts|Search posts/).fill('infraestrutura');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
     expect(count).toBe(1); // só primeiros-passos-infra-dogwalk
@@ -329,14 +329,14 @@ test.describe('Filtros', () => {
   });
 
   test('filtro de texto aleatório não encontra posts', async ({ page }) => {
-    await page.locator('#filter-search').fill('xyz-nada-aqui-999');
+    await page.getByLabel(/Buscar posts|Search posts/).fill('xyz-nada-aqui-999');
     await page.waitForTimeout(200);
     const count = await visiblePosts(page);
     expect(count).toBe(0);
   });
 
   test('estado vazio quando nenhum post corresponde', async ({ page }) => {
-    await page.locator('#filter-search').fill('xyz-nao-existe-123');
+    await page.getByLabel(/Buscar posts|Search posts/).fill('xyz-nao-existe-123');
     await page.waitForTimeout(200);
     expect(await visiblePosts(page)).toBe(0);
   });
@@ -355,47 +355,47 @@ test.describe('Filtros', () => {
    ============================================= */
 
 test.describe('Navegação', () => {
-  test('header links navegam entre páginas', async ({ page }) => {
-    await page.goto('/');
+  test('header links navegam entre páginas', async ({ page, goto }) => {
+    await goto('/');
 
     // Início → Arquivo
     await page.locator('nav a', { hasText: 'Arquivo' }).click();
     await expect(page).toHaveURL(/\/arquivo/);
-    await expect(page.locator('h1')).toContainText('Arquivo');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Arquivo');
 
     // Arquivo → Sobre
     await page.locator('nav a', { hasText: 'Sobre' }).click();
     await expect(page).toHaveURL(/\/sobre/);
-    await expect(page.locator('h1')).toContainText('Sobre');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sobre');
 
     // Sobre → Início
     await page.locator('nav a', { hasText: 'Início' }).click();
     await expect(page).toHaveURL('/');
   });
 
-  test('home → post → voltar via timeline', async ({ page }) => {
-    await page.goto('/');
+  test('home → post → voltar via timeline', async ({ page, goto }) => {
+    await goto('/');
     const firstCard = page.locator('.post-card a').first();
     const href = await firstCard.getAttribute('href');
     await firstCard.click();
     await page.waitForURL(`**${href}`);
-    await expect(page.locator('h1')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
     // Voltar via "timeline" link
     await page.locator('a[href="/"]', { hasText: 'timeline' }).first().click();
     await expect(page).toHaveURL('/');
   });
 
-  test('breadcrumb "timeline" no post', async ({ page }) => {
-    await page.goto('/post/dogwalk-amadurece-testes-playwright/');
+  test('breadcrumb "timeline" no post', async ({ page, goto }) => {
+    await goto('/post/dogwalk-amadurece-testes-playwright/');
     const timeline = page.locator('a[href="/"]', { hasText: 'timeline' }).first();
     await expect(timeline).toBeVisible();
     await timeline.click();
     await expect(page).toHaveURL('/');
   });
 
-  test('link do Portfolio abre em nova aba', async ({ page }) => {
-    await page.goto('/');
+  test('link do Portfolio abre em nova aba', async ({ page, goto }) => {
+    await goto('/');
     const portfolio = page.locator('nav a[target="_blank"]');
     await expect(portfolio).toBeVisible();
     await expect(portfolio).toHaveAttribute('href', /samuelmedeiros/);
@@ -409,31 +409,31 @@ test.describe('Navegação', () => {
 test.describe('Responsivo (Mobile)', () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test('homepage legível', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('h1')).toBeVisible();
-    expect(await page.locator('.post-card').count()).toBe(POSTS.length);
-    const w = await page.locator('.post-card').first().evaluate(el => el.offsetWidth);
+  test('homepage legível', async ({ page, goto }) => {
+    await goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(await page.getByRole('article').count()).toBe(POSTS.length);
+    const w = await page.getByRole('article').first().evaluate(el => el.offsetWidth);
     expect(w).toBeGreaterThan(300);
   });
 
-  test('filtros funcionam em mobile', async ({ page }) => {
-    await page.goto('/');
-    await page.locator('#filter-search').fill('Arachne');
+  test('filtros funcionam em mobile', async ({ page, goto }) => {
+    await goto('/');
+    await page.getByLabel(/Buscar posts|Search posts/).fill('Arachne');
     await page.waitForTimeout(200);
     expect(await visiblePosts(page)).toBeGreaterThanOrEqual(2);
   });
 
-  test('post page legível', async ({ page }) => {
-    await page.goto('/post/primeiros-passos-infra-dogwalk/');
-    await expect(page.locator('h1')).toBeVisible();
+  test('post page legível', async ({ page, goto }) => {
+    await goto('/post/primeiros-passos-infra-dogwalk/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.locator('.prose')).toBeVisible();
     const w = await page.locator('.prose').evaluate(el => el.offsetWidth);
     expect(w).toBeGreaterThan(250);
   });
 
-  test('navegação funciona', async ({ page }) => {
-    await page.goto('/');
+  test('navegação funciona', async ({ page, goto }) => {
+    await goto('/');
     await page.locator('nav a', { hasText: 'Arquivo' }).click();
     await expect(page).toHaveURL(/\/arquivo/);
     await page.locator('nav a', { hasText: 'Início' }).click();
@@ -447,7 +447,7 @@ test.describe('Responsivo (Mobile)', () => {
 
 test.describe('Temas por Projeto', () => {
   for (const post of POSTS) {
-    test(`"${post.slug}" tem data-project="${post.project}"`, async ({ page }) => {
+    test(`"${post.slug}" tem data-project="${post.project}"`, async ({ page, goto }) => {
       const response = await page.goto(`/post/${post.slug}/`);
       expect(response?.status()).toBe(200);
 
@@ -467,8 +467,8 @@ test.describe('Temas por Projeto', () => {
    ============================================= */
 
 test.describe('Theme Toggle', () => {
-  test('troca entre dark e light ao clicar no rail', async ({ page }) => {
-    await page.goto('/');
+  test('troca entre dark e light ao clicar no rail', async ({ page, goto }) => {
+    await goto('/');
 
     // Theme button is always visible (no popover needed)
     const themeBtn = page.locator('#rail-theme');
@@ -493,15 +493,15 @@ test.describe('Theme Toggle', () => {
    ============================================= */
 
 test.describe('TatuEngine', () => {
-  test('pill TatuEngine existe na home', async ({ page }) => {
-    await page.goto('/');
+  test('pill TatuEngine existe na home', async ({ page, goto }) => {
+    await goto('/');
     const pill = page.locator('[data-filter-project="tatuengine"]');
     await expect(pill).toBeVisible();
     await expect(pill).toContainText('TatuEngine');
   });
 
-  test('pattern wavefield.svg existe', async ({ page }) => {
-    const response = await page.goto('/patterns/wavefield.svg');
+  test('pattern wavefield.svg existe', async ({ page, goto }) => {
+    const response = await goto('/patterns/wavefield.svg');
     expect(response?.ok()).toBeTruthy();
   });
 });
@@ -511,13 +511,13 @@ test.describe('TatuEngine', () => {
    ============================================= */
 
 test.describe('Patterns', () => {
-  test('pattern shield.svg existe', async ({ page }) => {
-    const response = await page.goto('/patterns/shield.svg');
+  test('pattern shield.svg existe', async ({ page, goto }) => {
+    const response = await goto('/patterns/shield.svg');
     expect(response?.ok()).toBeTruthy();
   });
 
-  test('pattern scribble.svg existe', async ({ page }) => {
-    const response = await page.goto('/patterns/scribble.svg');
+  test('pattern scribble.svg existe', async ({ page, goto }) => {
+    const response = await goto('/patterns/scribble.svg');
     expect(response?.ok()).toBeTruthy();
   });
 });
@@ -527,8 +527,8 @@ test.describe('Patterns', () => {
    ============================================= */
 
 test.describe('404', () => {
-  test('rota inexistente retorna 404', async ({ page }) => {
-    const response = await page.goto('/pagina-inexistente');
+  test('rota inexistente retorna 404', async ({ page, goto }) => {
+    const response = await goto('/pagina-inexistente');
     expect(response?.status()).toBe(404);
   });
 });
@@ -538,20 +538,20 @@ test.describe('404', () => {
    ============================================= */
 
 test.describe('Health', () => {
-  test('homepage carrega em < 8s', async ({ page }) => {
+  test('homepage carrega em < 8s', async ({ page, goto }) => {
     const start = Date.now();
-    await page.goto('/');
+    await goto('/');
     expect(Date.now() - start).toBeLessThan(8000);
   });
 
-  test('sem erros de console na navegação', async ({ page }) => {
+  test('sem erros de console na navegação', async ({ page, goto }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
-    await page.goto('/');
-    await page.goto('/arquivo');
-    await page.goto('/sobre');
-    await page.goto('/post/arachne-nasceu-frustracao-scrapers/');
+    await goto('/');
+    await goto('/arquivo');
+    await goto('/sobre');
+    await goto('/post/arachne-nasceu-frustracao-scrapers/');
 
     expect(errors).toEqual([]);
   });

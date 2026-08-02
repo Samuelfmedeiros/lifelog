@@ -1,25 +1,28 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test.describe('Theme Rail', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
+  test.beforeEach(async ({ goto }) => {
+    await goto('/');
   });
 
   test('inline controls are visible inside navbar-links', async ({ page }) => {
-    await expect(page.locator('#rail-theme')).toBeVisible();
-    await expect(page.locator('#rail-color')).toBeVisible();
-    await expect(page.locator('#rail-lang')).toBeVisible();
+    const themeBtn = page.getByLabel('Alternar tema');
+    const colorBtn = page.getByLabel('Paleta de cores');
+    const langBtn = page.getByLabel('Alternar idioma');
+
+    await expect(themeBtn).toBeVisible();
+    await expect(colorBtn).toBeVisible();
+    await expect(langBtn).toBeVisible();
 
     // Os controles estão dentro da navbar-links
     const navLinks = page.locator('.navbar-links');
-    await expect(navLinks.locator('#rail-theme')).toBeVisible();
-    await expect(navLinks.locator('#rail-color')).toBeVisible();
-    await expect(navLinks.locator('#rail-lang')).toBeVisible();
+    await expect(navLinks.getByLabel('Alternar tema')).toBeVisible();
+    await expect(navLinks.getByLabel('Paleta de cores')).toBeVisible();
+    await expect(navLinks.getByLabel('Alternar idioma')).toBeVisible();
   });
 
   test('color button opens dropdown downward', async ({ page }) => {
-    const colorBtn = page.locator('#rail-color');
+    const colorBtn = page.getByLabel('Paleta de cores');
     const dropdown = page.locator('#rail-color-dropdown');
 
     await expect(dropdown).not.toHaveClass(/open/);
@@ -30,33 +33,34 @@ test.describe('Theme Rail', () => {
     await expect(dots).toHaveCount(6);
 
     // Fecha ao clicar fora
-    await page.locator('h1').first().click();
+    await page.getByRole('heading', { level: 1 }).first().click();
     await expect(dropdown).not.toHaveClass(/open/);
   });
 
   test('palette selection via dropdown works', async ({ page }) => {
-    await page.locator('#rail-color').click();
+    await page.getByLabel('Paleta de cores').click();
     await page.locator('.rail-dot[data-palette="emerald"]').click();
     await expect(page.locator('#rail-color-dropdown')).not.toHaveClass(/open/);
 
-    await page.locator('#rail-color').click();
+    await page.getByLabel('Paleta de cores').click();
     await expect(page.locator('.rail-dot[data-palette="emerald"]')).toHaveClass(/active/);
   });
 
   test('theme button toggles dark/light', async ({ page }) => {
     const html = page.locator('html');
+    const themeBtn = page.getByLabel('Alternar tema');
     const initial = await html.getAttribute('data-theme');
     const target = initial === 'dark' ? 'light' : 'dark';
 
-    await page.locator('#rail-theme').click();
+    await themeBtn.click();
     await expect(html).toHaveAttribute('data-theme', target, { timeout: 3000 });
 
-    await page.locator('#rail-theme').click();
+    await themeBtn.click();
     await expect(html).toHaveAttribute('data-theme', initial, { timeout: 3000 });
   });
 
   test('lang button toggles PT/EN', async ({ page }) => {
-    const langBtn = page.locator('#rail-lang');
+    const langBtn = page.getByLabel('Alternar idioma');
     const html = page.locator('html');
 
     await expect(html).toHaveAttribute('lang', /^pt/);
@@ -88,13 +92,13 @@ test.describe('Theme Rail', () => {
   });
 
   test('localStorage persists palette after reload', async ({ page }) => {
-    await page.locator('#rail-color').click();
+    await page.getByLabel('Paleta de cores').click();
     await page.locator('.rail-dot[data-palette="emerald"]').click();
 
     await page.reload();
     await page.waitForLoadState('networkidle');
 
-    await page.locator('#rail-color').click();
+    await page.getByLabel('Paleta de cores').click();
     await expect(page.locator('.rail-dot[data-palette="emerald"]')).toHaveClass(/active/);
 
     const saved = await page.evaluate(() => localStorage.getItem('lifelog-palette'));
@@ -103,10 +107,11 @@ test.describe('Theme Rail', () => {
 
   test('localStorage persists theme after reload', async ({ page }) => {
     const html = page.locator('html');
+    const themeBtn = page.getByLabel('Alternar tema');
     const initial = await html.getAttribute('data-theme');
     const target = initial === 'dark' ? 'light' : 'dark';
 
-    await page.locator('#rail-theme').click();
+    await themeBtn.click();
     await expect(html).toHaveAttribute('data-theme', target, { timeout: 3000 });
 
     const temaApos = await html.getAttribute('data-theme');
