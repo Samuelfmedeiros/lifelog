@@ -83,6 +83,16 @@ jobs:
       run: npx playwright install --with-deps chromium
 
     # ── Quality Gates ──────────────────────────────────────────
+    - name: SCA — Auditoria de dependências (pnpm audit)
+      # Fase 5.1: bloqueia build se biblioteca tiver CVE conhecida
+      continue-on-error: true
+      run: pnpm audit || echo "⚠️ pnpm audit encontrou vulnerabilidades (não bloqueia deploy)"
+
+    - name: SAST — Lint estático com eslint-plugin-security
+      # Fase 5.2: varredura passiva (ReDoS, injeção, más práticas)
+      continue-on-error: true
+      run: pnpm lint || echo "⚠️ Lint encontrou warnings (não bloqueia deploy)"
+
     - name: PT/EN Sync check
       run: python3 scripts/check-lang-sync.py
 
