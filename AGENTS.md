@@ -51,7 +51,7 @@
 
 ### CI/CD
 - **GitHub Actions** (`deploy.yml`) — Validate → Build → Test → Deploy → Health check → Notify
-- **Testes:** 196 passando (161 E2E + 35 Vitest)
+- **Testes:** 200 passando (165 E2E + 35 Vitest)
 - **Sync checker:** CI verifica sync PT/EN, health check inclui rotas EN
 - **Deploy:** Vercel (build remoto, sem --prebuilt)
 - **Ferramentas:** `pnpm` (Node 22+, corepack)
@@ -103,12 +103,15 @@ lifelog/
 
 ## 🧪 Testes
 
-- **Playwright E2E** (5 specs):
-  - `lifelog.spec.ts` — Suite principal (33 posts → 70+)
+- **Playwright E2E** (7 specs):
+  - `lifelog.spec.ts` — Suite principal (70+ posts, filtros, RSS, 404, health)
+  - `theme-rail.spec.ts` — Theme Rail seletor (getByLabel)
   - `record-demo.spec.ts` — Gravação de demo
-  - `theme-mobile.spec.ts` — Tema no mobile
-  - `theme-rail.spec.ts` — Theme Rail seletor
-- **CI:** Vitest com `passWithNoErrors` (sem testes unitários ainda)
+  - `theme-mobile.spec.ts` — Tema no mobile (diagnóstico)
+  - `a11y.spec.ts` — Acessibilidade axe-core (contraste WCAG + semântica)
+  - `vrt.spec.ts` — Regressão visual (snapshots dark/light/mobile)
+  - `security-headers.spec.ts` — DAST headers (produção)
+- **Vitest:** 35 testes data-driven (`projects.test.ts`)
 
 ---
 
