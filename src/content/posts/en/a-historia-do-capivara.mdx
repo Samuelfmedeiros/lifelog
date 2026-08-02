@@ -1,0 +1,123 @@
+---
+title: "The story of Capivara — from messy hub to central dashboard with 396 tests"
+description: "107 commits, 131 backend tests + 248 frontend, 2FA TOTP, local RAG with ChromaDB, R2 backup and D1 disaster recovery — the saga of turning a personal dashboard into reliable infrastructure."
+date: 2026-08-02 12:00:00 -03:00
+pubDate: 2026-08-02 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "fastapi", "react", "security", "rag"]
+icon: "🐹"
+cover: /covers/a-historia-do-capivara.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The hub that started as financial mess
+
+The original need had zero glamour: I needed to **understand where my money was going**. Capivara was born as a personal hub to organize my finances — but anyone following this blog knows it became much more than that.
+
+Today, Capivara is the **central dashboard of my ecosystem**: it monitors Arachne, TatuEngine and services, shows Dogwalk revenue, answers questions about my projects with local RAG, and keeps **offsite backups in two different clouds**.
+
+And the most impressive part: **396 tests** (131 backend + 248 frontend + 17 browser/E2E) making sure none of it breaks.
+
+## 🧠 Context — a dashboard that became infrastructure
+
+The initial commit came with an honest name:
+
+```
+a4eef5d feat: capivara hub — FastAPI + React + Cloudflare Tunnel
+```
+
+FastAPI on the backend, React on the frontend, SQLite as database, and a Cloudflare Tunnel to expose everything over HTTPS without opening ports. The first version had a simple project status dashboard — **zero mock data**, full cleanup (commit `35f411a`).
+
+Capivara grew in waves. First the **temporary invites** (1h-7d with permissions), then the **Umami analytics dashboard**, the **proxies** to other applications (Portfolio staging, Umami, Dogwalk), and hardened authentication with **JWT + refresh token rotation + blacklist**.
+
+## 🔧 The struggle — security, local RAG, and the backup that didn't exist
+
+### Authentication that had to grow
+
+In the beginning it was a simple login. But a dashboard that controls infrastructure can't have a weak password. So came:
+
+```python
+# backend/auth.py — JWT + bcrypt + 2FA TOTP
+def create_access_token(user_id: int) -> str:
+    expire = datetime.utcnow() + timedelta(hours=24)
+    return jwt.encode(
+        {"sub": str(user_id), "exp": expire},
+        settings.SECRET,
+        algorithm="HS256",
+    )
+```
+
+And **2FA TOTP** — the same algorithm as Google Authenticator. Every login requires the 6-digit code generated in the app. There was a day I tried to log in without my phone nearby and got locked at the door — a sign the security was working.
+
+### The local Second Brain
+
+Then came the fun part: a **local RAG chat** in the admin. ChromaDB as vector store + Ollama with `qwen3.5:4b` as the LLM. Memories are ingested automatically from the 6 projects — today there are **430 memories** in the vector database.
+
+```python
+# backend/routers/chat.py — ChromaDB search
+def search_memories(query: str, top_k: int = 5):
+    results = collection.query(
+        query_texts=[query],
+        n_results=top_k,
+        include=["documents", "metadatas", "distances"],
+    )
+    return results
+```
+
+The differentiator: a **Telegram bot** connected to the same brain. I send a question in chat, the webhook queries the RAG and replies with sources. My projects answer questions about themselves 24/7.
+
+### The backup that almost caught me
+
+The most tense moment: I discovered the offsite backup **didn't actually exist**. From 14/07 to 31/07, R2 was disabled on the account — the script ran, said it was backing up, but uploaded nothing. If WSL had died in that window, the entire database would be gone.
+
+The fix had two fronts:
+
+1. **Cloudflare R2** — `capivara-backups` bucket, validated snapshot every 6h via no_agent cron
+2. **Cloudflare D1 disaster recovery** — SQLite copy at the Cloudflare edge, synced every 6h
+
+```bash
+# scripts/backup_to_r2.sh — what saved the database
+rclone copy backend/capivara.db r2:capivara-backups/$(date +%F)/ --progress
+```
+
+Tokens rotated, credentials in Bitwarden SM, and the dump manually validated before sleeping peacefully again.
+
+## 💡 Resolution — the dashboard that became operations
+
+Capivara stopped being "my dashboard" and became **part of operations**. Today it:
+
+- Exposes **Portfolio staging** and Umami proxy (port 3001→3100 to avoid conflicts)
+- Shows the **Dogwalk Stripe dashboard** (revenue, subscriptions, payouts, 12-month chart)
+- Monitors **WSL in real time** (CPU, RAM, GPU, disks, Docker, services, processes)
+- Sends **push notifications** with full offline PWA (VAPID keys)
+
+The frontend refactor was brutal: Dashboard from 994→262 lines (-74%), AdminPage from 1091→97 lines (-91%), initial bundle from 668→238 kB (-64%) with code splitting.
+
+## 📊 Metrics
+
+| Metric | Birth | Today |
+|--------|-------|-------|
+| Commits | 1 | 107 |
+| Backend tests (pytest) | 0 | 131 |
+| Frontend tests (Vitest) | 0 | 248+ |
+| Browser + E2E tests | 0 | 17 |
+| RAG memories (ChromaDB) | 0 | 430 |
+| Offsite backups | 0 | 2 (R2 + D1) |
+| Rate limit | missing | IP + API key dual window |
+
+## 🎯 Lessons
+
+Capivara taught me that **a personal dashboard is also production**. The day the "silent" backup failed without me knowing was a wake-up call: if an automation is critical, it needs **validation**, not just execution. That's what led to the validated R2 snapshot and the no_agent sync — systems that fix themselves.
+
+And the second lesson: **local RAG with personal data works really well**. Having my Second Brain answering about my own projects, with sources, changed how I work — and became a pattern Arachne later took to the extreme.
+
+<Terminal
+  lines={[
+    { cmd: 'git rev-list --count HEAD', output: '107 commits since the start' },
+    { cmd: 'pytest backend/tests/ -q | tail -1', output: '131 passed' },
+    { cmd: 'pnpm test --run | tail -1', output: '248 passed' },
+    { cmd: 'rclone ls r2:capivara-backups/ | tail -3', output: 'daily backups on R2' },
+  ]}
+/>
