@@ -16,9 +16,12 @@
 
 ## Fase 1 — Estabilização e Fim do Hardcoding
 
-- [ ] Substituir assertions exatas por dinâmicas (Regex + contagem real)
+- [x] Substituir assertions exatas por dinâmicas (Regex + contagem real)
+  - Commit `abac822`: PROJECT_PILLS dinâmico (ids) + PROJECT_PILL_LABELS (labels) — corrigiu falha "8 vs 10 pills"
 - [ ] Mocks de Rede no Playwright para isolar interface
-- [ ] Validar suíte 68 testes repetidamente
+  - ⚠️ Avaliado: provavelmente desnecessário — LifeLog é SSG puro, dados vêm dos MDX (não de API)
+- [x] Validar suíte 68 testes repetidamente
+  - ✅ 3/3 runs: 148 passed, 0 failed (3.5/4.0/3.8min) — zero flakiness
 
 **Pontos exatos encontrados (investigação 01/08/2026):**
 - `e2e/lifelog.spec.ts:203` — teste "Posts=32, Projetos=6, Desde=2026" hardcoded (HOJE são 51+ PT)
