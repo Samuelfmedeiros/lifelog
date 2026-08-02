@@ -2,7 +2,7 @@
 import '../styles/global.css';
 import '../styles/themes.css';
 import PalettePicker from '../components/PalettePicker.astro';
-import { getTranslations, detectLocale } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 
 export interface Props {
   title: string;
@@ -120,7 +120,7 @@ const footerText = dataLocale === 'en'
   </head>
   <body>
     <header class="navbar">
-      <nav class="navbar-inner">
+      <nav class="navbar-inner" aria-label={locale === 'en' ? 'Main navigation' : 'Navegação principal'}>
         <a href={homeHref} class="navbar-logo">
           <span class="navbar-logo-icon">📖</span>
           <span>LifeLog</span>
@@ -155,7 +155,7 @@ const footerText = dataLocale === 'en'
     [data-theme="light"] .navbar-brand-name { color: #5a5a60; }
     [data-theme="light"] .navbar-link { color: #5a5a60; }
     [data-theme="light"] .navbar-link:hover { color: var(--color-accent); background: rgba(99, 102, 241, 0.06); }
-    [data-theme="light"] .navbar-link.cta { background: #6366f1; color: #fff; }
+    [data-theme="light"] .navbar-link.cta { background: #4f52d6; color: #fff; }
     [data-theme="light"] .navbar-logo-icon { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); }
     [data-theme="light"] .hero-title { color: #1a1a2e; }
     [data-theme="light"] .hero-subtitle { color: #5a5a60; }

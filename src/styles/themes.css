@@ -33,7 +33,7 @@
   --navbar-link-color: #5a5a60;
   --navbar-link-hover-bg: rgba(255, 255, 255, 0.06);
   --navbar-cta-bg: var(--color-accent);
-  --navbar-cta-color: #ffffff;
+  --navbar-cta-color: #1a1a2e;
   --navbar-icon-bg: rgba(255, 255, 255, 0.06);
   --navbar-icon-border: rgba(255, 255, 255, 0.15);
   --color-heading: #ffffff;
@@ -80,7 +80,7 @@
   --navbar-brand-color: #78787d;
   --navbar-link-color: #5a5a60;
   --navbar-link-hover-bg: rgba(99, 102, 241, 0.06);
-  --navbar-cta-bg: #6366f1;
+  --navbar-cta-bg: #4f52d6;
   --navbar-cta-color: #ffffff;
   --navbar-icon-bg: rgba(99, 102, 241, 0.1);
   --navbar-icon-border: rgba(99, 102, 241, 0.3);
@@ -134,7 +134,7 @@
   color: #5a5a60;
 }
 [data-theme="light"] .pill.pill[data-active="true"] {
-  color: #fff;
+  /* Cor do texto definida no FilterBar (contraste WCAG AA) — não forçar branco aqui */
   box-shadow: 0 0 16px color-mix(in srgb, var(--bar-accent) 25%, transparent);
 }
 [data-theme="light"] .pill.pill:hover {
