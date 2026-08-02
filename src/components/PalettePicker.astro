@@ -282,6 +282,12 @@ import { PALETTES } from '../lib/palettes'
         animating = false
         document.documentElement.classList.remove('vt-running')
       })
+      // Safety: se t.ready/t.finished nunca resolverem (edge case), não deixar
+      // vt-running preso — transitions ficariam desligadas pra sempre
+      setTimeout(() => {
+        animating = false
+        document.documentElement.classList.remove('vt-running')
+      }, 1500)
       return
     }
 
@@ -289,12 +295,16 @@ import { PALETTES } from '../lib/palettes'
     const fx = e?.clientX ?? lastTouchX ?? innerWidth / 2
     const fy = e?.clientY ?? lastTouchY ?? innerHeight / 2
     if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      animating = true
+      // Cores REAIS dos temas (themes.css): light = creme #f5f2eb, dark = #0a0a0f.
+      // NÃO ler getComputedStyle aqui — o --color-bg computado é do tema ATUAL,
+      // e o overlay precisa da cor do tema DESTINO (next).
       const overlay = document.createElement('div')
       overlay.style.cssText =
         'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
         'clip-path:circle(0px at ' + fx + 'px ' + fy + 'px);' +
-        'background:' + (next === 'light' ? '#f7f6f3' : '#0a0a0f') + ';' +
-        'transition:clip-path 0.5s cubic-bezier(0.16,1,0.3,1)'
+        'background:' + (next === 'light' ? '#f5f2eb' : '#0a0a0f') + ';' +
+        'transition:clip-path 0.5s cubic-bezier(0.33, 1, 0.68, 1)'
       document.body.appendChild(overlay)
       overlay.offsetHeight // force layout
       const endR = Math.hypot(
@@ -302,8 +312,13 @@ import { PALETTES } from '../lib/palettes'
         Math.max(fy, document.documentElement.scrollHeight - fy, innerHeight - fy)
       )
       overlay.style.clipPath = 'circle(' + endR + 'px at ' + fx + 'px ' + fy + 'px)'
-      setTimeout(() => setTheme(next), 200)
-      setTimeout(() => overlay.remove(), 550)
+      // Timing alinhado: espera a expansão cobrir TUDO (500ms), SÓ ENTÃO muda o
+      // tema + remove overlay. Mudar antes = flash do tema novo fora do círculo.
+      setTimeout(() => {
+        setTheme(next)
+        overlay.remove()
+        animating = false
+      }, 500)
     } else {
       setTheme(next)
     }
