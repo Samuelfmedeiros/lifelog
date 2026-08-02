@@ -323,12 +323,16 @@ Atualmente focado em:
   }
 
   .terminal-output pre {
-    color: #7c3aed;
+    /* Cor via variável de tema (definida no global.css): dark = #c4b5fd, light = #5b21b6 */
+    color: var(--terminal-text, #c4b5fd);
     white-space: pre-wrap;
     font-family: inherit;
     font-size: inherit;
     margin: 0;
     line-height: 1.5;
+  }
+  [data-theme="light"] .terminal-output pre {
+    color: #5b21b6;
   }
 
   .terminal-output pre:has(> .error) { color: #f85149; }

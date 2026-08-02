@@ -18,7 +18,7 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
 ---
 
 <div class="tag-cloud">
-  <h3 class="tag-cloud-title">{title}</h3>
+  <h2 class="tag-cloud-title">{title}</h2>
   {sorted.length > 0 ? (
     <div class="tag-cloud-pills">
       {sorted.map((tag) => (
@@ -57,7 +57,6 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
     margin-bottom: 0.75rem;
-    opacity: 0.6;
   }
 
   .tag-cloud-pills {
@@ -102,8 +101,8 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     text-align: center;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.06);
-    color: var(--color-text-muted);
-    opacity: 0.6;
+    /* Contraste AA: #a0a8b4 sobre fundo escuro = 4.8:1 (#8b949e dava 4.44) */
+    color: #a0a8b4;
     line-height: 1.4;
   }
 

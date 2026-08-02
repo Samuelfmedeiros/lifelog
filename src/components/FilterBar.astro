@@ -637,10 +637,16 @@ const allLabel = isEn ? 'All' : 'Todos';
   }
 
   .pill[data-active="true"] {
-    color: #fff;
+    /* Contraste WCAG AA (4.5:1): accent claro → texto escuro, accent escuro → texto claro.
+       #848d97 (Todos/ano) e accents pastel no light precisam de texto escuro. */
+    color: #1a1a2e;
     background: var(--bar-accent);
     border-color: transparent;
     box-shadow: 0 0 20px color-mix(in srgb, var(--bar-accent) 30%, transparent);
+  }
+  [data-theme="dark"] .pill[data-active="true"] {
+    /* No dark os accents são escuros — texto branco mantém contraste */
+    color: #fff;
   }
   .pill[data-active="true"]:hover {
     filter: brightness(1.1);

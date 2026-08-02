@@ -5,7 +5,20 @@
    LifeLog — Global Styles
    ======================================== */
 
-
+/* Shiki dual-theme — cores de token com contraste WCAG AA (4.5:1).
+   O Astro injeta var(--shiki-*) no HTML; sem estas definições os blocos
+   de código herdam cor indefinida (ex: roxo #7c3aed = contraste 3.32). */
+:root {
+  --shiki-light: #1a1a2e;
+  --shiki-dark: #e6edf3;
+  --shiki-light-bg: #ffffff;
+  --shiki-dark-bg: #0d1117;
+  /* TerminalWidget — contraste AA: roxo 300 no dark, roxo 800 no light */
+  --terminal-text: #c4b5fd;
+}
+[data-theme="light"] {
+  --terminal-text: #5b21b6;
+}
 
 ::selection {
   background: var(--color-accent);
@@ -192,7 +205,9 @@ body {
 
 .navbar-link.cta {
   background: var(--color-accent);
-  color: #000;
+  /* Contraste WCAG AA: no dark o accent é pastel claro (#a78bfa) — texto escuro.
+     No light o accent é escuro (#7c3aed) — texto claro (override no themes.css). */
+  color: #1a1a2e;
   font-weight: 600;
   margin-left: 0.5rem;
 }
@@ -363,6 +378,12 @@ body {
   overflow-x: auto;
   margin: 1.5rem 0;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  /* Contraste WCAG AA: texto base, não accent (roxo dava 3.32 no dark) */
+  color: var(--color-text);
+}
+[data-theme="light"] .post-content pre {
+  background: #fcf9f5;
+  color: #1a1a2e;
 }
 .post-content pre code {
   background: none;
