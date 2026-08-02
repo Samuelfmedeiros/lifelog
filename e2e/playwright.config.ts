@@ -8,6 +8,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4321',
     viewport: { width: 1280, height: 720 },
+    // VRT — snapshot por componente, tolerância pequena pra animações/antialiasing
+    screenshot: { mode: 'only-on-failure', fullPage: false },
   },
   // Servidor gerenciado pelo CI/CD workflow (ou local via pnpm dev)
   // webServer não configurado para evitar conflito com preview server
