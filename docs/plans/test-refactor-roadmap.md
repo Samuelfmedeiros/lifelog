@@ -12,6 +12,7 @@
 | 2. Modernização E2E | Limpar código repetido e melhorar seletores | Playwright (POM/Fixtures) | Média |
 | 3. Upgrade Unitário | Escalar validações com menos código | Vitest (test.each()) | Média |
 | 4. Novos Horizontes | Acessibilidade + prevenção de bugs visuais | Axe-core + VRT | Alta |
+| 5. Segurança Contínua | SCA + SAST + DAST sem sair do fluxo | pnpm audit + ESLint + Playwright | Baixa |
 
 ## Fase 1 — Estabilização e Fim do Hardcoding
 
@@ -41,6 +42,30 @@
 
 - [ ] `@axe-core/playwright` — contraste + semântica HTML
 - [ ] VRT `toHaveScreenshot()` — toggles dark/light + mobile
+
+## Fase 5 — Segurança Contínua (adicionada 01/08/2026)
+
+> Segurança realista e automatizada, sem virar projeto paralelo. Três frentes
+> de alto impacto com baixo esforço, usando o ecossistema já existente (pnpm + Playwright).
+
+### 5.1 SCA — Auditoria de Dependências (muito baixa)
+
+- [ ] Adicionar `pnpm audit` no CI, logo antes de `pnpm test`
+- [ ] Bloqueia build se biblioteca do frontend tiver CVE conhecida
+
+### 5.2 SAST — Análise Estática com ESLint (baixa)
+
+- [ ] Instalar `eslint-plugin-security`
+- [ ] Varredura passiva: ReDoS (regex perigosas), manipulação insegura de objetos
+- [ ] Alerta no editor + CI
+
+### 5.3 DAST — Validação de Headers com Playwright (média)
+
+- [ ] Teste global de infraestrutura que requisita a home e valida:
+  - `Strict-Transport-Security` (HSTS) presente
+  - `Content-Security-Policy` (CSP) configurada (anti-XSS)
+  - `X-Frame-Options` ativo (anti-clickjacking)
+- [ ] Integrar na suíte E2E existente (1 teste novo)
 
 ## Estado Atual (baseline)
 
