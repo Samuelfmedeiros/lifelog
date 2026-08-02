@@ -139,7 +139,7 @@ test.describe('Homepage', () => {
 
 test.describe('Páginas de Posts', () => {
   for (const post of POSTS) {
-    test(`"${post.slug}" deve renderizar corretamente`, async ({ page, goto }) => {
+    test(`"${post.slug}" deve renderizar corretamente`, async ({ page }) => {
       const response = await page.goto(`/post/${post.slug}/`);
       expect(response?.status()).toBe(200);
 
@@ -250,7 +250,7 @@ test.describe('Sobre', () => {
    ============================================= */
 
 test.describe('RSS Feed', () => {
-  test('XML válido com todos os posts', async ({ page, goto }) => {
+  test('XML válido com todos os posts', async ({ goto }) => {
     const response = await goto('/rss.xml');
     expect(response?.ok()).toBeTruthy();
     expect(response?.headers()['content-type'] || '').toContain('xml');
@@ -277,7 +277,7 @@ test.describe('RSS Feed', () => {
    ============================================= */
 
 test.describe('Filtros', () => {
-  test.beforeEach(async ({ page, goto }) => {
+  test.beforeEach(async ({ goto }) => {
     await goto('/');
   });
 
@@ -447,7 +447,7 @@ test.describe('Responsivo (Mobile)', () => {
 
 test.describe('Temas por Projeto', () => {
   for (const post of POSTS) {
-    test(`"${post.slug}" tem data-project="${post.project}"`, async ({ page, goto }) => {
+    test(`"${post.slug}" tem data-project="${post.project}"`, async ({ page }) => {
       const response = await page.goto(`/post/${post.slug}/`);
       expect(response?.status()).toBe(200);
 
@@ -500,7 +500,7 @@ test.describe('TatuEngine', () => {
     await expect(pill).toContainText('TatuEngine');
   });
 
-  test('pattern wavefield.svg existe', async ({ page, goto }) => {
+  test('pattern wavefield.svg existe', async ({ goto }) => {
     const response = await goto('/patterns/wavefield.svg');
     expect(response?.ok()).toBeTruthy();
   });
@@ -511,12 +511,12 @@ test.describe('TatuEngine', () => {
    ============================================= */
 
 test.describe('Patterns', () => {
-  test('pattern shield.svg existe', async ({ page, goto }) => {
+  test('pattern shield.svg existe', async ({ goto }) => {
     const response = await goto('/patterns/shield.svg');
     expect(response?.ok()).toBeTruthy();
   });
 
-  test('pattern scribble.svg existe', async ({ page, goto }) => {
+  test('pattern scribble.svg existe', async ({ goto }) => {
     const response = await goto('/patterns/scribble.svg');
     expect(response?.ok()).toBeTruthy();
   });
@@ -527,7 +527,7 @@ test.describe('Patterns', () => {
    ============================================= */
 
 test.describe('404', () => {
-  test('rota inexistente retorna 404', async ({ page, goto }) => {
+  test('rota inexistente retorna 404', async ({ goto }) => {
     const response = await goto('/pagina-inexistente');
     expect(response?.status()).toBe(404);
   });
@@ -538,7 +538,7 @@ test.describe('404', () => {
    ============================================= */
 
 test.describe('Health', () => {
-  test('homepage carrega em < 8s', async ({ page, goto }) => {
+  test('homepage carrega em < 8s', async ({ goto }) => {
     const start = Date.now();
     await goto('/');
     expect(Date.now() - start).toBeLessThan(8000);

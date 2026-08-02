@@ -29,7 +29,7 @@ for (const post of posts) {
   }
   dateMap.get(dateKey).push(post);
 }
-for (const [dateKey, dayPosts] of dateMap) {
+for (const [, dayPosts] of dateMap) {
   grouped.push({ date: dayPosts[0].data.pubDate || dayPosts[0].data.date, posts: dayPosts });
 }
 

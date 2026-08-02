@@ -1,7 +1,6 @@
 ---
 // PostLayout — Template compartilhado de post (PT e EN)
 import BaseLayout from '../layouts/BaseLayout.astro';
-import ProjectIcon from './ProjectIcon.astro';
 import { render } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 
@@ -23,7 +22,7 @@ export interface Props {
 
 const { post, locale, prevPost, nextPost, projectIcons, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref } = Astro.props;
 const coverImage = post.data.cover;
-const { Content, headings } = await render(post);
+const { Content } = await render(post);
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale}>

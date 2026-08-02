@@ -32,14 +32,17 @@
 
 ## Fase 2 — Modernização E2E
 
-- [ ] Web-First Assertions (`getByRole`/`getByLabel`) nos seletores frágeis
-- [ ] Fixtures/POM pra eliminar repetição de navegação nos 55 testes
-- [ ] Padronizar interações do theme-rail.spec.ts
+- [x] Web-First Assertions (`getByRole`/`getByLabel`) nos seletores frágeis
+  - Commit `a88239f`: h1→getByRole heading, #filter-search→getByLabel, .post-card→getByRole article, theme-rail→getByLabel
+- [x] Fixtures pra eliminar repetição de navegação
+  - `e2e/fixtures.ts`: goto (retorna Response) + home — eliminou 16x page.goto('/')
+- [ ] Padronizar interações do theme-rail.spec.ts (parcialmente feito com getByLabel)
 
 ## Fase 3 — Upgrade Unitário
 
-- [ ] `test.each()` data-driven nos 6 testes de projects.test.ts
-- [ ] Casos limite `getProject()` (injeção, mutação de PROJECT_ACCENTS)
+- [x] `test.each()` data-driven nos 6 testes de projects.test.ts
+  - Commit `a88239f`: 6 → 35 testes (9 projetos × 3 contratos + casos limite)
+- [x] Casos limite `getProject()` (injeção, case-sensitive, null/undefined)
 
 ## Fase 4 — Novos Horizontes
 
