@@ -13,7 +13,7 @@ const POST_URL = '/post/a-historia-do-lifelog/';
 async function scanPage(page: any, url: string, theme: 'dark' | 'light') {
   // Garante o tema antes de navegar (localStorage persiste)
   await page.addInitScript((t) => {
-    try { localStorage.setItem('lifelog-theme', t) } catch {}
+    try { localStorage.setItem('lifelog-theme', t) } catch { /* storage indisponível */ }
   }, theme);
   await page.goto(url);
   await page.waitForLoadState('networkidle');
