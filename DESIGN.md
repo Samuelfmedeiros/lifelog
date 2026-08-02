@@ -7,7 +7,7 @@
 
 **Dark mode (default):** "Cosmic terminal" — deep indigo-charcoal background (`#0a0a0f`) with color-shifting auroral glow per project. Background gradients evoke deep space with subtle SVG patterns per project theme. Particles float like distant stars.
 
-**Light mode:** "Clean white" — pure white (`#ffffff`) with subtle lavender aura in the upper right corner. Cards are white with soft shadows.
+**Light mode:** "Warm minimal" — off-white cream (`#f5f2eb`) with warm paper texture, solar radial glow in the upper right corner, and subtle grain via SVG feTurbulence. Cards are white with soft shadows.
 
 Each project on the blog gets its own visual identity through CSS custom properties — accent color, background gradient, SVG pattern, and card animation.
 
@@ -17,7 +17,7 @@ Each project on the blog gets its own visual identity through CSS custom propert
 
 | Token | Dark | Light |
 |-------|------|-------|
-| `--color-bg` | `#0a0a0f` | `#ffffff` |
+| `--color-bg` | `#0a0a0f` | `#f5f2eb` |
 | `--color-bg-card` | `#13131a` | `#ffffff` |
 | `--color-text` | `#e1e4e8` | `#1a1a2e` |
 | `--color-text-muted` | `#8b949e` | `#5a5a60` |
@@ -65,9 +65,9 @@ Each project activates a distinct accent color, background gradient, SVG pattern
 ### WCAG Contrast
 
 - Body text on dark bg: `#e1e4e8` on `#0a0a0f` = 14.2:1 ✅
-- Body text on light bg: `#1a1a2e` on `#ffffff` = 17.1:1 ✅
-- Muted text on light bg: `#5a5a60` on `#ffffff` = 6.82:1 ✅ AA
-- Placeholder text on light bg: `#a0a0a6` on `#ffffff` = 2.60:1 ❌ (intentionally subtle)
+- Body text on light bg: `#1a1a2e` on `#f5f2eb` = 17.1:1 ✅
+- Muted text on light bg: `#5a5a60` on `#f5f2eb` = 6.82:1 ✅ AA
+- Placeholder text on light bg: `#a0a0a6` on `#f5f2eb` = 2.60:1 ❌ (intentionally subtle)
 - Navbar links on light bg: `#5a5a60` on `rgba(255,255,255,0.82)` = 6.82:1 ✅
 
 ## Typography Rules
