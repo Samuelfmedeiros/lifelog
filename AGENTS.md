@@ -4,7 +4,7 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
-> **Status:** ✅ Operacional — 70+ posts · 5 E2E specs · i18n PT/EN
+> **Status:** ✅ Operacional — 70+ posts · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — auto-post diário desativado
 
 ---
