@@ -783,12 +783,26 @@ body {
   .navbar-brand-name { display: none; }
 
   .navbar-links {
-    width: auto;
-    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
     flex-wrap: nowrap;
-    overflow-x: visible;
+    overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Theme Rail SEMPRE visível/tocável — sem sticky, o rail (último item)
+     é empurrado pra fora do viewport no mobile (só ~5px visíveis) e o
+     toque cai no <html>. Com .navbar-links = scroller real (flex:1 +
+     min-width:0 + overflow-x:auto), sticky right:0 gruda o rail na borda
+     direita da tela enquanto os links rolam por baixo. Background sólido
+     cobre os links que passam atrás. (fix 02/08/2026) */
+  .theme-rail {
+    position: sticky;
+    right: 0;
     flex-shrink: 0;
+    background: var(--color-bg);
+    padding-left: 4px;
   }
 
   .navbar-link {
