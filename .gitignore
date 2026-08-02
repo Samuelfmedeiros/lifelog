@@ -39,6 +39,10 @@ __pycache__/
 *.webm
 *.mp4
 
+# Exceção: baselines do VRT (Playwright toHaveScreenshot) SÃO versionados
+!e2e/vrt.spec.ts-snapshots/
+!e2e/vrt.spec.ts-snapshots/**
+
 # Demo videos & frames
 demo*.mp4
 demo*.webm
