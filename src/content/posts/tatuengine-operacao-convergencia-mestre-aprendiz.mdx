@@ -1,0 +1,118 @@
+---
+title: "A Operação Convergência — quando o TatuEngine resolveu se ensinar"
+description: "Depois de aprender a inferir (GPU 252×), o TatuEngine partiu pro ciclo Mestre-Aprendiz: um teacher Qwen2.5-3B com LoRA destilando raciocínio estruturado ([THOUGHT]/[ANSWER]) pro student BitMamba-2 1B. Seis versões num dia (v0.17→v0.22.2), 381 exemplos e a convergência que não vinha até o fix do system message."
+date: 2026-08-03 20:30:00 -03:00
+pubDate: 2026-08-03 20:30:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "convergencia", "teacher-student", "sft", "raciocinio"]
+icon: "🦔"
+cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O motor que resolveu se ensinar
+
+Primeiro o TatuEngine aprendeu a **inferir**: um modelo ternário de 1B parâmetros rodando em GPU com 252× de speedup, 114× de compressão, bit-a-bit idêntico ao CPU. Depois aprendeu a **agir**: agente autopoiético com 8 subsistemas, sandbox de segurança, MCP, memória.
+
+Aí veio a pergunta que muda tudo: **e se o motor aprender a se ensinar?**
+
+A resposta foi a **Operação Convergência** — um dia intenso de R&D (04/07/2026) que empilhou seis versões (v0.17.0 → v0.22.2) pra montar o ciclo **Mestre-Aprendiz**: um modelo professor destilando raciocínio pra um modelo aluno. E como toda boa saga, quase não funcionou.
+
+## 🧠 Contexto — o professor e o aluno
+
+O ciclo Mestre-Aprendiz é a porta pro auto-aprimoramento:
+
+- **Teacher (mestre):** Qwen2.5-3B-Instruct + **LoRA** (R=16, alpha=32, targets q/k/v/o) — o modelo que sabe raciocinar
+- **Student (aprendiz):** BitMamba-2 1B ternário — o modelo do motor, que ainda não sabe
+- **Destilação:** o teacher gera exemplos, o student aprende com eles
+
+Antes da Operação Convergência, o motor já tinha a base: API compatível OpenAI (v0.13), TUI chat (v0.15), benchmark (v0.16), TatuViz com grafo cognitivo (v0.17). Faltava o **raciocínio estruturado** — e a ponte entre os dois modelos.
+
+## 🔧 A luta — seis versões num dia
+
+### v0.18: Densidade Cognitiva
+
+**"Operação Pontes Semânticas"** — um hiper-cubo contextual que conecta conceitos antes de responder. A primeira camada de densidade.
+
+### v0.19: a Escada de Qualidade
+
+**Protocolo de Raciocínio Estruturado** (Chain-of-Thought) com formato de tags:
+
+```
+[THOUGHT] ... raciocínio passo a passo ... [/THOUGHT]
+[ANSWER] ... resposta final ... [/ANSWER]
+```
+
+O student não aprende só a resposta — aprende o **formato de pensar**.
+
+### v0.20: o roteador
+
+**Teacher-Student Multi-Engine Router** — roteia cada pedido entre o Qwen 3B (professor) e o BitMamba 1B (aluno). O professor gera, o aluno tenta.
+
+### v0.21: Ataque Total
+
+**Mineração semântica forçada + Mamba-2 R&D** — empurra o modelo a minerar conhecimento, não só reproduzir.
+
+### 💥 O momento crítico: a convergência que não vinha
+
+Aqui a saga quase morreu. O student **não convergia** — as respostas não seguiam o formato, o alinhamento quebrava. Dois commits resolveram:
+
+```bash
+# v0.21.5 (6bc95bb) — Operação Convergência: mineração semântica forçada
+feat(convergence): v0.21.5 — Operação Convergência (mineração semântica forçada)
+
+# v0.22.0 (c06eac1) — +505 linhas num commit: o teacher system message
+# quebrava o alinhamento do student
+feat(convergence): v0.22.0 — Força de Convergência (teacher system message fix)
+```
+
+O vilão era o **system message do teacher**: a instrução que o professor recebia contaminava a destilação. Corrigir o prompt do professor (+505 linhas de fix) destravou a convergência.
+
+### v0.22.1-2: o validador rigoroso
+
+```bash
+fix(validator): v0.22.1 — validador rigoroso de convergência (tags, steps, thought/answer)
+fix(batch): v0.22.2 — corrige refs a campos antigos do validador
+```
+
+Só aceita o que tem tags fechadas, steps coerentes e o par thought/answer completo.
+
+## 💡 Resolução — o ciclo completo
+
+A Operação Convergência entregou a infraestrutura inteira do ciclo Mestre-Aprendiz:
+
+- **Teacher LoRA treinado** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o (`tatu_lora_train.py`)
+- **Destilação funcional** — 381 exemplos gerados com o protocolo `[THOUGHT]/[ANSWER]` (`tatu_distill.py`)
+- **3 datasets consolidados** — `tatu_train_data` (349) + `student_train` (23) + `distill_clean_train` (9)
+- **Student PyTorch diferenciável** — `bitmamba_pt.py`, 1B com forward + backward validados (RTX 3060, CUDA 13.0), gradientes fluindo
+
+O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 épocas, 381 exemplos, GPU) e comparar Student vs Teacher. O motor aprendeu a inferir, aprendeu a agir, e agora está aprendendo a **aprender**.
+
+## 📊 Métricas
+
+| Métrica | Valor |
+|---------|-------|
+| Versões no arco (v0.17→v0.22.2) | 6 num dia (04/07/2026) |
+| Teacher | Qwen2.5-3B-Instruct + LoRA R=16, alpha=32 |
+| Exemplos destilados | 381 (3 datasets: 349 + 23 + 9) |
+| Student | BitMamba-2 1B diferenciável (forward+backward OK) |
+| Fix de convergência | teacher system message (+505 linhas, v0.22.0) |
+| Validador | rigoroso: tags, steps, thought/answer (v0.22.1) |
+
+## 🎯 Aprendizados
+
+1. **Convergência não é automática — o professor importa** — o fix que destravou tudo foi o **system message do teacher**, não o student. O aluno só converge se o mestre ensinar do jeito certo.
+2. **Ensinar formato é ensinar raciocínio** — o protocolo `[THOUGHT]/[ANSWER]` faz o student aprender o processo, não só a resposta.
+3. **Validação rigorosa na destilação** — o validador de tags/steps/thought-answer garante que lixo não vira dado de treino.
+4. **Auto-aprimoramento é o destino** — inferir → agir → aprender. O ciclo Mestre-Aprendiz é o degrau pro loop Teacher→Student→geração→destilação→Teacher.
+
+<Terminal
+  lines={[
+    { cmd: 'git show c06eac1 --stat', output: 'v0.22.0 — +505 linhas: teacher system message fix' },
+    { cmd: 'python3 tatu_distill.py', output: '381 exemplos [THOUGHT]/[ANSWER] destilados' },
+    { cmd: 'python3 bitmamba_pt.py', output: 'Student 1B diferenciável — forward + backward OK (RTX 3060)' },
+    { cmd: 'python3 tatu_sft_train.py', output: 'Student SFT — 3 épocas, 381 exemplos (próximo marco)' },
+  ]}
+/>

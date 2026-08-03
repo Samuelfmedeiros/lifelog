@@ -1,0 +1,118 @@
+---
+title: "Operation Convergence — when TatuEngine decided to teach itself"
+description: "After learning to infer (252× GPU speedup), TatuEngine went for the Master-Apprentice cycle: a Qwen2.5-3B teacher with LoRA distilling structured reasoning ([THOUGHT]/[ANSWER]) into the BitMamba-2 1B student. Six versions in one day (v0.17→v0.22.2), 381 examples, and the convergence that wouldn't come until the system message fix."
+date: 2026-08-03 20:30:00 -03:00
+pubDate: 2026-08-03 20:30:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "convergence", "teacher-student", "sft", "reasoning"]
+icon: "🦔"
+cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The engine that decided to teach itself
+
+First TatuEngine learned to **infer**: a ternary 1B-parameter model running on GPU with 252× speedup, 114× compression, bit-identical to CPU. Then it learned to **act**: an autopoietic agent with 8 subsystems, a security sandbox, MCP, memory.
+
+Then came the question that changes everything: **what if the engine learns to teach itself?**
+
+The answer was **Operation Convergence** — an intense R&D day (04/07/2026) that stacked six versions (v0.17.0 → v0.22.2) to build the **Master-Apprentice** cycle: a teacher model distilling reasoning into a student model. And like any good saga, it almost didn't work.
+
+## 🧠 Context — the teacher and the student
+
+The Master-Apprentice cycle is the gateway to self-improvement:
+
+- **Teacher (master):** Qwen2.5-3B-Instruct + **LoRA** (R=16, alpha=32, targets q/k/v/o) — the model that knows how to reason
+- **Student (apprentice):** BitMamba-2 1B ternary — the engine's model, which doesn't know yet
+- **Distillation:** the teacher generates examples, the student learns from them
+
+Before Operation Convergence, the engine already had the base: OpenAI-compatible API (v0.13), chat TUI (v0.15), benchmark (v0.16), TatuViz with cognitive graph (v0.17). What was missing: **structured reasoning** — and the bridge between the two models.
+
+## 🔧 The struggle — six versions in one day
+
+### v0.18: Cognitive Density
+
+**"Semantic Bridges Operation"** — a contextual hypercube that connects concepts before answering. The first layer of density.
+
+### v0.19: the Quality Ladder
+
+**Structured Reasoning Protocol** (Chain-of-Thought) with a tag format:
+
+```
+[THOUGHT] ... step-by-step reasoning ... [/THOUGHT]
+[ANSWER] ... final answer ... [/ANSWER]
+```
+
+The student doesn't just learn the answer — it learns the **format of thinking**.
+
+### v0.20: the router
+
+**Teacher-Student Multi-Engine Router** — routes each request between Qwen 3B (teacher) and BitMamba 1B (student). The teacher generates, the student tries.
+
+### v0.21: Total Attack
+
+**Forced semantic mining + Mamba-2 R&D** — pushes the model to mine knowledge, not just reproduce it.
+
+### 💥 The critical moment: the convergence that wouldn't come
+
+This is where the saga almost died. The student **wasn't converging** — the answers didn't follow the format, alignment kept breaking. Two commits fixed it:
+
+```bash
+# v0.21.5 (6bc95bb) — Operation Convergence: forced semantic mining
+feat(convergence): v0.21.5 — Operação Convergência (mineração semântica forçada)
+
+# v0.22.0 (c06eac1) — +505 lines in one commit: the teacher system message
+# was breaking the student's alignment
+feat(convergence): v0.22.0 — Força de Convergência (teacher system message fix)
+```
+
+The villain was the **teacher's system message**: the instruction the teacher received contaminated the distillation. Fixing the professor's prompt (+505 lines of fix) unlocked convergence.
+
+### v0.22.1-2: the rigorous validator
+
+```bash
+fix(validator): v0.22.1 — validador rigoroso de convergência (tags, steps, thought/answer)
+fix(batch): v0.22.2 — corrige refs a campos antigos do validador
+```
+
+Only accepts what has closed tags, coherent steps and a complete thought/answer pair.
+
+## 💡 Resolution — the complete cycle
+
+Operation Convergence delivered the entire Master-Apprentice infrastructure:
+
+- **Trained teacher LoRA** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o (`tatu_lora_train.py`)
+- **Working distillation** — 381 examples generated with the `[THOUGHT]/[ANSWER]` protocol (`tatu_distill.py`)
+- **3 consolidated datasets** — `tatu_train_data` (349) + `student_train` (23) + `distill_clean_train` (9)
+- **Differentiable PyTorch student** — `bitmamba_pt.py`, 1B with forward + backward validated (RTX 3060, CUDA 13.0), gradients flowing
+
+The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs, 381 examples, GPU) and comparing Student vs Teacher. The engine learned to infer, learned to act, and now it's learning to **learn**.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| Versions in the arc (v0.17→v0.22.2) | 6 in one day (04/07/2026) |
+| Teacher | Qwen2.5-3B-Instruct + LoRA R=16, alpha=32 |
+| Distilled examples | 381 (3 datasets: 349 + 23 + 9) |
+| Student | BitMamba-2 1B differentiable (forward+backward OK) |
+| Convergence fix | teacher system message (+505 lines, v0.22.0) |
+| Validator | rigorous: tags, steps, thought/answer (v0.22.1) |
+
+## 🎯 Lessons
+
+1. **Convergence isn't automatic — the teacher matters** — the fix that unlocked everything was the **teacher's system message**, not the student. The apprentice only converges if the master teaches the right way.
+2. **Teaching format is teaching reasoning** — the `[THOUGHT]/[ANSWER]` protocol makes the student learn the process, not just the answer.
+3. **Rigorous validation in distillation** — the tags/steps/thought-answer validator ensures garbage doesn't become training data.
+4. **Self-improvement is the destination** — infer → act → learn. The Master-Apprentice cycle is the step toward the Teacher→Student→generation→distillation→Teacher loop.
+
+<Terminal
+  lines={[
+    { cmd: 'git show c06eac1 --stat', output: 'v0.22.0 — +505 lines: teacher system message fix' },
+    { cmd: 'python3 tatu_distill.py', output: '381 [THOUGHT]/[ANSWER] examples distilled' },
+    { cmd: 'python3 bitmamba_pt.py', output: 'Student 1B differentiable — forward + backward OK (RTX 3060)' },
+    { cmd: 'python3 tatu_sft_train.py', output: 'Student SFT — 3 epochs, 381 examples (next milestone)' },
+  ]}
+/>
