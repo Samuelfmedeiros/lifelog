@@ -216,6 +216,11 @@ body {
   opacity: 0.9;
 }
 
+/* Ícone separado do texto nos links — desktop mostra, mobile esconde (≤480px) */
+.nav-link-icon {
+  margin-right: 0.25rem;
+}
+
 /* ========================================
    Header hero
    ======================================== */
@@ -789,20 +794,23 @@ body {
   }
 
   /* Links compactos pra CABER na tela sem scroll horizontal.
-     Sem override do .cta aqui, o "🚀 Portfólio" herda padding 12px e
-     font 13px do breakpoint 768 e estoura o navbar (417px > 390px),
-     empurrando o Theme Rail pra fora da viewport. (fix 02/08/2026) */
+     Fonte 0.65rem = mesmo tamanho dos controles do Theme Rail ao lado.
+     Ícones (📚ℹ️🚀) escondidos no mobile via .nav-link-icon pra liberar
+     espaço — texto puro, mais legível. (fix 02/08/2026) */
   .navbar-links {
     gap: 0.02rem;
   }
+  .nav-link-icon {
+    display: none;
+  }
   .navbar-link {
-    padding: 0.1rem 0.1rem;
-    font-size: 0.53rem;
+    padding: 0.15rem 0.2rem;
+    font-size: 0.65rem;
     flex-shrink: 0;
   }
   .navbar-link.cta {
-    padding: 0.1rem 0.2rem;
-    font-size: 0.53rem;
+    padding: 0.15rem 0.3rem;
+    font-size: 0.65rem;
     margin-left: 0;
   }
 

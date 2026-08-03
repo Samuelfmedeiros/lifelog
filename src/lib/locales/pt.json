@@ -1,9 +1,13 @@
 {
   "nav": {
     "home": "Início",
-    "archive": "📚 Arquivo",
-    "about": "ℹ️ Sobre",
-    "portfolio": "🚀 Portfólio",
+    "homeIcon": "",
+    "archive": "Arquivo",
+    "archiveIcon": "📚",
+    "about": "Sobre",
+    "aboutIcon": "ℹ️",
+    "portfolio": "Portfólio",
+    "portfolioIcon": "🚀",
     "logo": "📖 LifeLog"
   },
   "home": {
