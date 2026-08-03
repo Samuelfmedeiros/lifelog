@@ -1,0 +1,136 @@
+---
+title: "The story of TatuEngine — from dream RT Cores to an autopoietic agent with 252× speedup"
+description: "Born from the absurd question 'what if we used RT Cores to process neural networks?', killed the dream on WSL2, and became a hybrid CPU/GPU engine with BitMamba-2 1B, 114× compression, an agent with 8 subsystems and a security sandbox — 302 commits later."
+date: 2026-08-03 14:00:00 -03:00
+pubDate: 2026-08-03 14:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "ssm", "cuda", "gpu", "agent", "phase-field"]
+icon: "🦔"
+cover: /covers/a-historia-do-tatuengine.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The engine that started with an absurd question
+
+"Modern GPUs have RT Cores idle 99% of the time. What if we used them to process neural networks?"
+
+That provocation gave birth to TatuEngine in June 2026. The vision was mesmerizing: **each weight becomes a refracting lens inside a BVH, the input token is a ray fired at the geometry, and inference is light passing through the system** — the answer emerges from coherent wave interference. Learning? Sculpting the path the light travels.
+
+Thirty-odd days later, the project has 302 commits, a BitMamba-2 1B model running on GPU **252× faster than CPU**, 400+ tests and an autopoietic agent with 8 subsystems. But the road here started with the dream dying on day one.
+
+## 🧠 Context — the OptiX dream
+
+The planned stack was ambitious:
+
+- **OptiX 7** for ray tracing acceleration
+- **Mamba 2.8B** as the base model
+- **GGUF** as the model format
+- **MCP** as the API protocol
+
+Sprint 1 built everything around that vision: `src/core` with lock-free pipeline and triple buffering, `src/rt` with OptiX 9.1 headers compiling PTX, `src/mamba` with a CUDA SSM kernel, `src/field_theory` with the Phase Field prototype (`wave.h`, `interference.h`, `optimize.h`). The docs from that era — PLANO_MESTRE.md and CARVEKNOWLEDGE.md — both reflected a vision that would never work in the real environment.
+
+## 🔧 The struggle — the dream that died on WSL2
+
+### The blow: RT Cores don't exist on WSL2
+
+WSL2 has no RT Core support. The `libnvoptix.so.1` inside WSL is a **14KB DXCore proxy** that doesn't export OptiX's function table:
+
+```
+optixInit() → OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND
+```
+
+Two weeks trying to work around it. What saved us: **CUDA works natively in WSL** (direct NVIDIA ioctl). RT Cores don't — but CUDA Cores do. That was the first lesson: *don't force a technology where it doesn't fit*.
+
+### The second wall: 27 GB of lenses
+
+Converting the 1B-parameter network to BVH as TriangleLens would cost **27 GB** — impossible for 12 GB of VRAM. The solution was the hybrid `bridge_matmul` pipeline: the heavy matmuls (in_proj, out_proj, lm_head) run in CUDA reading the original tensors, while the SSM state (conv1d, RMSNorm, step) stays on CPU:
+
+```
+CPU: embedding → RMSNorm → conv1d+SiLU → SSM step → residual
+GPU (bridge_matmul): in_proj → out_proj → lm_head
+```
+
+And here came another discovery: **the Mamba SSM is inherently sequential** — `h(t) = f(h(t-1), x(t))`. Unlike transformers (parallelizable KV cache), only the matmuls can be parallelized; the step is CPU-bound. The bottleneck became CPU↔GPU communication between tokens.
+
+### The NaN that almost became a legend
+
+Softplus with float32 overflows: `expf(89.0) = inf`. One line saved two days of debugging:
+
+```cpp
+// before: softplus(x) = log1p(expf(x))  → inf for x > 89
+// after: log1pf(expf(-dt_x)) for x > 0
+```
+
+### The milestone: 50257/50257 bit-identical logits
+
+The validation that proved the hybrid worked: **50257 identical logits** between `bridge_matmul` and the CPU ground truth, bit for bit.
+
+### Block Codec: 114× compression
+
+The game-changing discovery: instead of 1 TriangleLens per weight, **ternary 32×32 blocks packed into 288 bytes each**. 893K blocks, 245 MB total vs 27.26 GB float32 — 114× compression, bit-identical (ULP tolerance).
+
+### GPU Block-Traversal: 252× speedup
+
+The `block_traverse_kernel` uses 32 threads/CTA, 1 row_block per grid block, warp shuffle reduction (`__shfl_xor_sync`) + shared memory, **no atomics**:
+
+| Pipeline | CPU | GPU | Speedup |
+|----------|-----|-----|---------|
+| 1 token inference | 10.552 ms | 41.9 µs | **252×** |
+| 16-ray traversal | 74.2 ms | 0.52 ms | **146×** |
+| Bake 100K cells | ~70 ms | 4.8 ms | **15×** |
+
+## 💡 Resolution — the autopoietic agent
+
+With inference solved, TatuEngine became an agent. The **GenerationContext** gathers the subsystems that make the model self-evaluate and use tools:
+
+- 🧬 **Immunosystem** — detects fixed attractor (H&lt;0.15, Δh&lt;0.001) and injects adaptive sinusoidal perturbation
+- 💾 **Associative LTM** — memory via cos_sim in the SSM latent space (HIGH=0.85)
+- 🛠️ **ToolUse** — detects `` `<|tool:name|>args<|/tool|>` `` in generated text and executes via sandbox
+- 🥞 **GoalStack** — recursive reasoning with checkpoint/restore (max_depth=3)
+- 🛡️ **SafetyGuard** — Noether invariance (drift < 0.001, E < 0.60)
+- ⚛️🎯 **GoalHamiltonian** — semantic supervisor with cos_sim(h_t, root_goal)
+- + RealityAnchor, AutoCalibration, FailureIndex, MetaCognition
+
+And the **Hybrid Sandbox** to protect file tools — path validation, size/type enforcement, 3 isolation levels:
+
+```python
+class SandboxLevel(Enum):
+    """Isolation levels of the sandbox, compatible with ToolPermission."""
+    SAFE = "safe"
+    PROMPT = "prompt"
+    RESTRICTED = "restricted"
+    DENIED = "denied"
+```
+
+51/51 tests passing — I just verified: `51 passed in 0.13s`.
+
+## 📊 Metrics
+
+| Metric | June (birth) | Today |
+|--------|--------------|-------|
+| Commits | 1 | 302 |
+| Tests | 0 | 400+ C++ (30 suites) + 51 sandbox |
+| GPU speedup | ❌ (OptiX didn't work) | 252× block-traversal |
+| Compression | 27.26 GB (float32) | 245 MB (block codec, 114×) |
+| Pipeline | Conceptual | Hybrid CPU/GPU bit-identical |
+| Agent | 0 subsystems | 8 subsystems |
+| Model | Mamba 2.8B (planned) | BitMamba-2 1B (working, 621 MB) |
+| Sandbox | didn't exist | 3 levels, 51/51 tests |
+
+## 🎯 Lessons
+
+1. **Don't force a technology where it doesn't fit** — OptiX on WSL cost ~2 weeks; the hybrid approach (bridge_matmul + block codec) was discovered in 3 days and solved it.
+2. **Native ternary models vs post-training** — ternarizing a float32 after training destroys coherence. BitMamba-2 works because it was born with ternary weights.
+3. **The SSM is not a transformer** — don't try to parallelize what's sequential by nature. The real win is accelerating the matmuls and accepting that the step is CPU-bound.
+4. **AutoTrainer converges too fast** — the system reaches 99.5% quality in 14 steps and AutoTrainer sits idle, not because it's broken, but because the system is already solved.
+
+<Terminal
+  lines={[
+    { cmd: 'git rev-list --count HEAD', output: '302 commits since the initial scaffolding' },
+    { cmd: 'pytest tests/test_sandbox.py -q', output: '51 passed in 0.13s' },
+    { cmd: 'ctest --test-dir build -R FieldTheory', output: '133/133 — adjacent method + adaptive SAH' },
+    { cmd: './build/tests/tatu_mamba_generate models/bitmamba_cpp/bitmamba_1b.bin --gpu --prompt "Hello, world" --tokens 64', output: 'GPU generation with BitMamba-2 1B' },
+  ]}
+/>
