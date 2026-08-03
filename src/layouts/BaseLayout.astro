@@ -129,9 +129,9 @@ const footerText = dataLocale === 'en'
         </a>
         <div class="navbar-links">
           <a href={homeHref} class="navbar-link" data-i18n="nav.home">{t.nav.home}</a>
-          <a href={archiveHref} class="navbar-link" data-i18n="nav.archive">{t.nav.archive}</a>
-          <a href={aboutHref} class="navbar-link" data-i18n="nav.about">{t.nav.about}</a>
-          <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio">{t.nav.portfolio}</a>
+          <a href={archiveHref} class="navbar-link" data-i18n="nav.archive"><span class="nav-link-icon" aria-hidden="true">{t.nav.archiveIcon}</span>{t.nav.archive}</a>
+          <a href={aboutHref} class="navbar-link" data-i18n="nav.about"><span class="nav-link-icon" aria-hidden="true">{t.nav.aboutIcon}</span>{t.nav.about}</a>
+          <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio"><span class="nav-link-icon" aria-hidden="true">{t.nav.portfolioIcon}</span>{t.nav.portfolio}</a>
           <PalettePicker />
         </div>
       </nav>
