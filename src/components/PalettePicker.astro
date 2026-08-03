@@ -261,8 +261,11 @@ import { PALETTES } from '../lib/palettes'
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
         setTheme(next); return
       }
-      const x = e?.clientX ?? lastTouchX ?? innerWidth / 2
-      const y = e?.clientY ?? lastTouchY ?? innerHeight / 2
+      // Origem do círculo: prioriza a posição REAL do toque (touchstart
+      // captura lastTouchX/Y; o click sintetizado no mobile às vezes vem
+      // com clientX=0/clientY=0 e não deve sobrescrever a posição do dedo)
+      const x = lastTouchX > 0 ? lastTouchX : (e?.clientX ?? innerWidth / 2)
+      const y = lastTouchY > 0 ? lastTouchY : (e?.clientY ?? innerHeight / 2)
       // Desliga CSS transitions durante o VT — o snapshot new precisa
       // capturar o tema FINAL, não o estado intermediário da cor
       document.documentElement.classList.add('vt-running')
@@ -295,8 +298,9 @@ import { PALETTES } from '../lib/palettes'
     }
 
     // ─── Fallback (sem VT) — overlay clip-path circular ───
-    const fx = e?.clientX ?? lastTouchX ?? innerWidth / 2
-    const fy = e?.clientY ?? lastTouchY ?? innerHeight / 2
+    // Mesma prioridade: posição real do toque > clientX do click > centro
+    const fx = lastTouchX > 0 ? lastTouchX : (e?.clientX ?? innerWidth / 2)
+    const fy = lastTouchY > 0 ? lastTouchY : (e?.clientY ?? innerHeight / 2)
     if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       animating = true
       // Cores REAIS dos temas (themes.css): light = creme #f5f2eb, dark = #0a0a0f.
