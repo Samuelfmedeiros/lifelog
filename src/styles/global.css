@@ -763,12 +763,10 @@ body {
   .navbar-inner {
     flex-direction: row;
     flex-wrap: nowrap;
-    padding: 0.5rem 0.75rem;
+    padding: 0.5rem 0.375rem;
     height: auto;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    gap: 0.15rem;
+    overflow-x: visible;
+    gap: 0.05rem;
   }
 
   .navbar-logo {
@@ -783,32 +781,29 @@ body {
   .navbar-brand-name { display: none; }
 
   .navbar-links {
-    flex: 1;
-    min-width: 0;
-    justify-content: flex-start;
+    width: auto;
+    justify-content: flex-end;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Theme Rail SEMPRE visível/tocável — sem sticky, o rail (último item)
-     é empurrado pra fora do viewport no mobile (só ~5px visíveis) e o
-     toque cai no <html>. Com .navbar-links = scroller real (flex:1 +
-     min-width:0 + overflow-x:auto), sticky right:0 gruda o rail na borda
-     direita da tela enquanto os links rolam por baixo. Background sólido
-     cobre os links que passam atrás. (fix 02/08/2026) */
-  .theme-rail {
-    position: sticky;
-    right: 0;
+    overflow-x: visible;
     flex-shrink: 0;
-    background: var(--color-bg);
-    padding-left: 4px;
   }
 
+  /* Links compactos pra CABER na tela sem scroll horizontal.
+     Sem override do .cta aqui, o "🚀 Portfólio" herda padding 12px e
+     font 13px do breakpoint 768 e estoura o navbar (417px > 390px),
+     empurrando o Theme Rail pra fora da viewport. (fix 02/08/2026) */
+  .navbar-links {
+    gap: 0.02rem;
+  }
   .navbar-link {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.7rem;
+    padding: 0.1rem 0.1rem;
+    font-size: 0.53rem;
     flex-shrink: 0;
+  }
+  .navbar-link.cta {
+    padding: 0.1rem 0.2rem;
+    font-size: 0.53rem;
+    margin-left: 0;
   }
 
   .hero-title {
