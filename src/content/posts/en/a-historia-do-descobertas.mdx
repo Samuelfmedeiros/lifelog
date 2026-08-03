@@ -1,0 +1,119 @@
+---
+title: "The story of the Discoveries — MCP, FTS5, ai-jail and the lessons that became rules"
+description: "MCP became the universal connector (published on the official registry), FTS5+vector became hybrid search with RRF, ai-jail isolated the agent and Ollama brought AI home — and the lessons became rules: docs first, plan first, stop and ask."
+date: 2026-08-03 15:30:00 -03:00
+pubDate: 2026-08-03 15:30:00 -03:00
+project: descobertas
+tags: ["descobertas", "mcp", "fts5", "ai-jail", "ollama", "lessons"]
+cover: /covers/a-historia-do-descobertas.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+##  The invisible layer of the ecosystem
+
+Every project has code, tests and deploys. What few people talk about is the **invisible layer**: the technical discoveries that cut across all projects and change the way you work.
+
+In July and August 2026, my ecosystem (Arachne, Capivara, Dogwalk, TatuEngine, LifeLog) went through four discoveries that became foundations: **MCP** became the universal connector, **FTS5 + vector search** became the search engine, **ai-jail** became the agent's security, and **Ollama** brought AI home. And in the end, the lessons became rules.
+
+##  Context — the same problem, five projects, five solutions
+
+The problem with a 5-project ecosystem is that each one solved the same pain in its own way:
+
+- **Integration** — every tool needed a custom plugin, a REST handler, a hand-stitched socket
+- **Search** — every database had its slow `LIKE %term%` or a search full of false positives
+- **Security** — agents with access to everything, running without a sandbox; one wrong `rm` from a prompt injection and goodbye
+- **AI** — everything depended on cloud APIs, with latency, cost, and data leaving home
+
+The turning point was realizing that **it wasn't worth reinventing** — it was worth discovering what was already documented and adopting it as a standard.
+
+##  The struggle — four discoveries
+
+### MCP: from "universal connector" to the official registry
+
+MCP (Model Context Protocol) from Anthropic is the "USB-C of AI" — a protocol that standardizes how LLMs connect to tools. Write a server once, and any client (Hermes, Claude, Cursor) discovers the tools automatically.
+
+Arachne became an MCP server with **38 tools** (scrape, vision, transcribe, RAG, repo download, video analysis) over stdio + SSE. But the real discovery came when trying to publish to the official registry:
+
+```bash
+# The path is NOT a PR to modelcontextprotocol/servers
+# (that repo only accepts reference implementations from the steering group since 2025)
+# The path is the publisher CLI:
+mcp-publisher publish
+```
+
+Result: **`io.github.Samuelfmedeiros/arachne-mcp` v1.0.1 on registry.modelcontextprotocol.io**, with the `arachne-mcp` 1.0.1 package on PyPI. Any MCP agent in the world now discovers Arachne with zero custom integration.
+
+### FTS5 + vector: the search that understands
+
+The second discovery: real search isn't regex — it's **hybrid retrieval**. Arachne's RAG evolved from pure FTS5 to hybrid **FTS5 + pgvector + RRF** (Reciprocal Rank Fusion), combining lexical relevance of full-text with the semantics of embeddings.
+
+The SQLite → PostgreSQL migration (08/02) brought two classic stumbles that became lessons:
+
+```sql
+-- SQLite → PostgreSQL
+STRFTIME('%s', col)  → EXTRACT(EPOCH FROM col)
+LENGTH(embedding)  → vector_dims(embedding)
+```
+
+And in LifeLog, search went from Fuse.js to an **embedded JSON index in the build** with word-boundary matching (commit `f690095`) — full-text search with no external dependency, straight in the HTML.
+
+### ai-jail: the agent's sandbox
+
+An agent with shell access is a huge risk — one prompt injection and the tokens leak. The discovery was **ai-jail** (bwrap + landlock): a sandbox that isolates commands and masks secrets:
+
+```yaml
+# ~/.ai-jail — the most important part:
+mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
+hide_dotdirs = [".hermes"]  # Hermes tokens protected
+deny_paths = ["secrets/", "*.key", ".gnupg/"]
+```
+
+The `hide_dotdirs = [".hermes"]` was the fine discovery: hiding the entire Hermes directory inside the sandbox, so neither the agent nor a prompt injection can read the tokens. And TatuEngine took the concept into code: **Hybrid Sandbox with 51/51 tests** (path validation, size/type enforcement, 3 isolation levels).
+
+### Ollama: the AI that lives at home
+
+The fourth discovery: you can run LLMs locally without depending on the cloud. **Local Ollama** (on a mirror machine) runs `qwen3.5-vision:latest` — I just verified, it's online:
+
+```bash
+curl -s http://localhost:11434/api/tags
+# → {"models":[{"name":"qwen3.5-vision:latest", ...}]}
+```
+
+With that, vision (VLM), generation and analysis run at home — low latency, zero cost per token, data that never leaves the network. Arachne consumes a local Ollama as a VLM fallback, and TatuEngine runs BitMamba-2 1B on local GPU with 252× speedup.
+
+##  Resolution — the lessons that became rules
+
+The biggest win wasn't any single tool — it was the **behavior pattern** they taught. Four rules were born from these discoveries:
+
+1. **Docs First** — before any technical action, consult the official documentation. No invented workaround if the documented solution exists.
+2. **Plan First** — show the plan before executing. No coding straight into production breakage.
+3. **Stop and ask** — if an approach failed, DON'T silently switch strategies. Report the blocker with data and present A/B/C options.
+4. **Delivery Gate** — no delivery without passing the test layers (lint, types, build, E2E, security). Check failed = no delivery.
+
+##  Metrics
+
+| Discovery | Before | After |
+|-----------|--------|-------|
+| Integration | custom plugins/handlers | MCP: 38 tools + official registry (v1.0.1) |
+| Search | `LIKE %term%` | FTS5 + pgvector + RRF hybrid |
+| Security | agent without sandbox | ai-jail (mask + hide_dotdirs) + Sandbox 51/51 |
+| AI | cloud-only | Local Ollama (mirror machine, qwen3.5-vision) |
+| Rules | "works here" | Docs First + Plan First + Delivery Gate |
+
+##  Lessons
+
+1. **Don't reinvent what already exists** — MCP, FTS5, bwrap, Ollama: all documented, all open source. The work is discovering and integrating, not reinventing.
+2. **A discovery becomes a standard, not a project** — each of these tools crossed 2+ projects. The standard is what scales, not the isolated case.
+3. **Agent security is a layer, not a feature** — sandbox, secret masking and hide_dotdirs protect against the worst case (prompt injection), not against the user. Design for the adversary.
+4. **Documenting the lesson doubles its value** — this post is the proof: a discovery that becomes a rule stops the next project from repeating the mistake.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 -m arachne.mcp.server', output: 'Arachne MCP server — 38 tools (stdio/SSE)' },
+  { cmd: 'mcp-publisher publish', output: 'io.github.Samuelfmedeiros/arachne-mcp v1.0.1 on the MCP Registry' },
+  { cmd: 'curl -s http://localhost:11434/api/tags', output: 'qwen3.5-vision:latest — local Ollama on the mirror machine' },
+  { cmd: 'grep hide_dotdirs ~/.ai-jail', output: 'hide_dotdirs = [".hermes"] — tokens protected in the sandbox' },
+  ]}
+/>
