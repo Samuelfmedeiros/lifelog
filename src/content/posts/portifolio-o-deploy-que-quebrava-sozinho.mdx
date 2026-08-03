@@ -1,0 +1,109 @@
+---
+title: "O deploy que quebrava sozinho — pnpm, audit fix e o ERR_PNPM_EEXIST"
+description: "Ninguém tocava no código, mas a Vercel recusava o build: ERR_PNPM_EEXIST. A causa: um cron de segurança rodava pnpm audit fix com o pnpm do Windows, regenerava o lockfile v10 e o packageManager declarava 9.12.3 — a saga de alinhar pnpm local, packageManager e CI."
+date: 2026-08-03 20:00:00 -03:00
+pubDate: 2026-08-03 20:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "deploy", "vercel", "pnpm", "ci-cd"]
+icon: "🚀"
+cover: /covers/portifolio-o-deploy-que-quebrava-sozinho.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O deploy que quebrava sozinho
+
+Existe um tipo de bug silencioso que é pior que crash: **o que aparece sem ninguém mexer em nada**. Era exatamente isso que tava acontecendo com o Portfólio em agosto de 2026 — o deploy na Vercel começou a recusar o build com um erro esotérico:
+
+```
+ERR_PNPM_EEXIST
+```
+
+Ninguém tinha tocado no código. O site local rodava lindo. Mas a Vercel dizia não. A investigação revelou uma história de **duas ferramentas brigando entre si**: o cron de segurança que atualiza dependências, e o pnpm que o package.json declarava.
+
+## 🧠 Contexto — o guardião que virou vilão
+
+O Portfólio vive em produção na Vercel (`samuelmedeiros.vercel.app`) e self-host na porta 3001. O deploy era manual: `vercel --token "$VERCEL_TOKEN" --prod`.
+
+O elenco:
+
+- **`package.json`** declarava `packageManager: "pnpm@9.12.3"` — era isso que a Vercel usava no build
+- **`dependency-sast-scan.sh`** (cron de segurança, sexta 8h) roda `pnpm audit fix` — atualiza deps e **regenera o lockfile**
+- O `pnpm` do PATH do WSL... às vezes era o do **Windows** (`/mnt/c/.../npm`), versão 10.34.5
+
+O audit fix rodou com o pnpm 10, gerou um lockfile v10. O packageManager continuava dizendo 9.12.3. Na Vercel: **pnpm 9 tentando ler lock v10 + achatando `node_modules` de uma dep com bundled dependencies** → `ERR_PNPM_EEXIST`.
+
+## 🔧 A luta — três fixes até achar a raiz
+
+### Fix 1: alinhar o packageManager (commit `6e90b6b`)
+
+```json
+// package.json
+- "packageManager": "pnpm@9.12.3"
++ "packageManager": "pnpm@10.34.5"
+```
+
+A Vercel passou a usar o pnpm 10 (a mesma versão do lockfile). Menos mal — mas o erro persistiu em outro ponto.
+
+### Fix 2: matar o `node-linker=hoisted` (commit `0aa26b2`)
+
+O `.npmrc` tinha `node-linker=hoisted` (herdado de config antiga). O hoisted faz o pnpm **achatar o node_modules interno do `@parcel/watcher-wasm`** (uma dep com `bundledDependencies`) — e o rename conflita com o cache restaurado do build:
+
+```
+O hoisted achata o node_modules interno do @parcel/watcher-wasm
+(bundledDependencies) → rename conflita com o cache restaurado do build
+→ ERR_PNPM_EEXIST. Na Vercel/Linux o isolated é o padrão e funciona.
+```
+
+```ini
+# .npmrc — depois
+store-dir=/tmp/.pnpm-store
+```
+
+### Fix 3: alinhar o CI (commit `d90d212`)
+
+O GitHub Actions ainda instalava pnpm 9.12.3 no `pnpm/action-setup` — desalinhado do packageManager. Subiu pra 10.34.5.
+
+### A causa raiz real
+
+O problema de fundo não era o pnpm 9 nem o 10 — era o **PATH**. O cron de segurança rodava `pnpm audit fix` com o pnpm do Windows (o PATH incluía `/mnt/c/.../npm`), não o do WSL. Cada sexta, ele regenerava o lockfile com uma versão diferente da declarada — e o deploy da semana seguinte quebrava "sozinho".
+
+## 💡 Resolução — a regra do alinhamento
+
+Depois dos três fixes, o princípio ficou claro e virou regra:
+
+```
+pnpm local == packageManager do package.json == pnpm do CI
+```
+
+E a regra prática pra segurança: **checar a versão do PATH antes de rodar audit fix** — o binário certo é `/home/samuel/.hermes/node/bin/pnpm`, não o do Windows.
+
+O deploy voltou a passar. E o aprendizado mais valioso: a ferramenta feita pra **proteger** o projeto (scan de segurança) quase derrubou a **produção** — porque o ambiente onde ela rodava não era o mesmo do build.
+
+## 📊 Métricas
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| packageManager | pnpm@9.12.3 | pnpm@10.34.5 |
+| Lockfile | v10 (regenerado pelo Windows) | v10 (alinhado ao packageManager) |
+| node-linker | hoisted (achatava bundled deps) | removido (isolated padrão) |
+| CI pnpm/action-setup | 9.12.3 | 10.34.5 |
+| Deploy Vercel | ERR_PNPM_EEXIST | ✅ estável |
+| Commits | 529 | 530 |
+
+## 🎯 Aprendizados
+
+1. **"Funciona local" não significa "funciona na Vercel"** — o ambiente de build é outro: outra versão de pnpm, outro node_modules, outro cache. Se o lockfile e o packageManager divergirem, o deploy quebra.
+2. **Ferramenta de segurança pode derrubar produção** — o `pnpm audit fix` (que existe pra proteger) regenerou o lockfile com a versão errada. Automação de segurança precisa rodar no MESMO ambiente do build.
+3. **O PATH é uma armadilha no WSL** — `/mnt/c/.../npm` no PATH significa que o binário errado pode ser escolhido silenciosamente. Sempre pinar o caminho absoluto do binário certo.
+4. **O erro esotérico tem causa raiz simples** — ERR_PNPM_EEXIST parecia mágica, mas era só versão divergente de pnpm + linker errado. Diagnóstico em camadas: packageManager → .npmrc → CI → PATH.
+
+<Terminal
+  lines={[
+    { cmd: 'git show 6e90b6b', output: 'packageManager pnpm@9.12.3 → 10.34.5 + lock regenerado' },
+    { cmd: 'git show 0aa26b2', output: 'remove node-linker=hoisted — ERR_PNPM_EEXIST no @parcel/watcher-wasm' },
+    { cmd: 'grep packageManager package.json', output: '"packageManager": "pnpm@10.34.5"' },
+    { cmd: 'vercel --prod', output: 'deploy pra produção — agora estável' },
+  ]}
+/>
