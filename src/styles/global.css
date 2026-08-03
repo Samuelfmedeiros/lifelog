@@ -768,7 +768,7 @@ body {
   .navbar-inner {
     flex-direction: row;
     flex-wrap: nowrap;
-    padding: 0.5rem 0.375rem;
+    padding: 0.5rem 0.25rem;
     height: auto;
     overflow-x: visible;
     gap: 0.05rem;
@@ -787,31 +787,35 @@ body {
 
   .navbar-links {
     width: auto;
-    justify-content: flex-end;
+    justify-content: flex-start;
     flex-wrap: nowrap;
     overflow-x: visible;
     flex-shrink: 0;
   }
 
-  /* Links compactos pra CABER na tela sem scroll horizontal.
-     Fonte 0.65rem = mesmo tamanho dos controles do Theme Rail ao lado.
-     Ícones (📚ℹ️🚀) escondidos no mobile via .nav-link-icon pra liberar
-     espaço — texto puro, mais legível. (fix 02/08/2026) */
+  /* Links seguem a logo (flex-start) com espaçamento — Início colado na
+     logo, demais seguem, rail no fim via margin-left:auto.
+     Fonte FLUIDA com clamp(): ~0.8rem em telas normais, reduz suavemente
+     nas pequenas (320px) pra caber SEM scroll. Ícones escondidos. */
   .navbar-links {
-    gap: 0.02rem;
+    gap: clamp(0.05rem, 1.2vw, 0.4rem);
+    margin-left: 0.1rem;
   }
   .nav-link-icon {
     display: none;
   }
   .navbar-link {
     padding: 0.15rem 0.2rem;
-    font-size: 0.65rem;
+    font-size: clamp(0.62rem, 3vw, 0.8rem);
     flex-shrink: 0;
   }
   .navbar-link.cta {
     padding: 0.15rem 0.3rem;
-    font-size: 0.65rem;
+    font-size: clamp(0.62rem, 3vw, 0.8rem);
     margin-left: 0;
+  }
+  .theme-rail {
+    margin-left: auto;
   }
 
   .hero-title {
