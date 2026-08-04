@@ -117,26 +117,80 @@ def find_posts_without_cover():
     return missing
 
 
-def generate_cover(slug, project="descobertas"):
+def _extract_title_from_mdx(slug):
+    """Try to read the post title from its MDX frontmatter."""
+    mdx_path = os.path.join(POSTS_DIR, f"{slug}.mdx")
+    if not os.path.exists(mdx_path):
+        return None
+    with open(mdx_path) as f:
+        fm = parse_frontmatter(f.read())
+    return fm.get("title", None)
+
+
+def generate_cover(slug, project="descobertas", title=None, force=False):
     """Generate cover image via Cloudflare Worker."""
     os.makedirs(COVERS_DIR, exist_ok=True)
     output_path = os.path.join(COVERS_DIR, f"{slug}.webp")
 
-    if os.path.exists(output_path):
+    if os.path.exists(output_path) and not force:
         log(f"Capa já existe: {slug}.webp")
         return True
 
+    # Auto-detect title from MDX if not provided
+    if not title:
+        title = _extract_title_from_mdx(slug)
+
     style = PROJECT_STYLES.get(project, PROJECT_STYLES["descobertas"])
+
+    # --- Build title-based visual context ---
+    title_context = ""
+    if title:
+        clean = title.strip('"').strip("'")
+        # Extract 6-8 meaningful keywords as visual direction
+        words = [w for w in clean.lower().split() if len(w) > 3 and w not in
+                 ("com", "que", "dos", "das", "para", "como", "mais", "pelo", "pela",
+                  "and", "the", "for", "with", "from", "that", "this", "was", "were")][:8]
+        if words:
+            title_context = f"Visual metaphor for: {' '.join(words)}. "
+
+    # --- Composition variety (deterministic per slug, cycles through 6 styles) ---
+    compositions = [
+        "Wide cinematic shot, deep depth of field, environmental scale",
+        "Close-up macro composition, shallow depth of field, abstract details",
+        "Diagonal dynamic angle, motion blur, action perspective",
+        "Overhead flat lay, geometric arrangement, top-down view",
+        "Low-angle heroic perspective, dramatic lighting, towering elements",
+        "Dutch angle tilt, asymmetric balance, tension in framing",
+    ]
+    comp_idx = hash(slug) % len(compositions)
+    composition = compositions[comp_idx]
+
+    # --- Project-specific moods ---
+    project_moods = {
+        "arachne": "mysterious, crawling, interconnected web of data",
+        "dogwalk": "playful, organic, paws meeting pavement",
+        "portfolio": "futuristic, polished, luminous interface",
+        "capivara": "warm, tropical, sunset over digital landscape",
+        "tatuengine": "flowing, mathematical, hypnotic wave patterns",
+        "seguranca": "vigilant, armored, red-alert intensity",
+        "lifelog": "reflective, layered, ink bleeding into circuits",
+        "estudos": "structured, precise, blueprint aesthetic",
+        "descobertas": "curious, expansive, light breaking through darkness",
+    }
+    mood = project_moods.get(project, "atmospheric, immersive, cinematic")
+
     prompt = (
-        f"Digital artwork in {project} theme. "
+        f"Digital artwork. "
+        f"{title_context}"
         f"{style['prompt_suffix']}. "
-        f"Mood: technological, immersive, atmospheric. "
+        f"{composition}. "
+        f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
-        f"ABSOLUTELY NO TEXT, no typography, no letters, no words, no UI elements, no watermark, no signature."
+        f"No UI elements, no watermark, no raw text overlays."
     )
 
     log(f"Gerando capa para '{slug}' (projeto: {project})...")
-    log(f"Prompt: {prompt[:100]}...")
+    log(f"Prompt: {prompt[:150]}...")
 
     import base64  # noqa: F811
 
@@ -181,6 +235,26 @@ def main():
         return
 
     if "--all" in sys.argv:
+        force = "--force" in sys.argv
+        if force:
+            # List ALL posts (not just missing ones)
+            all_posts = []
+            for fname in sorted(os.listdir(POSTS_DIR)):
+                if not fname.endswith(".mdx"):
+                    continue
+                slug = fname.replace(".mdx", "")
+                with open(os.path.join(POSTS_DIR, fname)) as f:
+                    fm = parse_frontmatter(f.read())
+                all_posts.append({
+                    "slug": slug,
+                    "title": fm.get("title", slug),
+                    "project": fm.get("project", "descobertas"),
+                })
+            print(f"🔄 Regenerando TODAS as {len(all_posts)} capas (--force)...")
+            for p in all_posts:
+                generate_cover(p["slug"], p["project"], force=True)
+            return
+        
         missing = find_posts_without_cover()
         if not missing:
             print("✅ Todos os posts têm capa!")
