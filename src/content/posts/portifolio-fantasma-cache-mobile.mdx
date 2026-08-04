@@ -1,0 +1,118 @@
+---
+title: "O fantasma do cache mobile — bfcache, pageshow e a aba que se recusava a atualizar"
+description: "O Portfólio estava 100% funcional, 218 testes passando, zero erros no CI. Mas usuários de mobile Chrome viam versões antigas ao restaurar abas. A causa: o bfcache do Chrome ignora headers HTTP — e a solução veio cruzada de outro projeto."
+date: 2026-08-04 12:00:00 -03:00
+pubDate: 2026-08-04 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "cache", "bfcache", "chrome", "mobile", "nextjs"]
+icon: "🚀"
+cover: /covers/portifolio-fantasma-cache-mobile.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## 👻 O fantasma do cache mobile
+
+Tem uma categoria de bug que é especialmente irritante: **o site funciona perfeitamente nos testes, no CI, no desktop... mas no celular do usuário final mostra coisa velha**.
+
+Era exatamente isso que tava rolando com o Portfólio (`samuelmedeiros.vercel.app`) no começo de agosto. O site tava impecável: 218 testes passando (28 suites Vitest), build Next.js limpo, deploy Vercel sem erro. Mas volta e meia chegava o relato: "abri o site no Chrome do celular e tava uma versão antiga".
+
+## 🧠 Contexto — o que é bfcache e por que ele ignora seus headers
+
+O Chrome mobile tem uma feature chamada **bfcache** (back-forward cache). Quando você navega pra outra aba e volta, ou fecha o app e reabre, o Chrome **não faz uma requisição nova** — ele restaura a página INTEIRA da memória, incluindo estado JavaScript, scroll position, tudo.
+
+Isso é ótimo pra performance. Péssimo pra consistência.
+
+O problema: o bfcache **ignora completamente** headers HTTP como `Cache-Control: no-cache, no-store, must-revalidate`. Esses headers controlam o cache HTTP tradicional (disk cache, memory cache), mas o bfcache é uma camada separada — ele tira um snapshot do DOM + JS + estado e guarda na RAM do dispositivo.
+
+O Portfólio já tinha o `vercel.json` configurado certinho:
+
+```json
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" }
+      ]
+    }
+  ]
+}
+```
+
+E mesmo assim o Chrome mobile servia versão velha. Porque o bfcache não lê isso.
+
+## 🔍 O diagnóstico — pageshow e `e.persisted`
+
+O LifeLog (blog Astro) tinha sofrido do **mesmo problema** uns dias antes. O Samuel abria o blog no celular, via posts antigos, dava refresh manual e os novos apareciam. A solução aplicada lá (commit `8f257c7`) virou referência e foi portada pro Portfólio (commit `283ebbc`).
+
+A chave do diagnóstico: o evento `pageshow`. Ele dispara **toda vez** que uma página é mostrada — seja no load inicial, seja na restauração do bfcache. Quando a página vem do bfcache, a propriedade `event.persisted` vem `true`.
+
+O fix no `layout.tsx` do Portfólio:
+
+```tsx
+// src/app/layout.tsx — guard contra bfcache
+"use client";
+
+import { useEffect } from "react";
+
+function BfcacheGuard() {
+  useEffect(() => {
+    const handlePageshow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        // Página foi restaurada do bfcache — força reload
+        window.location.reload();
+      }
+    };
+    window.addEventListener("pageshow", handlePageshow);
+    return () => window.removeEventListener("pageshow", handlePageshow);
+  }, []);
+  return null;
+}
+```
+
+O componente `BfcacheGuard` é renderizado no layout raiz, antes de qualquer conteúdo. Quando o Chrome mobile restaura a aba do bfcache, o `pageshow` dispara com `persisted: true`, e o guard força um `window.location.reload()` — que **dessa vez** respeita os headers `Cache-Control` e baixa a versão nova do servidor.
+
+## 🔗 Aprendizado cruzado — por que o LifeLog salvou o Portfólio
+
+Esse é um daqueles casos em que **dois projetos aparentemente independentes se beneficiam da mesma correção**. O LifeLog (Astro 7, SSG) e o Portfólio (Next.js 16, React 19) têm stacks completamente diferentes — mas o problema é da **plataforma** (Chrome mobile), não do framework.
+
+O LifeLog foi o canário na mina: como é atualizado com mais frequência (posts novos quase todo dia), o Samuel notou o problema primeiro lá. Depois de testar `Cache-Control` no `vercel.json` e `meta http-equiv` no HTML (que também não afetam bfcache), a solução do `pageshow` + `e.persisted` se provou a única que funciona de verdade.
+
+E aí foi só portar: mesmo conceito, sintaxe diferente. No LifeLog é vanilla JS inline no `<script>` do `BaseLayout.astro`. No Portfólio é um componente React `BfcacheGuard` com `useEffect`. Mesma lógica, mesmo resultado.
+
+## 📊 O estado atual — 218 testes, open source maduro
+
+O Portfólio tá num momento de maturidade. Os números:
+
+| Métrica | Valor |
+|---------|-------|
+| Testes Vitest | 218 (28 suites) |
+| ESLint | 0 errors, 0 warnings |
+| Componentes | 80+ (com testes) |
+| Mini-games | 5 (iframe + React CDN) |
+| i18n | PT/EN completo |
+| Licença | MIT |
+
+O repositório ganhou templates de issue/PR (`acd55d6`), guia de contribuição, e licença MIT explícita (`d88eda2`). O que era um portfólio pessoal virou um projeto open source de verdade — com CI/CD que testa 218 assertions antes de cada deploy.
+
+O bug do bfcache foi o último grande "silent bug" resolvido. Agora o site carrega a versão correta em qualquer dispositivo, em qualquer cenário de restauração de aba — sem o usuário precisar dar refresh manual.
+
+## 🚀 O que vem depois
+
+Com a base sólida (218 testes, cache resolvido, deploy estável), os próximos passos são:
+
+- **Deploy automático via CI** — hoje o deploy na Vercel ainda é manual (`vercel --prod`), mas o workflow de CI (lint → test → build) já roda a cada push
+- **E2E Playwright no CI** — os testes de integração rodam local mas não no GitHub Actions ainda
+- **PWA** — service worker pra cache offline inteligente (que, diferente do bfcache, a gente controla)
+
+<Terminal
+  commands={[
+    { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: '283ebbc fix(cache): no-cache no HTML + meta tags + guard bfcache\n0aa26b2 fix(deploy): remove node-linker=hoisted\n6e90b6b fix(deploy): packageManager pnpm@10.34.5\nacd55d6 chore: issue/PR templates + contributing guide\nd88eda2 docs: add MIT license' },
+    { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n      Tests  218 passed (218)\n   Duration  11.58s' },
+    { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
+  ]}
+/>
