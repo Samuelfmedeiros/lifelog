@@ -40,6 +40,19 @@ const footerText = dataLocale === 'en'
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Cache control no documento — reforça os headers (mobile Chrome pode
+         restaurar aba do bfcache e mostrar versão velha sem buscar na rede) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <script is:inline>
+    // Aba restaurada do bfcache (mobile Chrome restaura a página antiga da
+    // memória SEM buscar na rede) → força reload pra SEMPRE ver a versão nova,
+    // sem depender de hard refresh manual.
+    window.addEventListener('pageshow', function (e) {
+      if (e.persisted) location.reload()
+    })
+    </script>
     <script is:inline>
     (function(){
       // Define theme/palette BEFORE first paint — no flash
