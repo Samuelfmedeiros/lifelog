@@ -187,4 +187,18 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 
 ---
 
-*Última atualização: 2026-07-25 · Docs Maintenance Diário*
+*Última atualização: 2026-08-04 · Docs Maintenance Diário*
+
+---
+
+## 🛡️ REGRA DE SEGURANÇA CONTÍNUA (04/08/2026)
+
+> **"Segurança é acompanhamento."** — Samuel
+
+- **A cada entrega:** `pnpm audit` + verificar headers no `vercel.json` + integridade do lockfile
+- **Semanalmente:** revisar `docs/SEGURANCA.md` + atualizar inventário
+- **Mensalmente:** revisar dependências (atualizar Astro, Tailwind, plugins)
+- **Ao adicionar feature:** reavaliar superfície de ataque
+- **Referências:** OWASP Top 10:2025, HttpArmor, OWASP Web Checklist
+- **Cron:** `LifeLog Security Watchdog` (diário, 24h, silent unless issues)
+- **Doc completo:** `docs/SEGURANCA.md`
