@@ -297,12 +297,16 @@ import { PALETTES } from '../lib/palettes'
       })
       t.finished.catch(() => setTheme(next)).finally(() => {
         animating = false
+        // Reset da origem — não deixar o toque antigo vazar pro próximo
+        // clique (ghost click pós-scroll usaria posição de outra viewport)
+        lastTouchX = 0; lastTouchY = 0
         document.documentElement.classList.remove('vt-running')
       })
       // Safety: se t.ready/t.finished nunca resolverem (edge case), não deixar
       // vt-running preso — transitions ficariam desligadas pra sempre
       setTimeout(() => {
         animating = false
+        lastTouchX = 0; lastTouchY = 0
         document.documentElement.classList.remove('vt-running')
       }, 1500)
       return
@@ -335,6 +339,7 @@ import { PALETTES } from '../lib/palettes'
         setTheme(next)
         overlay.remove()
         animating = false
+        lastTouchX = 0; lastTouchY = 0
       }, 500)
     } else {
       setTheme(next)
