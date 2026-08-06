@@ -29,10 +29,7 @@ html {
   scroll-behavior: smooth;
 }
 /* ========================================
-   View Transitions API — Circular reveal
-   Baseado em Rjk-Jami/theme_changing_template
-   ⚠️ NUNCA adicionar animation:none nos pseudo-elementos VT — quebra a
-   fluidez do clip-path + crossfade combinado (regressão #2, ver skill)
+   View Transitions API — Circle-Wipe Theme Switch
    ======================================== */
 /* Container VT acima de TUDO — navbar (z:50, backdrop-filter) e dropdown
    (z:1000) criam camadas próprias do compositor; sem z-index alto aqui o
@@ -42,17 +39,16 @@ html {
   inset: 0;
   z-index: 10000;
 }
-/* Isola o stacking context do par de imagens — sem isso o blend
-   plus-lighter padrão do Chromium vaza entre old/new e o old snapshot
-   some fora do círculo (parece "círculo começa no lugar errado") */
-::view-transition-image-pair(root) {
-  isolation: isolate;
-}
-::view-transition-old(root) {
-  z-index: 1;
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 ::view-transition-new(root) {
   z-index: 9999;
+}
+::view-transition-old(root) {
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
