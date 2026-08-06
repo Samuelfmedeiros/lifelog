@@ -187,7 +187,14 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 
 ---
 
-*Última atualização: 2026-08-04 · Docs Maintenance Diário*
+- **4 commits** · push origin OK · HEAD: `2f880ce`
+
+- **Post PT+EN**: tatuengine-seguranca-como-processo — politica de seguranca continua
+- **Restaurado CSS VT**: identico ao bf98eff (animation:none + mix-blend-mode:normal) — sem animation:none o crossfade VT apaga o old snapshot
+- **VT animation fix**: stutter + origem errada do circulo resolvidos (remove animation:none dos pseudos, restaura isolation:isolate, reset lastTouchX/Y pos-animacao)
+
+## Sessao 2026-08-05 — Theme animation fix + Post seguranca
+*Última atualização: 2026-08-05 · Fim de dia — VT fix + post tatuengine segurança*
 
 ---
 
