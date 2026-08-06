@@ -1,0 +1,29 @@
+{
+  "name": "LifeLog — Samuel Medeiros",
+  "short_name": "LifeLog",
+  "description": "A jornada de aprendizado de Samuel Medeiros — devlog com histórias reais de código, decisões e descobertas",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#a78bfa",
+  "icons": [
+    {
+      "src": "/icons/lifelog-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/lifelog-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/lifelog-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["blog", "technology", "development"],
+  "lang": "pt-BR"
+}
