@@ -1,0 +1,129 @@
+---
+title: "O node_modules fantasma que sequestrava os builds — e como um npm install na home quebrou 4 projetos"
+description: "O build do LifeLog quebrou com um erro misterioso de 'Named export parseCookie not found'. O código estava certo, o CI passava, mas local falhava. A causa: um node_modules de 253MB na ~/ com cookie@0.7.2 sequestrava a resolução de módulos de TODOS os projetos Node do WSL."
+date: 2026-08-05 12:00:00 -03:00
+pubDate: 2026-08-06 17:15:00 -03:00
+project: descobertas
+tags: ["descobertas", "node", "npm", "debug", "wsl"]
+icon: "💡"
+cover: /covers/descobertas-o-node-modules-fantasma-que-sequestrava-builds.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O erro que não fazia sentido
+
+Era 20:10 de 05/08/2026. Eu estava fazendo um fix na animação de tema do LifeLog — nada demais, só ajustar umas regras CSS de View Transition. Build local, push, CI. Rotina.
+
+O build quebrou com:
+
+```
+Named export 'parseCookie' not found.
+The requested module 'cookie' is a CommonJS module...
+```
+
+Estranho. O pacote `cookie` no lockfile era `2.0.1` (ESM, com `parseCookie`). O CI do último commit tinha passado. Ninguém mexeu em dependência. Por que local quebrava?
+
+## 🧠 O contexto: CI passa, local quebra
+
+Esse é o tipo de erro mais irritante que existe. O CI (GitHub Actions) builda num ambiente limpo — tudo funciona. Local, o mesmo código, mesmas dependências, mesmo Node — quebra.
+
+```bash
+# Verificação 1: o lockfile está igual ao do CI?
+git show HEAD:pnpm-lock.yaml | grep -c "cookie@2.0.1"    # 2 — igual
+
+# Verificação 2: o pacote existe no node_modules?
+ls node_modules/.pnpm/cookie@2.0.1/node_modules/cookie/dist/index.js
+# Existe! E tem parseCookie exportado.
+
+# Verificação 3: o que o Node resolve?
+node --input-type=module -e "import('cookie').then(m => console.log(Object.keys(m)))"
+# [ 'default', 'parse', 'serialize' ]  — ⚠️ faltando parseCookie!
+```
+
+O Node resolvia um `cookie` **diferente** do que estava no `node_modules` do projeto. Alguma coisa na árvore de diretórios estava sequestrando a resolução.
+
+## 🔧 A luta: seguindo o rastro do Node Module Resolution
+
+O Node resolve módulos subindo a árvore de diretórios: primeiro o `node_modules` local, depois o do pai, até a raiz. Se em algum nível acima houver um pacote com o mesmo nome, ele ganha.
+
+```bash
+# Onde o Node está resolvendo 'cookie'?
+node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
+# file:///home/samuel/node_modules/cookie/index.js   ← O QUÊ?
+```
+
+`/home/samuel/node_modules/`. Isso não devia existir.
+
+```bash
+ls -la /home/samuel/node_modules/ | head -5
+# total 253M
+# drwxr-xr-x  cookies@0.7.2/
+```
+
+253MB de node_modules na HOME. Com `cookie@0.7.2` — um pacote CJS de 2016 que só exporta `parse` e `serialize`. O Astro (que usa `cookie@2.0.1`) importa `parseCookie` do `cookie` — o Node subia até a home, encontrava o v0.7.2, e o named export falhava.
+
+A pergunta que ficou: **quem instalou isso na home?**
+
+```bash
+cat /home/samuel/package.json
+# {
+#   "dependencies": {
+#     "better-sqlite3": "^12.11.1",
+#     "camofox-browser": "^2.4.6",
+#     "puppeteer": "^25.1.0",
+#     "vercel": "^34.0.0"
+#   }
+# }
+```
+
+Alguém (provavelmente um script de setup ou outro agente) rodou `npm install` na home em 04/08/2026 18:33 — e ninguém percebeu. O `better-sqlite3` puxou 453 pacotes, incluindo `cookie@0.7.2` como dependência transitiva. Um node_modules global de 253MB, silencioso, sequestrando todos os builds Node do WSL.
+
+## 💡 A resolução: rm + backup
+
+```bash
+# 1. Mover pra backup (nunca rm -rf direto em 253MB)
+mkdir -p ~/.npm-home-backup-20260805
+mv ~/node_modules ~/package.json ~/package-lock.json ~/.npm-home-backup-20260805/
+
+# 2. Verificar que o resolve agora está correto
+node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
+# file:///home/samuel/projetos/lifelog/node_modules/.pnpm/cookie@2.0.1/...
+
+# 3. Build
+pnpm run build
+# ✓ 130 page(s) built in 25.62s
+```
+
+Build passou. O erro simplesmente sumiu.
+
+## 📊 Métricas
+
+| Métrica | Valor |
+|---------|-------|
+| Tamanho do node_modules fantasma | 253 MB |
+| Pacotes instalados | 453 |
+| cookie sequestrador | v0.7.2 (2016, CJS) |
+| cookie real do projeto | v2.0.1 (2026, ESM) |
+| Projetos afetados | Todos no WSL (LifeLog, LEVE LAVANDA, etc.) |
+| Tempo perdido debugando | ~5 min (achei rápido porque segui o rastro do resolve) |
+
+## 🎯 Aprendizados
+
+1. **`import.meta.resolve()` é a ferramenta mais subestimada do Node** — quando um import quebra e o pacote existe no `node_modules`, a primeira coisa é perguntar **onde** o Node está resolvendo. `import.meta.resolve('pacote')` mostra o caminho REAL. Leva 2 segundos e evita horas de debug.
+
+2. **node_modules na home NUNCA é intencional** — se aparecer, é lixo. O Node module resolution sobe a árvore até a raiz do filesystem. Um `node_modules` em `/home/usuario/` afeta **todos** os projetos na máquina. Não pode existir.
+
+3. **CI vs Local: sempre desconfiar do ambiente local** — quando o CI passa e local quebra, 90% das vezes é uma contaminação do ambiente (outro node_modules, PATH diferente, versão de Node global vs local). O lockfile estar igual não prova nada — a **resolução** é que importa.
+
+4. **Scripts automáticos podem instalar coisas sem você saber** — o `npm install` na home não foi feito por mim. Pode ter sido um script de setup, um agente automatizado, ou um comando rodado no diretório errado. Ter consciência do que está sendo instalado e onde é parte da higiene do ambiente.
+
+<Terminal
+  lines={[
+    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'Mostra onde o Node RESOLVE um pacote — não onde ele DEVERIA estar' },
+    { cmd: 'find ~ -maxdepth 2 -name "node_modules" -type d', output: 'Caça node_modules perdidos na home' },
+    { cmd: 'ls ~/.npm-home-backup-20260805/', output: 'Backup do node_modules fantasma (253MB de lição)' },
+    { cmd: 'pnpm run build 2>&1 | tail -3', output: '✓ 130 page(s) built — após matar o fantasma' },
+  ]}
+/>
