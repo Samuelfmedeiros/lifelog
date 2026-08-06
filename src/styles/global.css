@@ -90,8 +90,13 @@ body {
   background-repeat: no-repeat, repeat, repeat, no-repeat;
   background-size: 100% 100%, auto, auto, 100% 100%;
   background-blend-mode: normal, normal, var(--pattern-blend), normal;
-  min-height: 100vh;
+  min-height: 100dvh; /* 100dvh no Android — 100vh inclui toolbar fechada e muda de tamanho */
   transition: background-color 0.35s ease, background-image 0.35s ease, color 0.35s ease;
+  /* Android: background-image multi-layer pode repintar no scroll.
+     will-change: background-image promove pra próprio composite layer,
+     evitando repaint no scroll (GPU, não CPU). A mudança de tema ainda
+     força repaint (muda o valor), mas scroll fica suave. */
+  will-change: background-image;
 }
 
 /* Scrollbar custom */
