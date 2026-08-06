@@ -39,6 +39,12 @@ html {
   inset: 0;
   z-index: 10000;
 }
+/* Isola o stacking context do par de imagens — sem isso o blend
+   plus-lighter padrão do Chromium vaza entre old/new e o old snapshot
+   some, fazendo o círculo parecer que não começa de onde clicou */
+::view-transition-image-pair(root) {
+  isolation: isolate;
+}
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
