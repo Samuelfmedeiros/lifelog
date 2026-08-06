@@ -276,25 +276,45 @@ import { PALETTES } from '../lib/palettes'
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
         setTheme(next); return
       }
+
+      // ─── Android/mobile: crossfade VT puro (clip-path é paint-heavy) ───
+      // Em telas ≤768px, pula o clip-path WAAPI e deixa só o crossfade VT
+      // nativo (GPU compositor, suave). Duração menor também (400ms vs 800ms).
+      const isMobile = window.innerWidth <= 768
+      const animDuration = isMobile ? 400 : 800
+      const easing = isMobile ? 'cubic-bezier(0.25, 0.1, 0.25, 1)' : 'cubic-bezier(0.65, 0, 0.35, 1)'
+
       const [x, y] = themeOrigin(e)
-      // Desliga CSS transitions durante o VT — o snapshot new precisa
-      // capturar o tema FINAL, não o estado intermediário da cor
       document.documentElement.classList.add('vt-running')
       const t = document.startViewTransition(() => setTheme(next))
       animating = true
-      t.ready.then(() => {
-        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
-        document.documentElement.animate(
-          { clipPath: [
-            `circle(0px at ${x}px ${y}px)`,
-            `circle(${r}px at ${x}px ${y}px)`
-          ]},
-          // easeInOut: começo suave (sem explosão do easeOut), acelera no meio,
-          // desacelera no fim. O easeOut anterior (0.33,1,0.68,1) clareava 52%
-          // da tela em ~3 frames — sentia-se 'travado' no início + arrastado no fim.
-          { duration: 800, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' },
-        )
-      })
+
+      if (isMobile) {
+        // Crossfade nativo + círculo sutil (duração curta) — sem clip-path WAAPI
+        // O crossfade VT é 100% GPU, ideal pra Android
+        t.ready.then(() => {
+          const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+          document.documentElement.animate(
+            { clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${r}px at ${x}px ${y}px)`
+            ]},
+            { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
+          )
+        })
+      } else {
+        // Desktop: clip-path circular com 800ms (já testado)
+        t.ready.then(() => {
+          const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+          document.documentElement.animate(
+            { clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${r}px at ${x}px ${y}px)`
+            ]},
+            { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
+          )
+        })
+      }
       t.finished.catch(() => setTheme(next)).finally(() => {
         animating = false
         // Reset da origem — não deixar o toque antigo vazar pro próximo
