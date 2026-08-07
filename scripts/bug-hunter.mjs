@@ -17,8 +17,8 @@ const REPORT_PATH = resolve(FINDINGS_DIR, `audit-${new Date().toISOString().spli
 const PREVIEW = 'https://lifelog-sepia.vercel.app';
 
 // Rotas do LifeLog (blog SSG estático, i18n PT/EN)
-const ROUTES = ['/', '/en/', '/arquivo', '/en/archive', '/sobre', '/en/about',
-                '/tags', '/en/tags'];
+// NOTA: /tags e /en/tags NÃO existem — TagCloud linka pra busca (?q=) no /arquivo.
+const ROUTES = ['/', '/en/', '/arquivo', '/en/archive', '/sobre', '/en/about'];
 
 // Checagens por rota
 const ROUTE_RENDER_CHECKS = {
@@ -40,20 +40,6 @@ const ROUTE_RENDER_CHECKS = {
         return { ok: isEnglish, detail: body.length > 200 ? `body ${body.length} chars (EN)` : 'body muito curto' };
       }) },
   ],
-  '/tags': [
-    { id: 'tagcloud-presente', desc: 'TagCloud renderizou', check: (page) => page.evaluate(() => {
-        const body = document.body?.innerText || '';
-        const hasContent = body.length > 100 || document.querySelectorAll('a[href*="tag"]').length > 0;
-        return { ok: hasContent, detail: `body ${body.length} chars` };
-      }) },
-  ],
-  '/en/tags': [
-    { id: 'tagcloud-presente', desc: 'TagCloud renderizou', check: (page) => page.evaluate(() => {
-        const body = document.body?.innerText || '';
-        const hasContent = body.length > 100 || document.querySelectorAll('a[href*="tag"]').length > 0;
-        return { ok: hasContent, detail: `body ${body.length} chars` };
-      }) },
-  ],
 };
 
 // Rota serve HTML (fetch com Accept: text/html — simula navegação real)
@@ -65,7 +51,8 @@ async function checkRouteServesHtml(page) {
         headers: { 'Accept': 'text/html' },
       });
       const ct = (res.headers.get('content-type') || '').toLowerCase();
-      return { ok: ct.includes('text/html'), detail: `content-type=${ct || 'none'} status=${res.status}` };
+      const statusOk = res.status >= 200 && res.status < 300;
+      return { ok: statusOk && ct.includes('text/html'), detail: `content-type=${ct || 'none'} status=${res.status}` };
     } catch (e) {
       return { ok: false, detail: `fetch falhou: ${e.message}` };
     }
