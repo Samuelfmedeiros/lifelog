@@ -1,0 +1,103 @@
+---
+title: "The connection pool that ran dry — and the 38 orphaned connections that made the hub render empty"
+description: "Arachne responded 200, but authenticated routes rendered empty. A Bug Hunter found 1,239 QueuePool errors in the journal since 02:57. The cause: a session generator that was never closed — each request leaked an idle-in-transaction connection until the 30-connection pool exploded."
+date: 2026-08-07 12:00:00 -03:00
+pubDate: 2026-08-08 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "postgres", "sqlalchemy", "pool", "debugging"]
+icon: "🕷️"
+cover: /covers/arachne-o-pool-de-conexoes-que-exauriu.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The hub that responded but was empty
+
+It was 12:00 on 08/07. The Bug Hunter (the automated auditor that renders routes and checks whether content actually mounted) ran as usual. Result: `/hub`, `/playground`, `/knowledge`, `/tools/scrape` with `#app len=7` — the HTML only had an empty `<div id="app"></div>`, nothing inside.
+
+Arachne responded **HTTP 200**. The deploy was green. But authenticated routes rendered **empty**.
+
+And in the journal: **1,239 errors** of `QueuePool limit ... timeout 30.00` accumulated since **02:57**.
+
+## 🧠 The context: connection pools are finite
+
+Arachne uses SQLAlchemy with PostgreSQL. The default pool is `QueuePool` with **10 active connections + 20 overflow** = max 30 concurrent.
+
+When the pool fills, new requests **wait** (`timeout 30.00`) and then fail. Classic bottleneck: if every request returns its connection, 30 is enough. If some **hold** their connection forever, the pool dries up.
+
+The suspect: the X-API-Key authentication middleware.
+
+## 🔧 The struggle: the generator that was never closed
+
+The `auth_middleware` did a query to validate the API key:
+
+```python
+# ❌ Before — the generator leaks the connection
+_session = next(_get_session())   # opens the session... and NEVER closes
+# uses _session to validate the key
+# ... request ends, generator stays open
+```
+
+The problem: `_get_session()` is a **generator**. `next()` opens the session, but the connection only returns to the pool when the generator is **closed** (via `finally` or `with`). Without closing, each X-API-Key-authenticated request **leaked 1 `idle in transaction`** connection in PG.
+
+With continuous MCP traffic (clients calling `arachne_*` constantly), orphaned connections accumulated: **38 stuck connections** — some for **1.6h, others 8.6h**.
+
+```bash
+# What the journal showed (1,239 times)
+sqlalchemy.exc.TimeoutError: QueuePool limit of size 10 overflow 20 reached,
+connection timed out, timeout 30.00
+
+# What PG saw: 38 idle-in-transaction connections
+SELECT state, COUNT(*) FROM pg_stat_activity
+WHERE datname = 'arachne' GROUP BY state;
+# 38 idle in transaction  ← the orphans
+```
+
+## 💡 The resolution: close the generator in finally
+
+```python
+# ✅ After — keep the generator and close it in finally
+_session_gen = _get_session()
+try:
+    _session = next(_session_gen)
+    # validates the key
+finally:
+    _session_gen.close()   # runs __exit__ → session.close() → connection returns to pool
+```
+
+A 22-line change. The generator is now **closed in finally** — the connection returns to the pool immediately, no matter what happens in between.
+
+Immediate mitigation for the incident: `pg_terminate_backend` on the 38 orphaned connections + service restart.
+
+Verification: Bug Hunter re-run → **11/11 checks OK, 0 failures**, `/api/auth/me` 200.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| QueuePool errors in journal | 1,239 (since 02:57) |
+| Stuck orphan connections | 38 (idle in transaction) |
+| Oldest age | 8.6h |
+| Pool config | 10 + 20 overflow = 30 max |
+| Fix | `_session_gen.close()` in finally (22 lines) |
+| Post-fix verification | Bug Hunter 11/11, `/api/auth/me` 200 |
+
+## 🎯 Lessons learned
+
+1. **SQLAlchemy generator without close = connection leak** — `next(_get_session())` without `finally` is a trap. The session opens, but the connection only returns to the pool when the generator closes.
+
+2. **HTTP 200 doesn't mean "it worked"** — authenticated routes responded 200 with empty HTML. Only the Bug Hunter (which renders and checks the DOM) caught it. HTTP status health checks aren't enough for SPAs.
+
+3. **Pooling bugs are gradual, not binary** — 1,239 errors accumulated since 02:57. It didn't break suddenly; it **bled** connection by connection until exhaustion. Monitoring `pg_stat_activity` is the safety net.
+
+4. **Automated auditing catches what monitoring doesn't** — the Bug Hunter ran at the right time and found the symptom (empty routes) that led to the cause (exhausted pool).
+
+<Terminal
+  lines={[
+    { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — the orphans' },
+    { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'The fix: _session_gen.close() in finally (22 lines)' },
+    { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Line 847: runs __exit__ → connection returns to pool' },
+    { cmd: 'pg_terminate_backend(pid)', output: 'Immediate mitigation: kill the 38 orphans + restart' },
+  ]}
+/>

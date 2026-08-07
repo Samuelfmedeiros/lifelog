@@ -1,0 +1,100 @@
+---
+title: "The dashboard that shrank 74% — and the bundle that dropped 64% without losing anything"
+description: "The Capivara Dashboard had 994 lines and was impossible to maintain. Refactored to 262 (-74%), the initial bundle dropped from 668 kB to 238 kB (-64%) with React Router + lazy loading. The lesson: a giant component isn't a feature — it's disguised technical debt."
+date: 2026-08-06 12:00:00 -03:00
+pubDate: 2026-08-08 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "refactoring", "react", "performance", "code-splitting"]
+icon: "🐹"
+cover: /covers/capivara-dashboard-994-linhas-para-262.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The monster component
+
+There was a file in Capivara that everyone (me, the agent, anyone opening the repo) avoided: **`Dashboard.tsx` with 994 lines**.
+
+It wasn't a component. It was a **condominium** — project stats, health check, Umami, Portifolio status, Dogwalk stats, invites, 2FA, admin... all crammed into a single file.
+
+Every new feature added another `useEffect`, another `useState`, another JSX block. And the worst part: **the initial bundle weighed 668 kB** — the browser downloaded EVERYTHING before showing ANYTHING.
+
+## 🧠 The context: 668 kB to the first pixel
+
+The problem wasn't just readability. It was performance:
+
+- The browser downloaded **668 kB of JavaScript** (gzip) before rendering the dashboard's first pixel
+- On 3G/mobile, that was seconds of white screen
+- Every admin tab (Dogwalk, Umami, Overview, Notifications...) loaded **together** — even if the user never opened it
+
+The refactor had 2 goals:
+1. **Dashboard 994 → ~260 lines** (extract components)
+2. **Bundle 668 → ~240 kB** (load only what's needed)
+
+## 🔧 The struggle: extract, split, lazy-load
+
+**Step 1 — Extract components.** The Dashboard was a God Component. Each section became its own component: StatusPage, 7 admin components (Dogwalk, Umami, Overview, Notifications, Logs, Tracking, TwoFA), interactive Recharts graph, toast system, ThemeToggle, SearchBar.
+
+```tsx
+// Before: 994 lines in one file
+// After: small components, each with a single responsibility
+import { DogwalkAdmin } from "./admin/DogwalkAdmin";
+import { UmamiAdmin } from "./admin/UmamiAdmin";
+import { OverviewAdmin } from "./admin/OverviewAdmin";
+```
+
+**Step 2 — React Router + lazy loading.** Instead of loading everything in the initial bundle, each route loads **on demand**:
+
+```tsx
+// Before: everything in the initial bundle (668 kB)
+// After: only the current route loads
+const AdminPage = lazy(() => import("./AdminPage"));
+const WSLPanel = lazy(() => import("./WSLPanel"));
+```
+
+**Step 3 — remove `window.location`.** Manual navigation (`window.location = ...`) reloaded the whole page. React Router v7 does SPA navigation — only swaps the component, no reload.
+
+## 💡 The resolution: less is more
+
+Post-refactor numbers:
+
+| Metric | Before | After | Δ |
+|--------|--------|-------|---|
+| Dashboard.tsx | 994 lines | 262 lines | **-74%** |
+| AdminPage.tsx | 1,091 lines | 97 lines | **-91%** |
+| Initial bundle | 668 kB | 238 kB | **-64%** |
+| Routing | `window.location` (reload) | React Router v7 (SPA) | — |
+| New components | — | StatusPage + 7 admin | — |
+
+And the best part: **no functionality was lost**. The dashboard kept everything — stats, health, Umami, Dogwalk, invites, 2FA — just organized and loading on demand.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| Dashboard.tsx | 994 → 262 lines (-74%) |
+| AdminPage.tsx | 1,091 → 97 lines (-91%) |
+| Initial bundle | 668 kB → 238 kB (-64%) |
+| Frontend tests | 257/257 passing |
+| Backend tests | 131/131 passing |
+| TypeScript | 0 errors |
+
+## 🎯 Lessons learned
+
+1. **A giant component isn't a feature — it's debt** — 994 lines in one file is a sign that responsibilities are mixed. Extracting by single responsibility makes code maintainable.
+
+2. **Lazy loading is the easiest form of performance** — the initial bundle dropped 64% without optimizing ONE line of logic. Just loading what the current route needs.
+
+3. **`window.location` is the silent villain** — manual navigation reloads the whole page (loses state, re-fires requests). React Router does SPA navigation: swaps component, preserves state.
+
+4. **Refactoring doesn't have to lose functionality** — 994→262 lines with everything working (257 tests passing). The goal is organization + performance, not cutting features.
+
+<Terminal
+  lines={[
+    { cmd: 'wc -l frontend/src/pages/Dashboard.tsx', output: 'Before: 994 → After: 262 lines' },
+    { cmd: 'grep -c "lazy(() => import" frontend/src/', output: 'N routes with lazy loading — split bundle' },
+    { cmd: 'pnpm build', output: 'TypeScript 0 errors + code splitting' },
+    { cmd: 'ls frontend/src/pages/admin/', output: '7 admin components — each with a single responsibility' },
+  ]}
+/>
