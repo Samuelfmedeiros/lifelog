@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-08-07T03:00:41.737Z",
+  "timestamp": "2026-08-07T09:17:38.626Z",
   "url": "https://lifelog-sepia.vercel.app",
-  "duration": "47.3",
+  "duration": "26.3",
   "routes": {
     "/": {
       "url": "https://lifelog-sepia.vercel.app/",
       "title": "Início — LifeLog",
-      "contentSize": 168742,
+      "contentSize": 169179,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -16,13 +16,13 @@
           "id": "root-mounted",
           "desc": "Astro renderizou",
           "ok": true,
-          "detail": "main len=149570"
+          "detail": "main len=150007"
         },
         {
           "id": "has-cards",
           "desc": "Cards de post na timeline",
           "ok": true,
-          "detail": "body 19060 chars"
+          "detail": "body 18699 chars"
         }
       ]
     },
@@ -134,76 +134,12 @@
           "detail": "body 924 chars"
         }
       ]
-    },
-    "/tags": {
-      "url": "https://lifelog-sepia.vercel.app/tags",
-      "title": "404 — Não Encontrado — LifeLog",
-      "contentSize": 19653,
-      "servesHtml": {
-        "ok": true,
-        "detail": "content-type=text/html; charset=utf-8 status=404"
-      },
-      "renderChecks": [
-        {
-          "id": "tagcloud-presente",
-          "desc": "TagCloud renderizou",
-          "ok": true,
-          "detail": "body 231 chars"
-        }
-      ]
-    },
-    "/en/tags": {
-      "url": "https://lifelog-sepia.vercel.app/en/tags",
-      "title": "404 — Não Encontrado — LifeLog",
-      "contentSize": 19653,
-      "servesHtml": {
-        "ok": true,
-        "detail": "content-type=text/html; charset=utf-8 status=404"
-      },
-      "renderChecks": [
-        {
-          "id": "tagcloud-presente",
-          "desc": "TagCloud renderizou",
-          "ok": true,
-          "detail": "body 231 chars"
-        }
-      ]
     }
   },
-  "consoleErrors": [
-    {
-      "text": "Failed to load resource: the server responded with a status of 404 ()"
-    },
-    {
-      "text": "Failed to load resource: the server responded with a status of 404 ()"
-    },
-    {
-      "text": "Failed to load resource: the server responded with a status of 404 ()"
-    },
-    {
-      "text": "Failed to load resource: the server responded with a status of 404 ()"
-    }
-  ],
-  "networkErrors": [
-    {
-      "url": "https://lifelog-sepia.vercel.app/tags",
-      "status": 404
-    },
-    {
-      "url": "https://lifelog-sepia.vercel.app/tags",
-      "status": 404
-    },
-    {
-      "url": "https://lifelog-sepia.vercel.app/en/tags",
-      "status": 404
-    },
-    {
-      "url": "https://lifelog-sepia.vercel.app/en/tags",
-      "status": 404
-    }
-  ],
+  "consoleErrors": [],
+  "networkErrors": [],
   "navigationFailures": [],
-  "passed": 8,
+  "passed": 6,
   "failed": 0,
   "loginOk": true
 }
