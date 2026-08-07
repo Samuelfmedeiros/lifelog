@@ -9,6 +9,16 @@
 
 ---
 
+## Sessão 2026-08-06 — 🚀 PWA + Perf mobile + VT fix + Bug Hunter
+- **PWA completo**: service worker (cache-first assets, network-first posts, offline fallback), manifest com ícones 192/512 roxo LifeLog, apple-touch-icon, registro inline no BaseLayout
+- **Perf mobile**: Android — 100dvh fixa toolbar flutuante, will-change:background-image pra GPU composite sem repaint
+- **VT fix**: isolation:isolate no image-pair — sem isso o blend plus-lighter do Chromium vaza entre old/new
+- **Bug Hunter LifeLog**: auditoria de render real (8 rotas PT/EN) — verificou que conteúdo SPA montou
+- **Post**: descobertas-o-node-modules-fantasma (PT+EN) — o node_modules de 253MB na home que sequestrava builds Node do WSL
+- HEAD: 734d81b · 6 commits · push origin OK
+
+---
+
 ## 📋 Documentação Rápida
 
 | Documento | Pra quê |
@@ -181,7 +191,7 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 ## 🗺️ Próximos Passos
 
 - [x] Vitest unit tests (componentes) — 35 testes data-driven (02/08/2026)
-- [ ] PWA (service worker + offline)
+- [x] PWA (service worker + offline) — 06/08/2026
 - [ ] Mais paletas de cor
 - [x] Busca full-text — embedded search index no build (22/07/2026)
 
