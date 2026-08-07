@@ -1,0 +1,120 @@
+---
+title: "The theme animation saga — when the circle just wouldn't start where I clicked"
+description: "Five days trying to make a circle of light start exactly where the finger touches. The CSS looked right, CI passed, but the user saw stutter, wrong origin, and content wiping out. The root cause wasn't the code — it was the interaction between the View Transitions API, Chromium blend modes, and a ghost node_modules."
+date: 2026-08-05 12:00:00 -03:00
+pubDate: 2026-08-07 17:30:00 -03:00
+project: lifelog
+tags: ["lifelog", "css", "view-transitions", "debugging", "performance"]
+icon: "📖"
+cover: /covers/lifelog-a-saga-da-animacao-de-tema.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The circle that wouldn't start where I touched
+
+"The circle doesn't start where I click." "It's stuttering." "Now it's erasing everything and animating."
+
+Three reports in three days. Same feature: the LifeLog dark/light theme switch with a circle of light expanding from the click point. The code looked right. CI passed with 200 tests. But on a real phone, on a real desktop — the user saw a circus.
+
+The worst part? Every fix solved one bug and revealed another. It was a 5-day whodunit.
+
+## 🧠 The context: View Transitions API + clip-path
+
+The theme switch uses the **View Transitions API** (native to Chromium) with an expanding circle:
+
+```javascript
+// PalettePicker.astro — the heart of the animation
+const t = document.startViewTransition(() => setTheme(next))
+t.ready.then(() => {
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+  document.documentElement.animate(
+    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+    { duration: 800, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' },
+  )
+})
+```
+
+The idea is simple: the browser takes a "screenshot" of the old state, applies the change, takes the new one, and animates between them. The circular clip-path reveals the new state from inside the circle.
+
+The problem: Chromium has a **default blend mode (`plus-lighter`) on VT pseudo-elements**. That blend makes the old snapshot **brighten until it disappears** during the transition — outside the circle, content "leaks". That's the source of half the symptoms.
+
+## 🔧 The struggle: 5 days, 6 fixes, 3 regressions
+
+**Day 1 — stutter.** "Janky." The CSS had `animation: none` on the VT pseudo-elements. Theory: suppressing the default crossfade breaks fluidity. I removed it. It got worse: the old snapshot started erasing everything.
+
+```css
+/* ⚠️ What NOT to do (regression #2 of the original RCA) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;  /* ← NEVER. Kills the crossfade + clip-path fluidity */
+}
+```
+
+**Day 2 — the `animation: none` puzzle.** The skill said "NEVER add animation:none". But commit `bf98eff` (the first one, which worked) **HAD** `animation: none`. Total contradiction. I tested: without `animation: none`, Chromium's default crossfade makes the old **disappear** (erase everything). With it, stutter returns. **What fixed one broke the other.**
+
+**Day 3 — `isolation: isolate`.** The skill mentioned a complement to the fix: `::view-transition-image-pair(root) { isolation: isolate }`. Without it, Chromium's `plus-lighter` blend leaks between old/new and the old snapshot disappears outside the circle — exactly the "circle starts in the wrong place" symptom.
+
+```css
+/* The blend fix — isolate the stacking context of the image pair */
+::view-transition-image-pair(root) {
+  isolation: isolate;
+}
+```
+
+I added it. The circle started at the right place... but now it was **"erasing everything"** again. Because without `animation: none` the crossfade returns and the old fade-out takes the content with it.
+
+**Day 4 — the magic combination.** The commit that originally worked (`bf98eff`) had:
+```css
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;  /* ← disables Chromium's plus-lighter */
+}
+```
+`animation: none` **+** `mix-blend-mode: normal` **+** `isolation: isolate`. All three together. Each fixed one piece: normal blend keeps the circle on top, isolation stops the old from leaking, animation:none stops the crossfade from fighting the clip-path.
+
+**Day 5 — the ghost.** And then came the plot twist: the local build broke with `Named export 'parseCookie' not found`. CI passed, local failed. The cause? A **253MB node_modules in home** (`~/node_modules` with `cookie@0.7.2` from 2016) hijacking module resolution for EVERY Node project. Was that the "stutter" I tried to fix on days 1-4? No — but it taught me that **the local environment can lie**.
+
+## 💡 The resolution: less "optimization", more observation
+
+The final lesson wasn't a CSS formula — it was a method:
+
+1. **`import.meta.resolve('package')` is Node's most underrated tool** — when an import breaks and the package exists in node_modules, ask WHERE Node is resolving it. 2 seconds, saves hours.
+
+2. **Chromium enforces `mix-blend-mode: plus-lighter` on VT pseudo-elements** — if you don't disable it with `mix-blend-mode: normal` + `isolation: isolate`, the old snapshot brightens and "erases" content.
+
+3. **Headless does NOT reproduce the bug** — Playwright headless with software rendering doesn't show the GPU blend issue of real Chromium. Only the real device (phone with GPU) shows it.
+
+4. **Regression is normal when the root cause is multiple** — 3 symptoms (stutter, wrong origin, erasing) = 3 interacting causes. Each isolated fix worsened another. The solution was the combination, not a silver bullet.
+
+5. **Documenting what DOESN'T work is as valuable as the fix** — the LifeLog skill has an RCA of 5 failed attempts. Without it, I would have reintroduced the stutter 3 times.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| Saga days | 5 (08/01 → 08/05) |
+| Fix commits on the animation | 8 (`0a408be` → `0f927b8`) |
+| Regressions | 3 (stutter → erase → origin) |
+| Final config | `animation:none` + `mix-blend-mode:normal` + `isolation:isolate` |
+| E2E tests passing | 67 (7 specs) |
+| Bonus bug found | ghost node_modules (253MB) in home |
+
+## 🎯 Lessons learned
+
+1. **VT crossfade + clip-path WAAPI together works** — suppressing the default crossfade is what causes stutter. The crossfade is 100% GPU and masks the clip-path jank (which is paint).
+2. **`mix-blend-mode: normal` is not optional** — Chromium's default (`plus-lighter`) sums old + new pixels. Without disabling it, the old "glows" until it disappears.
+3. **`isolation: isolate` on image-pair is the blend complement** — without it, the blend leaks and the old disappears outside the circle.
+4. **Always test on the real device** — headless doesn't catch GPU bugs. The real phone GPU is the only judge.
+5. **When 3 bugs appear together, there are 3 causes** — don't hunt a silver bullet. Isolate each symptom, fix each cause, test the combination.
+
+<Terminal
+  lines={[
+    { cmd: 'git log --oneline -- src/components/PalettePicker.astro | head -8', output: 'The saga in 8 commits — from stutter to correct origin' },
+    { cmd: 'grep -A2 "view-transition-image-pair" src/styles/global.css', output: '::view-transition-image-pair(root) { isolation: isolate; }' },
+    { cmd: 'grep "mix-blend-mode" src/styles/global.css', output: 'mix-blend-mode: normal;  /* disables plus-lighter */' },
+    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'file:///home/samuel/node_modules/cookie/index.js ← THE GHOST' },
+  ]}
+/>
