@@ -9,6 +9,17 @@
 
 ---
 
+## Sessão 2026-08-07 — 📝 Posts agendados (DRAFT) + posts novos PT/EN + Bug Hunter fix
+- **Posts agendados 08-09/08 como DRAFT**: arachne pool de conexões (12h), capivara dashboard 994→262 (16h), tatuengine punição v3, descobertas i18n audit — não aparecem no site até publicar
+- **Posts 08/08 adiantados**: arachne pool + capivara dashboard, PT+EN, pubDate 08/08 (0570258)
+- **Posts novos publicados**:
+  - `dogwalk-o-websocket-que-nao-apertava-a-mao` (PT+EN) — receive_text sem accept(), 5 endpoints mudos, fix 1 linha (45bd609)
+  - `lifelog-a-saga-da-animacao-de-tema` (PT+EN) — 5 dias de whodunit CSS: stutter, origem errada, blend plus-lighter, node_modules fantasma (8b404c7)
+- **fix(bug-hunter)**: remove rotas /tags inexistentes + valida status HTTP real (7a8f203)
+- 6 commits · push origin OK · HEAD: `b813657`
+
+---
+
 ## Sessão 2026-08-06 — 🚀 PWA + Perf mobile + VT fix + Bug Hunter
 - **PWA completo**: service worker (cache-first assets, network-first posts, offline fallback), manifest com ícones 192/512 roxo LifeLog, apple-touch-icon, registro inline no BaseLayout
 - **Perf mobile**: Android — 100dvh fixa toolbar flutuante, will-change:background-image pra GPU composite sem repaint

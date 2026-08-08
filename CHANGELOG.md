@@ -1,5 +1,15 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-07] — 📝 Posts novos PT/EN + drafts agendados + Bug Hunter fix
+### 📝 Posts
+- `dogwalk-o-websocket-que-nao-apertava-a-mao` (PT+EN) — receive_text sem accept(), 5 endpoints mudos, fix 1 linha
+- `lifelog-a-saga-da-animacao-de-tema` (PT+EN) — 5 dias de whodunit CSS
+- Posts 08/08 adiantados: arachne pool de conexões + capivara dashboard 994→262 (PT+EN, pubDate 08/08)
+- Posts 08-09/08 em DRAFT (arachne pool, capivara dashboard, tatuengine punição v3, descobertas i18n audit)
+### 🐛 Fix
+- Bug Hunter: remove rotas /tags inexistentes + valida status HTTP real
+- 6 commits · push origin OK · HEAD: `b813657`
+
 ## [2026-08-06] — 🚀 PWA + Perf Mobile + VT Fix + Bug Hunter
 
 ### 🚀 PWA
