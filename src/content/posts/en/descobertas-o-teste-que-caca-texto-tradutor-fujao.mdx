@@ -1,0 +1,107 @@
+---
+title: "The test that hunts runaway text — how I automated the Portfolio translation audit"
+description: "After finding 28 hardcoded PT texts scattered across the Portfolio (buttons, aria-labels, modals, tracking), I created an audit test that scans components and fails CI if any Portuguese text appears outside t(). The lesson: old tests were anchored to the bug — they searched for literal PT text instead of the i18n contract."
+date: 2026-08-07 12:00:00 -03:00
+pubDate: 2026-08-09 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "i18n", "testing", "refactoring", "automation"]
+icon: "💡"
+cover: /covers/descobertas-o-teste-que-caca-texto-tradutor-fujao.webp
+featured: false
+draft: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ "There are these and others still missing translation"
+
+It was 2:30 AM. I had just "finished" the Portfolio translation — 240 paired PT/EN keys, complete dictionary, 218 tests passing. Then Samuel sent the message that crushes confidence:
+
+> "Full Stack Developer & Data Analyst.."
+> "4+ years transforming businesses with data"
+> There are these and others still missing translation
+
+And I had sworn everything was translated. The problem? My previous scan **wasn't aggressive enough**.
+
+## 🧠 The context: 3 scans, 3 levels of blindness
+
+The first scan only looked for **JSX text** (`>text<`). Found a few.
+
+The second added **aria-label/placeholder/title**. Found more.
+
+The third — the aggressive one — covered **everything**: JSX text + attrs + strings in arrays/objects that become visible props. **Found 28 hardcoded PT texts.**
+
+| What was runaway | Where |
+|------------------|-------|
+| "View projects" / "Download CV" | ProfileSection (buttons!) |
+| "Copy email" / "Email" | Footer (tracking + aria) |
+| "Close" / "Skills" | ProfileSection (modal + heading) |
+| "Message sent successfully" | ContactForm (aria) |
+| "Support" / "Pix key" / "Copy key" / "Scan the QR" | SupportButton (entire Pix modal) |
+| "Color palette" | PalettePicker (title) |
+
+The worst: the **buttons** — what users see most — were hardcoded. And no test caught it.
+
+## 🔧 The struggle: why didn't the old tests see it?
+
+Samuel's question was spot-on: **"Why didn't the previous tests see this?"**
+
+Three honest answers:
+
+1. **Tests test what was written, not what's missing.** The ProfileSection test did `getByText("Ver projetos")` — the literal PT text. In other words: the test was **anchored to the bug**. It guaranteed the PT text existed, not that translation worked.
+
+2. **No i18n parity test.** No test scanned components to guarantee "every visible text goes through t()". The scan I did by hand (regex + PT words) **didn't exist as an automated test**.
+
+3. **aria-labels and sr-only are invisible.** `aria-label="Fechar"` and `<span className="sr-only">` don't show up in visible-content tests. Only a string scan catches them.
+
+When I replaced the hardcoded texts with `t()`, **4 tests broke** — because the asserts searched for the PT text that no longer existed. That confirmed it: the tests were protecting the bug.
+
+## 💡 The resolution: the runaway-hunting test
+
+I created `src/test/i18n-audit.test.ts` — a Vitest test that:
+
+1. **Scans 14 main components** (Hero, Navbar, Footer, Profile, Contact, Support, etc.)
+2. **Looks for PT text outside `t()`** in 2 patterns: JSX text (`>text<`) + attrs (`aria-label`, `placeholder`, `title`, `alt`)
+3. **Ignores proper nouns/brands** (Next.js, GitHub, Samuel Medeiros, etc.)
+4. **FAILS CI** if it finds any hardcoded PT
+
+```typescript
+// The audit essence — aggressive regex + brand allowlist
+const PT_PATTERN = /\b(Home|Projects|Skills|Download|...)\b/;
+// for each component, for each line:
+//   if it has t() → ok
+//   if text matches PT_PATTERN and isn't a brand → violation
+expect(violations).toEqual([]);  // FAILS IF FOUND
+```
+
+**Proof it works (sanity test):** I injected `>Baixar Curriculo<` hardcoded into ContactForm → the test failed with the exact line. Restored → passed.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| Runaway PT texts found | 28 |
+| Affected files | 7 (Footer, Profile, Contact, Support, Palette, games) |
+| Audited components | 14 |
+| Tests that broke when fixing | 4 (anchored to the bug) |
+| New test | `i18n-audit.test.ts` (fails CI if PT found) |
+| Final suite | 29 files, 219 tests |
+
+## 🎯 Lessons learned
+
+1. **The test that protects the bug is worse than no test** — `getByText("Ver projetos")` guaranteed the PT text existed. It protected the error, not the feature.
+
+2. **Contract test > implementation test** — instead of searching for literal text, test that "every visible text goes through t()". The contract is i18n, not the specific content.
+
+3. **Aggressive scan is the right tool for migration** — when you want to zero out a pattern (hardcoded text), a regex-scan test is faster and more reliable than manual auditing.
+
+4. **aria-labels and sr-only count as visible text** — they're invisible to the user but visible to screen readers. Accessibility is also translation.
+
+<Terminal
+  lines={[
+    { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Before: 2 hardcoded buttons. After: 0' },
+    { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passes if 0 hardcoded PT. Fails with exact line' },
+    { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Entire Pix modal translated via t()' },
+    { cmd: 'git log --oneline -5', output: 'The saga: 8 i18n commits in the Portfolio' },
+  ]}
+/>

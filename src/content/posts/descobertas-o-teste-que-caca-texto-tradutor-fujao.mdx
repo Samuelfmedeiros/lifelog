@@ -1,0 +1,107 @@
+---
+title: "O teste que caça texto fujão — como automatizei a auditoria de tradução do Portfólio"
+description: "Depois de achar 28 textos PT hardcoded espalhados pelo Portfólio (botões, aria-labels, modais, tracking), criei um teste de auditoria que varre os componentes e falha o CI se qualquer texto português aparecer fora do t(). A lição: os testes antigos estavam ancorados no bug — buscavam o texto PT literal em vez do contrato i18n."
+date: 2026-08-07 12:00:00 -03:00
+pubDate: 2026-08-09 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "i18n", "testing", "refactoring", "automation"]
+icon: "💡"
+cover: /covers/descobertas-o-teste-que-caca-texto-tradutor-fujao.webp
+featured: false
+draft: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ "Tem esses e outros ainda faltam tradução"
+
+Eram 02:30 da manhã. Eu tinha acabado de "terminar" a tradução do Portfólio — 240 chaves PT/EN pareadas, dicionário completo, 218 testes passando. Aí o Samuel mandou a mensagem que derruba a confiança:
+
+> "Desenvolvedor Full Stack & Analista de Da.."
+> "4+ anos transformando negócios com dados"
+> Tem esses e outros ainda faltam tradução
+
+E eu tinha jurado que estava tudo traduzido. O problema? Meu scan anterior **não era agressivo o suficiente**.
+
+## 🧠 O contexto: 3 scans, 3 níveis de cegueira
+
+O primeiro scan só procurava **JSX text** (`>texto<`). Achou poucos.
+
+O segundo adicionou **aria-label/placeholder/title**. Achou mais.
+
+O terceiro — o agressivo — cobriu **tudo**: JSX text + attrs + strings em arrays/objetos que viram props visíveis. **Achou 28 textos PT hardcoded.**
+
+| O que estava fujão | Onde |
+|--------------------|------|
+| "Ver projetos" / "Baixar Curriculo" | ProfileSection (botões!) |
+| "Copiar email" / "Email" | Footer (tracking + aria) |
+| "Fechar" / "Habilidades" | ProfileSection (modal + heading) |
+| "Mensagem enviada com sucesso" | ContactForm (aria) |
+| "Apoiar" / "Chave Pix" / "Copiar chave" / "Escaneie o QR" | SupportButton (modal Pix INTEIRO) |
+| "Paleta de cores" | PalettePicker (title) |
+
+O pior: os **botões** — o que o usuário mais vê — estavam hardcoded. E nenhum teste pegava.
+
+## 🔧 A luta: por que os testes antigos não viram?
+
+A pergunta do Samuel foi certeira: **"Por que os testes anteriores não viram isso?"**
+
+Três respostas honestas:
+
+1. **Testes testam o que foi escrito, não o que falta.** O teste do ProfileSection fazia `getByText("Ver projetos")` — o texto PT **literal**. Ou seja: o teste estava **ancorado no bug**. Ele garantia que o texto PT existia, não que a tradução funcionava.
+
+2. **Sem teste de paridade i18n.** Nenhum teste varria componentes pra garantir "todo texto visível passa por t()". O scan que eu fiz na mão (regex + palavras PT) **não existia como teste automatizado**.
+
+3. **aria-labels e sr-only são invisíveis.** `aria-label="Fechar"` e `<span className="sr-only">` não aparecem em testes de conteúdo visível. Só um scan de strings pega.
+
+Quando troquei os hardcoded por `t()`, **4 testes quebraram** — porque os asserts buscavam o texto PT que deixou de existir. Isso confirmou: os testes estavam protegendo o bug.
+
+## 💡 A resolução: o teste que caça fujão
+
+Criei `src/test/i18n-audit.test.ts` — um teste Vitest que:
+
+1. **Varre 14 componentes principais** (Hero, Navbar, Footer, Profile, Contact, Support, etc.)
+2. **Procura texto PT fora de `t()`** em 2 padrões: JSX text (`>texto<`) + attrs (`aria-label`, `placeholder`, `title`, `alt`)
+3. **Ignora nomes próprios/marcas** (Next.js, GitHub, Samuel Medeiros, etc.)
+4. **FALHA o CI** se achar qualquer PT hardcoded
+
+```typescript
+// A essência do audit — regex agressivo + allowlist de marcas
+const PT_PATTERN = /\b(Início|Projetos|Habilidades|Baixar|...)\b/;
+// para cada componente, para cada linha:
+//   se tem t() → ok
+//   se texto casa PT_PATTERN e não é marca → violation
+expect(violations).toEqual([]);  // FALHA SE ACHAR
+```
+
+**Prova de que funciona (teste de sanidade):** injetei `>Baixar Curriculo<` hardcoded no ContactForm → o teste falhou com a linha exata. Restaurei → passou.
+
+## 📊 Métricas
+
+| Métrica | Valor |
+|---------|-------|
+| Textos PT fujões achados | 28 |
+| Arquivos afetados | 7 (Footer, Profile, Contact, Support, Palette, games) |
+| Componentes auditados | 14 |
+| Testes que quebraram ao corrigir | 4 (estavam ancorados no bug) |
+| Teste novo | `i18n-audit.test.ts` (falha CI se achar PT) |
+| Suíte final | 29 files, 219 testes |
+
+## 🎯 Aprendizados
+
+1. **O teste que protege o bug é pior que nenhum teste** — `getByText("Ver projetos")` garantia que o texto PT existia. Protegia o erro, não a feature.
+
+2. **Teste de "contrato" > teste de "implementação"** — em vez de buscar o texto literal, teste que "todo texto visível passa por t()". O contrato é i18n, não o conteúdo específico.
+
+3. **Scan agressivo é a ferramenta certa pra migração** — quando você quer zerar um padrão (texto hardcoded), um teste de varredura com regex é mais rápido e confiável que auditoria manual.
+
+4. **aria-labels e sr-only contam como texto visível** — são invisíveis pro usuário mas visíveis pro leitor de tela. Acessibilidade também é tradução.
+
+<Terminal
+  lines={[
+    { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Antes: 2 botões hardcoded. Depois: 0' },
+    { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passa se 0 PT hardcoded. Falha com a linha exata' },
+    { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Modal Pix inteiro traduzido via t()' },
+    { cmd: 'git log --oneline -5', output: 'A saga: 8 commits de i18n no Portfólio' },
+  ]}
+/>
