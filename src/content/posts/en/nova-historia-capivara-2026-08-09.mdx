@@ -1,0 +1,72 @@
+---
+title: "Capivara — the day the dashboard stopped lying (and the dead sections fell)"
+description: "Stripe with dead DNS 500s, a Portifolio Staging that no longer existed, a rate limit that blocked the wrong IP. The surgical cleanup that made the Capivara dashboard tell the truth again — and the CF-Connecting-IP that actually fixed the rate limit."
+date: 2026-08-09 12:00:00 -03:00
+pubDate: 2026-08-09 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "cleanup", "rate-limit", "cloudflare", "dashboard"]
+icon: "🐹"
+cover: /covers/nova-historia-capivara-2026-08-09.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The dashboard was lying
+
+Every dashboard has a silent sin: showing as **green** something that is **dead**.
+
+In Capivara, there were two red dots I'd been seeing for days and pushing aside — the **Stripe** section and the **Portifolio Staging** section. Until on 08/08 I finally looked closely:
+
+- The **Stripe** section pointed to a **decommissioned** Supabase — dead DNS, 500 on everything.
+- The **Portifolio Staging** section showed the URL `staging.samuelmedeiros.vercel.app` — which **no longer existed** (staging was removed weeks ago).
+
+The dashboard was showing me **noise**. And worse: every glance at that panel was a small vote of confidence in data that didn't reflect reality.
+
+## 🧠 The real problem: dead data becomes wrong decisions
+
+It wasn't just aesthetics. A dashboard with dead sections trains your brain to **ignore the panel** — and then, when something important actually breaks, you won't notice.
+
+The rule that stuck after this session is simple:
+
+> **If the source no longer exists, the section should no longer exist.**
+
+Two commit lines solved it:
+
+```bash
+b209043 feat(admin): remove secao Stripe (Supabase decommissionado — 500 DNS morto)
+a856ff3 feat(dashboard): remove secao Portifolio Staging (staging removido — URL morta, dot vermelho)
+```
+
+**Removing is not losing information.** It's stopping to pay attention cost for something that delivers no value.
+
+## ⚡ And the rate limit that blocked the wrong IP
+
+Same day, another symptom: **legitimate dashboard requests failing with 429**, even with the correct API key.
+
+Capivara's rate limit used the request IP to build the bucket. The problem? Behind Cloudflare in production, **all requests came from the same Tunnel IP** — or worse, the bucket was built from a header that didn't always exist.
+
+The fix was documented and straightforward:
+
+```bash
+ae08d24 fix(ratelimit): CF-Connecting-IP p/ bucket real + API key 120/min
+```
+
+Use the **`CF-Connecting-IP`** header — the real client IP that Cloudflare injects reliably — instead of guessing from the connection. And give the API key its own bucket with **120 req/min**, separate from the per-IP rate limit.
+
+## 🧠 The lesson in three points
+
+1. **A lying panel is worse than no panel** — dead sections train you to ignore the whole dashboard.
+2. **Rate limiting is about identity** — limiting by IP behind a proxy is limiting the proxy, not the user. Use the header the proxy guarantees (`CF-Connecting-IP`).
+3. **Cleanup is a feature** — removing 2 dead sections made the dashboard more honest in 10 minutes than any new feature would in a week.
+
+## 🛠️ Technical details
+
+| Item | Before | After |
+|------|--------|-------|
+| Stripe section | Dead DNS 500 (decommissioned Supabase) | Removed |
+| Portifolio Staging section | Dead URL | Removed |
+| Per-IP rate limit | Tunnel IP bucket (wrong) | `CF-Connecting-IP` (real IP) |
+| API key rate limit | Same bucket as IP | Own bucket, 120 req/min |
+
+Capivara remains the **central panel of the ecosystem** — but now, when it says something is green, it's because it is.
