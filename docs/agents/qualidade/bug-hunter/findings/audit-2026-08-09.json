@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-08-08T21:00:54.310Z",
+  "timestamp": "2026-08-09T15:00:06.131Z",
   "url": "https://lifelog-sepia.vercel.app",
-  "duration": "28.6",
+  "duration": "31.2",
   "routes": {
     "/": {
       "url": "https://lifelog-sepia.vercel.app/",
@@ -29,7 +29,7 @@
     "/en/": {
       "url": "https://lifelog-sepia.vercel.app/en/",
       "title": "Home — LifeLog",
-      "contentSize": 178418,
+      "contentSize": 178602,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -39,7 +39,7 @@
           "id": "i18n-en",
           "desc": "Timeline em inglês",
           "ok": true,
-          "detail": "body 20087 chars (EN)"
+          "detail": "body 19935 chars (EN)"
         }
       ]
     },
