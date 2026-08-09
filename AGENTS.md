@@ -4,8 +4,15 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
-> **Status:** ✅ Operacional — 51 posts bilíngues (102 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
+> **Status:** ✅ Operacional — 52 posts bilíngues (104 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — auto-post diário desativado
+
+---
+
+## Sessão 2026-08-09 — 📝 Post Arachne: "O lock que nasceu no loop errado"
+- **Post publicado (PT+EN)**: `arachne-o-lock-que-nasceu-no-loop-errado` (d54313f) — fix 457326e do Arachne: `_lock = asyncio.Lock()` no import preso ao loop do processo → workflow via threadpool dava RuntimeError "bound to a different event loop" + "browser agent não disponível neste worker" (intermitente 08-09/08). Fix: lazy init `_get_lock()` dentro do loop corrente (+16/-3, 2 usos).
+- **⚠️ Bug cron one-shot release**: `LifeLog Release Posts 09/08` (a702b4b62614) criado com o argumento da data DENTRO do campo script (`lifelog-release-posts.py 2026-08-09`) → "Script not found". O script correto é `lifelog-release-posts.py` e a data vai no prompt. Post do dia publicado manualmente.
+- **Crons de preview (1ff5884c8cfa + b2357e8e636b) estão PAUSADOS** (disabled) — sem preview automático desde 08/08 12:00.
 
 ---
 
