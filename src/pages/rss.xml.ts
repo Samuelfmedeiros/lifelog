@@ -1,5 +1,6 @@
 import rss from '@astrojs/rss';
 import { getCollection } from 'astro:content';
+import { getProject } from '../lib/projects';
 
 export async function GET(context: { site: string }) {
   const allPosts = await getCollection('posts');
@@ -23,14 +24,17 @@ export async function GET(context: { site: string }) {
       const coverUrl = post.data.cover
         ? (post.data.cover.startsWith('http') ? post.data.cover : `${SITE}${post.data.cover}`)
         : undefined;
+      const proj = post.data.project ? getProject(post.data.project) : undefined;
+      const customData = [
+        ...(coverUrl ? [`<enclosure url="${coverUrl}" type="image/webp" />`] : []),
+        ...(proj ? [`<project>${proj.id}</project>`, `<accent>${proj.accentDark}</accent>`] : []),
+      ].join('');
       return {
         title: post.data.title,
         description: post.data.description,
         pubDate,
         link: `/post/${post.id}/`,
-        ...(coverUrl && {
-          customData: `<enclosure url="${coverUrl}" type="image/webp" />`,
-        }),
+        ...(customData && { customData }),
       };
     }),
   });
