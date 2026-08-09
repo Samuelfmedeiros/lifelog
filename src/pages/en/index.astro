@@ -69,7 +69,7 @@ const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os
             <PostCard
               title={post.data.title}
               description={post.data.description}
-              date={post.data.date}
+              date={post.data.pubDate || post.data.date}
               project={post.data.project}
               tags={post.data.tags}
               slug={post.id}
