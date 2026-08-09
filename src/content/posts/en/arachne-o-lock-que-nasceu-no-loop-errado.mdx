@@ -1,0 +1,123 @@
+---
+title: "The lock born in the wrong loop — and the browser pool that said 'not available in this worker'"
+description: "In the early hours, Arachne woke up intermittent: the scraping workflow failed with 'browser agent not available in this worker'. The journal showed a cryptic RuntimeError: the browser pool lock was bound to an event loop that wasn't the worker's. The cause: asyncio.Lock() created at import time. The fix: lazy init — born inside the right loop."
+date: 2026-08-09 12:00:00 -03:00
+pubDate: 2026-08-09 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "asyncio", "event-loop", "browser-pool", "debugging"]
+icon: "🕷️"
+cover: /covers/arachne-o-lock-que-nasceu-no-loop-errado.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ "Browser agent not available in this worker"
+
+Between 08 and 09/08, Arachne woke up **intermittently**. A scraping workflow would run, and out of nowhere: `browser agent not available in this worker`. Run it again — it worked. Again — it failed.
+
+In the journal, the cryptic RuntimeError:
+
+```
+RuntimeError: <asyncio.locks.Lock object at 0x7f...> is bound to a different event loop
+```
+
+A lock bound to an event loop that **wasn't the worker's**. Like a padlock mounted on one door, then the lock moved houses — right key, wrong place.
+
+## 🧠 The context: the browser pool shares a lock
+
+Arachne keeps a **browser pool** (Camoufox + Playwright) — browsers reused between scraping and VRT so a new browser doesn't spin up on every call. A pool like this needs a **lock**: two workers can't use the same browser at the same time.
+
+```python
+# The pool, simplified
+_browsers = []          # list of alive browsers
+_last_gc = 0.0          # last garbage collect
+
+async def _get_browser(headless=True):
+    async with _lock:   # protects pool access
+        # ... finds or creates a browser
+```
+
+The lock was global, created **at module import**:
+
+```python
+_lock = asyncio.Lock()   # ❌ created at import time
+```
+
+And there lived the bug.
+
+## 🔧 The struggle: the event loop that changes houses
+
+In Python asyncio, an `asyncio.Lock()` created **outside a loop** gets bound to whichever loop is running **at that moment** — or to the current loop the first time it's used.
+
+Arachne has two execution paths:
+
+- **Normal requests** (FastAPI) → run on the process's main event loop
+- **Scheduled workflows** (cron scheduler) → run via **threadpool** → each thread gets **its own event loop**
+
+When the module was imported in the main process, the lock was born bound to the main loop. When the workflow ran in the threadpool and tried `async with _lock`, Python compared the lock's loop with the current loop → **RuntimeError: bound to a different event loop**.
+
+The symptom was double and confusing:
+- The technical error (`bound to a different event loop`) showed up in internal logs
+- The business message ("browser agent not available in this worker") showed up for whoever consumed the workflow
+
+Intermittent because it depended on **when** the import happened and **which thread** the workflow landed on.
+
+## 💡 The resolution: lazy init — born in the right loop
+
+The fix (commit `457326e`, 09/08 02:59): the lock is no longer created at import — it's created **inside the current loop**, on first use.
+
+```python
+# ❌ Before — born bound to the import's loop
+_lock = asyncio.Lock()
+
+# ✅ After — born in the loop that's running now
+_lock = None  # type: Optional[asyncio.Lock]
+
+async def _get_lock() -> asyncio.Lock:
+    global _lock
+    if _lock is None:
+        _lock = asyncio.Lock()   # created INSIDE the current loop
+    return _lock
+```
+
+And at both usage points:
+
+```python
+# async with _lock:            →  async with await _get_lock():
+```
+
+The `await _get_lock()` runs inside the coroutine — the `asyncio.Lock()` is created in the **right** loop, the one executing that worker. 16 lines added, 3 removed. That's it.
+
+Yesterday's story was a generator that never closed the Postgres session. Today it's a lock born in the wrong loop. Same pattern: **the resource must be born in the context where it will live**.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| Commit | `457326e` (09/08 02:59) |
+| File | `api/app/browser_agent/engine.py` |
+| Diff | +16 / -3 |
+| Lock usages fixed | 2 (`_maybe_gc`, `_get_browser`) |
+| Error | `RuntimeError: bound to a different event loop` |
+| Business symptom | "browser agent not available in this worker" (intermittent) |
+| Arachne tests | 2,732 |
+
+## 🎯 Takeaways
+
+1. **Global async resource = loop problem** — `asyncio.Lock()`, `asyncio.Queue()` and friends created at import get bound to the process's loop. If the code runs in a threadpool/other loop (cron, workers), it breaks with "bound to a different event loop".
+
+2. **Lazy init fixes the lifecycle** — creating the resource inside the coroutine (on first use) guarantees it's born in the loop that will use it. That's the pattern for any async singleton.
+
+3. **Intermittent error = context clue** — failures that come and go are almost always timing-dependent: which loop, which thread, which import. The full RuntimeError in the journal is what gave away the cause.
+
+4. **Two symptoms, one cause** — the business message ("not available in this worker") hid the technical error. Always chase the full stack before "fixing" the symptom.
+
+<Terminal
+  lines={[
+    { cmd: 'grep -n "bound to a different event loop" /tmp/arachne-workflow.log', output: 'RuntimeError: <asyncio.locks.Lock> is bound to a different event loop' },
+    { cmd: 'git show 457326e -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
+    { cmd: 'grep -n "async with await _get_lock()" api/app/browser_agent/engine.py', output: 'Lines 140 and 177: the 2 fixed usages' },
+    { cmd: 'grep -c "def test_" api/tests/test_*.py | awk -F: \'{s+=$2} END {print s}\'', output: '2732 tests — full Arachne suite' },
+  ]}
+/>
