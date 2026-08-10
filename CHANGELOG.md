@@ -1,5 +1,23 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-09] — 🎨 Neon light mode fix + pubDate nos cards + capa AI Capivara + posts novos
+### 🎨 UI/Fix
+- **Neon do fundo volta no light mode** — aura 0.04→0.12 no fundo neon
+- **Cards mostram pubDate** (data de publicação) em vez de date histórico
+### 🖼️ Capas AI
+- **Capa AI do post Capivara** (Worker FLUX) — substitui placeholder
+### 📝 Posts
+- **Nova história do Capivara**: "painel parou de mentir" (seção dashboard)
+- **Libera posts 09/08** — draft removido
+- **Post Arachne**: "O lock que nasceu no loop errado" (PT+EN) — lazy init `_get_lock()`
+### 📡 RSS/Headers
+- **RSS expõe project + accent** (cor do projeto) no feed
+- **Headers /covers** cross-origin (CORP) — capas acessíveis de outros domínios
+### 📋 Docs
+- **Roadmap de posts** (segurança, AI Jail, descobertas) + sessão 09/08 no AGENTS.md
+
+**12 commits · HEAD: `2b2b52a` ✅ push origin**
+
 ## [2026-08-07] — 📝 Posts novos PT/EN + drafts agendados + Bug Hunter fix
 ### 📝 Posts
 - `dogwalk-o-websocket-que-nao-apertava-a-mao` (PT+EN) — receive_text sem accept(), 5 endpoints mudos, fix 1 linha
