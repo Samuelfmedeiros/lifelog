@@ -31,7 +31,7 @@ export const PALETTES: Palette[] = [
     tagBg: "rgba(167, 139, 250, 0.12)",
     particleColorDark: "rgba(200, 180, 255, 0.6)", particleColorLight: "rgba(124, 58, 237, 0.15)",
     auraDark: "radial-gradient(ellipse at 30% 20%, rgba(167, 139, 250, 0.06) 0%, transparent 60%)",
-    auraLight: "radial-gradient(ellipse at 80% 10%, rgba(124, 58, 237, 0.04) 0%, transparent 50%)",
+    auraLight: "radial-gradient(ellipse at 80% 10%, rgba(124, 58, 237, 0.12) 0%, transparent 50%)",
     cardShadowDark: "0 8px 32px rgba(167, 139, 250, 0.06)", cardShadowLight: "0 4px 16px rgba(124, 58, 237, 0.06)",
   },
   {
@@ -42,7 +42,7 @@ export const PALETTES: Palette[] = [
     tagBg: "rgba(34, 211, 238, 0.12)",
     particleColorDark: "rgba(150, 230, 255, 0.6)", particleColorLight: "rgba(8, 145, 178, 0.15)",
     auraDark: "radial-gradient(ellipse at 20% 30%, rgba(34, 211, 238, 0.06) 0%, transparent 60%)",
-    auraLight: "radial-gradient(ellipse at 70% 15%, rgba(8, 145, 178, 0.04) 0%, transparent 50%)",
+    auraLight: "radial-gradient(ellipse at 70% 15%, rgba(8, 145, 178, 0.12) 0%, transparent 50%)",
     cardShadowDark: "0 8px 32px rgba(34, 211, 238, 0.06)", cardShadowLight: "0 4px 16px rgba(8, 145, 178, 0.06)",
   },
   {
@@ -53,7 +53,7 @@ export const PALETTES: Palette[] = [
     tagBg: "rgba(52, 211, 153, 0.12)",
     particleColorDark: "rgba(150, 240, 200, 0.6)", particleColorLight: "rgba(5, 150, 105, 0.15)",
     auraDark: "radial-gradient(ellipse at 40% 20%, rgba(52, 211, 153, 0.05) 0%, transparent 60%)",
-    auraLight: "radial-gradient(ellipse at 60% 10%, rgba(5, 150, 105, 0.04) 0%, transparent 50%)",
+    auraLight: "radial-gradient(ellipse at 60% 10%, rgba(5, 150, 105, 0.12) 0%, transparent 50%)",
     cardShadowDark: "0 8px 32px rgba(52, 211, 153, 0.06)", cardShadowLight: "0 4px 16px rgba(5, 150, 105, 0.06)",
   },
   {
@@ -75,7 +75,7 @@ export const PALETTES: Palette[] = [
     tagBg: "rgba(251, 113, 133, 0.12)",
     particleColorDark: "rgba(255, 180, 200, 0.6)", particleColorLight: "rgba(225, 29, 72, 0.12)",
     auraDark: "radial-gradient(ellipse at 30% 40%, rgba(251, 113, 133, 0.05) 0%, transparent 60%)",
-    auraLight: "radial-gradient(ellipse at 75% 15%, rgba(225, 29, 72, 0.04) 0%, transparent 50%)",
+    auraLight: "radial-gradient(ellipse at 75% 15%, rgba(225, 29, 72, 0.12) 0%, transparent 50%)",
     cardShadowDark: "0 8px 32px rgba(251, 113, 133, 0.06)", cardShadowLight: "0 4px 16px rgba(225, 29, 72, 0.06)",
   },
   {
@@ -86,7 +86,7 @@ export const PALETTES: Palette[] = [
     tagBg: "rgba(96, 165, 250, 0.12)",
     particleColorDark: "rgba(160, 200, 255, 0.6)", particleColorLight: "rgba(37, 99, 235, 0.15)",
     auraDark: "radial-gradient(ellipse at 25% 25%, rgba(96, 165, 250, 0.05) 0%, transparent 60%)",
-    auraLight: "radial-gradient(ellipse at 65% 10%, rgba(37, 99, 235, 0.04) 0%, transparent 50%)",
+    auraLight: "radial-gradient(ellipse at 65% 10%, rgba(37, 99, 235, 0.12) 0%, transparent 50%)",
     cardShadowDark: "0 8px 32px rgba(96, 165, 250, 0.06)", cardShadowLight: "0 4px 16px rgba(37, 99, 235, 0.06)",
   },
 ]

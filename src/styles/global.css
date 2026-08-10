@@ -302,7 +302,16 @@ body {
   transform: scale(var(--hover-scale));
 }
 
-.post-card:hover .flex.items-center.gap-1.text-xs span {
+/* Touch/mobile: :hover só dispara com long-press (~2s) — :active responde
+   no toque imediato. (fix Samuel 09/08/2026) */
+.post-card:active {
+  border-color: var(--color-accent);
+  box-shadow: var(--color-glow);
+  transform: scale(calc(var(--hover-scale) * 0.98));
+}
+
+.post-card:hover .flex.items-center.gap-1.text-xs span,
+.post-card:active .flex.items-center.gap-1.text-xs span {
   transform: translateX(4px);
 }
 
