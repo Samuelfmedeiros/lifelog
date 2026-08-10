@@ -1,0 +1,113 @@
+---
+title: "AI Jail na prática — o sandbox que aprendeu com a gente"
+description: "Do dia em que instalamos o ai-jail (bubblewrap + Landlock + Seccomp) até ele virar rotina: o que mudou quando cada comando passou a rodar isolado — e as lições que o uso real ensinou (Landlock lento, worker mode, mounts por comando)."
+date: 2026-08-09 12:00:00 -03:00
+pubDate: 2026-08-10 00:30:00 -03:00
+project: seguranca
+tags: [seguranca, ai-jail, sandbox, hermes, bwrap, aprendizado]
+icon: "🔒"
+cover: /covers/seguranca-ai-jail-na-pratica.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ A primeira vez que o sandbox salvou
+
+O post anterior contou como o ai-jail entrou no Hermes — o sandbox em Rust que isola cada execução do terminal com bubblewrap, Landlock e Seccomp. Aquela foi a história da **instalação**.
+
+Esta é a história do **uso**. Porque instalar um sandbox é fácil; **viver com ele** é outra coisa.
+
+A primeira vez que ele me salvou de verdade foi num `pip install` de um pacote desconhecido. Antes do jail, aquele comando teria acesso a tudo: `.env`, chaves Stripe, credenciais de banco. Dentro do jail, os paths sensíveis são **mascarados** — o processo nem vê que existem.
+
+> A sensação é estranha no começo: você percebe que toda execução do Hermes **poderia** vazar sua vida — e que agora existe uma rede de proteção.
+
+## 🧠 O contexto: de instalar a conviver
+
+A configuração inicial (`~/.ai-jail`) define as regras:
+
+| Categoria | O que faz |
+|-----------|-----------|
+| **Mask** (vazio) | `.env`, `credentials.json`, `secrets.yml`, `*token*.json`, `*.pem`, `id_ed25519*`, `id_rsa*` |
+| **Deny** (erro) | `secrets/`, `*.key`, `.gnupg/` |
+| **GPU** | Ativa (Ollama precisa) |
+| **Docker** | Ativo |
+| **Worker mode** | GPU/Docker/Display desligados |
+
+O uso real revelou 3 lições que a documentação não conta:
+
+## ⚡ Lição 1: Landlock é caro — e a gente desligou
+
+O primeiro benchmark: com Landlock ativo, o jail levava **5.2s**; sem ele, **3.8s**. Quase 40% mais lento em operações rápidas.
+
+No WSL (onde o Hermes roda), o kernel moderno suporta Landlock — mas a latência não compensava para comandos triviais como `python3 script.py`. A decisão pragmática: `no_landlock = true` por padrão no WSL, mantendo bubblewrap + Seccomp como rede de proteção.
+
+```bash
+# ~/.ai-jail — decisão pragmática
+no_landlock = true   # 5.2s → 3.8s no WSL
+```
+
+A lição: **segurança é trade-off**. Um sandbox que ninguém usa por causa da latência protege menos que um rápido que vira rotina.
+
+## ⚡ Lição 2: cada comando tem necessidades próprias
+
+No começo, `jail npm install` falhava porque o npm não achava o cache. A solução: **mounts específicos por comando**:
+
+| Comando | RW mounts extras |
+|---------|-----------------|
+| `python` | `~/.cache/huggingface`, `~/.cache/torch` |
+| `npm` | `~/.npm`, `~/.cache/pnpm` |
+| `pip` | `~/.cache/pip` |
+| `uv` | `~/.cache/uv` |
+| `cargo` | `~/.cargo/registry`, `~/.cargo/git` |
+
+Cada um monta só o que precisa — **princípio do menor privilégio aplicado a cache**. O processo roda isolado, mas com acesso ao que é legítimo dele.
+
+## ⚡ Lição 3: worker mode é o modo padrão do Hermes
+
+Quando o Hermes spawna um worker (delegate_task / Kanban), ele detecta automaticamente `HERMES_KANBAN_TASK` e entra em **worker mode**: GPU, Docker e Display desligados.
+
+Por quê? Porque um worker descartável não precisa de GPU (Ollama), Docker ou display — e cada um desses é uma **superfície de ataque a menos**.
+
+```bash
+jail --worker python3 analyze.py   # sem GPU, sem Docker, sem display
+```
+
+O resultado prático: **todo comando que o Hermes roda em produção está isolado** — normal para tarefas comuns, lockdown para operações críticas (deploy, DB restore), worker para processos descartáveis.
+
+## 🛠️ A integração no Arachne
+
+O Arachne levou o conceito além: `app/sandbox.py` usa ai-jail como backend para isolar:
+- **Browser** (Playwright) — Chrome com sandbox do SO (sem `--no-sandbox`)
+- **Pipeline `eval()`** (`math`, `jsonata`) — execução em subprocesso isolado (anti-RCE)
+- **Código Python customizado** (`code` stage) — `sandboxed_handler()` escreve handler + input em tempdir e executa no jail
+
+```python
+# app/sandbox.py — a essência
+def run_sandboxed(cmd, ro_maps=[], rw_maps=[], no_net=False, timeout=60):
+    # monta paths, roda dentro do jail, retorna stdout/stderr
+```
+
+E a MCP tool `arachne_sandbox_status` mostra as proteções ativas em tempo real — transparência sobre o que está protegido.
+
+## 📊 Métricas do uso real
+
+| Item | Valor |
+|------|-------|
+| Landlock ativo | ❌ (5.2s vs 3.8s — desligado no WSL) |
+| Comandos com mounts custom | 5 (python, npm, pip, uv, cargo) |
+| Modos de execução | 3 (normal, lockdown, worker) |
+| Worker mode | Auto via `HERMES_KANBAN_TASK` |
+| Arachne sandboxável | Browser + eval + code stage |
+
+## 🎯 Aprendizados
+
+1. **Segurança é trade-off** — sandbox lento = ninguém usa; rápido = vira rotina
+2. **Menor privilégio aplicado a cache** — cada comando monta só o que precisa
+3. **Worker mode é padrão** — GPU/Docker/Display desligados por padrão em processos descartáveis
+4. **Transparência** — `arachne_sandbox_status` mostra o que está protegido
+5. **O dia a dia é o teste real** — a documentação ensina a instalar; o uso ensina a viver
+
+<Terminal commands={[{ cmd: "jail --lockdown pg_restore -d capivara backup.dump", label: "Operação crítica sempre em lockdown" }, { cmd: "jail --worker python3 analyze.py", label: "Worker descartável sem GPU/Docker" }, { cmd: "jail --dry-run python3 script.py", label: "Preview dos binds antes de executar" }]} />
+
+O sandbox não é uma feature que se instala e esquece. É uma **disciplina que se vive** — e quanto mais você usa, mais percebe o que ele está protegendo.
