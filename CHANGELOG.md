@@ -1,5 +1,9 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-11] — Bug Hunter findings versionados (dia leve)
+- `ed4f5cb`: versiona audits bug-hunter 2026-08-10/11 (290 linhas de findings)
+- 1 commit · push origin OK · HEAD: `ed4f5cb`
+
 ## [2026-08-09] — 🎨 Neon light mode fix + pubDate nos cards + capa AI Capivara + posts novos
 ### 🎨 UI/Fix
 - **Neon do fundo volta no light mode** — aura 0.04→0.12 no fundo neon
