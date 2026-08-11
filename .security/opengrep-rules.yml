@@ -1,0 +1,105 @@
+rules:
+- id: secret-key-hardcoded
+  languages: [python, javascript, typescript, go]
+  message: Chave/segredo hardcoded no código — mover para env/secret manager
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(api[_-]?key|secret|client[_-]?secret|passwd|password)\s*[:=]\s*["'][A-Za-z0-9_\-]{16,}["']
+
+- id: sql-string-concatenation
+  languages: [python, javascript, typescript, go]
+  message: Possível SQL injection — concatenar string em query. Usar parametrização/ORM
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(execute|exec|query|raw)\s*\([^)]*(\+|\.format\(|f["'])
+
+- id: debug-print-leaking-data
+  languages: [python, javascript, typescript]
+  message: Print/log de dados sensíveis (senha, token, cpf, cartão)
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(print|console\.log|logger\.(info|debug|warning))\([^)]*(password|passwd|token|secret|api_key|cpf|credit|card|senha)
+
+- id: weak-crypto
+  languages: [python, javascript, typescript, go, java]
+  message: Criptografia fraca (MD5/SHA1) para senha/dados sensíveis
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(hashlib\.md5|hashlib\.sha1|CryptoJS\.MD5|crypto\.createHash\(["']md5|md5\(|sha1\()
+
+- id: eval-exec-unsafe
+  languages: [python, javascript, typescript]
+  message: eval/exec de input não tratado = RCE potencial
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(eval\(|exec\(|os\.system\(|subprocess\.(call|run|Popen)|child_process\.exec)
+
+- id: jwt-none-algorithm
+  languages: [python, javascript, typescript, go]
+  message: JWT com algorithm none ou não verificado
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(algorithm\s*=\s*["']none["']|verify\s*=\s*False|verify_signature\s*:\s*False)
+
+- id: cors-wildcard
+  languages: [python, javascript, typescript, go]
+  message: CORS com * expõe API para qualquer origem
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(allow_origins\s*=\s*["']\*["']|Access-Control-Allow-Origin["']?\s*:\s*["']\*["'])
+
+- id: database-no-auth-bind
+  languages: [python, javascript, typescript]
+  message: Banco bindado em 0.0.0.0 ou sem auth (banco sem tranca)
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(bind\s*=\s*["']0\.0\.0\.0["']|host\s*=\s*["']0\.0\.0\.0["']|allow_origins\s*=\s*["']\*["'])
+
+- id: route-no-auth
+  languages: [python, javascript, typescript]
+  message: Rota/endpoint sem verificação de auth/permissão aparente
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)@(app|router)\.(get|post|put|delete|patch)\([^)]*\)[^@]*(?=def |\b)
+
+- id: env-var-not-checked
+  languages: [python, javascript, typescript]
+  message: Variável de ambiente usada sem verificar se existe (pode crashar/KeyError)
+  severity: WARNING
+  patterns:
+    - pattern-regex: (os\.environ\[[^]]+\]|process\.env\.[A-Z_]+)
+
+- id: path-traversal
+  languages: [python, javascript, typescript]
+  message: Path traversal possível (open/send_file com input direto)
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(open\(|send_file\(|send_from_directory\()\s*[^)]*(request|params|args|body|user_input)
+
+- id: hardcoded-db-credentials
+  languages: [python, javascript, typescript, go]
+  message: Credenciais de banco hardcoded (usuário/senha juntos)
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)postgres(ql)?://[^:]+:[^@]+@|mysql://[^:]+:[^@]+@
+
+- id: request-body-unvalidated
+  languages: [python, javascript, typescript]
+  message: Body de request usado sem validação/schema aparente (input sem tratamento)
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(request\.(json|body|form|query|args)\[|request\.(json|body|form|query|args)\.(get|pop))
+
+- id: insecure-random
+  languages: [python, javascript, typescript, go]
+  message: Random não-criptográfico para token/senha/sessão
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(random\.random\(|random\.randint\(|Math\.random\(\)|rand\.Intn\()(?![^)]*(secrets|System\.Security))
+
+- id: pickel-load-unsafe
+  languages: [python]
+  message: pickle.load de fonte não confiável = RCE
+  severity: ERROR
+  patterns:
+    - pattern-regex: (?i)(pickle\.load|joblib\.load|torch\.load)\([^)]*(request|input|file_obj|data)

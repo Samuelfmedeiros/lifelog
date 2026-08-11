@@ -1,0 +1,50 @@
+name: 🔒 Security Scan
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday 06:00 UTC
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  bandit-opengrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bandit + opengrep
+        run: |
+          pip install bandit
+          curl -sL https://github.com/opengrep/opengrep/releases/download/v1.26.0/opengrep_manylinux_x86 -o /usr/local/bin/opengrep
+          chmod +x /usr/local/bin/opengrep
+      - name: Bandit scan (se houver Python)
+        run: |
+          if find . -name "*.py" -not -path "*/node_modules/*" | grep -q .; then
+            bandit -q -r . -x "*/tests/*,*/node_modules/*" --severity-level medium || true
+          else
+            echo "Sem arquivos Python — pulando bandit"
+          fi
+      - name: Opengrep scan (regras custom)
+        run: |
+          if [ -f .security/opengrep-rules.yml ]; then
+            opengrep --config .security/opengrep-rules.yml . || true
+          else
+            echo "Sem regras custom (.security/opengrep-rules.yml) — pulando opengrep"
+          fi
