@@ -1,0 +1,105 @@
+---
+title: "The 61 vulnerabilities that became 2 — the art of the surgical override"
+description: "pnpm audit on the Portfólio screamed 61 vulnerabilities. Instead of updating dependency by dependency or trusting audit fix, I solved it with 5 lines of pnpm.overrides in package.json. Result: 61 → 2, with the remaining 2 having no published fix at all."
+date: 2026-08-11 12:00:00 -03:00
+pubDate: 2026-08-11 12:00:00 -03:00
+project: portfolio
+tags: ["security", "pnpm", "dependencies", "audit", "supply-chain"]
+icon: "🔒"
+cover: /covers/portfolio-61-vulnerabilidades-para-2-com-overrides.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ "61 vulnerabilities found"
+
+Not the headline you want to see on a Saturday morning. I ran `pnpm audit` on Portfólio out of pure habit — that security check you do between features — and the terminal fired back:
+
+```
+61 vulnerabilities found
+Severity: 25 moderate, 36 high
+```
+
+61. Twenty-five moderate, thirty-six high. On a project that is literally my business card. The first instinct is always the same: *"I need to update EVERYTHING right now."* Except updating everything is exactly what can break what already works — and Portfólio had just gone through a full Vue 3.5 rebuild.
+
+## 🧠 The context: why the audit was screaming
+
+Portfólio is a Vue 3.5 + Fastify app deployed on Vercel. `pnpm audit` doesn't only flag what you use **directly** — it scans the whole tree of transitive dependencies. And that's where the classic problem lives: packages you don't even know exist, pinned to old versions because *some* direct dependency resolved them that way.
+
+The usual suspects showed up in the audit:
+
+| Package | Where it comes in | Problem |
+|---------|-------------------|---------|
+| `ajv` | validators across several libs | old versions with ReDoS / prototype pollution |
+| `smol-toml` | config tooling | CVE in parsing |
+| `@tootallnate/once` | promisify helper | high-severity CVE |
+| `esbuild` | bundlers in tooling | known vuln in versions < 0.24 |
+
+None of them is a **direct** dependency of my package.json. They're all transitive — resolved to old versions because of loose ranges in intermediate libraries.
+
+## 🔧 The struggle: why it wasn't `pnpm audit fix`
+
+The temptation is to run `pnpm audit fix` and let pnpm sort it out. I'd been down that road before, and it has a price: audit fix **updates dependencies and regenerates the whole lockfile**, sometimes with a different pnpm version than CI expects. I've seen deploys break with `ERR_PNPM_EEXIST` because of exactly that. Auto-fix can also pull **major versions** of libraries the project doesn't want — silent behavior changes.
+
+The right path was the opposite: **surgical**. pnpm has a mechanism built for this: `pnpm.overrides`. It forces the resolution of a transitive package to a specific version **without touching any direct dependency** — the rest of the tree stays intact.
+
+```jsonc
+// package.json — the diff that fixed it (+5/-1)
+{
+  "pnpm": {
+    "overrides": {
+      "@fastify/static": "^10.1.1",
+      "ajv": "^8.18.0",
+      "smol-toml": "^1.6.1",
+      "@tootallnate/once": "^2.0.1",
+      "esbuild": "^0.28.1"
+    }
+  }
+}
+```
+
+Five lines. Four of them new — `@fastify/static` was already there, it just gained a comma. After that, `pnpm install` re-resolved the tree honoring the overrides, and the lockfile **shrank by 739 lines** (the whole commit: 48 insertions, 697 deletions). When the lockfile shrinks like that, it means duplicated versions and stale resolutions simply vanished.
+
+## 💡 The resolution: 61 → 2, and honesty about the rest
+
+`pnpm audit` after install:
+
+```
+2 vulnerabilities found
+Severity: 2 high
+```
+
+The remaining two are the same chain: `netlify-cli` → `@netlify/blobs` → `@netlify/dev-utils` → `image-size@2.0.2` (GHSA-5p2g-fcmc-qvqq). And here's the detail that matters: the patched version is **`<0.0.0`** — meaning **no patch has been published yet**. There is no override possible, no update that fixes it today.
+
+That's when risk judgment kicks in, not panic:
+
+| Factor | Analysis |
+|--------|----------|
+| Where it comes in | `netlify-cli` — a **local development** CLI |
+| Reaches production? | No — deploy is Vercel, remote build |
+| Is there a patch? | No (`patched <0.0.0`) |
+| Attack surface | A dev running `netlify` on their own machine |
+
+Overrides fix what can be fixed today; for what has no fix, the answer is **monitoring** — when the advisory publishes a patch, it's one line in `overrides` and done. Meanwhile the real exposure is minimal: a local dev tool, never in runtime.
+
+## 📊 Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Vulnerabilities | 61 (25 moderate, 36 high) | 2 (0 moderate, 0 critical) |
+| Override lines | 0 | 5 |
+| Lockfile | — | −739 lines |
+| Direct dependencies changed | — | 0 |
+
+## 🎯 Takeaways
+
+- **`pnpm audit fix` is not the first answer** — it regenerates the lockfile and can pull unwanted majors. Overrides are the scalpel: touch only what needs fixing.
+- **Not every vuln is urgent** — the `netlify-cli → image-size` chain has no published patch and never reaches production. Risk needs context, not just a number.
+- **A shrinking lockfile is a good sign** — duplicated versions leaving the tree usually come hand-in-hand with the vuln drop.
+
+<Terminal commands={[
+  { cmd: 'pnpm audit', description: 'See the real state of the dependency tree' },
+  { cmd: 'pnpm why image-size', description: 'Find WHICH chain pulls a vulnerable package' },
+  { cmd: 'pnpm install --force', description: 'Re-resolve the lockfile honoring overrides (pnpm requires --force when overrides change)' }
+]} />
