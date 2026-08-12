@@ -1,0 +1,95 @@
+---
+title: "Do Docker ao k3s — a decisão de usar Kubernetes de verdade"
+description: "O Arachne rodava 10 serviços em Docker Compose. Kubernetes aparecia no meu CV como keyword desejada — mas eu não usava. Em vez de mentir, decidi adotar k3s de verdade: single-node, com plano em fases, rollback garantido e métricas de RAM como critério de parada."
+date: 2026-08-11 14:00:00 -03:00
+pubDate: 2026-08-11 14:00:00 -03:00
+project: arachne
+tags: ["arachne", "kubernetes", "k3s", "infra", "docker", "decisao"]
+icon: "🕷️"
+cover: /covers/arachne-do-docker-ao-k3s.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ A keyword que eu não sabia usar
+
+O meu currículo passou por uma auditoria ATS (Applicant Tracking System) — o software que filtra currículos antes de qualquer humano ver. O score chegou a **98.8/100**. Faltavam duas keywords: `Automation/Automação` (seria keyword stuffing — cada idioma já tem a sua) e `Kubernetes`.
+
+Kubernetes. A plataforma que orquestra containers em produção. Recrutador técnico vê essa palavra e presta atenção. E eu **não usava**. Aparecer no CV sem usar seria mentira — e mentira técnica é o tipo de coisa que um entrevistador bom descobre na primeira pergunta.
+
+A alternativa era pior: deixar de fora e perder o match. Então a decisão foi a única honesta: **adotar Kubernetes de verdade**.
+
+## 🧠 A pergunta certa: onde faz sentido?
+
+Kubernetes não é bala de prata. Pra site estático (Portifólio, LifeLog), é overkill gigante. Pra Jellyfin/TDarr (GPU passthrough, volumes, rede host), é um pesadelo. Mas o **Arachne** tem arquitetura real de microserviços:
+
+| Serviço | Papel |
+|---------|-------|
+| `arachne-api` | FastAPI — API principal |
+| `arachne-worker` | Fila RQ (jobs assíncronos) |
+| `nginx` | Reverse proxy |
+| `crawl4ai` | Sidecar de scraping |
+| `redis` | Filas + cache |
+| `postgres (pgvector)` | Dados + embeddings |
+| `umami` + `umami-db` | Analytics |
+| `tunnel` | cloudflared |
+| `backup` | Snapshots |
+
+Dez serviços, filas, GPU, banco vetorial. Isso é exatamente o tipo de workload que Kubernetes foi feito pra orquestrar: **isolamento de workers** (crash não derruba a fila), **rolling updates sem downtime**, **self-healing** (container morreu → sobe de novo), **secrets nativos**.
+
+## 🔧 A escolha: k3s single-node
+
+Opções avaliadas:
+
+| Opção | Veredito |
+|-------|----------|
+| **k3s single-node** | ✅ Escolhida — K8s de verdade, leve, produção real |
+| Cluster caseiro multi-node | ⏳ Futuro possível (depois de estabilizar) |
+| k3d/kind (dev only) | ❌ Rejeitada — não é produção, não justifica no CV |
+| Não adotar | ❌ Descartada — quero o skill real |
+
+O **k3s** (Rancher) é a distribuição Kubernetes leve para edge — um binário, menos de 100MB de footprint, e compatível com K8s padrão. Roda em WSL2 sem drama. É Kubernetes de verdade: mesmo API server, mesmo kubectl, mesmo manifesto.
+
+**Riscos aceitos (e o critério de parada):**
+- RAM é o recurso crítico: host tem **11GB total, ~3.7GB available**. Overhead do k3s ~500MB-1GB. **Se apertar, PARAR e reportar** — nunca sacrificar produção.
+- GPU no WSL2 + K8s: `nvidia-container-toolkit` + device plugin (config chata, mas documentada).
+- Manutenção nova: k3s updates, certificados.
+
+## 📋 O plano em fases (com rollback a qualquer momento)
+
+A regra era simples: **nunca quebrar o que está funcionando**. O Docker Compose atual fica intacto até a última fase.
+
+```
+F0  Plano detalhado (docs oficiais k3s primeiro)
+F1  Instalar k3s + medir overhead RAM real
+F2  Portar stateless (api, worker, nginx, crawl4ai, redis)
+    → rodando em PARALELO com o compose (portas diferentes)
+F3  Portar stateful (postgres, umami-db) com volumes migrados
+F4  GPU pro worker VLM + validar fila arachne-vlm-jobs
+F5  Cutover DNS/tunnel + desligar compose + monitorar 72h
+```
+
+Cada fase tem **teste com evidência**: health check, fila RQ processando, RAG respondendo, VLM processando imagem, umami coletando. Nada de "funciona" sem prova.
+
+**Rollback:** se qualquer fase falhar, volta pro compose em minutos — ele nunca foi desligado.
+
+## 🎯 Aprendizados (até aqui)
+
+1. **Não mentir no CV é decisão de arquitetura** — a keyword virou um driver real de infraestrutura. Honestidade virou roadmap.
+2. **Avaliar projeto por projeto** — K8s só faz sentido onde a arquitetura pede. Forçar em tudo é moda, não engenharia.
+3. **RAM como critério de parada** — em ambiente pessoal com 11GB, overhead importa. Ter um limite explícito evita sacrificar produção por ego.
+4. **Rollback é o que dá coragem** — saber que o compose está intacto até F5 permite executar com confiança.
+
+<Terminal
+  lines={[
+    { cmd: 'k3s version', output: 'k3s version v1.x (Rancher — K8s leve para edge)' },
+    { cmd: 'kubectl get nodes', output: 'NAME    STATUS   ROLES    AGE   VERSION\nnode    Ready    control-plane   Xm   v1.x+k3s1' },
+    { cmd: 'kubectl get pods -A', output: 'kube-system + serviços do Arachne (estado F2-F5)' },
+    { cmd: 'docker compose ps', output: 'compose intacto — rollback disponível a qualquer momento' },
+  ]}
+/>
+
+## 🚀 O que vem a seguir
+
+A migração roda em fases com aprovação em cada uma. Quando o k3s estabilizar em produção por 1-2 meses, "Kubernetes (k3s)" entra no CV **de verdade**. E o cluster multi-node (a opção B) fica anotado como experimento futuro — primeiro o single-node precisa provar o valor.
