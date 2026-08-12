@@ -9,9 +9,17 @@
 
 ---
 
-## Sessão 2026-08-11 — Bug Hunter findings versionados (dia leve)
-- `ed4f5cb`: versiona audits bug-hunter 2026-08-10/11 (290 linhas de findings)
-- 1 commit no dia · push origin OK
+## Sessão 2026-08-11 — Post k3s + 2 posts pipeline + revert Douglas PC
+
+### 📝 Posts
+- **feat(post)**: Arachne do Docker ao k3s (PT+EN) — decisão de usar Kubernetes de verdade, plano F0-F5, rollback (`146d60e`)
+- **feat(posts)**: 2 posts 11/08 — 61 vulnerabilidades (Portifólio) + Douglas sumiu da subnet (Capivara) [pipeline] (`06cb903`)
+- **revert(post)**: remove post do Douglas PC — não aprovado, nada sobre Samuel/Douglas PC (projeto errado) (`b8b5c96`)
+
+### 🔒 Segurança
+- gitleaks+bandit+opengrep scan (`889732c`)
+
+- 6 commits no dia · push origin OK · HEAD: `146d60e`
 
 ## Sessão 2026-08-09 — 📝 Post Arachne: "O lock que nasceu no loop errado"
 - **Post publicado (PT+EN)**: `arachne-o-lock-que-nasceu-no-loop-errado` (d54313f) — fix 457326e do Arachne: `_lock = asyncio.Lock()` no import preso ao loop do processo → workflow via threadpool dava RuntimeError "bound to a different event loop" + "browser agent não disponível neste worker" (intermitente 08-09/08). Fix: lazy init `_get_lock()` dentro do loop corrente (+16/-3, 2 usos).

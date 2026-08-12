@@ -1,8 +1,16 @@
 # 📋 CHANGELOG — LifeLog
 
-## [2026-08-11] — Bug Hunter findings versionados (dia leve)
-- `ed4f5cb`: versiona audits bug-hunter 2026-08-10/11 (290 linhas de findings)
-- 1 commit · push origin OK · HEAD: `ed4f5cb`
+## [2026-08-11] — Post k3s + 2 posts pipeline + revert Douglas PC
+
+### 📝 Posts
+- **Arachne do Docker ao k3s (PT+EN)**: decisão Kubernetes real, plano F0-F5, rollback (`146d60e`)
+- **2 posts pipeline**: 61 vulnerabilidades (Portifólio) + Douglas sumiu da subnet (Capivara) (`06cb903`)
+- **Revert**: post Douglas PC removido — não aprovado (nada sobre Samuel/Douglas PC; projeto errado) (`b8b5c96`)
+
+### 🔒 Segurança
+- gitleaks+bandit+opengrep scan (`889732c`)
+
+6 commits · push origin OK · HEAD: `146d60e`
 
 ## [2026-08-09] — 🎨 Neon light mode fix + pubDate nos cards + capa AI Capivara + posts novos
 ### 🎨 UI/Fix
