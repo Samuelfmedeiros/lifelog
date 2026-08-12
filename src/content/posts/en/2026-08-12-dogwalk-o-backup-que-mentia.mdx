@@ -1,0 +1,90 @@
+---
+title: "Dogwalk: the backup that lied — a 786KB truncated tar hidden by 2>/dev/null"
+description: "The script logged ✅ Docs backup, but the tar held only 53 of 218 files — an overnight OOM swallowed by 2>/dev/null."
+date: 2026-08-12T12:00:00 -03:00
+pubDate: 2026-08-12 12:00:00 -03:00
+project: dogwalk
+tags: [backup, bash, reliability, observability, integrity]
+icon: "💾"
+cover: /covers/dogwalk-o-backup-que-mentia.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The backup that said "✅" while failing
+
+It had everything it needed to go unnoticed. At 03:00 on Aug 12, the Dogwalk backup cron ran exactly as it always runs — and the log recorded `✅ Docs backup`, exactly as it always records. The problem? The tar had been truncated to 786KB with only 53 of the 218 files in `docs/`. The `2>/dev/null` had swallowed the real error: `Cannot allocate memory` — an OOM during gzip in the middle of the night.
+
+I only found out because I looked at file sizes. A docs backup that was 5.4–6.6MB on previous nights was suddenly 786KB. The script swore everything was fine.
+
+## 🧠 Context
+
+The Dogwalk `scripts/backup.sh` runs four backups in sequence: `db` (pg_dump), `kanban`, `env`, and `docs` (a tar.gz of the whole `docs/` dir). It runs via cron overnight and writes to a timestamped log. The `backup_docs` function used to be simple:
+
+```bash
+tar czf "$BACKUP_DIR/full/docs_$DATE.tar.gz" -C "$PROJECT_DIR" docs/ 2>/dev/null
+log "✅ Docs backup: $(du -h "$BACKUP_DIR/full/docs_$DATE.tar.gz" | cut -f1)"
+```
+
+Notice the trap: the `2>/dev/null` isn't there to hide errors — it's there to silence the annoying "file changed as we read it" warning. But it hides the gzip OOM too. And the ✅ log only prints the size — 786KB passes as success. A corrupted backup becomes a "completed backup" in the log, and nobody would suspect until they needed to restore.
+
+## 🔧 The fight
+
+The first step was confirming the corruption. `gzip -t` (integrity test) failed immediately — the stream was truncated mid-way. And the worst part: `tar` sometimes "accepts" a truncated file if the header is still intact, so even tar's exit code wasn't trustworthy.
+
+The fix needed three things:
+
+1. **Drop the `2>/dev/null`** — the error must show up in the log, always.
+2. **Actually verify** — `gzip -t` after the tar, the canonical gzip integrity check.
+3. **Retry** — if the check fails, wait 10s and try again (OOM is usually transient).
+
+```bash
+OUT="$BACKUP_DIR/full/docs_$DATE.tar.gz"
+tar czf "$OUT" -C "$PROJECT_DIR" docs/
+# Integrity check — catches truncated tars that tar sometimes "accepts"
+if ! gzip -t "$OUT" >/dev/null 2>&1; then
+    log "⚠️ Docs backup corrupted (gzip -t failed), retrying..."
+    sleep 10
+    tar czf "$OUT" -C "$PROJECT_DIR" docs/
+    if ! gzip -t "$OUT" >/dev/null 2>&1; then
+        log "❌ Docs backup FAILED after retry — tar/gzip corrupted"
+        return 1
+    fi
+fi
+log "✅ Docs backup: $(du -h "$OUT" | cut -f1)"
+```
+
+Note: the `>/dev/null 2>&1` on `gzip -t` is intentional — the check uses the exit code, and gzip's own error output doesn't matter. The difference is that ✅ only appears AFTER passing verification. The script can't lie anymore.
+
+## 💡 Resolution
+
+Commit `3d4b9dca` (Aug 12, +15/−2) fixed it at the root. Running it by hand after the fix, the backup came out intact: **8.3MB**, verified with `gzip -t` before the ✅. And tomorrow night's log will scream if something fails — it won't smile with a dead file anymore.
+
+The bigger lesson isn't about backups, it's about observability: **every success message needs to be earned**. If ✅ is printed before the real check, you don't have a success log — you have a hope log.
+
+## 📊 Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Backup size (03:00 Aug 12) | 786KB truncated (53/218 files) | 8.3MB intact |
+| Integrity check | none (`2>/dev/null` + `du -h`) | `gzip -t` post-tar + 10s retry |
+| Error visible in log on failure | ❌ silenced | ✅ logged |
+| Fix diff | — | +15 −2 in `scripts/backup.sh` |
+
+## 🎯 Takeaways
+
+- `2>/dev/null` in a backup is like covering the fire alarm because the sound is annoying — it doesn't hide only what you want.
+- `tar` can "accept" a truncated file; exit code isn't proof of integrity. Test the artifact, not the process.
+- A backup that isn't verified isn't a backup — it's hope with a `.tar.gz` extension.
+- Overnight OOM is transient: 10s wait + retry solves most cases.
+
+<Terminal commands={[
+  { cmd: 'gzip -t docs_20260812.tar.gz', description: 'Tests gzip integrity — the check that was missing' },
+  { cmd: 'tar tzf docs_20260812.tar.gz | wc -l', description: 'Counts real files inside the tar' },
+  { cmd: 'du -h docs_20260812.tar.gz', description: 'Real size — 786KB vs 8.3MB exposed the corruption' }
+]} />
+
+---
+
+*Tomorrow I'll tell you how the database backup behaved the same night — spoiler: the `pg_dump` had the same size-based verification pattern that almost failed the same way.*

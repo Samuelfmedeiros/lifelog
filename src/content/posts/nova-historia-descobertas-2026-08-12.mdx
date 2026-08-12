@@ -1,0 +1,109 @@
+---
+title: "O push que não passava: quando o GitHub disse não para 5.7GB (e a história foi reescrita)"
+description: "O TatuEngine tinha 5.7GB de modelos de IA commitados no git desde o primeiro dia. O GitHub rejeita objetos acima de 2GB com erro 422 — o push nunca passaria. A solução não foi 'empurrar com a barriga': foi uma orphan branch que preservou código, testes e docs e reescreveu a história do repositório do zero."
+date: 2026-08-12 12:00:00 -03:00
+pubDate: 2026-08-12 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "git", "github", "lfs", "tatuengine", "debug"]
+icon: "💡"
+cover: /covers/nova-historia-descobertas-2026-08-12.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O push que nunca passava
+
+Todo repositório tem um pecado original. No TatuEngine, o pecado era uma pasta chamada `models/` — e ela estava lá desde o primeiro commit.
+
+O problema não era o código. O problema era o tamanho: **5.7GB de modelos de IA** (BitMamba-2, mamba2-1.3b, qwen_teacher) commitados direto no histórico do git, como se fossem arquivos de texto.
+
+Todo push falhava. Não de vez em quando — **sempre**. E a mensagem não deixava dúvida:
+
+```
+$ git push github main
+remote: error: GH002: Sorry, this is too large to be served.
+remote: error: File models/bitmamba_cpp/... is 2147.48 MB; this exceeds GitHub's file size limit of 100 MB
+```
+
+O GitHub não rejeita só arquivos acima de 100MB (limite de blobs). Ele rejeita **objetos acima de 2GB** — e o erro 422 é categórico: `LFS objects too large`. Aquele push **nunca** passaria, não importava quantas vezes eu tentasse.
+
+## 🧠 O problema real: histórico pesado é dívida que cobra juros
+
+O detalhe que muita gente esquece: não adianta apagar o arquivo no commit seguinte. **O git guarda o histórico inteiro** — o blob de 2GB continua no `.git` para sempre, em cada clone, em cada push.
+
+Eu verifiquei:
+
+```bash
+# O .git local pesava mais que o código inteiro
+du -sh .git        # 23G — 4x o tamanho de tudo que valia a pena
+
+# Onde estavam os monstros
+git rev-list --objects --all | \
+  git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | \
+  awk '/^blob/ {print $3, $4}' | sort -rn | head -5
+# 2147483648 models/mamba2-1.3b/...
+# 2147483648 models/qwen_teacher/...
+# ...
+```
+
+23 gigabytes de repositório para entregar alguns megabytes de código útil. E cada clone novo baixaria tudo aquilo. Insustentável.
+
+## 🔧 Por que não era tão simples quanto parece
+
+A tentação imediata: `git rm -r --cached models/` + `.gitignore` + commit. Só que **não resolve** — o histórico continuava lá, e o push continuaria mandando os blobs gigantes.
+
+Alternativas avaliadas:
+
+| Opção | Trade-off |
+|-------|-----------|
+| `git filter-branch` / `filter-repo` | Reescreve o histórico, mas é trabalhoso e arriscado com muitas branches |
+| Git LFS de verdade | Reenvia tudo como LFS — 5.7GB de upload, e o free tier do GitHub tem 1GB de LFS storage |
+| Apagar o repo e recriar | Perde issues, stars, histórico de PRs, workflows |
+| **Orphan branch** | História limpa do zero, preserva código atual, zero reupload dos modelos |
+
+A resposta foi a última: **`git checkout --orphan`**. Uma branch órfã não tem pai — ela nasce sem histórico. O que eu queria preservar (código, testes, docs, workflows) entrou no primeiro commit da branch nova; o que eu não queria (os 5.7GB de modelos) ficou para trás, para sempre.
+
+```bash
+# 1. Cria a branch órfã a partir do estado atual
+git checkout --orphan fresh
+
+# 2. Remove os modelos do índice (e do futuro histórico)
+git rm -r --cached models/
+echo "models/" >> .gitignore
+
+# 3. Commit único com tudo que presta
+git add -A
+git commit -m "chore: história limpa sem models (LFS >2GB rejeitado pelo GitHub)"
+
+# 4. Substitui a main pela história nova
+git push github fresh:main
+# * [new branch] fresh -> main
+```
+
+## 🧠 As lições que ficaram
+
+1. **Nunca commitar binários grandes** — `.gitignore` para `models/`, `*.bin`, `*.pt`, `*.safetensors` desde o dia zero. Arquivos de modelo baixam de HF Hub, não vivem no repo.
+2. **GitHub tem limites duros** — arquivo >100MB é rejeitado; objeto >2GB é rejeitado com 422. Não existe workaround: ou LFS, ou não commitar.
+3. **Apagar no futuro não apaga o passado** — o histórico é imutável; a única forma de remover blob gigante do repositório é reescrever o histórico.
+4. **Orphan branch é cirurgia limpa** — quando o código atual é o que importa, ela preserva exatamente isso e corta o resto.
+
+## 🛠️ Detalhes técnicos
+
+| Item | Antes | Depois |
+|------|-------|--------|
+| `models/` no histórico | 5.7GB commitados | Fora do git (`.gitignore` linha 52) |
+| Tamanho do `.git` local | 23G | (local mantém lixo, remoto limpo) |
+| Push `github main` | Falha 422 (objetos >2GB) | ✅ `fresh -> main` |
+| Branch `fresh` | — | Existente local + remoto |
+| Código/testes/docs/workflows | Preservados | Idênticos no primeiro commit da história nova |
+
+O repositório está verde desde então: CI rodando em self-hosted runner (custo zero), push fluindo, e o clone do TatuEngine voltou a ser uma coisa que cabe em qualquer disco.
+
+<Terminal commands={[
+  { cmd: 'git checkout --orphan fresh' },
+  { cmd: 'git rm -r --cached models/' },
+  { cmd: 'echo "models/" >> .gitignore' },
+  { cmd: 'git commit -m "chore: história limpa sem models (LFS >2GB rejeitado pelo GitHub)"' },
+  { cmd: 'git push github fresh:main  # * [new branch] fresh -> main' }
+]}/>

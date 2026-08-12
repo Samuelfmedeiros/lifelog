@@ -1,0 +1,110 @@
+---
+title: "The push that never went through: when GitHub said no to 5.7GB (and history was rewritten)"
+description: "TatuEngine had 5.7GB of AI models committed to git since day one. GitHub rejects objects above 2GB with a 422 error — that push would never succeed. The fix wasn't 'pushing through': it was an orphan branch that preserved code, tests, and docs and rewrote the repository's history from scratch."
+date: 2026-08-12 12:00:00 -03:00
+pubDate: 2026-08-12 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "git", "github", "lfs", "tatuengine", "debug"]
+icon: "💡"
+cover: /covers/nova-historia-descobertas-2026-08-12.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The push that never went through
+
+Every repository has an original sin. In TatuEngine, the sin was a folder called `models/` — and it had been there since the very first commit.
+
+The problem wasn't the code. The problem was the size: **5.7GB of AI models** (BitMamba-2, mamba2-1.3b, qwen_teacher) committed straight into git history, as if they were text files.
+
+Every push failed. Not occasionally — **every single time**. And the message left no doubt:
+
+```
+$ git push github main
+remote: error: GH002: Sorry, this is too large to be served.
+remote: error: File models/bitmamba_cpp/... is 2147.48 MB; this exceeds GitHub's file size limit of 100 MB
+```
+
+GitHub doesn't just reject files above 100MB (the blob limit). It rejects **objects above 2GB** — and the 422 error is categorical: `LFS objects too large`. That push would **never** go through, no matter how many times I tried.
+
+## 🧠 The real problem: heavy history is debt that charges interest
+
+The detail most people forget: deleting the file in the next commit doesn't help. **Git keeps the entire history** — the 2GB blob stays in `.git` forever, in every clone, in every push.
+
+I checked:
+
+```bash
+# The local .git weighed more than the entire codebase
+du -sh .git        # 23G — 4x the size of everything that mattered
+
+# Where the monsters lived
+git rev-list --objects --all | \
+  git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | \
+  awk '/^blob/ {print $3, $4}' | sort -rn | head -5
+# 2147483648 models/mamba2-1.3b/...
+# 2147483648 models/qwen_teacher/...
+# ...
+```
+
+23 gigabytes of repository to deliver a few megabytes of useful code. And every new clone would download all of it. Unsustainable.
+
+## 🔧 Why it wasn't as simple as it seemed
+
+The immediate temptation: `git rm -r --cached models/` + `.gitignore` + commit. Except it **doesn't solve it** — the history was still there, and the push would keep sending those giant blobs.
+
+Options I weighed:
+
+| Option | Trade-off |
+|--------|-----------|
+| `git filter-branch` / `filter-repo` | Rewrites history, but it's laborious and risky with many branches |
+| Real Git LFS | Re-uploads everything as LFS — 5.7GB of upload, and GitHub's free tier has 1GB of LFS storage |
+| Delete the repo and recreate | Loses issues, stars, PR history, workflows |
+| **Orphan branch** | Clean history from scratch, preserves current code, zero re-upload of models |
+
+The answer was the last one: **`git checkout --orphan`**. An orphan branch has no parent — it's born without history. Everything I wanted to keep (code, tests, docs, workflows) went into the first commit of the new branch; everything I didn't want (the 5.7GB of models) stayed behind, forever.
+
+```bash
+# 1. Create the orphan branch from the current state
+git checkout --orphan fresh
+
+# 2. Remove the models from the index (and from future history)
+git rm -r --cached models/
+echo "models/" >> .gitignore
+
+# 3. Single commit with everything that matters
+git add -A
+git commit -m "chore: história limpa sem models (LFS >2GB rejeitado pelo GitHub)"
+
+# 4. Replace main with the new history
+git push github fresh:main
+# * [new branch] fresh -> main
+```
+
+## 🧠 The lessons that stuck
+
+1. **Never commit large binaries** — `.gitignore` for `models/`, `*.bin`, `*.pt`, `*.safetensors` from day zero. Model files download from HF Hub; they don't live in the repo.
+2. **GitHub has hard limits** — files >100MB are rejected; objects >2GB are rejected with 422. There's no workaround: either LFS, or don't commit.
+3. **Deleting in the future doesn't erase the past** — history is immutable; the only way to remove a giant blob from the repository is to rewrite history.
+4. **Orphan branch is clean surgery** — when the current code is what matters, it preserves exactly that and cuts away the rest.
+
+## 🛠️ Technical details
+
+| Item | Before | After |
+|------|--------|-------|
+| `models/` in history | 5.7GB committed | Out of git (`.gitignore` line 52) |
+| Local `.git` size | 23G | (local keeps garbage, remote clean) |
+| Push `github main` | Fails 422 (objects >2GB) | ✅ `fresh -> main` |
+| `fresh` branch | — | Exists locally + remotely |
+| Code/tests/docs/workflows | Preserved | Identical in the first commit of the new history |
+
+The repository has been green ever since: CI running on a self-hosted runner (zero cost), push flowing, and cloning TatuEngine is back to being something that fits on any disk.
+
+<Terminal commands={[
+  { cmd: 'git checkout --orphan fresh' },
+  { cmd: 'git rm -r --cached models/' },
+  { cmd: 'echo "models/" >> .gitignore' },
+  { cmd: 'git commit -m "chore: história limpa sem models (LFS >2GB rejeitado pelo GitHub)"' },
+  { cmd: 'git push github fresh:main  # * [new branch] fresh -> main' }
+]}/>
