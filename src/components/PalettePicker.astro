@@ -290,16 +290,24 @@ import { PALETTES } from '../lib/palettes'
       animating = true
 
       if (isMobile) {
-        // Crossfade nativo + círculo sutil (duração curta) — sem clip-path WAAPI
-        // O crossfade VT é 100% GPU, ideal pra Android
+        // ─── Mobile: crossfade puro (opacity no compositor) ───
+        // Decisão do post 22/07 ("Tema animação simplificada"): clip-path anima
+        // no raster (paint por frame) e TRAVA em GPU fraca/Android. Opacity só
+        // compõe camadas no GPU compositor → suave, zero repaint.
+        // Crossfade REAL: old fade-out + new fade-in (ambos opacity, 100% GPU).
         t.ready.then(() => {
-          const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+          const anim = {
+            duration: animDuration,
+            easing,
+          }
+          // old sai (1→0) enquanto new entra (0→1) — crossfade verdadeiro
           document.documentElement.animate(
-            { clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${r}px at ${x}px ${y}px)`
-            ]},
-            { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
+            { opacity: [1, 0] },
+            { ...anim, pseudoElement: '::view-transition-old(root)' },
+          )
+          document.documentElement.animate(
+            { opacity: [0, 1] },
+            { ...anim, pseudoElement: '::view-transition-new(root)' },
           )
         })
       } else {
@@ -332,9 +340,9 @@ import { PALETTES } from '../lib/palettes'
       return
     }
 
-    // ─── Fallback (sem VT) — overlay clip-path circular ───
-    // Mesma prioridade: toque real > clientX/Y > centro do botão
-    const [fx, fy] = themeOrigin(e)
+    // ─── Fallback (sem VT) — crossfade opacity puro (decisão post 22/07) ───
+    // NUNCA clip-path aqui: animar clip-path em Firefox/Safari mobile é
+    // paint pesado por frame → trava. Opacity só compõe no GPU compositor.
     if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       animating = true
       // Cores REAIS dos temas (themes.css): light = creme #f5f2eb, dark = #0a0a0f.
@@ -343,24 +351,24 @@ import { PALETTES } from '../lib/palettes'
       const overlay = document.createElement('div')
       overlay.style.cssText =
         'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
-        'clip-path:circle(0px at ' + fx + 'px ' + fy + 'px);' +
+        'opacity:0;' +
         'background:' + (next === 'light' ? '#f5f2eb' : '#0a0a0f') + ';' +
-        'transition:clip-path 0.5s cubic-bezier(0.65, 0, 0.35, 1)'
+        'transition:opacity 0.35s ease'
       document.body.appendChild(overlay)
-      overlay.offsetHeight // force layout
-      const endR = Math.hypot(
-        Math.max(fx, document.documentElement.scrollWidth - fx, innerWidth - fx),
-        Math.max(fy, document.documentElement.scrollHeight - fy, innerHeight - fy)
-      )
-      overlay.style.clipPath = 'circle(' + endR + 'px at ' + fx + 'px ' + fy + 'px)'
-      // Timing alinhado: espera a expansão cobrir TUDO (500ms), SÓ ENTÃO muda o
-      // tema + remove overlay. Mudar antes = flash do tema novo fora do círculo.
+      overlay.offsetHeight // force layout — garante que a transição dispara
+      // Fase 1: overlay da cor DESTINO fade-in (cobre o tema atual)
+      overlay.style.opacity = '1'
       setTimeout(() => {
+        // Fase 2: troca o tema POR BAIXO do overlay (sem flash)
         setTheme(next)
-        overlay.remove()
-        animating = false
-        lastTouchX = 0; lastTouchY = 0
-      }, 500)
+        // Fase 3: overlay fade-out revela o tema novo
+        overlay.style.opacity = '0'
+        setTimeout(() => {
+          overlay.remove()
+          animating = false
+          lastTouchX = 0; lastTouchY = 0
+        }, 350)
+      }, 350)
     } else {
       setTheme(next)
     }
