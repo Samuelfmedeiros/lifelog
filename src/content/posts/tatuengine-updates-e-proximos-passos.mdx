@@ -13,11 +13,9 @@ cover: /covers/tatuengine-updates-e-proximos-passos.webp
 featured: false
 ---
 
-import Terminal from '../../components/TerminalWidget.astro'
-
 ## Contexto
 
-O TatuEngine passou por uma transformação radical nos últimos 30 dias. Do `block_traverse_kernel` com 252× de speedup ao pipeline completo de Teacher-Student, o que começou como "e se RT Cores rodassem redes neurais?" virou um motor de inferência funcional com agente autopoiético, sandbox de segurança, e 128 testes Python passando (sem contar os 40+ testes C++).
+O TatuEngine passou por uma transformação radical nos últimos 30 dias. Do kernel de travessia com speedup de centenas de vezes ao pipeline completo de Teacher-Student, o que começou como "e se RT Cores rodassem redes neurais?" virou um motor de inferência funcional com agente autopoiético, sandbox de segurança, e 128 testes Python passando (sem contar os 40+ testes C++).
 
 Este post é um raio-X do estado atual — o que funciona, o que quebrou, o que aprendemos, e pra onde o barco está indo.
 
@@ -25,43 +23,19 @@ Este post é um raio-X do estado atual — o que funciona, o que quebrou, o que 
 
 ### SFT Pipeline: Teacher LoRA treinado, Student pronto
 
-O marco mais pesado foi o pipeline de Supervised Fine-Tuning. O script `tatu_sft_train.py` (837 linhas) foi criado, o Teacher LoRA (Qwen2.5-3B-Instruct em GGUF) terminou o treino, e 381 exemplos foram destilados em datasets. O Student (BitMamba-1B PyTorch) tá pronto, diferenciável, forward+backward validados na RTX 3060 — mas ainda não treinado.
+O marco mais pesado foi o pipeline de Supervised Fine-Tuning. O Teacher LoRA (Qwen2.5-3B-Instruct em GGUF) terminou o treino, e 381 exemplos foram destilados em datasets. O Student (BitMamba-1B PyTorch) tá pronto, diferenciável, forward+backward validados na RTX 3060 — mas ainda não treinado.
 
-```python
-# Pipeline do tatu_sft_train.py
-# 1. Carrega datasets destilados (JSONL)
-# 2. Tokeniza no formato [THOUGHT]/[ANSWER]
-# 3. Instancia Student PyTorch (BitMambaForCausalLM) — 1B params
-# 4. Treina com AdamW fp32 + Cosine Annealing
-# 5. Salva checkpoints a cada 50 steps
-```
+O Teacher virou um `.gguf` de 2GB. A fila da SFT full é o próximo passo — o Student ainda não aprendeu nada.
 
-O Teacher virou um `.gguf` de 2GB em `models/qwen_teacher/`. A fila da SFT full é o próximo passo — o Student ainda não aprendeu nada.
+### Sandbox de segurança: níveis de isolamento
 
-### Sandbox de segurança: 4 níveis de isolamento
+O sandbox entrou em produção com **níveis de permissão**: SAFE, PROMPT, RESTRICTED, DENIED. Bloqueia escrita em filesystem, chamadas perigosas, argv malicioso. 51/51 testes só no módulo de sandbox.
 
-O `ApiSandbox` (511 linhas, singleton) entrou em produção com **4 níveis de permissão**: SAFE, PROMPT, RESTRICTED, DENIED. Bloqueia escrita em filesystem, chamadas perigosas, argv malicioso. 51/51 testes só no módulo de sandbox.
-
-```python
-# ApiSandbox: 4 níveis de isolamento
-class SandboxLevel(Enum):
-    SAFE = "safe"         # ferramentas confiáveis (calculator, date)
-    PROMPT = "prompt"     # pergunta o usuário antes (web, file read)
-    RESTRICTED = "restricted"  # só diretórios autorizados
-    DENIED = "denied"     # prohibido (shell, file write)
-```
-
-Cada tool do `tool_registry.py` declara seu nível de sandbox. O MCP `tatu_tool_execute` valida antes de executar — se uma ferramenta SAFE tenta acessar um path proibido, o sandbox barra com `SandboxError`.
+Cada tool declara seu nível de sandbox. A execução de ferramentas valida antes de executar — se uma ferramenta SAFE tenta acessar um path proibido, o sandbox barra.
 
 ### Depth Pruning: Mamba2 48 → 32 layers
 
-O `prune_mamba.py` foi um experimento interessante: pegar o Mamba2-1.3B original (48 layers) e remover cirurgicamente as 16 últimas camadas de abstração. O rationale? Nem toda profundidade traduz em qualidade pra tasks específicas — e 32 layers ocupam 33% menos VRAM.
-
-```bash
-# Depth pruning: 48 → 32 layers
-python3 scripts/prune_mamba.py
-# Output: models/bitmamba_cpp/mamba2_1.3b_pruned_32.pt
-```
+O pruning foi um experimento interessante: pegar o Mamba2-1.3B original (48 layers) e remover cirurgicamente as 16 últimas camadas de abstração. O rationale? Nem toda profundidade traduz em qualidade pra tasks específicas — e 32 layers ocupam 33% menos VRAM.
 
 O pruning mantém embedding, norm_f, lm_head e as primeiras 32 camadas SSM.
 
@@ -79,14 +53,7 @@ Algumas lições que merecem registro:
 
 **3. O hidden state do SSM não carrega a história.** Δh ≈ 0.000 entre tokens consecutivos. A memória real tá no SSM state (o kv_cache). O Energy Observer v1 media a coisa errada — corrigimos.
 
-**4. Softplus com float32 estoura em x > 89.** `expf(89.0) = inf`. Um patch de 1 linha com `log1pf(expf(-|x|))` salvou 2 dias de debug de NaN.
-
-```cpp
-// softplus numericamente estável
-float dt_val = dt_x > 0.0f
-    ? dt_x + log1pf(expf(-dt_x))
-    : log1pf(expf(dt_x));
-```
+**4. Softplus com float32 estoura em x > 89.** `expf(89.0) = inf`. Um patch de 1 linha com a formulação numericamente estável (`log1pf(expf(-|x|))`) salvou 2 dias de debug de NaN.
 
 ## Aprendizados
 
@@ -107,25 +74,8 @@ A fila tá clara:
 4. **Student em produção** — substituir a C++ API legada pelo PyTorch Server.
 5. **Loop auto-aprimorativo** — Teacher → Student → geração → destilação → Teacher.
 
-```bash
-# O próximo comando que quero rodar:
-# python3 tatu/scripts/tatu_sft_train.py --epochs 3 --lr 3e-5
-```
-
 > *A TatuEngine não substitui o Arachne — é o backend de inferência que ele consome pra oferecer contexto infinito, latência baixa e eficiência energética.*
 
 ---
 
 **Linha do tempo:** 30 dias atrás era um experimento com RT Cores que não funcionava. Hoje são 128 testes Python passando, dezenas de testes C++, agente autopoiético com 8 subsistemas, sandbox de segurança, e um pipeline SFT pronto pra rodar. O projeto não acelera — ele acumula.
-
-## Comandos úteis
-
-<Terminal
-  lines={[
-    { cmd: 'cd ~/projetos/TatuEngine && PYTHONPATH=. python3 -m pytest tests/ -q', output: 'Pytest: 128 passed in 14.3s' },
-    { cmd: 'python3 tatu/scripts/tatu_sft_train.py --epochs 1 --max-steps 20', output: 'Teste rápido do SFT pipeline' },
-    { cmd: 'python3 scripts/prune_mamba.py', output: 'Depth pruning: Mamba2 48 → 32 layers' },
-    { cmd: 'python3 -c "from tatu.sandbox import sandbox; print(sandbox.check_read(\\\"~/projetos/TatuEngine/LICENSE.txt\\\"))"', output: 'SandboxResult(ok=True, path=...)' },
-    { cmd: 'cat docs/HISTORY.md | head -5', output: '# 🦔 TatuEngine — História Completa do Projeto' },
-  ]}
-/>

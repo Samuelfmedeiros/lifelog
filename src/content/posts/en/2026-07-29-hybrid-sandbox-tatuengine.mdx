@@ -11,56 +11,36 @@ cover: /covers/2026-07-29-sandbox-hibrido-tatuengine.webp
 featured: false
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
-
 ## The problem
 
 The TatuEngine has an autopoietic agent with ToolUse — it can execute code, read files, write results. If the agent goes rogue (or hallucinates), it could try:
 
 - `../../etc/passwd` — classic path traversal
-- `~/.ssh/id_rsa` — credential theft
-- `/proc/self/mem` — kernel access
-- Writing to `/etc/cron.d/` — persistence
+- Credential theft (SSH keys, tokens)
+- Kernel access
+- Writing to system directories — persistence
 
 I needed a system that **lets the agent work** but **blocks everything dangerous**, without depending on Docker containers or VMs.
 
-The solution: **Hybrid Sandbox**, pure Python, 3 isolation zones, 511 lines, 51 tests passing.
+The solution: **Hybrid Sandbox**, pure Python, 3 isolation zones, 51 tests passing.
 
 ## The 3 zones
 
 The sandbox defines 3 security zones:
 
-| Zone | Prefixes | Read | Write | Max size |
-|------|----------|------|-------|----------|
-| **SAFE** | `~/projetos`, `~/dev`, `~/workspace`, `~/.tatu`, `/tmp` | ✅ | ✅ | 500 MB |
-| **RESTRICTED** | `~`, `/mnt/d`, `/mnt/f`, `/mnt/c/Users` | ✅ | ❌ | 100 MB |
-| **DENIED** | `.ssh/*`, `.git/*`, `*.key`, `*.pem`, `.env*`, `/etc`, `/sys` | ❌ | ❌ | — |
+| Zone | Read | Write | Max size |
+|------|------|-------|----------|
+| **SAFE** | project directories | ✅ | 500 MB |
+| **RESTRICTED** | home + data drives | ❌ | 100 MB |
+| **DENIED** | `.ssh/*`, `.git/*`, `*.key`, `*.pem`, `.env*`, `/etc`, `/sys` | ❌ | — |
 
-```python
-# tatu/sandbox.py — lines 131-152
-DEFAULT_SAFE_PREFIXES = [
-    "~/projetos", "~/dev", "~/.tatu", "/tmp",
-]
-
-DEFAULT_RESTRICTED_PREFIXES = [
-    "~", "/mnt/d", "/mnt/f", "/mnt/c/Users",
-]
-
-DENIED_PATTERNS = [
-    ".ssh/*", ".aws/*", ".git/*",
-    "*.key", "*.pem", ".env*",
-    "known_hosts", "authorized_keys",
-]
-```
-
-The intelligence is in the **hierarchical matching**: a path in `~/projetos` lands in SAFE (read + write), but `~/.ssh/id_rsa` lands in DENIED even though it's inside `~`.
+The intelligence is in the **hierarchical matching**: a path in the project directory lands in SAFE (read + write), but an SSH key lands in DENIED even though it's inside the home.
 
 ## Path traversal detection
 
 The sandbox detects 3 attack vectors:
 
 ```python
-# Lines 259-262
 # Classic path traversal
 if ".." in path.split(os.sep):
     return SandboxResult.err(f"Path traversal detected: {path}")
@@ -74,10 +54,9 @@ if "\x00" in path:
     return SandboxResult.err("Path contains null byte")
 ```
 
-The resolver uses `Path.resolve()` (which follows symlinks and resolves `..`), then checks if the absolute path starts with an allowed prefix:
+The resolver uses `Path.resolve()` (which follows symlinks and resolves `..`), then checks whether the absolute path starts with an allowed prefix:
 
 ```python
-# Lines 194-200
 def _is_safe_prefix(self, resolved: Path) -> bool:
     r_str = str(resolved)
     for raw in self._safe_prefixes:
@@ -87,31 +66,17 @@ def _is_safe_prefix(self, resolved: Path) -> bool:
     return False
 ```
 
-This prevents the classic trick of creating a symlink `~/projetos/link -> /etc` and accessing through it — `resolve()` follows the symlink and reveals the real path.
+This prevents the trick of creating a symlink pointing outside the allowed zone and accessing through it — `resolve()` follows the symlink and reveals the real path.
 
-## System-level DENIED zones
+## System DENIED zones
 
-Critical system paths are blocked even if not in the pattern list:
-
-```python
-# Lines 222-238
-def _check_denied_paths(self, resolved: Path) -> None:
-    dangerous = ["/etc", "/sys", "/proc", "/boot",
-                  "/bin", "/sbin", "/lib", "/lib64"]
-    for d in dangerous:
-        if r_str == d or r_str.startswith(d + "/"):
-            raise SandboxError(f"Path in DENIED zone: {resolved} ({d})")
-    # /usr only allows /usr/share
-    # /var only allows /var/log
-    # /tmp only allows /tmp/tatu
-```
+Critical paths are blocked even if not in the pattern list: `/etc`, `/sys`, `/proc`, `/boot`, `/bin`, `/sbin`, `/lib`. `/usr` only allows `/usr/share`, `/var` only `/var/log`.
 
 ## Write: SAFE only
 
-`check_write()` only allows writing to SAFE prefixes:
+`check_write()` only allows writes in SAFE prefixes:
 
 ```python
-# Lines 282-295
 if allow_write:
     if self.level == "restricted":
         return SandboxResult.err(
@@ -120,69 +85,27 @@ if allow_write:
         return SandboxResult.err(f"Write outside SAFE: {resolved}")
 ```
 
-This means the agent can **create files** in `~/projetos` (SAFE), but **cannot modify** `~/.ssh` (DENIED) or write to `/mnt/d` (RESTRICTED).
-
-## Public API
-
-```python
-from tatu.sandbox import sandbox, safe_read, safe_write, safe_check_size
-
-# Read file (RESTRICTED by default — SAFE + RESTRICTED only)
-result = sandbox.check_read("~/projetos/test.txt")
-if result.ok:
-    path = result.path  # Already resolved and validated
-
-# Write (SAFE only)
-result = sandbox.check_write("~/projetos/output.txt")
-if result.ok:
-    with open(result.path, "w") as f:
-        f.write("safe data")
-
-# Utilities
-safe_read("~/projetos/data.csv")          # read + validate in 1 call
-safe_read_binary("~/projetos/image.png")
-safe_write("~/projetos/new.txt", "content")
-safe_check_size("/tmp/bigfile.bin")        # check max size
-```
+This means the agent can **create files** in project directories (SAFE), but **cannot modify** credentials (DENIED) or write to the data drives (RESTRICTED).
 
 ## Tests
 
-The sandbox has **439 lines of tests** in `tests/test_sandbox.py`. It covers:
+The sandbox has **439 lines of tests**. It tests:
 
-- ✅ Reading in SAFE
-- ✅ Writing in SAFE
+- ✅ Read in SAFE
+- ✅ Write in SAFE
 - ❌ Path traversal (`../etc/passwd`)
 - ❌ URL-encoded path traversal (`%2e%2e`)
 - ❌ Null byte in path
-- ❌ Reading DENIED (`.git/config`, `.ssh/id_rsa`)
-- ❌ Writing in RESTRICTED
+- ❌ DENIED reads (`.git/config`, SSH keys)
+- ❌ Write in RESTRICTED
 - ❌ Symlink pointing outside
 - ❌ Path too long (>4096)
 - ✅ Directory search
 - ✅ Nested files in subdirectories
 
-```python
-# Real test example
-def test_path_traversal_blocked(sandbox_with_prefixes):
-    result = sandbox_with_prefixes.check_read(
-        str(sandbox_with_prefixes.prefixes[0] / "../../etc/passwd")
-    )
-    assert not result.ok
-    assert "Path traversal" in result.error
-```
-
 ## What I learned
 
-1. **`Path.resolve()` is the key** — without it, symlinks become a backdoor. With it, any attempt to deviate from the prefix is neutralized.
-2. **3 zones > 2 zones** — SAFE/RESTRICTED/DENIED is more useful than just allowed/blocked. The agent can read system configs (RESTRICTED) without modifying them.
-3. **Hierarchical pattern matching** — `~/projetos` is SAFE, but `~/.ssh` is DENIED even inside `~`. Order matters: SAFE > RESTRICTED > DENIED.
-4. **511 lines, 51 tests, zero containers** — you don't need Docker or VMs to isolate an AI. Pure Python + `Path.resolve()` + pattern matching covers 99% of cases.
-
-<Terminal
-  lines={[
-    { cmd: 'cd ~/projetos/TatuEngine && python3 -c "from tatu.sandbox import sandbox; r=sandbox.check_read(\\\"~/.ssh/id_rsa\\\"); print(r.ok, r.error)"', output: 'False Path DENIED .ssh/*' },
-    { cmd: 'python3 -c "from tatu.sandbox import sandbox; r=sandbox.check_write(\\\"~/projetos/test.txt\\\"); print(r.ok, r.path)"', output: 'True /home/samuel/projetos/test.txt' },
-    { cmd: 'python3 -c "from tatu.sandbox import sandbox; r=sandbox.check_read(\\\"../../etc/passwd\\\"); print(r.ok, r.error)"', output: 'False Path traversal detected' },
-    { cmd: 'pytest tests/test_sandbox.py -v --tb=short | tail -10', output: '51 passed in 0.83s' },
-  ]}
-/>
+1. **`Path.resolve()` is the key** — without it, symlinks become backdoors. With it, any attempt to bypass the prefix is neutralized.
+2. **3 zones > 2 zones** — SAFE/RESTRICTED/DENIED is more useful than just allowed/blocked. The agent can read system configs (RESTRICTED) without being able to modify them.
+3. **Hierarchical pattern matching** — the project directory is SAFE, but `.ssh` is DENIED even inside home. Order matters: SAFE > RESTRICTED > DENIED.
+4. **Zero containers** — you don't need Docker or a VM to isolate an AI. Pure Python + `Path.resolve()` + pattern matching handles 99% of cases.

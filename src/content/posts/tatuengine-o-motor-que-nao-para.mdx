@@ -11,8 +11,6 @@ featured: false
 lang: 'pt'
 ---
 
-import Terminal from '../../components/TerminalWidget.astro'
-
 Há projetos que vivem de explosões de commits — features novas todo dia, refactors monumentais, roadmaps que mudam a cada sprint. O TatuEngine não é um deles.
 
 Nos últimos 30 dias, o repositório acumulou 50 commits. 97% são auto-sync. Zero novas features. Zero fixes. O motor simplesmente **funciona**.
@@ -25,10 +23,10 @@ O TatuEngine começou como um experimento: "e se eu treinar um SSM do zero, num 
 
 298 commits depois, o projeto é uma engine com:
 
-- **Inferência GPU** com BitMamba-2 1B — block-encoded BVH com compressão de 114× (27 GB → 245 MB)
-- **GPU block-traversal kernel** — 32 threads/CTA, warp shuffle, 252× speedup contra CPU
+- **Inferência GPU** com BitMamba-2 1B — block-encoded BVH com compressão radical de modelos ternários
+- **GPU block-traversal kernel** — travessia paralela com speedup de centenas de vezes contra CPU
 - **Pipeline híbrido CPU/GPU** — SSM state na CPU, `bridge_matmul` na GPU
-- **CLI `tatu`** — comandos `generate`, `mcp`, `tool` (requer PYTHONPATH apontando pro build)
+- **CLI `tatu`** — comandos de geração, MCP e ferramentas
 - **Conector MCP** — servidor standalone com 4 tools (FastMCP, stdio/SSE)
 - **Agente autopoiético** — GenerationContext com 8 subsistemas
 
@@ -53,15 +51,3 @@ O projeto entrou no que eu chamo de **fase de cruzeiro** — a engine não preci
 A fase de cruzeiro não é estagnação. É o momento de construir **em cima**, não dentro. O TatuEngine como backend de inferência pro ecossistema Arachne é o próximo passo lógico.
 
 O motor está pronto. A jornada continua.
-
----
-
-## Comandos úteis
-
-<Terminal
-  lines={[
-    { cmd: 'cd ~/projetos/TatuEngine && git rev-list --count HEAD', output: '298 commits no total' },
-    { cmd: 'git log --oneline --since="2026-06-29" --format="%s" | grep -c "auto-sync"', output: '48 auto-sync em 30 dias — o motor funciona sozinho' },
-    { cmd: 'PYTHONPATH=build_py/src/bindings python3 -m tatu info bitmamba-2-1b 2>/dev/null || echo "build em andamento"', output: 'CLI funcional com PYTHONPATH correto' },
-  ]}
-/>

@@ -41,7 +41,7 @@ Cannot find module 'C:\Windows\scripts\verify-csp.cjs'
 A causa raiz: o `npm-cli.js` do Hermes node estava sem permissão de execução (`-rw-------`). O fix foi cirúrgico:
 
 ```bash
-chmod +x ~/.hermes/node/lib/node_modules/npm/bin/npm-cli.js
+chmod +x ~/.local/share/npm/bin/npm-cli.js
 ```
 
 Mas a lição maior veio daí: **deploy não pode depender de um ambiente específico**. Foi quando o projeto ganhou scripts de deploy manual e CI local — pra quando o GitHub Actions estivesse offline, a plataforma ainda subisse.
@@ -85,6 +85,6 @@ E o Open Design provou que design system não é luxo: quando o WalkerDashboard 
     { cmd: 'git rev-list --count HEAD', output: '970 commits desde o início' },
     { cmd: 'pnpm test 2>&1 | tail -1', output: '1456 passed, 93 files' },
     { cmd: 'git log --reverse --format="%ad" --date=short | head -1', output: '2026-04-24 — o nascimento' },
-    { cmd: 'chmod +x ~/.hermes/node/lib/node_modules/npm/bin/npm-cli.js', output: 'o fix que desbloqueou o build no WSL' },
+    { cmd: 'chmod +x ~/.local/share/npm/bin/npm-cli.js', output: 'o fix que desbloqueou o build no WSL' },
   ]}
 />

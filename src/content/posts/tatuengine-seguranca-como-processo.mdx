@@ -14,7 +14,7 @@ import Terminal from '../../components/TerminalWidget.astro'
 
 ## ⚡ O motor que sabia agir, mas não sabia se proteger
 
-O TatuEngine já tinha feito muita coisa até aqui: aprendeu a **inferir** (BitMamba-2 1B em GPU, 252× de speedup), aprendeu a **agir** (agente autopoiético com 8 subsistemas, ToolUse, GoalStack, LTM), e estava aprendendo a **aprender** (ciclo Mestre-Aprendiz). Por baixo de tudo isso, um **sandbox híbrido** com 51/51 testes de path validation.
+O TatuEngine já tinha feito muita coisa até aqui: aprendeu a **inferir** (BitMamba-2 1B em GPU com speedup massivo), aprendeu a **agir** (agente autopoiético com 8 subsistemas, ToolUse, GoalStack, LTM), e estava aprendendo a **aprender** (ciclo Mestre-Aprendiz). Por baixo de tudo isso, um **sandbox híbrido** com 51/51 testes de path validation.
 
 Parecia seguro. Mas segurança não é uma feature — é um **processo**. E processo é exatamente o que o TatuEngine não tinha documentado.
 
@@ -36,13 +36,12 @@ O TatuEngine era a **lacuna**. O motor mais poderoso do ecossistema era o único
 A regra do ecossistema manda auditar antes de melhorar. Então o primeiro passo não foi escrever firewall — foi **inventariar** o que o TatuEngine já tinha de proteção. O resultado surpreendeu: o projeto estava mais blindado do que eu pensava.
 
 ```python
-# tatu/sandbox.py — a fronteira
+# O sandbox — a fronteira
 # Três pilares:
 #   1. Path traversal prevention (resolve + prefix check)
 #   2. File size & type enforcement
 #   3. Read vs write scope control
-from tatu.sandbox import sandbox  # singleton global
-result = sandbox.check_read("~/projetos/teste.txt")
+result = sandbox.check_read("~/projetos/meu-arquivo.txt")
 if result.ok:
     path = result.path  # Path resolvido com prefix check
 ```
@@ -67,7 +66,7 @@ O documento nasceu com 5 princípios que viraram a identidade de segurança do p
 
 1. **Defense in depth** — rede → processo → sandbox → dados → humano
 2. **Least privilege** — cada tool/agente com o MÍNIMO de acesso necessário
-3. **Sandbox é a fronteira** — execução de ferramentas da IA só através do `tatu/sandbox.py`
+3. **Sandbox é a fronteira** — execução de ferramentas da IA só através do sandbox
 4. **Padrão do ecossistema** — gitleaks, `.env` fora do git, secrets nunca hardcoded
 5. **Auditar antes de melhorar** — primeiro achar os buracos, depois construir em cima
 
@@ -103,8 +102,7 @@ O roadmap ficou em 4 fases — e a Fase 1 (base) fechou no mesmo dia:
 <Terminal
   lines={[
     { cmd: 'pytest tests/test_sandbox.py -q', output: '51 passed in 0.22s' },
-    { cmd: 'bash ~/.hermes/scripts/security-scan-tatuengine.sh', output: '✅ 3 pass · 0 warnings · 0 critical' },
-    { cmd: 'git show b482c7f --stat', output: 'docs: SEGURANCA.md v1.0 + regra de segurança no AGENTS.md' },
+    { cmd: 'bash scripts/security-scan-tatuengine.sh', output: '✅ 3 pass · 0 warnings · 0 critical' },
     { cmd: 'grep watchdog AGENTS.md', output: 'TatuEngine Security Watchdog — diário, 24h, silent unless issues' },
   ]}
 />
