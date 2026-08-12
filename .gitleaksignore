@@ -1,0 +1,4 @@
+# Lifelog - .gitleaksignore
+# Triado 12/08/2026. FP confirmado.
+# .astro/data-store.json = cache interno do Astro (hash de conteudo, nao chave real)
+b5152e8022abd72877b103a29a9ab663708189f1:.astro/data-store.json:generic-api-key:1
