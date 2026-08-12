@@ -33,16 +33,16 @@ Até aí, tudo funciona há semanas. O problema começou quando o dia exigiu **v
 
 ### 🧱 Paredes 1 e 2: o `pnpm` que o guard bloqueava
 
-O build do Astro roda com `pnpm`. No meu WSL, o pnpm é o do Hermes: `/home/samuel/.hermes/node/bin/pnpm`. E foi aí que tudo travou:
+O build do Astro roda com `pnpm`. No meu WSL, o pnpm é o do Hermes: `~/projetos/.hermes/node/bin/pnpm`. E foi aí que tudo travou:
 
 ```
 Blocked: command or referenced script cannot restart or stop the gateway
 from inside the gateway process.
 ```
 
-O guard de segurança do gateway bloqueava **qualquer comando cujo binário resolve pra dentro de `~/.hermes/`** — ele assume que é comando interno. O `pnpm` legítimo virou suspeito.
+O guard de segurança do gateway bloqueava **qualquer comando cujo binário resolve pra dentro de `~/.config/hermes/`** — ele assume que é comando interno. O `pnpm` legítimo virou suspeito.
 
-O workaround foi direto ao binário real do Astro, com o node do sistema (fora do `~/.hermes`):
+O workaround foi direto ao binário real do Astro, com o node do sistema (fora do `~/.config/hermes`):
 
 ```bash
 # em vez de: pnpm build (bloqueado)
@@ -85,7 +85,7 @@ python3 scripts/generate-cover.py <slug>   # regenerar
 
 As 4 armadilhas não foram só resolvidas — foram **documentadas na skill** do pipeline, pra nunca mais:
 
-1. **Caminho absoluto no build** — `pnpm` que resolve pra `~/.hermes/` pode ser bloqueado pelo guard do gateway. Usar `/usr/bin/node node_modules/astro/bin/astro.mjs build`.
+1. **Caminho absoluto no build** — `pnpm` que resolve pra `~/.config/hermes/` pode ser bloqueado pelo guard do gateway. Usar `/usr/bin/node node_modules/astro/bin/astro.mjs build`.
 2. **MDX não perdoa `<`** — `<` sem espaço em texto é JSX. Usar `&lt;` ou inline code.
 3. **Capa de 0 bytes não é capa** — verificar tamanho do arquivo; interrupção no meio do generate deixa arquivo vazio.
 4. **Sessão interrompida = efeito desconhecido** — antes de continuar, inspecionar: arquivos, git status, dist.
@@ -105,7 +105,7 @@ No final do dia: **5 posts publicados, 10 arquivos MDX, 124 páginas no build, 0
 ## 🎯 Aprendizados
 
 1. **Automação é 20% script e 80% ambiente** — o conteúdo nunca foi o problema; foram o guard, o parser, o arquivo e a sessão.
-2. **O binário certo no caminho certo** — binários que resolvem pra dentro de `~/.hermes/` viram alvo do guard. Pinar caminhos absolutos.
+2. **O binário certo no caminho certo** — binários que resolvem pra dentro de `~/.config/hermes/` viram alvo do guard. Pinar caminhos absolutos.
 3. **Parede vira regra, não exceção** — cada armadilha documentada na skill custa menos na próxima vez. O pitfall registrado é o erro pago uma vez só.
 4. **Volume expõe fragilidade** — o que funciona 1x/dia pode quebrar em lote. Testar o fluxo sob volume.
 

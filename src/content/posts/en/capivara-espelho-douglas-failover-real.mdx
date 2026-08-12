@@ -83,7 +83,7 @@ The coolest detail: the proof didn't come from a Capivara log — it came from *
 
 <Terminal
   lines={[
-    { cmd: '~/.hermes/scripts/capivara-db-sync-douglas.sh', output: 'sqlite3 .backup snapshot → scp → swap on Douglas' },
+    { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'sqlite3 .backup snapshot → scp → swap on Douglas' },
     { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — Douglas serving during the failover' },
     { cmd: 'git log --oneline -3', output: '9477700 docs+req: Capivara mirror on Douglas (2026-08-03)' },
     { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart the backend on Samuel' },

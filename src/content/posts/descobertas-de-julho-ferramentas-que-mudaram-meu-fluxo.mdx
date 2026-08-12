@@ -111,13 +111,13 @@ Hermes: "busca o último post do blog e extrai os links"
 
 O Hermes não precisou saber _como_ funcionava scraping — só pediu. O MCP fez a ponte.
 
-**Pra quem usa Hermes**, configurar MCP é trivial — só adicionar no `~/.hermes/config.yaml`:
+**Pra quem usa Hermes**, configurar MCP é trivial — só adicionar no `~/.config/hermes/config.yaml`:
 
 ```yaml
 mcp_servers:
   filesystem:
     command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/samuel/projetos"]
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projetos/projetos"]
   github:
     command: npx
     args: ["-y", "@modelcontextprotocol/server-github"]

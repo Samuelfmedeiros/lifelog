@@ -145,9 +145,9 @@ $ curl -s -o /dev/null -w "%{http_code}" \
 # → 404  ← symlink is gone
 
 # Fix
-$ rm -f /home/samuel/projetos/umami/.next/standalone/projetos/umami/.next/static
-$ ln -s /home/samuel/projetos/umami/.next/static \
-  /home/samuel/projetos/umami/.next/standalone/projetos/umami/.next/static
+$ rm -f ~/projetos/projetos/umami/.next/standalone/projetos/umami/.next/static
+$ ln -s ~/projetos/projetos/umami/.next/static \
+  ~/projetos/projetos/umami/.next/standalone/projetos/umami/.next/static
 $ systemctl --user restart umami
 ```
 

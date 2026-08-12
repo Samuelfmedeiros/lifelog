@@ -51,13 +51,13 @@ O Node resolve módulos subindo a árvore de diretórios: primeiro o `node_modul
 ```bash
 # Onde o Node está resolvendo 'cookie'?
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file:///home/samuel/node_modules/cookie/index.js   ← O QUÊ?
+# file://~/projetos/node_modules/cookie/index.js   ← O QUÊ?
 ```
 
-`/home/samuel/node_modules/`. Isso não devia existir.
+`~/projetos/node_modules/`. Isso não devia existir.
 
 ```bash
-ls -la /home/samuel/node_modules/ | head -5
+ls -la ~/projetos/node_modules/ | head -5
 # total 253M
 # drwxr-xr-x  cookies@0.7.2/
 ```
@@ -67,7 +67,7 @@ ls -la /home/samuel/node_modules/ | head -5
 A pergunta que ficou: **quem instalou isso na home?**
 
 ```bash
-cat /home/samuel/package.json
+cat ~/projetos/package.json
 # {
 #   "dependencies": {
 #     "better-sqlite3": "^12.11.1",
@@ -89,7 +89,7 @@ mv ~/node_modules ~/package.json ~/package-lock.json ~/.npm-home-backup-20260805
 
 # 2. Verificar que o resolve agora está correto
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file:///home/samuel/projetos/lifelog/node_modules/.pnpm/cookie@2.0.1/...
+# file://~/projetos/projetos/lifelog/node_modules/.pnpm/cookie@2.0.1/...
 
 # 3. Build
 pnpm run build

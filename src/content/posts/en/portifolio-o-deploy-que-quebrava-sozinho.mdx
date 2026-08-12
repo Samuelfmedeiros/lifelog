@@ -77,7 +77,7 @@ After the three fixes, the principle became clear and became a rule:
 local pnpm == packageManager in package.json == pnpm in CI
 ```
 
-And the practical rule for security: **check the PATH version before running audit fix** — the right binary is `/home/samuel/.hermes/node/bin/pnpm`, not the Windows one.
+And the practical rule for security: **check the PATH version before running audit fix** — the right binary is `~/projetos/.hermes/node/bin/pnpm`, not the Windows one.
 
 The deploy started passing again. And the most valuable lesson: the tool meant to **protect** the project (security scan) almost took down **production** — because the environment where it ran wasn't the same as the build environment.
 

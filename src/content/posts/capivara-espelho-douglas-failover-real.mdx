@@ -83,7 +83,7 @@ O detalhe mais bonito: a prova não veio de um log do Capivara — veio do **upt
 
 <Terminal
   lines={[
-    { cmd: '~/.hermes/scripts/capivara-db-sync-douglas.sh', output: 'snapshot sqlite3 .backup → scp → swap no Douglas' },
+    { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'snapshot sqlite3 .backup → scp → swap no Douglas' },
     { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — Douglas assumindo durante o failover' },
     { cmd: 'git log --oneline -3', output: '9477700 docs+req: espelho Douglas do Capivara (2026-08-03)' },
     { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart do backend no Samuel' },

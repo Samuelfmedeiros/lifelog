@@ -70,7 +70,7 @@ The path is paved. The 8 commits are real. Just the restart is missing.
 <Terminal
   lines={[
     { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 computer use commits in July' },
-    { cmd: 'cat ~/.hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configured, waiting for restart' },
+    { cmd: 'cat ~/.config/hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configured, waiting for restart' },
     { cmd: 'hermes gateway restart', output: 'Restart needed to enable X11 in cua-driver' },
   ]}
 />

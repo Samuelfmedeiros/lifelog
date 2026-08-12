@@ -70,7 +70,7 @@ O caminho está pavimentado. Os 8 commits são reais. Falta só o restart.
 <Terminal
   lines={[
     { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 commits de computer use em julho' },
-    { cmd: 'cat ~/.hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configurado, aguardando restart' },
+    { cmd: 'cat ~/.config/hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configurado, aguardando restart' },
     { cmd: 'hermes gateway restart', output: 'Restart necessário pra ativar o X11 no cua-driver' },
   ]}
 />

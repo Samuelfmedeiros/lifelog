@@ -29,7 +29,7 @@ mkdir -p "$BACKUP_DIR"
 
 # Projects
 for project in arachne dogwalk capivara; do
-    sqlite3 "/home/samuel/$project/data/$project.db" \
+    sqlite3 "~/projetos/$project/data/$project.db" \
         ".backup '$BACKUP_DIR/${project}_$(date +%H%M).db'"
 done
 
