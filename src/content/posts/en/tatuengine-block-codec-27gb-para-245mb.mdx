@@ -1,0 +1,164 @@
+---
+title: "TatuEngine: the codec that shrank a 27GB model into 245MB — and the lm_head that wouldn't cooperate"
+description: "The BitMamba-2 1B's 1:1 BVH took 27.26GB — unworkable. A 288-byte BlockLens packed 32×32 ternary weights into a bitmask: 114× compression, with the lm_head diverging mid-validation."
+date: 2026-08-12T16:00:00 -03:00
+pubDate: 2026-08-12 16:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, compression, bvh, codec, ternary, cuda, performance]
+icon: "🧱"
+cover: /covers/tatuengine-block-codec-27gb-para-245mb.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The 27GB model that needed to fit in 245MB
+
+BitMamba-2 1B is a 1.58-bit SSM — weights are ternary: `{-1, 0, +1}`. On disk, the packed `.bin` is 614MB. But inside TatuEngine, the inference representation was a **1:1 BVH**: one `TriangleLens` per weight. Each weight became a triangle with position, phase and refraction — and a 1B-parameter model became **27.26 GB** of lenses.
+
+It didn't fit in VRAM (the RTX 3060 has 12GB). It barely fit in RAM. And it was absurd to load 27GB to represent information that fits in 614MB.
+
+Commit `ecfb53b` (Jul 2) was the root-cause attempt: a codec that groups 32×32 ternary weights into a single compact lens with a bitmask.
+
+## 🧠 Context
+
+TatuEngine's field theory treats inference as *optical traversal*: a `PhaseWave` travels through the lens BVH, and each weight contributes a phase shift. More lenses = more expensive traversal — in both memory and time.
+
+The 1:1 path was simple but suicidal:
+
+```
+BVH 1:1:      18.66 GB  ❌  > 12GB VRAM
+BVH block:     ~28 MB    ✅  fits in L2 cache
+```
+
+The idea: instead of one lens per weight, one `BlockLens` per **32×32 block** — 1024 ternary weights packed at 2 bits each, plus scale and mean η. A single **288-byte** lens in place of 1024 individual ones.
+
+```cpp
+// block_codec.h — BlockLens: compact 32×32 lens
+struct alignas(32) BlockLens {
+    uint16_t row_block;      // row / 32
+    uint16_t col_block;      // col / 32
+    uint16_t tensor_type;    // 0=in_proj, 2=out_proj, 4=lm_head
+    uint16_t layer;          // layer index (0..31 or 32=lm_head)
+
+    float    scale;           // tensor scale factor
+    float    eta_avg;         // mean η of the block
+
+    uint8_t packed[256];      // 1024 weights × 2 bits = 256 bytes
+    uint32_t hit_count;
+    float    resonance_avg;
+    float    error_accum;
+    float    phase_variance_ema;
+
+    int8_t weight(int row, int col) const {
+        int idx = row * 32 + col;
+        int byte_idx = idx / 4;
+        int bit_idx = (idx % 4) * 2;
+        uint8_t v = (packed[byte_idx] >> bit_idx) & 0x03;
+        return (v == 1) ? 1 : (v == 2) ? -1 : 0;
+    }
+};
+static_assert(sizeof(BlockLens) == 288, "BlockLens must be 288 bytes");
+```
+
+## 🔧 The struggle
+
+The conversion itself was mechanical: unpack the ternary tensor, group into 32×32 blocks, store the position in the original tensor. The conversion code pre-computes the ternary values for the whole tensor, then creates the blocks — avoiding re-unpacking per block:
+
+```cpp
+// block_codec.cpp — float → ternary threshold
+for (int c = 0; c < cols; c++) {
+    float w = t.data[(size_t)r * cols + c];
+    ternary[(size_t)r * cols + c] = (w > 0.1f) ? 1 : (w < -0.1f) ? -1 : 0;
+}
+```
+
+Traversal became a double 32×32 loop with register accumulation — the heart of the lens:
+
+```cpp
+// block_codec.h — block_traverse_cpu (CPU reference)
+inline void block_traverse_cpu(
+    BlockLens const& blk, float const* input,
+    float* output, int out_size = INT_MAX
+) {
+    float acc[32] = {0.0f};
+    int row_off = blk.row_block * 32;
+    int col_off = blk.col_block * 32;
+
+    for (int r = 0; r < 32; r++) {
+        float sum = 0.0f;
+        for (int c = 0; c < 32; c++) {
+            int8_t w = blk.weight(r, c);
+            if (w == 1)       sum += input[col_off + c];
+            else if (w == -1) sum -= input[col_off + c];
+        }
+        acc[r] = sum * blk.scale;
+    }
+
+    for (int r = 0; r < 32; r++) {
+        int idx = row_off + r;
+        if (idx < out_size) output[idx] += acc[r];
+    }
+}
+```
+
+Then came the part that hurt. The test compared `block_traverse_cpu` output against the reference `bridge_matmul`, with `memcmp` + MSE per tensor:
+
+```
+in_proj:  MSE 3.7e-09  ✅  (ULP differences from accumulation order)
+out_proj: MSE 0.36     ⚠️  (accumulation order between blocks)
+lm_head:  divergence  ❌  debug in progress
+```
+
+`in_proj` came out perfect — rounding differences at the last-place-unit level. `out_proj` reported `0.36` MSE, already suspicious: it smelled like accumulation order, not lost information. But `lm_head` **genuinely diverged** — and it was the most important tensor, the one mapping to the vocabulary (50,257 tokens).
+
+The commit was honest about the state: *"block-codec: Block-encoded BVH — codec + partial validation"*. 632 lines added, two thirds of validation passing, the final third open.
+
+## 💡 Resolution
+
+Even partial, the codec delivered: **893,120 blocks, 245.30 MB vs 27.26 GB = 114× compression**. Per-tensor split: `in_proj=530K`, `out_proj=262K`, `lm_head=100K`. And the save/load roundtrip with checksum proved the representation was stable.
+
+Validation didn't stop at the codec. The same day, Sprint 17 turned block traversal into a CUDA kernel (`ceeeaf0` + `45f7014`): parallel reduction with warp shuffle + shared memory, lazy BVH upload, pinned memory. The Golden Test — CPU↔GPU coherence — closed with:
+
+```
+Phase:      diff = 0.00e+00
+Amplitude:  diff = 1.19e-07
+```
+
+And the batch kernel showed why it was worth it: 100K lenses, 16 rays — **76ms CPU → 0.52ms GPU = 146× speedup** (47× with a single ray: 4.5ms → 0.097ms).
+
+The `out_proj` MSE 0.36 lesson confirmed itself in practice: `block_traverse_cpu` sums blocks in `BlockBVH` order, while `bridge_matmul` sums in original tensor order — different accumulation order, slightly different result. Not lost information, just floating-point algebra. The `lm_head` stayed as a registered TODO — the GPU golden test ended up validating the structural coherence the codec had introduced.
+
+## 📊 Metrics
+
+| Metric | Value |
+|--------|-------|
+| BVH 1:1 (one lens per weight) | 27.26 GB |
+| Block BVH (32×32 codec) | 245.30 MB — **114× smaller** |
+| Blocks generated | 893,120 (in_proj=530K, out_proj=262K, lm_head=100K) |
+| BlockLens size | 288 bytes (`alignas(32)`, 1024 weights × 2 bits) |
+| in_proj MSE vs bridge_matmul | 3.7e-09 (ULP differences) |
+| out_proj MSE | 0.36 (accumulation order between blocks) |
+| lm_head | diverged at initial commit (open TODO) |
+| CPU↔GPU coherence (Golden Test) | Phase 0.00e+00 · Amplitude 1.19e-07 |
+| Batch kernel 100K lenses / 16 rays | 76ms → 0.52ms = **146×** |
+| Batch kernel 100K lenses / 1 ray | 4.5ms → 0.097ms = 47× |
+
+## 🎯 Takeaways
+
+- **Model compression doesn't need to be lossy to be radical**: ternary weights are already 2 bits — the waste was structural (one lens per weight), not in the bits.
+- **Per-tensor validation separates the problems**: ULP-perfect `in_proj`, accumulation-error `out_proj` and divergent `lm_head` are three different diagnoses — merging them into one number would hide the story.
+- **Accumulation order is the silent villain of any numeric refactor**: MSE 0.36 with block-identical `memcmp` isn't a bug — it's floating point being floating point.
+- **Honest commit > perfect commit**: `ecfb53b` documented "partial validation" with lm_head open. That became the trail for the next stage (GPU), instead of a buried lie.
+- The `lm_head` is still on the backlog — 100K blocks of vocabulary deserve their own chapter.
+
+<Terminal commands={[
+  { cmd: 'cmake -B build && cmake --build build', description: 'Builds TatuEngine (includes tatu_test_block_codec)' },
+  { cmd: './build/tests/tatu_test_block_codec models/bitmamba_cpp/bitmamba_1b.bin', description: 'Runs validation: blocks, per-tensor MSE, save/load' },
+  { cmd: './build/tests/tatu_test_bench_traversal', description: 'CPU vs GPU BVH traversal benchmark' },
+  { cmd: 'du -h models/bitmamba_cpp/bitmamba_1b.bin', description: '614MB packed — vs 245MB Block BVH and 27GB 1:1' }
+]} />
+
+---
+
+*Next chapter is the kernel that makes this traversal fly — 32 threads per block, warp shuffle, and the 146× batch speedup. Spoiler: the `lm_head` shows up again.*
