@@ -115,6 +115,6 @@ The final lesson wasn't a CSS formula — it was a method:
     { cmd: 'git log --oneline -- src/components/PalettePicker.astro | head -8', output: 'The saga in 8 commits — from stutter to correct origin' },
     { cmd: 'grep -A2 "view-transition-image-pair" src/styles/global.css', output: '::view-transition-image-pair(root) { isolation: isolate; }' },
     { cmd: 'grep "mix-blend-mode" src/styles/global.css', output: 'mix-blend-mode: normal;  /* disables plus-lighter */' },
-    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'file:///home/samuel/node_modules/cookie/index.js ← THE GHOST' },
+    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'file://~/projetos/node_modules/cookie/index.js ← THE GHOST' },
   ]}
 />

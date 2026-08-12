@@ -33,16 +33,16 @@ Up to then, everything had worked for weeks. The problem started when the day de
 
 ### 🧱 Walls 1 and 2: the `pnpm` that the guard blocked
 
-The Astro build runs with `pnpm`. On my WSL, the pnpm is Hermes's: `/home/samuel/.hermes/node/bin/pnpm`. And that's where everything froze:
+The Astro build runs with `pnpm`. On my WSL, the pnpm is Hermes's: `~/projetos/.hermes/node/bin/pnpm`. And that's where everything froze:
 
 ```
 Blocked: command or referenced script cannot restart or stop the gateway
 from inside the gateway process.
 ```
 
-The gateway's security guard blocked **any command whose binary resolves inside `~/.hermes/`** — it assumes it's an internal command. The legitimate `pnpm` became a suspect.
+The gateway's security guard blocked **any command whose binary resolves inside `~/.config/hermes/`** — it assumes it's an internal command. The legitimate `pnpm` became a suspect.
 
-The workaround went straight to Astro's real binary, with the system node (outside `~/.hermes`):
+The workaround went straight to Astro's real binary, with the system node (outside `~/.config/hermes`):
 
 ```bash
 # instead of: pnpm build (blocked)
@@ -85,7 +85,7 @@ python3 scripts/generate-cover.py <slug>   # regenerate
 
 The 4 traps weren't just solved — they were **documented in the pipeline skill**, so they never happen again:
 
-1. **Absolute path for the build** — `pnpm` that resolves inside `~/.hermes/` can be blocked by the gateway guard. Use `/usr/bin/node node_modules/astro/bin/astro.mjs build`.
+1. **Absolute path for the build** — `pnpm` that resolves inside `~/.config/hermes/` can be blocked by the gateway guard. Use `/usr/bin/node node_modules/astro/bin/astro.mjs build`.
 2. **MDX doesn't forgive `<`** — a `<` without spaces in text is JSX. Use `&lt;` or inline code.
 3. **A 0-byte cover is not a cover** — check the file size; an interruption mid-generate leaves an empty file.
 4. **Interrupted session = unknown effect** — before continuing, inspect: files, git status, dist.
@@ -105,7 +105,7 @@ End of day: **5 posts published, 10 MDX files, 124 pages in the build, 0 errors*
 ## 🎯 Lessons
 
 1. **Automation is 20% script and 80% environment** — the content was never the problem; it was the guard, the parser, the file and the session.
-2. **The right binary on the right path** — binaries that resolve inside `~/.hermes/` become guard targets. Pin absolute paths.
+2. **The right binary on the right path** — binaries that resolve inside `~/.config/hermes/` become guard targets. Pin absolute paths.
 3. **A wall becomes a rule, not an exception** — every documented trap in the skill costs less next time. A registered pitfall is an error paid only once.
 4. **Volume exposes fragility** — what works once a day can break in a batch. Test the flow under volume.
 

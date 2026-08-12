@@ -51,13 +51,13 @@ Node resolves modules by climbing the directory tree: first the local `node_modu
 ```bash
 # Where is Node resolving 'cookie'?
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file:///home/samuel/node_modules/cookie/index.js   ← WHAT?
+# file://~/projetos/node_modules/cookie/index.js   ← WHAT?
 ```
 
-`/home/samuel/node_modules/`. That shouldn't exist.
+`~/projetos/node_modules/`. That shouldn't exist.
 
 ```bash
-ls -la /home/samuel/node_modules/ | head -5
+ls -la ~/projetos/node_modules/ | head -5
 # total 253M
 # drwxr-xr-x  cookies@0.7.2/
 ```
@@ -67,7 +67,7 @@ ls -la /home/samuel/node_modules/ | head -5
 The question remained: **who installed this in ~/?**
 
 ```bash
-cat /home/samuel/package.json
+cat ~/projetos/package.json
 # {
 #   "dependencies": {
 #     "better-sqlite3": "^12.11.1",
@@ -89,7 +89,7 @@ mv ~/node_modules ~/package.json ~/package-lock.json ~/.npm-home-backup-20260805
 
 # 2. Verify resolution is now correct
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file:///home/samuel/projetos/lifelog/node_modules/.pnpm/cookie@2.0.1/...
+# file://~/projetos/projetos/lifelog/node_modules/.pnpm/cookie@2.0.1/...
 
 # 3. Build
 pnpm run build
