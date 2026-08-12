@@ -10,8 +10,6 @@ cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
 featured: false
 ---
 
-import Terminal from '../../components/TerminalWidget.astro'
-
 ## ⚡ O motor que resolveu se ensinar
 
 Primeiro o TatuEngine aprendeu a **inferir**: um modelo ternário de 1B parâmetros rodando em GPU com 252× de speedup, 114× de compressão, bit-a-bit idêntico ao CPU. Depois aprendeu a **agir**: agente autopoiético com 8 subsistemas, sandbox de segurança, MCP, memória.
@@ -57,25 +55,11 @@ O student não aprende só a resposta — aprende o **formato de pensar**.
 
 ### 💥 O momento crítico: a convergência que não vinha
 
-Aqui a saga quase morreu. O student **não convergia** — as respostas não seguiam o formato, o alinhamento quebrava. Dois commits resolveram:
+Aqui a saga quase morreu. O student **não convergia** — as respostas não seguiam o formato, o alinhamento quebrava. Dois commits resolveram: a Operação Convergência (mineração semântica forçada) e o fix do teacher system message.
 
-```bash
-# v0.21.5 (6bc95bb) — Operação Convergência: mineração semântica forçada
-feat(convergence): v0.21.5 — Operação Convergência (mineração semântica forçada)
-
-# v0.22.0 (c06eac1) — +505 linhas num commit: o teacher system message
-# quebrava o alinhamento do student
-feat(convergence): v0.22.0 — Força de Convergência (teacher system message fix)
-```
-
-O vilão era o **system message do teacher**: a instrução que o professor recebia contaminava a destilação. Corrigir o prompt do professor (+505 linhas de fix) destravou a convergência.
+O vilão era o **system message do teacher**: a instrução que o professor recebia contaminava a destilação. Corrigir o prompt do professor destravou a convergência.
 
 ### v0.22.1-2: o validador rigoroso
-
-```bash
-fix(validator): v0.22.1 — validador rigoroso de convergência (tags, steps, thought/answer)
-fix(batch): v0.22.2 — corrige refs a campos antigos do validador
-```
 
 Só aceita o que tem tags fechadas, steps coerentes e o par thought/answer completo.
 
@@ -83,10 +67,10 @@ Só aceita o que tem tags fechadas, steps coerentes e o par thought/answer compl
 
 A Operação Convergência entregou a infraestrutura inteira do ciclo Mestre-Aprendiz:
 
-- **Teacher LoRA treinado** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o (`tatu_lora_train.py`)
-- **Destilação funcional** — 381 exemplos gerados com o protocolo `[THOUGHT]/[ANSWER]` (`tatu_distill.py`)
+- **Teacher LoRA treinado** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o
+- **Destilação funcional** — 381 exemplos gerados com o protocolo `[THOUGHT]/[ANSWER]`
 - **3 datasets consolidados** — `tatu_train_data` (349) + `student_train` (23) + `distill_clean_train` (9)
-- **Student PyTorch diferenciável** — `bitmamba_pt.py`, 1B com forward + backward validados (RTX 3060, CUDA 13.0), gradientes fluindo
+- **Student PyTorch diferenciável** — 1B com forward + backward validados (RTX 3060, CUDA 13.0), gradientes fluindo
 
 O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 épocas, 381 exemplos, GPU) e comparar Student vs Teacher. O motor aprendeu a inferir, aprendeu a agir, e agora está aprendendo a **aprender**.
 
@@ -98,7 +82,7 @@ O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 época
 | Teacher | Qwen2.5-3B-Instruct + LoRA R=16, alpha=32 |
 | Exemplos destilados | 381 (3 datasets: 349 + 23 + 9) |
 | Student | BitMamba-2 1B diferenciável (forward+backward OK) |
-| Fix de convergência | teacher system message (+505 linhas, v0.22.0) |
+| Fix de convergência | teacher system message (v0.22.0) |
 | Validador | rigoroso: tags, steps, thought/answer (v0.22.1) |
 
 ## 🎯 Aprendizados
@@ -107,12 +91,3 @@ O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 época
 2. **Ensinar formato é ensinar raciocínio** — o protocolo `[THOUGHT]/[ANSWER]` faz o student aprender o processo, não só a resposta.
 3. **Validação rigorosa na destilação** — o validador de tags/steps/thought-answer garante que lixo não vira dado de treino.
 4. **Auto-aprimoramento é o destino** — inferir → agir → aprender. O ciclo Mestre-Aprendiz é o degrau pro loop Teacher→Student→geração→destilação→Teacher.
-
-<Terminal
-  lines={[
-    { cmd: 'git show c06eac1 --stat', output: 'v0.22.0 — +505 linhas: teacher system message fix' },
-    { cmd: 'python3 tatu_distill.py', output: '381 exemplos [THOUGHT]/[ANSWER] destilados' },
-    { cmd: 'python3 bitmamba_pt.py', output: 'Student 1B diferenciável — forward + backward OK (RTX 3060)' },
-    { cmd: 'python3 tatu_sft_train.py', output: 'Student SFT — 3 épocas, 381 exemplos (próximo marco)' },
-  ]}
-/>

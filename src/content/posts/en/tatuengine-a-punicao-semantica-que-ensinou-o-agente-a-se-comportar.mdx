@@ -10,8 +10,6 @@ cover: /covers/tatuengine-a-punicao-semantica-que-ensinou-o-agente-a-se-comporta
 featured: false
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
-
 ## ⚡ The agent that needed limits
 
 TatuEngine has an autopoietic agent — with LTM, ToolUse, GoalStack, SafetyGuard and GoalHamiltonian. It's designed to learn, act and evolve on its own. But there's a problem: **an agent that is only rewarded for what it does right never learns how much a mistake costs.**
@@ -23,7 +21,7 @@ Versions 1 and 2 of the punishment were rudimentary. v3 changed the game: **prog
 The v3 idea is simple and powerful: if the agent makes one mistake, the fine is small. If it makes another, the fine **multiplies**. If it persists, the agent temporarily loses the ability to use tools — and receives a **reprimand** in its output.
 
 ```python
-# tatu/decider.py — the decision logic that applies punishment
+# The decision logic that applies punishment
 # The fine is progressive: fine_amplitude = base × fine_mult^fine_count
 ```
 
@@ -37,21 +35,14 @@ This is like an immune system: the first exposure triggers a light response, but
 
 **v3 — progressive punishment + partial cold restart:**
 
-```cpp
-// GoalHamiltonian (C++) — v3 at the engine's heart
-// 1. Progressive fine: fine_amplitude = base × fine_mult^fine_count
-// 2. Partial cold restart: after max_fines, resets root_goal + tool_deny for N tokens
-// 3. is_tool_denied() + on_token_generated() + fine_count queryable
-```
-
 | Mechanism | What it does |
 |-----------|--------------|
 | **Progressive fine** | `fine_amplitude = base × fine_mult^fine_count` — each recurrence grows the fine |
 | **Partial cold restart** | After `max_fines`, resets `root_goal` + denies tools for N tokens |
-| **Automatic tool denial** | `is_tool_denied()` — agent temporarily loses tool access |
+| **Automatic tool denial** | Agent temporarily loses tool access |
 | **Output reprimand** | Generated text includes clear error feedback |
 
-The best part: state is **queryable** — `fine_count`, `accumulation`, `last_fine_amplitude` exposed in Python bindings (`tatubind`). The system can be observed and tuned.
+The best part: state is **queryable** — punishment metrics exposed in Python bindings. The system can be observed and tuned.
 
 ## 💡 The resolution: punishment that educates
 
@@ -61,30 +52,20 @@ The result is an agent that:
 3. **Can be audited** — everything is observable via bindings
 4. **Doesn't get stuck** — tool denial is temporary, not permanent
 
-v3 was validated with **27 test occurrences** in `test_goal_hamiltonian.py` — the punishment system has real coverage.
+v3 was validated with **27 test occurrences** in the punishment module — the system has real coverage.
 
 ## 📊 Metrics
 
 | Metric | Value |
 |--------|-------|
-| Version | v3 (commit `df19a2b`) |
+| Version | v3 |
 | Mechanisms | 4 (progressive fine, cold restart, tool deny, reprimand) |
 | Fine formula | `fine_amplitude = base × fine_mult^fine_count` |
-| Python bindings | `fine_amplitude_mult`, `max_fines`, `is_tool_denied`, `last_fine_amplitude` |
 | GoalHamiltonian tests | 27 punishment/denied occurrences |
 
 ## 🎯 Lessons learned
 
 1. **Progressive punishment > fixed punishment** — the agent tolerates a predictable cost. What changes behavior is the **growing cost** of recurrence.
 2. **Temporary punishment educates, permanent punishment mutilates** — tool denial for N tokens forces reflection without breaking the agent.
-3. **Observability is essential** — `is_tool_denied()`, `fine_count`, `last_fine_amplitude` exposed in bindings let you tune the system without guessing.
+3. **Observability is essential** — exposing punishment metrics in bindings lets you tune the system without guessing.
 4. **Immune system as a design metaphor** — remembering and responding stronger to each recurrence is how the body learns to fight infections.
-
-<Terminal
-  lines={[
-    { cmd: 'git show df19a2b --stat', output: 'feat(punishment): camada de punição semântica v3' },
-    { cmd: 'grep -rn "is_tool_denied" src/bindings/tatubind.cpp', output: 'Tool denial exposed in Python bindings' },
-    { cmd: 'grep -c "fine\\|punish\\|denied" tests/python/test_goal_hamiltonian.py', output: '27 test occurrences of punishment' },
-    { cmd: '.venv/bin/python3 -m tatu info', output: 'Agent state — observable' },
-  ]}
-/>

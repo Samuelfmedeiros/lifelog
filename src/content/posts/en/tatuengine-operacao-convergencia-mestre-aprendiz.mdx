@@ -10,8 +10,6 @@ cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
 featured: false
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
-
 ## ⚡ The engine that decided to teach itself
 
 First TatuEngine learned to **infer**: a ternary 1B-parameter model running on GPU with 252× speedup, 114× compression, bit-identical to CPU. Then it learned to **act**: an autopoietic agent with 8 subsystems, a security sandbox, MCP, memory.
@@ -57,25 +55,11 @@ The student doesn't just learn the answer — it learns the **format of thinking
 
 ### 💥 The critical moment: the convergence that wouldn't come
 
-This is where the saga almost died. The student **wasn't converging** — the answers didn't follow the format, alignment kept breaking. Two commits fixed it:
+This is where the saga almost died. The student **wasn't converging** — the answers didn't follow the format, alignment kept breaking. Two commits fixed it: Operation Convergence (forced semantic mining) and the teacher system message fix.
 
-```bash
-# v0.21.5 (6bc95bb) — Operation Convergence: forced semantic mining
-feat(convergence): v0.21.5 — Operação Convergência (mineração semântica forçada)
-
-# v0.22.0 (c06eac1) — +505 lines in one commit: the teacher system message
-# was breaking the student's alignment
-feat(convergence): v0.22.0 — Força de Convergência (teacher system message fix)
-```
-
-The villain was the **teacher's system message**: the instruction the teacher received contaminated the distillation. Fixing the professor's prompt (+505 lines of fix) unlocked convergence.
+The villain was the **teacher's system message**: the instruction the teacher received contaminated the distillation. Fixing the professor's prompt unlocked convergence.
 
 ### v0.22.1-2: the rigorous validator
-
-```bash
-fix(validator): v0.22.1 — validador rigoroso de convergência (tags, steps, thought/answer)
-fix(batch): v0.22.2 — corrige refs a campos antigos do validador
-```
 
 Only accepts what has closed tags, coherent steps and a complete thought/answer pair.
 
@@ -83,10 +67,10 @@ Only accepts what has closed tags, coherent steps and a complete thought/answer 
 
 Operation Convergence delivered the entire Master-Apprentice infrastructure:
 
-- **Trained teacher LoRA** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o (`tatu_lora_train.py`)
-- **Working distillation** — 381 examples generated with the `[THOUGHT]/[ANSWER]` protocol (`tatu_distill.py`)
+- **Trained teacher LoRA** — Qwen2.5-3B-Instruct, R=16, alpha=32, targets q/k/v/o
+- **Working distillation** — 381 examples generated with the `[THOUGHT]/[ANSWER]` protocol
 - **3 consolidated datasets** — `tatu_train_data` (349) + `student_train` (23) + `distill_clean_train` (9)
-- **Differentiable PyTorch student** — `bitmamba_pt.py`, 1B with forward + backward validated (RTX 3060, CUDA 13.0), gradients flowing
+- **Differentiable PyTorch student** — 1B with forward + backward validated (RTX 3060, CUDA 13.0), gradients flowing
 
 The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs, 381 examples, GPU) and comparing Student vs Teacher. The engine learned to infer, learned to act, and now it's learning to **learn**.
 
@@ -98,7 +82,7 @@ The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs,
 | Teacher | Qwen2.5-3B-Instruct + LoRA R=16, alpha=32 |
 | Distilled examples | 381 (3 datasets: 349 + 23 + 9) |
 | Student | BitMamba-2 1B differentiable (forward+backward OK) |
-| Convergence fix | teacher system message (+505 lines, v0.22.0) |
+| Convergence fix | teacher system message (v0.22.0) |
 | Validator | rigorous: tags, steps, thought/answer (v0.22.1) |
 
 ## 🎯 Lessons
@@ -107,12 +91,3 @@ The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs,
 2. **Teaching format is teaching reasoning** — the `[THOUGHT]/[ANSWER]` protocol makes the student learn the process, not just the answer.
 3. **Rigorous validation in distillation** — the tags/steps/thought-answer validator ensures garbage doesn't become training data.
 4. **Self-improvement is the destination** — infer → act → learn. The Master-Apprentice cycle is the step toward the Teacher→Student→generation→distillation→Teacher loop.
-
-<Terminal
-  lines={[
-    { cmd: 'git show c06eac1 --stat', output: 'v0.22.0 — +505 lines: teacher system message fix' },
-    { cmd: 'python3 tatu_distill.py', output: '381 [THOUGHT]/[ANSWER] examples distilled' },
-    { cmd: 'python3 bitmamba_pt.py', output: 'Student 1B differentiable — forward + backward OK (RTX 3060)' },
-    { cmd: 'python3 tatu_sft_train.py', output: 'Student SFT — 3 epochs, 381 examples (next milestone)' },
-  ]}
-/>

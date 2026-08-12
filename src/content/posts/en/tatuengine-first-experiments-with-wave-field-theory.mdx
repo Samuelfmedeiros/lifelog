@@ -11,7 +11,6 @@ featured: true
 lang: 'en'
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
 
 ## Context
 
@@ -28,7 +27,7 @@ That question started the experiments.
 The initial metaphor was too elegant to abandon:
 
 ```
-Ternary weight w ∈ {-1, 0, +1} → TriangleLens with η = w
+Ternary weight w ∈ {-1, 0, +1} → lens with η = w
 Lens position → f(layer, row, col) in 3D space
 Input token → ray with initial phase φ₀
 Output → interference of all waves at the detector
@@ -36,17 +35,7 @@ Output → interference of all waves at the detector
 
 Each network weight became a triangle in a BVH (Bounding Volume Hierarchy). An inference was literally a ray-trace: fire rays, compute phase deviation, sum coherently.
 
-```cpp
-// TriangleLens — each weight becomes a refractive prism
-struct TriangleLens {
-    float3 v0, v1, v2;       // vertices in 3D space
-    float refraction_index;   // η = ternary weight {-1, 0, +1}
-    float phase_bias;         // θ = fine phase correction
-    float attenuation;        // α = how much amplitude is lost
-};
-```
-
-The problem appeared quickly: **1 billion parameters in float32 = 36 GB of TriangleLens**. Each weight becomes 3 vertices × 3 floats + 3 optical property floats. 36 bytes per weight. For 1B parameters, 36 GB — no chance of fitting in consumer GPU VRAM.
+The problem appeared quickly: **1 billion parameters in float32 = 36 GB of lenses**. Each weight became 3 vertices × 3 floats + 3 optical property floats — 36 bytes per weight. For 1B parameters, 36 GB — no chance of fitting in consumer GPU VRAM.
 
 ## The first pivot: hybrid approach
 
@@ -63,26 +52,11 @@ Instead of converting EVERYTHING to geometry (impossible for 1B params), I split
 
 This division wasn't obvious at first. The Mamba SSM is different from Transformer: the hidden state `h(t)` depends on `h(t-1)`. You can't parallelize over time like attention. But the matmuls (which are the expensive part) are independent per token.
 
-```cpp
-// Hybrid pipeline — CPU + BVH
-bool infer_one_token(/*...*/) {
-    // CPU: embedding, RMSNorm, conv1d, SSM, residual
-    rms_norm(state.hidden, norm, d_model);
-    bridge_matmul(model, bvh, IN_PROJ, l, state.hidden, state.x, cfg);
-    silu_conv1d(cs, conv_w, conv_b, state.x, d_model, d_conv);
-    ssm_step(state.x, dt_bias, A_log, B, C, D, ssm_state, state.y, ...);
-
-    // GPU via bridge_matmul: out_proj + lm_head
-    bridge_matmul(model, bvh, OUT_PROJ, l, state.y, state.out, cfg);
-    bridge_matmul(model, bvh, LM_HEAD, n_layers, state.hidden, logits, cfg);
-}
-```
-
 ## The discovery that changed everything: Block Codec
 
-The hybrid approach worked, but it was still expensive — 10ms per token on CPU for 1B params. Then came the insight: **ternary weights follow local patterns**. 32×32 consecutive weights share zero, sign, and similar magnitude.
+The hybrid approach worked, but it was still expensive — 10ms per token on CPU for 1B params. Then came the insight: **ternary weights follow local patterns**. Consecutive blocks of weights share zero, sign, and similar magnitude.
 
-Instead of 1 TriangleLens per weight (36 bytes), a **32×32 block** fits in 288 bytes:
+Instead of 1 lens per weight (36 bytes), a **compact block** fit in 288 bytes:
 
 ```
 Each block:
@@ -92,47 +66,11 @@ Each block:
 Total: 288 bytes per 1024 weights = 0.28 bytes/weight (vs 36 bytes 1:1)
 ```
 
-**128× compression.** And more importantly: the traversal kernel can process entire blocks in parallel with 32 threads in the same warp.
-
-```python
-# Quick math
-weights = 1_000_000_000  # 1B params
-size_1x1 = weights * 36  # 36 GB — infeasible
-size_block = weights / 1024 * 288  # 281 MB — fits in any GPU
-print(f"Block Codec: {size_1x1 / size_block:.0f}× compression")
-# → 128× compression
-```
+**128× compression.** And the best part: the traversal kernel can process entire blocks in parallel with 32 threads in the same warp.
 
 ## GPU Block-Traversal: the first real result
 
-With Block Codec working, I wrote the CUDA traversal kernel. 32 threads per CTA, each thread processing one row of the block, warp shuffle for partial sum, shared memory for accumulator.
-
-```cpp
-__global__ void block_traverse_kernel(
-    const BlockLens* blocks, int n_blocks,
-    const float* input, float* output
-) {
-    __shared__ float shared_acc[32][32];  // 4 KB shared
-
-    int block_idx = blockIdx.x;
-    int thread_row = threadIdx.x;  // 0..31
-
-    auto& block = blocks[block_idx];
-    float acc = 0.0f;
-
-    for (int c = threadIdx.y; c < 32; c += blockDim.y) {
-        float w = decode_ternary(block.packed, thread_row, c);
-        acc += w * input[block.col_offset + c];
-    }
-
-    // Warp shuffle reduce
-    for (int offset = 16; offset > 0; offset >>= 1)
-        acc += __shfl_xor_sync(0xFFFFFFFF, acc, offset);
-
-    if (threadIdx.x == 0)
-        atomicAdd(&output[block.row_offset + thread_row], acc * block.scale);
-}
-```
+With Block Codec working, I wrote the CUDA traversal kernel — each thread processes one row of the block, warp shuffle for partial sum, shared memory for accumulator.
 
 The result was surprising:
 
@@ -152,16 +90,7 @@ The model I tested (BitMamba-1B) was already natively ternary — trained with w
 
 ### 2. Softplus with float32 silently overflows
 
-`expf(89.0f) = +inf`. This broke my SSM step tests for 2 days until I realized the `softplus` of A_log was generating `inf` in the last batches. Solution: `log1pf(expf(-abs(x)))`.
-
-```cpp
-// Before (broken): float x = logf(1 + expf(89)); // inf!
-float safe_softplus(float x) {
-    if (x > 50.0f) return x;       // linear regression
-    if (x < -50.0f) return expf(x); // exponential regression
-    return log1pf(expf(x));         // safe zone
-}
-```
+`expf(89.0f) = +inf`. This broke my SSM step tests for 2 days until I realized the `softplus` of A_log was generating `inf` in the last batches. The fix is the numerically stable formulation (`log1pf(expf(-abs(x)))`).
 
 ### 3. SSM doesn't carry history in the hidden state
 
@@ -192,17 +121,4 @@ The hybrid pipeline is functional, but the original vision hasn't been **fully**
 
 The next step is connecting the **MotorGPU** (parallel traversal kernel) with the agent pipeline we built afterward — Immunosystem, associative LTM, GoalStack, ToolUseBuffer. The agent should be able to call tools, remember past sessions, and self-correct the phase field based on feedback.
 
-> TL;DR: Started wanting to do ray tracing for neural networks, discovered hybrid SSM is the real path, compressed 36 GB to 281 MB with Block Codec (128×), and achieved 252× GPU speedup. TatuEngine is no longer a crazy idea — it's a functional inference engine that treats network weights as a phase field. And yes, I still think one day RT Cores will process neural geometry for real.
-
----
-
-## Useful commands
-
-<Terminal
-  lines={[
-    { cmd: 'cd ~/projetos/TatuEngine && mkdir -p build && cd build && cmake .. && make -j', output: 'Full build' },
-    { cmd: 'ctest --output-on-failure', output: 'Run 400+ tests' },
-    { cmd: './build/tests/mamba_infer models/bitmamba_cpp/bitmamba_1b.bin 3', output: 'Validate hybrid pipeline' },
-    { cmd: 'python3 scripts/build_ltm_knowledge.py', output: 'Build agent LTM base' },
-  ]}
-/>
+> TL;DR: Started wanting to do ray tracing for neural networks, discovered hybrid SSM is the real path, compressed 36 GB to 245 MB with Block Codec (128×), and achieved 252× GPU speedup. TatuEngine is no longer a crazy idea — it's a functional inference engine that treats network weights as a phase field. And yes, I still think one day RT Cores will process neural geometry for real.

@@ -1,6 +1,6 @@
 ---
-title: "A história do TatuEngine — dos RT Cores dos sonhos ao agente autopoiético com 252× de speedup"
-description: "Nasceu da pergunta absurda 'e se usássemos RT Cores pra processar redes neurais?', matou o sonho no WSL2, e virou um motor híbrido CPU/GPU com BitMamba-2 1B, 114× de compressão, agente com 8 subsistemas e sandbox de segurança — 302 commits depois."
+title: "A história do TatuEngine — dos RT Cores dos sonhos ao agente autopoiético"
+description: "Nasceu da pergunta absurda 'e se usássemos RT Cores pra processar redes neurais?', matou o sonho no WSL2, e virou um motor híbrido CPU/GPU com BitMamba-2 1B, compressão radical, agente autopoiético e sandbox de segurança — 302 commits depois."
 date: 2026-08-03 14:00:00 -03:00
 pubDate: 2026-08-03 14:00:00 -03:00
 project: tatuengine
@@ -10,7 +10,6 @@ cover: /covers/a-historia-do-tatuengine.webp
 featured: false
 ---
 
-import Terminal from '../../components/TerminalWidget.astro'
 
 ## ⚡ A engine que começou com uma pergunta absurda
 
@@ -18,7 +17,7 @@ import Terminal from '../../components/TerminalWidget.astro'
 
 Foi essa provocação que deu origem ao TatuEngine em junho de 2026. A visão era hipnotizante: **cada peso vira uma lente refratora dentro de uma BVH, o token de entrada é um raio disparado contra a geometria, e a inferência é a luz passando pelo sistema** — a resposta nasce da interferência coerente de ondas. Aprender? Esculpir o caminho por onde a luz passa.
 
-Trinta e poucos dias depois, o projeto tem 302 commits, um modelo BitMamba-2 1B rodando em GPU **252× mais rápido que CPU**, 400+ testes e um agente autopoiético com 8 subsistemas. Mas o caminho até aqui começou com o sonho morrendo no primeiro dia.
+Trinta e poucos dias depois, o projeto tem 302 commits, um modelo BitMamba-2 1B rodando em GPU ordens de grandeza mais rápido que CPU, 400+ testes e um agente autopoiético. Mas o caminho até aqui começou com o sonho morrendo no primeiro dia.
 
 ## 🧠 Contexto — o sonho OptiX
 
@@ -29,7 +28,7 @@ O stack planejado era ambicioso:
 - **GGUF** como formato de modelo
 - **MCP** como protocolo de API
 
-O Sprint 1 construiu tudo ao redor dessa visão: `src/core` com pipeline lock-free e triple buffering, `src/rt` com headers OptiX 9.1 compilando PTX, `src/mamba` com SSM kernel CUDA, `src/field_theory` com o protótipo do Campo de Fase (`wave.h`, `interference.h`, `optimize.h`). Documentação da época: PLANO_MESTRE.md e CARVEKNOWLEDGE.md — ambos refletindo uma visão que nunca funcionaria no ambiente real.
+O Sprint 1 construiu tudo ao redor dessa visão: `src/core` com pipeline lock-free e triple buffering, `src/rt` com headers OptiX 9.1 compilando PTX, `src/mamba` com SSM kernel CUDA, `src/field_theory` com o protótipo do Campo de Fase. Documentação da época: PLANO_MESTRE.md e CARVEKNOWLEDGE.md — ambos refletindo uma visão que nunca funcionaria no ambiente real.
 
 ## 🔧 A luta — o sonho que morreu no WSL2
 
@@ -45,7 +44,7 @@ Duas semanas tentando contornar. O que salvou: **CUDA funciona nativamente no WS
 
 ### O segundo muro: 27 GB de lentes
 
-Converter a rede de 1B parâmetros pra BVH como TriangleLens custaria **27 GB** — impossível pra VRAM de 12 GB. A solução foi o pipeline híbrido `bridge_matmul`: as matmuls pesadas (in_proj, out_proj, lm_head) rodam em CUDA lendo os tensores originais, e o estado SSM (conv1d, RMSNorm, step) fica na CPU:
+Converter a rede de 1B parâmetros pra BVH como lentes individuais custaria **27 GB** — impossível pra VRAM de 12 GB. A solução foi o pipeline híbrido: as matmuls pesadas (in_proj, out_proj, lm_head) rodam em CUDA lendo os tensores originais, e o estado SSM (conv1d, RMSNorm, step) fica na CPU:
 
 ```
 CPU: embedding → RMSNorm → conv1d+SiLU → SSM step → residual
@@ -56,24 +55,19 @@ E aqui veio outra descoberta: **o Mamba SSM é inerentemente sequencial** — `h
 
 ### O NaN que quase virou lenda
 
-Softplus com float32 estoura: `expf(89.0) = inf`. Uma linha salvou dois dias de debug:
-
-```cpp
-// antes: softplus(x) = log1p(expf(x))  → inf pra x > 89
-// depois: log1pf(expf(-dt_x)) para x > 0
-```
+Softplus com float32 estoura: `expf(89.0) = inf`. Uma linha salvou dois dias de debug: a formulação numericamente estável (`log1pf(expf(-abs(x)))`).
 
 ### O marco: 50257/50257 logits bit-a-bit
 
-A validação que provou que o híbrido funcionava: **50257 logits idênticos** entre `bridge_matmul` e o ground truth CPU, bit por bit.
+A validação que provou que o híbrido funcionava: **50257 logits idênticos** entre o `bridge_matmul` e o ground truth CPU, bit por bit.
 
-### Block Codec: 114× de compressão
+### Block Codec: compressão radical
 
-A descoberta que mudou o jogo: em vez de 1 TriangleLens por peso, **blocos ternários 32×32 compactados em 288 bytes cada**. 893 mil blocos, 245 MB no total vs 27.26 GB float32 — 114× de compressão, bit-a-bit idêntico (tolerância ULP).
+A descoberta que mudou o jogo: em vez de 1 lente por peso, **blocos ternários compactados** — 245 MB no total vs 27.26 GB float32 — mais de 100× de compressão, com tolerância ULP.
 
-### GPU Block-Traversal: 252× de speedup
+### GPU Block-Traversal
 
-O kernel `block_traverse_kernel` usa 32 threads/CTA, 1 row_block por grid block, warp shuffle reduction (`__shfl_xor_sync`) + shared memory, **sem atomics**:
+O kernel de travessia em GPU processa blocos inteiros em paralelo, com redução via warp e acumulador em memória compartilhada — **sem atomics**:
 
 | Pipeline | CPU | GPU | Speedup |
 |----------|-----|-----|---------|
@@ -83,28 +77,9 @@ O kernel `block_traverse_kernel` usa 32 threads/CTA, 1 row_block por grid block,
 
 ## 💡 Resolução — o agente autopoiético
 
-Com a inferência resolvida, o TatuEngine virou agente. O **GenerationContext** reúne os subsistemas que fazem o modelo se auto-avaliar e usar ferramentas:
+Com a inferência resolvida, o TatuEngine virou agente. O **GenerationContext** reúne os subsistemas que fazem o modelo se auto-avaliar e usar ferramentas: detecção de atrator fixo, memória associativa no espaço latente do SSM, execução de ferramentas via sandbox, raciocínio recursivo com checkpoint/restore, invariância de segurança e um supervisor semântico de objetivo.
 
-- 🧬 **Immunosystem** — detecta atrator fixo (H&lt;0.15, Δh&lt;0.001) e injeta perturbação senoidal adaptativa
-- 💾 **LTM Associativo** — memória por cos_sim no espaço latente do SSM (HIGH=0.85)
-- 🛠️ **ToolUse** — detecta `` `<|tool:nome|>args<|/tool|>` `` no texto gerado e executa via sandbox
-- 🥞 **GoalStack** — raciocínio recursivo com checkpoint/restore (max_depth=3)
-- 🛡️ **SafetyGuard** — invariância de Noether (drift < 0.001, E < 0.60)
-- ⚛️🎯 **GoalHamiltonian** — supervisor semântico com cos_sim(h_t, root_goal)
-- + RealityAnchor, AutoCalibration, FailureIndex, MetaCognition
-
-E o **Sandbox Híbrido** pra proteger as tools de arquivo — path validation, size/type enforcement, 3 níveis de isolamento:
-
-```python
-class SandboxLevel(Enum):
-    """Níveis de isolamento do sandbox, compatíveis com ToolPermission."""
-    SAFE = "safe"
-    PROMPT = "prompt"
-    RESTRICTED = "restricted"
-    DENIED = "denied"
-```
-
-51/51 testes passando — verifiquei agora mesmo: `51 passed in 0.13s`.
+E o **Sandbox Híbrido** pra proteger as tools de arquivo — path validation, size/type enforcement, níveis de isolamento. Testes passando: `51 passed`.
 
 ## 📊 Métricas
 
@@ -116,21 +91,12 @@ class SandboxLevel(Enum):
 | Compressão | 27.26 GB (float32) | 245 MB (block codec, 114×) |
 | Pipeline | Conceitual | Híbrido CPU/GPU bit-a-bit |
 | Agente | 0 subsistemas | 8 subsistemas |
-| Modelo | Mamba 2.8B (planejado) | BitMamba-2 1B (funcional, 621 MB) |
+| Modelo | Mamba 2.8B (planejado) | BitMamba-2 1B (funcional) |
 | Sandbox | não existia | 3 níveis, 51/51 testes |
 
 ## 🎯 Aprendizados
 
-1. **Não force uma tecnologia onde ela não encaixa** — OptiX no WSL custou ~2 semanas; a abordagem híbrida (bridge_matmul + block codec) foi descoberta em 3 dias e resolveu.
+1. **Não force uma tecnologia onde ela não encaixa** — OptiX no WSL custou ~2 semanas; a abordagem híbrida foi descoberta em 3 dias e resolveu.
 2. **Modelos ternários nativos vs pós-treino** — ternarizar um float32 depois do treino destrói a coerência. O BitMamba-2 funciona porque nasceu com pesos ternários.
 3. **O SSM não é um transformer** — não adianta paralelizar o que é sequencial por natureza. O ganho real está em acelerar as matmuls e aceitar que o step é CPU-bound.
 4. **AutoTrainer converge rápido demais** — o sistema atinge 99.5% de qualidade em 14 steps e o AutoTrainer fica ocioso, não porque está quebrado, mas porque o sistema já está resolvido.
-
-<Terminal
-  lines={[
-    { cmd: 'git rev-list --count HEAD', output: '302 commits desde o scaffolding inicial' },
-    { cmd: 'pytest tests/test_sandbox.py -q', output: '51 passed in 0.13s' },
-    { cmd: 'ctest --test-dir build -R FieldTheory', output: '133/133 — adjacent method + SAH adaptativo' },
-    { cmd: './build/tests/tatu_mamba_generate models/bitmamba_cpp/bitmamba_1b.bin --gpu --prompt "Hello, world" --tokens 64', output: 'geração GPU com BitMamba-2 1B' },
-  ]}
-/>

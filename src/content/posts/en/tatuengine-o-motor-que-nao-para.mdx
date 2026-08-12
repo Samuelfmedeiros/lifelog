@@ -11,8 +11,6 @@ featured: false
 lang: 'en'
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
-
 Some projects live off commit explosions — new features every day, monumental refactors, roadmaps that change every sprint. The TatuEngine is not one of them.
 
 In the last 30 days, the repository accumulated 50 commits. 97% are auto-sync. Zero new features. Zero fixes. The engine simply **works**.
@@ -25,10 +23,10 @@ The TatuEngine started as an experiment: "what if I train an SSM from scratch, i
 
 298 commits later, the project is a full engine with:
 
-- **GPU inference** with BitMamba-2 1B — block-encoded BVH with 114× compression (27 GB → 245 MB)
-- **GPU block-traversal kernel** — 32 threads/CTA, warp shuffle, 252× speedup over CPU
+- **GPU inference** with BitMamba-2 1B — block-encoded BVH with radical compression of ternary models
+- **GPU block-traversal kernel** — parallel traversal with hundreds-of-times speedup over CPU
 - **Hybrid CPU/GPU pipeline** — SSM state on CPU, `bridge_matmul` on GPU
-- **`tatu` CLI** — commands `generate`, `mcp`, `tool` (requires PYTHONPATH pointing to build)
+- **`tatu` CLI** — generation, MCP and tool commands
 - **MCP connector** — standalone server with 4 tools (FastMCP, stdio/SSE)
 - **Autopoietic agent** — GenerationContext with 8 subsystems
 
@@ -53,15 +51,3 @@ The project has entered what I call **cruise phase** — the engine doesn't need
 Cruise phase isn't stagnation. It's time to build **on top of**, not inside. TatuEngine as an inference backend for the Arachne ecosystem is the next logical step.
 
 The engine is ready. The journey continues.
-
----
-
-## Useful commands
-
-<Terminal
-  lines={[
-    { cmd: 'cd ~/projets/TatuEngine && git rev-list --count HEAD', output: '298 total commits' },
-    { cmd: 'git log --oneline --since="2026-06-29" --format="%s" | grep -c "auto-sync"', output: '48 auto-sync in 30 days — the engine runs itself' },
-    { cmd: 'PYTHONPATH=build_py/src/bindings python3 -m tatu info bitmamba-2-1b 2>/dev/null || echo "build in progress"', output: 'CLI works with correct PYTHONPATH' },
-  ]}
-/>
