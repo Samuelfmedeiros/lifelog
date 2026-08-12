@@ -35,10 +35,52 @@ for (const width of [390, 360, 320]) {
   });
 }
 
-// Regressão: animação de tema começa de onde toca no mobile (clipPath inicial
-// = coordenadas do tap, não 0,0 — bug do click sintetizado no mobile)
-test('animação tema começa de onde toca (mobile tap)', async ({ page }) => {
+// Regressão pós-fix 12/08/2026 (decisão do post 22/07 "Tema animação simplificada"):
+// - Mobile (≤768px): crossfade opacity puro (clip-path é paint-heavy e TRAVA em
+//   GPU fraca/Android). O teste falha se alguém reintroduzir clip-path no mobile.
+// - Desktop (>768px): clip-path circular mantido, origem = ponto do clique.
+test('animação tema: mobile usa crossfade opacity (sem clip-path)', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+
+  await page.evaluate(() => {
+    window.__animClips = [];
+    const orig = Element.prototype.animate;
+    Element.prototype.animate = function (frames, opts) {
+      const pseudo = opts && opts.pseudoElement;
+      if (pseudo === '::view-transition-new(root)' || pseudo === '::view-transition-old(root)') {
+        const frame = Array.isArray(frames) ? frames[0] : frames;
+        window.__animClips.push({
+          from: frame?.clipPath || '',
+          opacity: frame?.opacity !== undefined ? String(frame.opacity) : '',
+          pseudo,
+        });
+      }
+      return orig.call(this, frames, opts);
+    };
+  });
+
+  const btn = page.locator('#rail-theme');
+  const box = await btn.boundingBox();
+  expect(box).toBeTruthy();
+
+  await page.touchscreen.tap(Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2));
+  await page.waitForTimeout(150);
+
+  const clips = await page.evaluate(() => window.__animClips || []);
+  console.log('anims mobile capturados:', JSON.stringify(clips));
+
+  expect(clips.length).toBeGreaterThan(0);
+  // Crossfade: old fade-out + new fade-in — AMBOS opacity
+  expect(clips.some(c => c.pseudo === '::view-transition-old(root)' && c.opacity !== '')).toBeTruthy();
+  expect(clips.some(c => c.pseudo === '::view-transition-new(root)' && c.opacity !== '')).toBeTruthy();
+  // Regressão: NENHUM clip-path no mobile (causa do travamento)
+  expect(clips.every(c => !c.from)).toBeTruthy();
+});
+
+test('animação tema: desktop mantém clip-path circular da origem do clique', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
 
@@ -48,8 +90,7 @@ test('animação tema começa de onde toca (mobile tap)', async ({ page }) => {
     Element.prototype.animate = function (frames, opts) {
       if (opts && opts.pseudoElement === '::view-transition-new(root)') {
         const fromVal = Array.isArray(frames) ? frames[0]?.clipPath : frames.clipPath?.[0];
-        const toVal = Array.isArray(frames) ? frames[1]?.clipPath : frames.clipPath?.[1];
-        window.__animClips.push({ from: fromVal || '', to: toVal || '', pseudo: opts.pseudoElement });
+        window.__animClips.push({ from: fromVal || '' });
       }
       return orig.call(this, frames, opts);
     };
@@ -60,13 +101,13 @@ test('animação tema começa de onde toca (mobile tap)', async ({ page }) => {
   expect(box).toBeTruthy();
   const tx = Math.round(box.x + box.width / 2);
   const ty = Math.round(box.y + box.height / 2);
-  console.log(`tap em (${tx}, ${ty})`);
+  console.log(`click em (${tx}, ${ty})`);
 
-  await page.touchscreen.tap(tx, ty);
+  await page.mouse.click(tx, ty);
   await page.waitForTimeout(150);
 
   const clips = await page.evaluate(() => window.__animClips || []);
-  console.log('clipPaths capturados:', JSON.stringify(clips));
+  console.log('clipPaths desktop capturados:', JSON.stringify(clips));
 
   expect(clips.length).toBeGreaterThan(0);
   const from = clips[0].from;
