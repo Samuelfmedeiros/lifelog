@@ -1,5 +1,20 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-12] — 🔒 Scrub posts (caminhos internos + codec TatuEngine) + círculo expansivo mobile
+
+### 📝 Posts
+- 3 posts 12/08: Descobertas (GitHub 2GB/LFS + orphan branch), TatuEngine block-codec, Dogwalk backup mentiroso [pipeline] (`7f207f0`)
+
+### 🔧 Fixes
+- círculo expansivo no mobile — revert crossfade 08a3d2d (pedido Samuel 12/08) (`37ed927`)
+
+### 🔒 Segurança
+- remove caminhos internos (~/.hermes, /home/samuel) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
+- remove receita técnica do codec TatuEngine de 10 posts PT+EN — BlockLens, kernels CUDA, thresholds, commits (`ab1d776`)
+- gitleaksignore: .astro/data-store.json + cache interno Astro (FP, P2) (`f402f79`)
+
+6 commits · push origin OK · HEAD: `37ed927`
+
 ## [2026-08-12] - 3 posts + security sweep blog + theme fix
 
 - **feat(posts)**: 3 posts 12/08 — Descobertas (GitHub 2GB/LFS + orphan branch), TatuEngine block-codec, Dogwalk backup mentiroso [pipeline]
