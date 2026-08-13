@@ -35,11 +35,12 @@ for (const width of [390, 360, 320]) {
   });
 }
 
-// Regressão pós-fix 12/08/2026 (decisão do post 22/07 "Tema animação simplificada"):
-// - Mobile (≤768px): crossfade opacity puro (clip-path é paint-heavy e TRAVA em
-//   GPU fraca/Android). O teste falha se alguém reintroduzir clip-path no mobile.
-// - Desktop (>768px): clip-path circular mantido, origem = ponto do clique.
-test('animação tema: mobile usa crossfade opacity (sem clip-path)', async ({ page }) => {
+// Regressão pós-fix 12/08/2026 (2ª rodada — Samuel quer o CÍRCULO no mobile):
+// - Mobile (≤768px) E Desktop: clip-path circular expansivo, origem = toque.
+//   O crossfade opacity do 08a3d2d foi REVERTIDO (Samuel: "Quero a troca de
+//   temas no mobile também"). O teste falha se alguém reintroduzir crossfade
+//   no mobile (ou remover o clip-path).
+test('animação tema: mobile usa clip-path circular (origem = toque)', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
@@ -72,11 +73,14 @@ test('animação tema: mobile usa crossfade opacity (sem clip-path)', async ({ p
   console.log('anims mobile capturados:', JSON.stringify(clips));
 
   expect(clips.length).toBeGreaterThan(0);
-  // Crossfade: old fade-out + new fade-in — AMBOS opacity
-  expect(clips.some(c => c.pseudo === '::view-transition-old(root)' && c.opacity !== '')).toBeTruthy();
-  expect(clips.some(c => c.pseudo === '::view-transition-new(root)' && c.opacity !== '')).toBeTruthy();
-  // Regressão: NENHUM clip-path no mobile (causa do travamento)
-  expect(clips.every(c => !c.from)).toBeTruthy();
+  // Circular: o new(root) DEVE ter clip-path circle() partindo do toque
+  const newClip = clips.find(c => c.pseudo === '::view-transition-new(root)');
+  expect(newClip).toBeTruthy();
+  // from pode ser string ("circle(0px at Xpx Ypx)") ou array de keyframes
+  const fromVal = Array.isArray(newClip.from) ? newClip.from.join(' ') : String(newClip.from || '');
+  expect(fromVal).toContain('circle(');
+  // Regressão: NÃO pode ser crossfade opacity (o que Samuel rejeitou)
+  expect(clips.every(c => !c.opacity)).toBeTruthy();
 });
 
 test('animação tema: desktop mantém clip-path circular da origem do clique', async ({ page }) => {
