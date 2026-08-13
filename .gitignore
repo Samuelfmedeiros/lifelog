@@ -64,3 +64,4 @@ public/test-light*.png
 
 # Auto-post state
 .auto-post-state.json
+.tmp-*
