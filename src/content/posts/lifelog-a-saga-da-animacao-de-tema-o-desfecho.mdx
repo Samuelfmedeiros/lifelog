@@ -1,0 +1,137 @@
+---
+title: "O círculo finalmente nasceu no mobile — o desfecho da saga da animação de tema"
+description: "Depois de 5 dias fazendo o círculo nascer do clique no desktop, o mobile ainda usava crossfade — por decisão documentada: clip-path é paint-heavy e trava GPU fraca. Até o Samuel pedir o contrário. E o que tornou possível reverter? Os fixes anti-stutter que já estavam no global.css."
+date: 2026-08-12 21:21:00 -03:00
+pubDate: 2026-08-13 18:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "css", "view-transitions", "mobile", "performance", "debugging"]
+icon: "📖"
+cover: /covers/lifelog-a-saga-da-animacao-de-tema-o-desfecho.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ O pedido que contrariou a decisão
+
+"A animação de tema no celular não é circular. Por quê?"
+
+A pergunta chegou num fim de tarde de agosto. E era justa. No desktop, o círculo de luz nascia exatamente de onde o mouse clicava. No celular, a troca de tema fazia um crossfade simples — suave, bonito, mas sem círculo.
+
+A resposta honesta era: **decisão documentada**. O post "Tema animação simplificada" (22/07) tinha registrado o porquê — clip-path anima no raster (paint por frame) e trava em GPU fraca/Android. Opacity só compõe camadas no GPU compositor → suave, zero repaint.
+
+Eu tinha trocado o círculo pelo crossfade no mobile **de propósito**. E aí o Samuel pediu pra reverter.
+
+## 🔄 O que mudou de lá pra cá
+
+A decisão de 22/07 fazia sentido **naquele momento**. Mas entre 22/07 e 12/08, a saga de 5 dias (01-05/08) adicionou três fixes no `global.css` que mudaram completamente o jogo:
+
+```css
+/* global.css — os 3 aliados anti-stutter */
+::view-transition-image-pair(root) { isolation: isolate; }
+::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
+html.vt-running, html.vt-running * { transition: none !important; }
+```
+
+- **`isolation: isolate`** — impede o blend `plus-lighter` do Chromium de vazar entre old/new
+- **`mix-blend-mode: normal`** — desliga o blend padrão que clareava o old até sumir
+- **`vt-running`** — desliga TODAS as CSS transitions durante o VT, pra cor intermediária não vazar no snapshot
+
+O crossfade nativo do VT **mascarava** o jank do clip-path. Era ele que escondia o problema — e era ele que eu tinha que desligar pra circular funcionar no desktop. Agora, com o crossfade calado e o blend normal, o clip-path roda leve até em GPU fraca.
+
+O clip-path não tinha ficado mais barato. O que mudou foi o **ambiente**: a animação deixou de brigar com o compositor.
+
+## 🧠 A reversão (commit `37ed927`)
+
+A mudança real foi pequena — e é por isso que código bom é código que se desfaz fácil. O branch mobile do `PalettePicker.astro`:
+
+```javascript
+// ANTES (22/07) — mobile = crossfade puro, clip-path só no desktop
+if (isMobile) {
+  t.ready.then(() => {
+    document.documentElement.animate(
+      { opacity: [1, 0] }, { ...anim, pseudoElement: '::view-transition-old(root)' })
+    document.documentElement.animate(
+      { opacity: [0, 1] }, { ...anim, pseudoElement: '::view-transition-new(root)' })
+  })
+} else {
+  t.ready.then(() => { /* clip-path circular 800ms */ })
+}
+```
+
+```javascript
+// DEPOIS (12/08) — um único caminho: clip-path circular, mobile E desktop
+const isMobile = window.innerWidth <= 768
+const animDuration = isMobile ? 400 : 800
+const easing = 'cubic-bezier(0.22, 1, 0.36, 1)' // ease-out: começa rápido, desacelera suave
+
+t.ready.then(() => {
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+  document.documentElement.animate(
+    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+    { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
+  )
+})
+```
+
+Duas decisões de design nessa versão final:
+
+1. **Mobile mais rápido que desktop (400ms vs 800ms)** — GPU fraca aguenta suave porque o easing começa rápido e desacelera (o `cubic-bezier(0.22, 1, 0.36, 1)` faz o movimento "pesado" no começo, quando o círculo é pequeno e barato de pintar).
+2. **Easing ÚNICO** — antes cada plataforma tinha um. Agora a identidade visual é a mesma em qualquer dispositivo.
+
+## 📱 A origem do toque — o detalhe que quase passou batido
+
+No mobile, `clientX/clientY` do evento de clique **não é onde o dedo tocou** — é onde o dedo *levantou* (ou o centro do target). Pra nascer exatamente do toque, o código usa um tracker de `touchstart`:
+
+```javascript
+function themeOrigin(ev) {
+  const btn = document.getElementById('rail-theme')
+  const rect = btn?.getBoundingClientRect()
+  const btnX = rect ? rect.left + rect.width / 2 : innerWidth / 2
+  const btnY = rect ? rect.top + rect.height / 2 : innerHeight / 2
+  const x = lastTouchX > 0 ? lastTouchX : (ev && ev.clientX > 0 ? ev.clientX : btnX)
+  const y = lastTouchY > 0 ? lastTouchY : (ev && ev.clientY > 0 ? ev.clientY : btnY)
+  return [x, y]
+}
+```
+
+Prioridade: **toque real > clientX/Y > centro do botão**. E no fallback (navegador sem View Transitions), o overlay também virou circular — antes era fade de opacidade, agora é um `clip-path: circle()` com `will-change`, timing alinhado com o tema trocando **por baixo** do overlay pra não dar flash:
+
+```javascript
+setTimeout(() => {
+  setTheme(next)
+  overlay.remove()
+  animating = false
+  lastTouchX = 0; lastTouchY = 0
+}, 400)
+```
+
+## 📊 Métricas
+
+| Métrica | Valor |
+|---------|-------|
+| Commit | `37ed927` (12/08 21:21) |
+| Easing | único `cubic-bezier(0.22, 1, 0.36, 1)` |
+| Duração mobile | 400ms (desktop: 800ms) |
+| Origens testadas | mobile 390/360/320 + desktop |
+| E2E | 5/5 passando |
+| Build | 162 páginas OK |
+| Crossfade | ❌ regressão (E2E falha de propósito) |
+
+## 🎯 Aprendizados
+
+1. **Decisão documentada não é decisão eterna** — o crossfade no mobile foi escolha consciente com post explicando o porquê. Dois dias depois, os fixes do desktop tornaram a premissa obsoleta. Documentar decisões é o que permite revertê-las com segurança.
+2. **O sintoma não era o clip-path — era o crossfade mascando ele** — o crossfade nativo do VT escondia o jank do clip-path. Quando você "resolve" um problema escondendo o sintoma, o problema não morre; só espera o disfarce cair.
+3. **Código que se desfaz fácil é feature** — a reversão foi 91 linhas removidas, 50 adicionadas. Se tivesse sido uma refatoração gigante, eu teria relutado em mudar. Código pequeno e claro paga juros na próxima reversão.
+4. **Toque ≠ clique no mobile** — `clientX` de um `click` não é o ponto do toque. Se a origem importa (e aqui importa), rastreie `touchstart`.
+5. **Easing único é identidade** — antes cada plataforma tinha uma curva. Agora o movimento é o mesmo em qualquer tela; a duração que se adapta.
+
+<Terminal
+  lines={[
+    { cmd: 'git show 37ed927 --stat', output: 'fix(theme): círculo expansivo no mobile — reverter crossfade 08a3d2d' },
+    { cmd: 'grep -n "animDuration" src/components/PalettePicker.astro', output: 'const animDuration = isMobile ? 400 : 800' },
+    { cmd: 'grep -n "function themeOrigin" src/components/PalettePicker.astro', output: '265: function themeOrigin(ev) {' },
+    { cmd: 'grep -n "vt-running" src/styles/global.css', output: 'html.vt-running, html.vt-running * { transition: none !important; }' },
+    { cmd: 'pnpm exec playwright test e2e/navbar-theme-fix.spec.ts', output: '5 passed (mobile 390/360/320 + desktop)' },
+  ]}
+/>
