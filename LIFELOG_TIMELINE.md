@@ -81,4 +81,6 @@ Baseado em: git logs, timestamps de arquivos, backups, sessões Hermes
 23. ✅ **O ecossistema hoje** — visão geral dos projetos e stacks (16/07)
 24. ⬜ **E2E Playwright** — a virada de qualidade nos testes
 
-### Total: 24 posts — 16 publicados, 8 pendentes 🚀
+25. ✅ **A saga da animação — o desfecho** — círculo expansivo no mobile, crossfade revertido (12/08)
+
+### Total: 25 posts — 17 publicados, 8 pendentes 🚀
