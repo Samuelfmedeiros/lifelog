@@ -1,46 +1,53 @@
-# 📖 LifeLog — Blog Pessoal de Samuel Medeiros
+# 📖 LifeLog — Samuel Medeiros' Personal Blog
 
-Dev · Projetos · Estudos · Descobertas
+Dev · Projects · Studies · Discoveries
 
 **Live:** https://lifelog-sepia.vercel.app
 **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Fuse.js · Playwright
 
+> 🌐 **English** · [🇧🇷 Português](README.pt-BR.md)
+
 ---
 
-## 🏗️ Arquitetura
+## 🏗️ Architecture
 
 ```
 lifelog/
 ├── src/
-│   ├── content.config.ts          # Schema Zod: posts collection
+│   ├── content.config.ts          # Zod schema: posts collection
 │   ├── content/
-│   │   ├── posts/                 # 23 MDX posts publicados
-│   │   └── drafts/                # Rascunhos (.gitkeep)
-│   ├── components/                # 6 componentes Astro
-│   │   ├── PostCard.astro         # Card da timeline
-│   │   ├── FilterBar.astro        # Busca + filtro ano/projeto
-│   │   ├── DateSeparator.astro    # Divisor cronológico
-│   │   ├── PalettePicker.astro    # Seletor de 6 paletas + dark/light
-│   │   ├── ProjectIcon.astro      # Ícone + cor por projeto
-│   │   └── TerminalWidget.astro   # Terminal interativo (Sobre)
+│   │   ├── posts/                 # 80 bilingual posts (160 MDX: PT + en/)
+│   │   └── drafts/                # Drafts (.gitkeep)
+│   ├── components/                # 8 Astro components
+│   │   ├── PostCard.astro         # Timeline card
+│   │   ├── FilterBar.astro        # Search + year/project filter
+│   │   ├── DateSeparator.astro    # Chronological divider
+│   │   ├── PalettePicker.astro    # 6 palettes + dark/light selector
+│   │   ├── ProjectIcon.astro      # Icon + color per project
+│   │   ├── PostLayout.astro       # Shared post layout (cover, nav, related)
+│   │   ├── TagCloud.astro         # Tag navigation with counts
+│   │   └── TerminalWidget.astro   # Interactive terminal (About)
 │   ├── layouts/
-│   │   └── BaseLayout.astro       # SEO, navbar, fontes, temas
+│   │   └── BaseLayout.astro       # SEO, navbar, fonts, themes, PWA
 │   ├── pages/
-│   │   ├── index.astro            # Home — timeline grid + filtros
-│   │   ├── arquivo.astro          # Arquivo agrupado por ano
-│   │   ├── sobre.astro            # Sobre + TerminalWidget
-│   │   ├── post/[slug].astro      # Post individual
-│   │   └── rss.xml.ts             # Feed RSS
+│   │   ├── index.astro            # Home — timeline grid + filters
+│   │   ├── arquivo.astro          # Archive grouped by year
+│   │   ├── sobre.astro            # About + TerminalWidget
+│   │   ├── post/[slug].astro      # Individual post
+│   │   └── rss.xml.ts             # RSS feed + sitemap
 │   ├── lib/
-│   │   └── palettes.ts            # 6 paletas de cor
+│   │   └── palettes.ts            # 6 color palettes
 │   └── styles/
-│       ├── global.css             # Tailwind + globais
-│       └── themes.css             # Dark/Light + temas por projeto
+│       ├── global.css             # Tailwind + globals
+│       └── themes.css             # Dark/Light + per-project themes
 ├── public/
-│   ├── covers/                    # Capas AI (webp, 21:9)
-│   └── patterns/                  # SVGs temáticos por projeto
+│   ├── covers/                    # AI covers (webp, 21:9)
+│   └── patterns/                  # Themed SVGs per project
 ├── scripts/
-│   └── generate-cover.py          # Geração de capas via Cloudflare Worker
+│   ├── generate-cover.py          # AI cover generation (Cloudflare Worker)
+│   ├── check-lang-sync.py         # PT/EN sync checker
+│   ├── cleanup-post.sh            # Post cleanup
+│   └── ...                        # Capture/screenshot helpers
 ├── e2e/
 │   └── lifelog.spec.ts            # Playwright E2E tests
 ├── .github/workflows/
@@ -52,30 +59,30 @@ lifelog/
 
 ---
 
-## 🎨 Temas por Projeto
+## 🎨 Themes per Project
 
-Cada post herda tema visual do `project` no frontmatter:
+Each post inherits a visual theme from the `project` frontmatter field:
 
-| Projeto | Cor | Emoji | Estilo | Pattern |
-|---------|-----|-------|--------|---------|
-| Arachne | Roxo `#7c3aed` | 🕷️ | Cyberpunk hacker | Teia de aranha |
-| Dogwalk | Verde `#22c55e` | 🐶 | Nature/tech | Pegadas |
-| Portfólio | Ciano `#00d4ff` | 🚀 | Sci-fi nave | Grid/circuito |
-| Capivara | Âmbar `#f59e0b` | 🐷 | Tropical/tech | Ondas |
+| Project | Color | Emoji | Style | Pattern |
+|---------|-------|-------|-------|---------|
+| Arachne | Purple `#7c3aed` | 🕷️ | Cyberpunk hacker | Spider web |
+| Dogwalk | Green `#22c55e` | 🐶 | Nature/tech | Paw prints |
+| Portfólio | Cyan `#00d4ff` | 🚀 | Sci-fi ship | Grid/circuit |
+| Capivara | Amber `#f59e0b` | 🐷 | Tropical/tech | Waves |
 | TatuEngine | Teal `#14b8a6` | 🌊 | Wave/Physics | Wave field |
-| Estudos | Azul `#3b82f6` | 📚 | Caderno digital | Grid linhas |
-| Descobertas | Azul céu `#38bdf8` | 💡 | Descoberta | Bolhas de luz |
+| Estudos | Blue `#3b82f6` | 📚 | Digital notebook | Line grid |
+| Descobertas | Sky blue `#38bdf8` | 💡 | Discovery | Light bubbles |
 
 ### Frontmatter
 
 ```mdx
 ---
-title: "Título do Post"
-description: "Resumo..."
+title: "Post Title"
+description: "Summary..."
 date: 2026-07-06
-project: arachne        # Define o tema visual
+project: arachne        # Defines visual theme
 tags: [busca, fts5]
-cover: /covers/slug.webp # Capa AI (ou gradiente fallback)
+cover: /covers/slug.webp # AI cover (or gradient fallback)
 icon: 🕷️
 ---
 ```
@@ -84,61 +91,66 @@ icon: 🕷️
 
 ## 🚀 Deploy & CI/CD
 
-- **Plataforma:** Vercel (auto-deploy via GitHub)
+- **Platform:** Vercel (auto-deploy via GitHub)
 - **URL:** https://lifelog-sepia.vercel.app
-- **CI/CD:** GitHub Actions — push no main dispara:
-  1. Validação do projeto
+- **CI/CD:** GitHub Actions — push on main triggers:
+  1. Project validation
   2. `pnpm install` + cache
   3. Astro type check
   4. `pnpm build`
-  5. Preview server + E2E Playwright tests
-  6. Deploy Vercel production
-  7. Health check (homepage, sitemap, RSS, páginas, post)
-  8. Notificação Telegram (sucesso/falha)
+  5. Preview server + Playwright E2E tests
+  6. Vercel production deploy
+  7. Health check (homepage, sitemap, RSS, pages, post)
+  8. Telegram notification (success/failure)
 
 ---
 
-## 🧪 Testes
+## 🧪 Tests
 
 ```bash
 pnpm test              # Playwright E2E (headless)
-pnpm test:headed       # Playwright E2E (visível)
+pnpm test:headed       # Playwright E2E (visible)
 pnpm test:debug        # Playwright E2E (debug mode)
 ```
+
+**200 tests passing** (165 E2E + 35 Vitest) · 7 E2E specs · PT/EN sync checker in CI
 
 ---
 
 ## 📡 Scripts
 
 ```bash
-# Gerar capa AI para um post
+# Generate AI cover for a post
 python3 scripts/generate-cover.py <slug>
 
-# Gerar capas para todos os posts sem capa
+# Generate covers for all posts missing one
 python3 scripts/generate-cover.py --all
 
-# Listar posts sem capa
+# List posts without a cover
 python3 scripts/generate-cover.py --list-missing
+
+# Check PT/EN sync
+python3 scripts/check-lang-sync.py
 ```
 
 ---
 
-## 🔧 Comandos Úteis
+## 🔧 Useful Commands
 
 ```bash
-# Desenvolvimento
+# Development
 pnpm dev                # localhost:4321
 
 # Build
 pnpm build              # → dist/
-pnpm preview            # Preview local
+pnpm preview            # Local preview
 
-# Deploy manual
+# Manual deploy
 vercel deploy --prod --token $VERCEL_TOKEN
 ```
 
 ---
 
-## 📝 Licença
+## 📝 License
 
-Projeto pessoal — © 2026 Samuel Medeiros
+Personal project — © 2026 Samuel Medeiros
