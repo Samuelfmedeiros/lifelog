@@ -5,7 +5,6 @@ date: 2026-07-28 10:00:00 -03:00
 pubDate: 2026-07-28 22:00:00 -03:00
 project: portfolio
 tags: [audit, pix, focus-trap, cicd, vercel, quality]
-icon: "🚀"
 cover: /covers/portfolio-auditoria-faxina-julho-2026.webp
 featured: false
 lang: 'en'
@@ -22,11 +21,11 @@ It all started with a silent bug. The Pix donation button generated a BR Code, b
 After hours of debugging, I found the culprit: `String.fromCharCode`. I was using it to convert field *lengths* into characters — exactly what the EMV spec asks for, right? Wrong. `String.fromCharCode` produces **Unicode codepoints**, not decimal digits. A length of 14 became `\x0E` (shift out), not `"14"`.
 
 ```typescript
-// ❌ BEFORE — String.fromCharCode produces control codepoints
+//  BEFORE — String.fromCharCode produces control codepoints
 const keyField = `01${String.fromCharCode(key.length)}${key}`;
 const maiLen = String.fromCharCode(mai.length);
 
-// ✅ AFTER — decimal digits with padding, as EMV spec actually expects
+//  AFTER — decimal digits with padding, as EMV spec actually expects
 const keyLen = String(key.length).padStart(2, "0");
 const keyField = `01${keyLen}${key}`;
 const maiLen = String(mai.length).padStart(2, "0");
@@ -43,22 +42,22 @@ The CV download modal had a subtle problem: every time you typed in any field, f
 The root cause was in `useFocusTrap`. `onClose` was in the `useEffect` dependency array, and since it was an arrow function recreated every render, the effect would run cleanup (stealing focus back to the trigger) and setup (focusing the first element) on **every typed character**.
 
 ```typescript
-// ❌ BEFORE — onClose in deps recreates the effect on every render
+//  BEFORE — onClose in deps recreates the effect on every render
 useEffect(() => {
   // setup: focus first element
   // cleanup: steal focus back to trigger
   return () => { triggerRef.current?.focus(); };
 }, [active, onClose, containerRef]);
 
-// ✅ AFTER — ref avoids stale closure without recreating the effect
+//  AFTER — ref avoids stale closure without recreating the effect
 const onCloseRef = useRef(onClose);
 onCloseRef.current = onClose;
 
 useEffect(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onCloseRef.current();
-    }
+  if (e.key === "Escape") {
+  onCloseRef.current();
+  }
   };
   // ...
 }, [active, containerRef]); // onClose intentionally removed
@@ -77,7 +76,7 @@ On July 21st, I sat down for a quality audit. The result was a list of 10 issues
 5. **ContactForm**: clipboard with `execCommand` fallback for HTTPS. Rate limit with visible countdown.
 6. **AppWrapper**: dead code — only rendered `children`. Removed.
 7. **Layout**: placeholder verification tags removed.
-8. **Navbar**: empty games icon → 🎮.
+8. **Navbar**: empty games icon → .
 9. **Loading skeleton**: improved visual consistency.
 10. **Pix**: the bug that started it all.
 
@@ -106,9 +105,9 @@ July was the month of "done is better than perfect, but done requires maintenanc
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projets/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
-    { cmd: 'npm test', output: 'Tests: 218 PASS, 0 FAIL' },
-    { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'The hook that taught useRef + useEffect' },
-    { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'July in 10 commits — pure spring cleaning' },
+  { cmd: 'cd ~/projets/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
+  { cmd: 'npm test', output: 'Tests: 218 PASS, 0 FAIL' },
+  { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'The hook that taught useRef + useEffect' },
+  { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'July in 10 commits — pure spring cleaning' },
   ]}
 />

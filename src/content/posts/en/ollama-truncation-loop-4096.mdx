@@ -6,14 +6,13 @@ pubDate: 2026-07-28 10:30:00 -03:00
 lang: 'en'
 project: estudos
 tags: [ollama, llm, debugging, context-length, wsl]
-icon: "📚"
 cover: /covers/ollama-truncation-loop-4096.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ Hermes Gave Up 4 Times in a Row
+##  Hermes Gave Up 4 Times in a Row
 
 I had just set up Ollama as the local fallback for Hermes. Model qwen3.5:4b — supports 262,144 context tokens natively. More than enough for the ~4K token system prompt.
 
@@ -21,7 +20,7 @@ But Hermes kept looping. Every response was "incomplete," it tried continuation,
 
 Debug mode on. What was happening?
 
-## 🧠 The Problem: Two Different Context Numbers
+##  The Problem: Two Different Context Numbers
 
 Ollama has **two** `num_ctx` values:
 
@@ -38,7 +37,7 @@ ollama[...]: slot print_timing: eval time = 0.00 ms / 1 tokens  ← ONLY 1 TOKEN
 
 The 49,379 token prompt (Hermes system prompt + history) was truncated to 4,095. The model received a meaningless fragment. Generated 1 token. Hermes saw an incomplete response and tried continuation. The new prompt was also truncated. Infinite loop.
 
-## 🔧 The Struggle — Finding the Needle
+##  The Struggle — Finding the Needle
 
 ### Attempt 1: Read Ollama's stdout
 
@@ -87,7 +86,7 @@ Environment="OLLAMA_CONTEXT_LENGTH=65536"
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-## 💡 Resolution
+##  Resolution
 
 Two things I learned (and documented in the `wsl-llm-local-ops` skill):
 
@@ -96,7 +95,7 @@ Two things I learned (and documented in the `wsl-llm-local-ops` skill):
 
 After the fix: complete responses, zero continuation loops, ~30 tokens/second generation.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Before (4K) | After (64K) |
 |--------|------------|-------------|
@@ -106,7 +105,7 @@ After the fix: complete responses, zero continuation loops, ~30 tokens/second ge
 | RAM usage | ~2 GB | ~4 GB |
 | Generation speed | 0.04 tok/s (1 token) | ~30 tok/s |
 
-## 🎯 Lessons Learned
+##  Lessons Learned
 
 - **`ollama show` shows what the model supports, not what the slot allocates** — two completely different numbers.
 - **Always test via direct API** (`/api/generate`) when something seems wrong. Ollama's CLI hides the warnings.

@@ -5,18 +5,17 @@ date: 2026-08-06 12:00:00 -03:00
 pubDate: 2026-08-09 12:00:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "agent", "punishment", "goal-hamiltonian", "self-improvement"]
-icon: "🦔"
 cover: /covers/tatuengine-a-punicao-semantica-que-ensinou-o-agente-a-se-comportar.webp
 featured: false
 ---
 
-## ⚡ The agent that needed limits
+##  The agent that needed limits
 
 TatuEngine has an autopoietic agent — with LTM, ToolUse, GoalStack, SafetyGuard and GoalHamiltonian. It's designed to learn, act and evolve on its own. But there's a problem: **an agent that is only rewarded for what it does right never learns how much a mistake costs.**
 
 Versions 1 and 2 of the punishment were rudimentary. v3 changed the game: **progressive fines for repeat offenses**.
 
-## 🧠 The context: punishing like an immune system
+##  The context: punishing like an immune system
 
 The v3 idea is simple and powerful: if the agent makes one mistake, the fine is small. If it makes another, the fine **multiplies**. If it persists, the agent temporarily loses the ability to use tools — and receives a **reprimand** in its output.
 
@@ -27,7 +26,7 @@ The v3 idea is simple and powerful: if the agent makes one mistake, the fine is 
 
 This is like an immune system: the first exposure triggers a light response, but the system **remembers** and responds stronger to each recurrence. The agent isn't just punished — it learns that behavior has **growing cost**.
 
-## 🔧 The struggle: the 3 versions
+##  The struggle: the 3 versions
 
 **v1 — fixed punishment.** Every mistake cost the same. The agent had no incentive not to repeat — the fine was predictable and "tolerable".
 
@@ -44,7 +43,7 @@ This is like an immune system: the first exposure triggers a light response, but
 
 The best part: state is **queryable** — punishment metrics exposed in Python bindings. The system can be observed and tuned.
 
-## 💡 The resolution: punishment that educates
+##  The resolution: punishment that educates
 
 The result is an agent that:
 1. **Makes few mistakes** — the growing fine makes errors increasingly expensive
@@ -54,7 +53,7 @@ The result is an agent that:
 
 v3 was validated with **27 test occurrences** in the punishment module — the system has real coverage.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -63,7 +62,7 @@ v3 was validated with **27 test occurrences** in the punishment module — the s
 | Fine formula | `fine_amplitude = base × fine_mult^fine_count` |
 | GoalHamiltonian tests | 27 punishment/denied occurrences |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **Progressive punishment > fixed punishment** — the agent tolerates a predictable cost. What changes behavior is the **growing cost** of recurrence.
 2. **Temporary punishment educates, permanent punishment mutilates** — tool denial for N tokens forces reflection without breaking the agent.

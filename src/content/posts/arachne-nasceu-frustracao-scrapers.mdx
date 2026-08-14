@@ -5,7 +5,6 @@ date: 2026-06-03
 pubDate: 2026-07-12 00:00:00 -03:00
 project: arachne
 tags: ["arachne", "scraping", "crawl4ai", "comeco", "frustracao"]
-icon: 🕷️
 cover: /covers/arachne-nasceu-frustracao-scrapers.webp
 featured: false
 ---
@@ -45,12 +44,12 @@ O plano era simples em teoria, complexo na prática:
 ```python
 # A primeira versão do extrator (simplificada)
 async def extrair(url: str) -> str | None:
-    try:
-        resultado = await crawl4ai.extract(url)
-        return resultado.markdown
-    except Exception:
-        # Fallback pra Trafilatura se Crawl4AI falhar
-        return await trafilatura.extract(url)
+  try:
+  resultado = await crawl4ai.extract(url)
+  return resultado.markdown
+  except Exception:
+  # Fallback pra Trafilatura se Crawl4AI falhar
+  return await trafilatura.extract(url)
 ```
 
 Essa lógica de fallback, que hoje é automática e tem 4 camadas, começou exatamente assim: um try/except simples.
@@ -61,53 +60,53 @@ Uma das primeiras coisas que fiz foi mapear cada engine de extração disponíve
 
 | Engine | Velocidade | Suporte JS | Anti-bot | Precisão do Markdown | Ideal para |
 |--------|-----------|-----------|----------|---------------------|------------|
-| Trafilatura | ⚡⚡⚡⚡⚡ (1.5s) | ❌ | ❌ | Alta (~92%) | Artigos, blogs, documentação técnica |
-| Crawl4AI | ⚡⚡⚡ (2.5s) | ✅ Parcial | ⚠️ Básico | Alta (~95%) | Páginas estáticas, docs, e-commerce |
-| Playwright | ⚡⚡ (4-8s) | ✅ Completo | ✅ Médio | Média (~85%) | SPAs, React pesado, sites com lazy load |
-| raw HTTP + readability | ⚡⚡⚡⚡ (1s) | ❌ | ❌ | Média (~80%) | APIs REST, JSON, RSS feeds |
-| Browser com evasão | ⚡ (8-15s) | ✅ Completo | ✅✅ Máximo | Alta (~90%) | Cloudflare, CAPTCHA, WAF blockers |
+| Trafilatura |  (1.5s) |  |  | Alta (~92%) | Artigos, blogs, documentação técnica |
+| Crawl4AI |  (2.5s) |  Parcial |  Básico | Alta (~95%) | Páginas estáticas, docs, e-commerce |
+| Playwright |  (4-8s) |  Completo |  Médio | Média (~85%) | SPAs, React pesado, sites com lazy load |
+| raw HTTP + readability |  (1s) |  |  | Média (~80%) | APIs REST, JSON, RSS feeds |
+| Browser com evasão |  (8-15s) |  Completo |  Máximo | Alta (~90%) | Cloudflare, CAPTCHA, WAF blockers |
 
 A grande sacada foi **não competir** entre as engines — cada uma tem um nicho. O problema real era rotear inteligentemente.
 
 ```python
 # O roteador de engines — versão que foi pra produção
 class EngineRouter:
-    def __init__(self):
-        self.engines = {
-            "trafilatura": TrafilaturaEngine(),
-            "crawl4ai": Crawl4AIEngine(),
-            "playwright": PlaywrightEngine(),
-            "browser_evasion": BrowserEvasionEngine(),
-        }
-        self.cache = CacheEngine()
+  def __init__(self):
+  self.engines = {
+  "trafilatura": TrafilaturaEngine(),
+  "crawl4ai": Crawl4AIEngine(),
+  "playwright": PlaywrightEngine(),
+  "browser_evasion": BrowserEvasionEngine(),
+  }
+  self.cache = CacheEngine()
 
-    async def extract(self, url: str, force: bool = False) -> ExtractionResult:
-        # 1. Cache check primeiro — sempre
-        if not force:
-            cached = await self.cache.get(url)
-            if cached:
-                return cached
+  async def extract(self, url: str, force: bool = False) -> ExtractionResult:
+  # 1. Cache check primeiro — sempre
+  if not force:
+  cached = await self.cache.get(url)
+  if cached:
+  return cached
 
-        # 2. Try Crawl4AI (best effort, melhor markdown)
-        try:
-            return await self.engines["crawl4ai"].extract(url)
-        except (ConnectionError, TimeoutError):
-            pass
+  # 2. Try Crawl4AI (best effort, melhor markdown)
+  try:
+  return await self.engines["crawl4ai"].extract(url)
+  except (ConnectionError, TimeoutError):
+  pass
 
-        # 3. Fallback pra Trafilatura (leve, sem JS)
-        try:
-            return await self.engines["trafilatura"].extract(url)
-        except Exception:
-            pass
+  # 3. Fallback pra Trafilatura (leve, sem JS)
+  try:
+  return await self.engines["trafilatura"].extract(url)
+  except Exception:
+  pass
 
-        # 4. Playwright se precisar de JS
-        try:
-            return await self.engines["playwright"].extract(url)
-        except (TimeoutError, CloudflareBlock):
-            pass
+  # 4. Playwright se precisar de JS
+  try:
+  return await self.engines["playwright"].extract(url)
+  except (TimeoutError, CloudflareBlock):
+  pass
 
-        # 5. Browser com evasão como último recurso
-        return await self.engines["browser_evasion"].extract(url)
+  # 5. Browser com evasão como último recurso
+  return await self.engines["browser_evasion"].extract(url)
 ```
 
 Cada chamada de fallback custa tempo, mas é melhor que retornar vazio. A progressão natural (leve → pesado) garante que 80% das páginas são resolvidas na primeira ou segunda tentativa.
@@ -124,98 +123,98 @@ import hashlib
 from datetime import datetime, timedelta
 
 class CacheEngine:
-    def __init__(self, db_path: str = "cache/arachne_cache.db"):
-        self.conn = sqlite3.connect(db_path)
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS cache (
-                url_hash TEXT PRIMARY KEY,
-                url TEXT NOT NULL,
-                engine TEXT NOT NULL,
-                result TEXT NOT NULL,
-                content_type TEXT,
-                status_code INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                ttl_hours INTEGER DEFAULT 24
-            )
-        """)
-        self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_cache_url
-            ON cache(url)
-        """)
-        self.conn.commit()
+  def __init__(self, db_path: str = "cache/arachne_cache.db"):
+  self.conn = sqlite3.connect(db_path)
+  self.conn.execute("""
+  CREATE TABLE IF NOT EXISTS cache (
+  url_hash TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  engine TEXT NOT NULL,
+  result TEXT NOT NULL,
+  content_type TEXT,
+  status_code INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ttl_hours INTEGER DEFAULT 24
+  )
+  """)
+  self.conn.execute("""
+  CREATE INDEX IF NOT EXISTS idx_cache_url
+  ON cache(url)
+  """)
+  self.conn.commit()
 
-    def _hash(self, url: str) -> str:
-        return hashlib.sha256(url.encode()).hexdigest()[:16]
+  def _hash(self, url: str) -> str:
+  return hashlib.sha256(url.encode()).hexdigest()[:16]
 
-    async def get(self, url: str) -> ExtractionResult | None:
-        url_hash = self._hash(url)
-        row = self.conn.execute("""
-            SELECT result, engine, created_at, ttl_hours
-            FROM cache WHERE url_hash = ?
-        """, (url_hash,)).fetchone()
+  async def get(self, url: str) -> ExtractionResult | None:
+  url_hash = self._hash(url)
+  row = self.conn.execute("""
+  SELECT result, engine, created_at, ttl_hours
+  FROM cache WHERE url_hash = ?
+  """, (url_hash,)).fetchone()
 
-        if not row:
-            return None
+  if not row:
+  return None
 
-        result_json, engine, created_at, ttl = row
-        created = datetime.fromisoformat(created_at)
-        if datetime.now() - created > timedelta(hours=ttl):
-            self.conn.execute("DELETE FROM cache WHERE url_hash = ?", (url_hash,))
-            self.conn.commit()
-            return None
+  result_json, engine, created_at, ttl = row
+  created = datetime.fromisoformat(created_at)
+  if datetime.now() - created > timedelta(hours=ttl):
+  self.conn.execute("DELETE FROM cache WHERE url_hash = ?", (url_hash,))
+  self.conn.commit()
+  return None
 
-        # Atualiza accessed_at
-        self.conn.execute("""
-            UPDATE cache SET accessed_at = CURRENT_TIMESTAMP
-            WHERE url_hash = ?
-        """, (url_hash,))
-        self.conn.commit()
+  # Atualiza accessed_at
+  self.conn.execute("""
+  UPDATE cache SET accessed_at = CURRENT_TIMESTAMP
+  WHERE url_hash = ?
+  """, (url_hash,))
+  self.conn.commit()
 
-        return ExtractionResult(
-            url=url,
-            markdown=json.loads(result_json),
-            engine=engine,
-            cached=True
-        )
+  return ExtractionResult(
+  url=url,
+  markdown=json.loads(result_json),
+  engine=engine,
+  cached=True
+  )
 
-    async def set(
-        self,
-        url: str,
-        result: str,
-        engine: str,
-        ttl_hours: int = 24
-    ) -> None:
-        url_hash = self._hash(url)
-        self.conn.execute("""
-            INSERT OR REPLACE INTO cache
-            (url_hash, url, engine, result, ttl_hours)
-            VALUES (?, ?, ?, ?, ?)
-        """, (url_hash, url, engine, json.dumps(result), ttl_hours))
-        self.conn.commit()
+  async def set(
+  self,
+  url: str,
+  result: str,
+  engine: str,
+  ttl_hours: int = 24
+  ) -> None:
+  url_hash = self._hash(url)
+  self.conn.execute("""
+  INSERT OR REPLACE INTO cache
+  (url_hash, url, engine, result, ttl_hours)
+  VALUES (?, ?, ?, ?, ?)
+  """, (url_hash, url, engine, json.dumps(result), ttl_hours))
+  self.conn.commit()
 
-    async def stats(self) -> dict:
-        stats = self.conn.execute("""
-            SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN engine = 'crawl4ai' THEN 1 ELSE 0 END) as crawl4ai,
-                SUM(CASE WHEN engine = 'trafilatura' THEN 1 ELSE 0 END) as trafilatura,
-                SUM(CASE WHEN engine = 'playwright' THEN 1 ELSE 0 END) as playwright,
-                SUM(CASE WHEN engine = 'browser_evasion' THEN 1 ELSE 0 END) as evasion,
-                AVG(ttl_hours) as avg_ttl
-            FROM cache
-        """).fetchone()
+  async def stats(self) -> dict:
+  stats = self.conn.execute("""
+  SELECT
+  COUNT(*) as total,
+  SUM(CASE WHEN engine = 'crawl4ai' THEN 1 ELSE 0 END) as crawl4ai,
+  SUM(CASE WHEN engine = 'trafilatura' THEN 1 ELSE 0 END) as trafilatura,
+  SUM(CASE WHEN engine = 'playwright' THEN 1 ELSE 0 END) as playwright,
+  SUM(CASE WHEN engine = 'browser_evasion' THEN 1 ELSE 0 END) as evasion,
+  AVG(ttl_hours) as avg_ttl
+  FROM cache
+  """).fetchone()
 
-        return {
-            "total_entries": stats[0],
-            "by_engine": {
-                "crawl4ai": stats[1] or 0,
-                "trafilatura": stats[2] or 0,
-                "playwright": stats[3] or 0,
-                "browser_evasion": stats[4] or 0,
-            },
-            "avg_ttl_hours": round(stats[5] or 0, 1),
-        }
+  return {
+  "total_entries": stats[0],
+  "by_engine": {
+  "crawl4ai": stats[1] or 0,
+  "trafilatura": stats[2] or 0,
+  "playwright": stats[3] or 0,
+  "browser_evasion": stats[4] or 0,
+  },
+  "avg_ttl_hours": round(stats[5] or 0, 1),
+  }
 ```
 
 O cache usa hash SHA256 truncado pra 16 caracteres como chave — colisão é virtualmente impossível pro volume que a gente processa. O TTL de 24 horas evita que páginas dinâmicas fiquem obsoletas, mas ainda assim economiza requisições repetidas no mesmo dia.
@@ -230,53 +229,53 @@ A arquitetura de fallback em 4 camadas não foi planejada — emergiu dos fracas
 | 2 | Trafilatura | ~1.5s | Crawl4AI crasha/timeout |
 | 3 | Playwright | ~5s | JS necessário, SPA |
 | 4 | Browser Evasion | ~10s | Cloudflare, CAPTCHA, WAF |
-| 🔁 | Cache | ~0.01s | Já extraiu hoje? Devolve na hora |
+|  | Cache | ~0.01s | Já extraiu hoje? Devolve na hora |
 
 ```python
 # Async pipeline com retry exponencial e fallback automático
 async def pipeline_extracao(
-    url: str,
-    max_tentativas: int = 3
+  url: str,
+  max_tentativas: int = 3
 ) -> ExtractionResult | None:
-    """
-    Pipeline completo de extração com 4 camadas de fallback.
-    Cada camada tem até max_tentativas com backoff exponencial.
-    """
-    engines_chain = [
-        ("crawl4ai", Crawl4AIEngine()),
-        ("trafilatura", TrafilaturaEngine()),
-        ("playwright", PlaywrightEngine()),
-        ("browser_evasion", BrowserEvasionEngine()),
-    ]
+  """
+  Pipeline completo de extração com 4 camadas de fallback.
+  Cada camada tem até max_tentativas com backoff exponencial.
+  """
+  engines_chain = [
+  ("crawl4ai", Crawl4AIEngine()),
+  ("trafilatura", TrafilaturaEngine()),
+  ("playwright", PlaywrightEngine()),
+  ("browser_evasion", BrowserEvasionEngine()),
+  ]
 
-    for engine_name, engine_instance in engines_chain:
-        for tentativa in range(max_tentativas):
-            try:
-                resultado = await engine_instance.extract(url)
-                if resultado and resultado.markdown:
-                    logger.info(
-                        "%s extraiu %s em %.2fs (tentativa %d)",
-                        engine_name, url, resultado.tempo, tentativa + 1
-                    )
-                    return resultado
-            except CloudflareBlock:
-                logger.warning("%s bloqueado por Cloudflare: %s", engine_name, url)
-                break  # Não adianta tentar de novo — pula pra próxima engine
-            except TimeoutError:
-                backoff = 2 ** tentativa
-                logger.warning(
-                    "%s timeout em %s — backoff %ds",
-                    engine_name, url, backoff
-                )
-                await asyncio.sleep(backoff)
-            except Exception as exc:
-                logger.error(
-                    "%s quebrou em %s: %s", engine_name, url, exc
-                )
-                break  # Erro não recuperável — próxima engine
+  for engine_name, engine_instance in engines_chain:
+  for tentativa in range(max_tentativas):
+  try:
+  resultado = await engine_instance.extract(url)
+  if resultado and resultado.markdown:
+  logger.info(
+  "%s extraiu %s em %.2fs (tentativa %d)",
+  engine_name, url, resultado.tempo, tentativa + 1
+  )
+  return resultado
+  except CloudflareBlock:
+  logger.warning("%s bloqueado por Cloudflare: %s", engine_name, url)
+  break  # Não adianta tentar de novo — pula pra próxima engine
+  except TimeoutError:
+  backoff = 2 ** tentativa
+  logger.warning(
+  "%s timeout em %s — backoff %ds",
+  engine_name, url, backoff
+  )
+  await asyncio.sleep(backoff)
+  except Exception as exc:
+  logger.error(
+  "%s quebrou em %s: %s", engine_name, url, exc
+  )
+  break  # Erro não recuperável — próxima engine
 
-    logger.error("TODAS as engines falharam para %s", url)
-    return None
+  logger.error("TODAS as engines falharam para %s", url)
+  return None
 ```
 
 O que parece código simples resolveu 90% dos problemas de extração. A chave está no `break` do CloudflareBlock — não adianta insistir numa engine que o anti-bot já detectou. Melhor pular direto pro Playwright com evasão.
@@ -301,12 +300,12 @@ Fiz questão de usar `asyncio` desde o começo. Scraping é I/O-bound por nature
 ```python
 # O Arachne processa N URLs em paralelo com asyncio.gather
 async def extrair_lote(urls: list[str]) -> list[ExtractionResult]:
-    tarefas = [pipeline_extracao(url) for url in urls]
-    resultados = await asyncio.gather(*tarefas, return_exceptions=True)
-    return [
-        r for r in resultados
-        if isinstance(r, ExtractionResult)
-    ]
+  tarefas = [pipeline_extracao(url) for url in urls]
+  resultados = await asyncio.gather(*tarefas, return_exceptions=True)
+  return [
+  r for r in resultados
+  if isinstance(r, ExtractionResult)
+  ]
 ```
 
 ### 3. Engine como plugin, não acoplamento
@@ -315,19 +314,19 @@ Cada engine implementa uma interface comum. Isso permite adicionar (ou remover) 
 
 ```python
 class BaseEngine(ABC):
-    @abstractmethod
-    async def extract(self, url: str) -> ExtractionResult:
-        pass
+  @abstractmethod
+  async def extract(self, url: str) -> ExtractionResult:
+  pass
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        pass
+  @property
+  @abstractmethod
+  def name(self) -> str:
+  pass
 
-    @property
-    @abstractmethod
-    def supported_content_types(self) -> list[str]:
-        pass
+  @property
+  @abstractmethod
+  def supported_content_types(self) -> list[str]:
+  pass
 ```
 
 Hoje o Arachne tem 9 engines registradas, de Trafilatura a PDF Vision. Tudo porque a interface foi desenhada pra ser extensível desde o início.
@@ -372,9 +371,9 @@ A frustração de junho se transformou no que hoje é uma plataforma com pipelin
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/arachne && python -m arachne.cli extract https://exemplo.com', output: 'Extrai URL com roteamento automático de engine' },
-    { cmd: 'python -m arachne.cli cache-stats', output: 'Cache: 4237 entries, 44.6% hit rate, ~94min saved' },
-    { cmd: 'python -m arachne.cli batch urls.txt --parallel 10', output: 'Extrai lote de 50 URLs em paralelo (12.4s total)' },
-    { cmd: 'sqlite3 cache/arachne_cache.db "SELECT engine, COUNT(*) FROM cache GROUP BY engine"', output: 'crawl4ai|3451\\ntrafilatura|512\\nplaywright|246\\nbrowser_evasion|28' },
+  { cmd: 'cd ~/projetos/arachne && python -m arachne.cli extract https://exemplo.com', output: 'Extrai URL com roteamento automático de engine' },
+  { cmd: 'python -m arachne.cli cache-stats', output: 'Cache: 4237 entries, 44.6% hit rate, ~94min saved' },
+  { cmd: 'python -m arachne.cli batch urls.txt --parallel 10', output: 'Extrai lote de 50 URLs em paralelo (12.4s total)' },
+  { cmd: 'sqlite3 cache/arachne_cache.db "SELECT engine, COUNT(*) FROM cache GROUP BY engine"', output: 'crawl4ai|3451\\ntrafilatura|512\\nplaywright|246\\nbrowser_evasion|28' },
   ]}
 />

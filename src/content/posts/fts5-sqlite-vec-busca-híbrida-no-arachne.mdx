@@ -6,7 +6,6 @@ pubDate: 2026-07-15 00:00:00 -03:00
 project: arachne
 tags: ["arachne", "fts5", "sqlite-vec", "busca", "hibrida"]
 
-icon: 🕷️
 cover: /covers/fts5-sqlite-vec-busca-híbrida-no-arachne.webp
 featured: true
 ---
@@ -25,12 +24,12 @@ SQLite FTS5 é fenomenal pra busca textual. Com `porter unicode61` como tokenize
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index_fts USING fts5(
-    title,
-    text_content,
-    description,
-    content='search_index',
-    content_rowid='id',
-    tokenize='porter unicode61'
+  title,
+  text_content,
+  description,
+  content='search_index',
+  content_rowid='id',
+  tokenize='porter unicode61'
 );
 ```
 
@@ -39,8 +38,8 @@ A tabela virtual espelha a tabela real `search_index` usando o recurso de *exter
 ```sql
 CREATE TRIGGER search_index_fts_insert AFTER INSERT ON search_index
 BEGIN
-    INSERT INTO search_index_fts(rowid, title, text_content, description)
-    VALUES (new.id, new.title, new.text_content, new.description);
+  INSERT INTO search_index_fts(rowid, title, text_content, description)
+  VALUES (new.id, new.title, new.text_content, new.description);
 END;
 ```
 
@@ -52,8 +51,8 @@ sqlite-vec é uma extensão do SQLite que adiciona busca vetorial. O Arachne usa
 
 ```python
 class SearchIndex(SQLModel, table=True):
-    # ...
-    embedding: Optional[bytes] = Field(default=None)  # 384 floats, all-MiniLM-L6-v2
+  # ...
+  embedding: Optional[bytes] = Field(default=None)  # 384 floats, all-MiniLM-L6-v2
 ```
 
 A busca semântica transforma a query do usuário no mesmo embedding e compara com coseno/similaridade no banco. O resultado: "como contornar Cloudflare" encontra páginas sobre "bypass de WAF" mesmo sem termos em comum.
@@ -66,28 +65,28 @@ A solução clássica é RRF: ignorar os scores absolutos e trabalhar com **posi
 
 ```python
 def search_hybrid(self, query_text, query_vector, kb_id,
-                  top_k=10, min_score=0.3):
-    # 1. Busca FTS5 (keyword)
-    fts_results = _fts_search(kb_id, query_text, limit=top_k * 2)
+  top_k=10, min_score=0.3):
+  # 1. Busca FTS5 (keyword)
+  fts_results = _fts_search(kb_id, query_text, limit=top_k * 2)
 
-    # 2. Busca vetorial (semântica)
-    vec_results = self.search(query_vector, kb_id, top_k=top_k * 2,
-                              min_score=min_score)
+  # 2. Busca vetorial (semântica)
+  vec_results = self.search(query_vector, kb_id, top_k=top_k * 2,
+  min_score=min_score)
 
-    # 3. RRF fusion
-    K_RRF = 60
-    scores = {}
-    for rank, r in enumerate(fts_results):
-        key = (r["doc_id"], r["chunk_index"])
-        scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
+  # 3. RRF fusion
+  K_RRF = 60
+  scores = {}
+  for rank, r in enumerate(fts_results):
+  key = (r["doc_id"], r["chunk_index"])
+  scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
 
-    for rank, r in enumerate(vec_results):
-        key = (r["doc_id"], r["chunk_index"])
-        scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
+  for rank, r in enumerate(vec_results):
+  key = (r["doc_id"], r["chunk_index"])
+  scores[key] = scores.get(key, 0.0) + 1.0 / (K_RRF + rank)
 
-    # Ordena por score RRF
-    merged.sort(key=lambda r: r["score"], reverse=True)
-    return merged[:top_k]
+  # Ordena por score RRF
+  merged.sort(key=lambda r: r["score"], reverse=True)
+  return merged[:top_k]
 ```
 
 Cada resultado ganha `1 / (K + posição)` de cada ranking. K=60 é o valor padrão da literatura (Cormack et al.) — suaviza a diferença entre os primeiros colocados. Um resultado que aparece em 5º no FTS5 e 10º no vetorial ganha `1/65 + 1/70` = ~0.029, enquanto um que aparece apenas em 30º no vetorial ganha só `1/90` = ~0.011.
@@ -100,12 +99,12 @@ Depois da fusão RRF, o Arachne ainda passa os top-K resultados por um **cross-e
 
 ```python
 def semantic_search(query, kb_id, top_k=10, hybrid=True, use_reranker=True):
-    results = vector_store.search_hybrid(query, query_vector, kb_id, top_k=top_k)
+  results = vector_store.search_hybrid(query, query_vector, kb_id, top_k=top_k)
 
-    if use_reranker and len(results) >= 2:
-        results = rerank(query, results, top_k=top_k)
+  if use_reranker and len(results) >= 2:
+  results = rerank(query, results, top_k=top_k)
 
-    return results
+  return results
 ```
 
 O reranker é **caro** (O(n·m) onde n = resultados, m = tokens do documento), então ele só roda nos top-K da busca híbrida (~20 itens), não no corpus inteiro. O ganho de precisão é notável — em testes, o MRR (Mean Reciprocal Rank) subiu de 0.72 pra 0.89 com reranker.
@@ -113,36 +112,36 @@ O reranker é **caro** (O(n·m) onde n = resultados, m = tokens do documento), e
 ## Arquitetura final
 
 ```
-┌─────────────┐    ┌──────────────────┐
-│  Query      │───→│  Embedding       │
-│  "bypass    │    │  (all-MiniLM)    │
-│  Cloudflare"│    └────────┬─────────┘
-└─────────────┘             │
-         │                  ▼
-         │          ┌──────────────────┐
-         │          │  Vector Search   │
-         │          │  (sqlite-vec)    │
-         │          └────────┬─────────┘
-         ▼                   │
-  ┌─────────────┐            │
-  │  FTS5       │            │
-  │  Keyword    │            │
-  │  Search     │            │
-  └────────┬────┘            │
-           │                 │
-           ▼                 ▼
-      ┌──────────────────────────┐
-      │    RRF Fusion (K=60)     │
-      └────────────┬─────────────┘
-                   ▼
-      ┌──────────────────────────┐
-      │  Cross-encoder Reranker  │
-      └────────────┬─────────────┘
-                   ▼
-      ┌──────────────────────────┐
-      │    Resultado final       │
-      │  (ranked, relevante)     │
-      └──────────────────────────┘
+┌─────────────┐  ┌──────────────────┐
+│  Query  │───→│  Embedding  │
+│  "bypass  │  │  (all-MiniLM)  │
+│  Cloudflare"│  └────────┬─────────┘
+└─────────────┘  │
+  │  ▼
+  │  ┌──────────────────┐
+  │  │  Vector Search  │
+  │  │  (sqlite-vec)  │
+  │  └────────┬─────────┘
+  ▼  │
+  ┌─────────────┐  │
+  │  FTS5  │  │
+  │  Keyword  │  │
+  │  Search  │  │
+  └────────┬────┘  │
+  │  │
+  ▼  ▼
+  ┌──────────────────────────┐
+  │  RRF Fusion (K=60)  │
+  └────────────┬─────────────┘
+  ▼
+  ┌──────────────────────────┐
+  │  Cross-encoder Reranker  │
+  └────────────┬─────────────┘
+  ▼
+  ┌──────────────────────────┐
+  │  Resultado final  │
+  │  (ranked, relevante)  │
+  └──────────────────────────┘
 ```
 
 ## Aprendizados
@@ -158,14 +157,14 @@ A busca híbrida tem testes dedicados que uso pra validar alterações:
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Arachne', output: '' },
-    { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore::test_search_hybrid_fallback -v --tb=short', output: '1 passed in 7.25s' },
-    { cmd: '# Rodar todos os testes do VectorStore (incluindo cosine, embeddings, hybrid)', output: '' },
-    { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore -v --tb=short', output: '16 passed in 12.34s' },
-    { cmd: '# Verificar dimensão do embedding (384 all-MiniLM-L6-v2)', output: '' },
-    { cmd: 'cd ~/projetos/Arachne && python3 -m pytest tests/test_rag.py -k "embedding" -v --tb=short 2>&1 | tail -5', output: '3 passed in 8.45s' },
-    { cmd: '# Verificar a documentação da arquitetura', output: '' },
-    { cmd: 'grep -n "sqlite-vec\\|FTS5\\|hybrid\\|RRF" ARCHITECTURE.md | head -10', output: "3:> **Versão:** 4.9.0 · **Stack:** FastAPI + SQLModel + SQLite (sqlite-vec/FTS5) · Ollama/CUDA\n58:| **Vetorial** | sqlite-vec 0.1+ | Embeddings e busca semântica |\n114:rag_chunks              → Chunks com embeddings (sqlite-vec)" },
+  { cmd: 'cd ~/projetos/Arachne', output: '' },
+  { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore::test_search_hybrid_fallback -v --tb=short', output: '1 passed in 7.25s' },
+  { cmd: '# Rodar todos os testes do VectorStore (incluindo cosine, embeddings, hybrid)', output: '' },
+  { cmd: 'python3 -m pytest tests/test_rag.py::TestVectorStore -v --tb=short', output: '16 passed in 12.34s' },
+  { cmd: '# Verificar dimensão do embedding (384 all-MiniLM-L6-v2)', output: '' },
+  { cmd: 'cd ~/projetos/Arachne && python3 -m pytest tests/test_rag.py -k "embedding" -v --tb=short 2>&1 | tail -5', output: '3 passed in 8.45s' },
+  { cmd: '# Verificar a documentação da arquitetura', output: '' },
+  { cmd: 'grep -n "sqlite-vec\\|FTS5\\|hybrid\\|RRF" ARCHITECTURE.md | head -10', output: "3:> **Versão:** 4.9.0 · **Stack:** FastAPI + SQLModel + SQLite (sqlite-vec/FTS5) · Ollama/CUDA\n58:| **Vetorial** | sqlite-vec 0.1+ | Embeddings e busca semântica |\n114:rag_chunks  → Chunks com embeddings (sqlite-vec)" },
   ]}
 />
 

@@ -24,7 +24,7 @@ export interface Palette {
 
 export const PALETTES: Palette[] = [
   {
-    id: "purple",   name: "Roxo",     icon: "🟣",
+    id: "purple",   name: "Roxo",     icon: "#a78bfa",
     accentDark: "#a78bfa",  accentLight: "#7c3aed",
     borderDark: "rgba(167, 139, 250, 0.25)",  borderLight: "rgba(124, 58, 237, 0.2)",
     glowDark: "0 0 30px rgba(167, 139, 250, 0.15)", glowLight: "0 4px 24px rgba(124, 58, 237, 0.12)",
@@ -35,7 +35,7 @@ export const PALETTES: Palette[] = [
     cardShadowDark: "0 8px 32px rgba(167, 139, 250, 0.06)", cardShadowLight: "0 4px 16px rgba(124, 58, 237, 0.06)",
   },
   {
-    id: "cyan",     name: "Ciano",    icon: "🩵",
+    id: "cyan",     name: "Ciano",    icon: "#22d3ee",
     accentDark: "#22d3ee",  accentLight: "#0891b2",
     borderDark: "rgba(34, 211, 238, 0.25)",  borderLight: "rgba(8, 145, 178, 0.2)",
     glowDark: "0 0 30px rgba(34, 211, 238, 0.15)", glowLight: "0 4px 24px rgba(8, 145, 178, 0.12)",
@@ -46,7 +46,7 @@ export const PALETTES: Palette[] = [
     cardShadowDark: "0 8px 32px rgba(34, 211, 238, 0.06)", cardShadowLight: "0 4px 16px rgba(8, 145, 178, 0.06)",
   },
   {
-    id: "emerald",  name: "Verde",    icon: "🟢",
+    id: "emerald",  name: "Verde",    icon: "#34d399",
     accentDark: "#34d399",  accentLight: "#059669",
     borderDark: "rgba(52, 211, 153, 0.25)", borderLight: "rgba(5, 150, 105, 0.2)",
     glowDark: "0 0 30px rgba(52, 211, 153, 0.15)", glowLight: "0 4px 24px rgba(5, 150, 105, 0.12)",
@@ -57,7 +57,7 @@ export const PALETTES: Palette[] = [
     cardShadowDark: "0 8px 32px rgba(52, 211, 153, 0.06)", cardShadowLight: "0 4px 16px rgba(5, 150, 105, 0.06)",
   },
   {
-    id: "amber",    name: "Âmbar",    icon: "🟡",
+    id: "amber",    name: "Âmbar",    icon: "#fbbf24",
     accentDark: "#fbbf24",  accentLight: "#d97706",
     borderDark: "rgba(251, 191, 36, 0.25)",  borderLight: "rgba(217, 119, 6, 0.2)",
     glowDark: "0 0 30px rgba(251, 191, 36, 0.15)", glowLight: "0 4px 24px rgba(217, 119, 6, 0.12)",
@@ -68,7 +68,7 @@ export const PALETTES: Palette[] = [
     cardShadowDark: "0 8px 32px rgba(251, 191, 36, 0.06)", cardShadowLight: "0 4px 16px rgba(217, 119, 6, 0.06)",
   },
   {
-    id: "rose",     name: "Rosa",     icon: "🩷",
+    id: "rose",     name: "Rosa",     icon: "#fb7185",
     accentDark: "#fb7185",  accentLight: "#e11d48",
     borderDark: "rgba(251, 113, 133, 0.25)", borderLight: "rgba(225, 29, 72, 0.2)",
     glowDark: "0 0 30px rgba(251, 113, 133, 0.15)", glowLight: "0 4px 24px rgba(225, 29, 72, 0.12)",
@@ -79,7 +79,7 @@ export const PALETTES: Palette[] = [
     cardShadowDark: "0 8px 32px rgba(251, 113, 133, 0.06)", cardShadowLight: "0 4px 16px rgba(225, 29, 72, 0.06)",
   },
   {
-    id: "blue",     name: "Azul",     icon: "🔵",
+    id: "blue",     name: "Azul",     icon: "#60a5fa",
     accentDark: "#60a5fa",  accentLight: "#2563eb",
     borderDark: "rgba(96, 165, 250, 0.25)", borderLight: "rgba(37, 99, 235, 0.2)",
     glowDark: "0 0 30px rgba(96, 165, 250, 0.15)", glowLight: "0 4px 24px rgba(37, 99, 235, 0.12)",

@@ -5,14 +5,13 @@ date: 2026-08-05 12:00:00 -03:00
 pubDate: 2026-08-07 17:30:00 -03:00
 project: lifelog
 tags: ["lifelog", "css", "view-transitions", "debugging", "performance"]
-icon: "📖"
 cover: /covers/lifelog-a-saga-da-animacao-de-tema.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The circle that wouldn't start where I touched
+##  The circle that wouldn't start where I touched
 
 "The circle doesn't start where I click." "It's stuttering." "Now it's erasing everything and animating."
 
@@ -20,7 +19,7 @@ Three reports in three days. Same feature: the LifeLog dark/light theme switch w
 
 The worst part? Every fix solved one bug and revealed another. It was a 5-day whodunit.
 
-## 🧠 The context: View Transitions API + clip-path
+##  The context: View Transitions API + clip-path
 
 The theme switch uses the **View Transitions API** (native to Chromium) with an expanding circle:
 
@@ -30,8 +29,8 @@ const t = document.startViewTransition(() => setTheme(next))
 t.ready.then(() => {
   const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
   document.documentElement.animate(
-    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-    { duration: 800, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' },
+  { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+  { duration: 800, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', pseudoElement: '::view-transition-new(root)' },
   )
 })
 ```
@@ -40,12 +39,12 @@ The idea is simple: the browser takes a "screenshot" of the old state, applies t
 
 The problem: Chromium has a **default blend mode (`plus-lighter`) on VT pseudo-elements**. That blend makes the old snapshot **brighten until it disappears** during the transition — outside the circle, content "leaks". That's the source of half the symptoms.
 
-## 🔧 The struggle: 5 days, 6 fixes, 3 regressions
+##  The struggle: 5 days, 6 fixes, 3 regressions
 
 **Day 1 — stutter.** "Janky." The CSS had `animation: none` on the VT pseudo-elements. Theory: suppressing the default crossfade breaks fluidity. I removed it. It got worse: the old snapshot started erasing everything.
 
 ```css
-/* ⚠️ What NOT to do (regression #2 of the original RCA) */
+/*  What NOT to do (regression #2 of the original RCA) */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;  /* ← NEVER. Kills the crossfade + clip-path fluidity */
@@ -77,7 +76,7 @@ I added it. The circle started at the right place... but now it was **"erasing e
 
 **Day 5 — the ghost.** And then came the plot twist: the local build broke with `Named export 'parseCookie' not found`. CI passed, local failed. The cause? A **253MB node_modules in home** (`~/node_modules` with `cookie@0.7.2` from 2016) hijacking module resolution for EVERY Node project. Was that the "stutter" I tried to fix on days 1-4? No — but it taught me that **the local environment can lie**.
 
-## 💡 The resolution: less "optimization", more observation
+##  The resolution: less "optimization", more observation
 
 The final lesson wasn't a CSS formula — it was a method:
 
@@ -91,7 +90,7 @@ The final lesson wasn't a CSS formula — it was a method:
 
 5. **Documenting what DOESN'T work is as valuable as the fix** — the LifeLog skill has an RCA of 5 failed attempts. Without it, I would have reintroduced the stutter 3 times.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -102,7 +101,7 @@ The final lesson wasn't a CSS formula — it was a method:
 | E2E tests passing | 67 (7 specs) |
 | Bonus bug found | ghost node_modules (253MB) in home |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **VT crossfade + clip-path WAAPI together works** — suppressing the default crossfade is what causes stutter. The crossfade is 100% GPU and masks the clip-path jank (which is paint).
 2. **`mix-blend-mode: normal` is not optional** — Chromium's default (`plus-lighter`) sums old + new pixels. Without disabling it, the old "glows" until it disappears.
@@ -112,9 +111,9 @@ The final lesson wasn't a CSS formula — it was a method:
 
 <Terminal
   lines={[
-    { cmd: 'git log --oneline -- src/components/PalettePicker.astro | head -8', output: 'The saga in 8 commits — from stutter to correct origin' },
-    { cmd: 'grep -A2 "view-transition-image-pair" src/styles/global.css', output: '::view-transition-image-pair(root) { isolation: isolate; }' },
-    { cmd: 'grep "mix-blend-mode" src/styles/global.css', output: 'mix-blend-mode: normal;  /* disables plus-lighter */' },
-    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'file://~/projetos/node_modules/cookie/index.js ← THE GHOST' },
+  { cmd: 'git log --oneline -- src/components/PalettePicker.astro | head -8', output: 'The saga in 8 commits — from stutter to correct origin' },
+  { cmd: 'grep -A2 "view-transition-image-pair" src/styles/global.css', output: '::view-transition-image-pair(root) { isolation: isolate; }' },
+  { cmd: 'grep "mix-blend-mode" src/styles/global.css', output: 'mix-blend-mode: normal;  /* disables plus-lighter */' },
+  { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'file://~/projetos/node_modules/cookie/index.js ← THE GHOST' },
   ]}
 />

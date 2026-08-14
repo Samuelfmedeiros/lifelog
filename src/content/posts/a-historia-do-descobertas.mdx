@@ -5,20 +5,19 @@ date: 2026-08-03 15:30:00 -03:00
 pubDate: 2026-08-03 15:30:00 -03:00
 project: descobertas
 tags: ["descobertas", "mcp", "fts5", "ai-jail", "ollama", "licoes"]
-icon: "💡"
 cover: /covers/a-historia-do-descobertas.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ A camada invisível do ecossistema
+##  A camada invisível do ecossistema
 
 Todo projeto tem código, testes e deploy. O que pouca gente conta é a **camada invisível**: as descobertas técnicas que atravessam todos os projetos e mudam o jeito de trabalhar.
 
 Em julho e agosto de 2026, o meu ecossistema (Arachne, Capivara, Dogwalk, TatuEngine, LifeLog) passou por quatro descobertas que viraram fundação: **MCP** virou o conector universal, **FTS5 + busca vetorial** virou o motor de busca, **ai-jail** virou a segurança do agente, e **Ollama** trouxe a IA pra dentro de casa. E no final, as lições viraram regras.
 
-## 🧠 Contexto — o mesmo problema, cinco projetos, cinco soluções
+##  Contexto — o mesmo problema, cinco projetos, cinco soluções
 
 O problema de um ecossistema com 5 projetos é que cada um resolvia a mesma dor do seu jeito:
 
@@ -29,7 +28,7 @@ O problema de um ecossistema com 5 projetos é que cada um resolvia a mesma dor 
 
 O ponto de virada foi perceber que **não valia a pena reinventar** — valia descobrir o que já existia documentado e adotar como padrão.
 
-## 🔧 A luta — quatro descobertas
+##  A luta — quatro descobertas
 
 ### MCP: do "conector universal" ao registry oficial
 
@@ -54,8 +53,8 @@ A migração SQLite → PostgreSQL (02/08) trouxe dois tropeços clássicos que 
 
 ```sql
 -- SQLite → PostgreSQL
-STRFTIME('%s', col)      → EXTRACT(EPOCH FROM col)
-LENGTH(embedding)        → vector_dims(embedding)
+STRFTIME('%s', col)  → EXTRACT(EPOCH FROM col)
+LENGTH(embedding)  → vector_dims(embedding)
 ```
 
 E no LifeLog, a busca saiu de Fuse.js pra um **índice JSON embutido no build** com word-boundary match (commit `f690095`) — busca full-text sem dependência externa, direto no HTML.
@@ -67,7 +66,7 @@ Agente com acesso ao shell é um risco enorme — um prompt injection e os token
 ```yaml
 # ~/.ai-jail — a parte mais importante:
 mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
-hide_dotdirs = [".hermes"]        # tokens do Hermes protegidos
+hide_dotdirs = [".hermes"]  # tokens do Hermes protegidos
 deny_paths = ["secrets/", "*.key", ".gnupg/"]
 ```
 
@@ -84,7 +83,7 @@ curl -s http://192.168.7.5:11434/api/tags
 
 Com isso, visão (VLM), geração e análise rodam em casa — latência baixa, zero custo por token, dados que não saem da rede. O Arachne consome o Ollama do Douglas como fallback de VLM, e a TatuEngine roda BitMamba-2 1B em GPU local com 252× de speedup.
 
-## 💡 Resolução — as lições que viraram regras
+##  Resolução — as lições que viraram regras
 
 O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento** que elas ensinaram. Quatro regras nasceram dessas descobertas:
 
@@ -93,7 +92,7 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
 3. **Parar e perguntar** — se uma abordagem falhou, NÃO trocar de estratégia silenciosamente. Reportar o bloqueio com dados e apresentar opções A/B/C.
 4. **Delivery Gate** — nenhuma entrega sem passar pelas camadas de teste (lint, types, build, E2E, segurança). Check falhou = não entrega.
 
-## 📊 Métricas
+##  Métricas
 
 | Descoberta | Antes | Depois |
 |------------|-------|--------|
@@ -103,7 +102,7 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
 | IA | cloud-only | Ollama local (Douglas, qwen3.5-vision) |
 | Regras | "funciona aqui" | Docs First + Plan First + Delivery Gate |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Não invente o que já existe** — MCP, FTS5, bwrap, Ollama: tudo documentado, tudo open source. O trabalho é descobrir e integrar, não reinventar.
 2. **A descoberta vira padrão, não projeto** — cada uma dessas ferramentas atravessou 2+ projetos. O padrão é o que escala, não o caso isolado.
@@ -112,9 +111,9 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
 
 <Terminal
   lines={[
-    { cmd: 'python3 -m arachne.mcp.server', output: 'servidor MCP do Arachne — 38 tools (stdio/SSE)' },
-    { cmd: 'mcp-publisher publish', output: 'io.github.Samuelfmedeiros/arachne-mcp v1.0.1 no MCP Registry' },
-    { cmd: 'curl -s http://192.168.7.5:11434/api/tags', output: 'qwen3.5-vision:latest — Ollama local no Douglas' },
-    { cmd: 'grep hide_dotdirs ~/.ai-jail', output: 'hide_dotdirs = [".hermes"] — tokens protegidos no sandbox' },
+  { cmd: 'python3 -m arachne.mcp.server', output: 'servidor MCP do Arachne — 38 tools (stdio/SSE)' },
+  { cmd: 'mcp-publisher publish', output: 'io.github.Samuelfmedeiros/arachne-mcp v1.0.1 no MCP Registry' },
+  { cmd: 'curl -s http://192.168.7.5:11434/api/tags', output: 'qwen3.5-vision:latest — Ollama local no Douglas' },
+  { cmd: 'grep hide_dotdirs ~/.ai-jail', output: 'hide_dotdirs = [".hermes"] — tokens protegidos no sandbox' },
   ]}
 />

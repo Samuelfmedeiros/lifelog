@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-09 12:00:00 -03:00
 project: arachne
 tags: ["arachne", "asyncio", "event-loop", "browser-pool", "debugging"]
-icon: "🕷️"
 cover: /covers/arachne-o-lock-que-nasceu-no-loop-errado.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ "Browser agent não disponível neste worker"
+##  "Browser agent não disponível neste worker"
 
 Entre 08 e 09/08, o Arachne acordava **intermitente**. Um workflow de scraping rodava, e do nada: `browser agent não disponível neste worker`. Rodava de novo — funcionava. De novo — falhava.
 
@@ -24,29 +23,29 @@ RuntimeError: <asyncio.locks.Lock object at 0x7f...> is bound to a different eve
 
 Um lock preso a um event loop que **não era o do worker**. Como um cadeado que foi montado numa porta e depois a fechadura mudou de casa — a chave certa, o lugar errado.
 
-## 🧠 O contexto: o browser pool compartilha um lock
+##  O contexto: o browser pool compartilha um lock
 
 O Arachne mantém um **browser pool** (Camoufox + Playwright) — navegadores reutilizados entre scraping e VRT pra não subir um browser novo a cada chamada. Um pool assim precisa de um **lock**: dois workers não podem usar o mesmo browser ao mesmo tempo.
 
 ```python
 # O pool, simplificado
-_browsers = []          # lista de browsers vivos
-_last_gc = 0.0          # último garbage collect
+_browsers = []  # lista de browsers vivos
+_last_gc = 0.0  # último garbage collect
 
 async def _get_browser(headless=True):
-    async with _lock:   # protege o acesso ao pool
-        # ... acha ou cria um browser
+  async with _lock:  # protege o acesso ao pool
+  # ... acha ou cria um browser
 ```
 
 O lock era global, criado **no import do módulo**:
 
 ```python
-_lock = asyncio.Lock()   # ❌ criado na hora do import
+_lock = asyncio.Lock()  #  criado na hora do import
 ```
 
 E aí morava o problema.
 
-## 🔧 A luta: o event loop que muda de casa
+##  A luta: o event loop que muda de casa
 
 No Python asyncio, um `asyncio.Lock()` criado **fora de um loop** fica preso ao loop que estiver rodando **naquele momento** — ou ao loop atual na primeira vez que é usado.
 
@@ -63,35 +62,35 @@ O sintoma era duplo e confuso:
 
 Intermitente porque dependia de **quando** o import acontecia e **em qual thread** o workflow caía.
 
-## 💡 A resolução: lazy init — nascer no loop certo
+##  A resolução: lazy init — nascer no loop certo
 
 O fix (commit `457326e`, 09/08 02:59): o lock deixa de ser criado no import e passa a ser criado **dentro do loop corrente**, na primeira vez que é usado.
 
 ```python
-# ❌ Antes — nascia preso ao loop do import
+#  Antes — nascia preso ao loop do import
 _lock = asyncio.Lock()
 
-# ✅ Depois — nasce no loop que está rodando agora
+#  Depois — nasce no loop que está rodando agora
 _lock = None  # type: Optional[asyncio.Lock]
 
 async def _get_lock() -> asyncio.Lock:
-    global _lock
-    if _lock is None:
-        _lock = asyncio.Lock()   # criado DENTRO do loop corrente
-    return _lock
+  global _lock
+  if _lock is None:
+  _lock = asyncio.Lock()  # criado DENTRO do loop corrente
+  return _lock
 ```
 
 E nos dois pontos de uso:
 
 ```python
-# async with _lock:            →  async with await _get_lock():
+# async with _lock:  →  async with await _get_lock():
 ```
 
 O `await _get_lock()` roda dentro da coroutine — o `asyncio.Lock()` é criado no loop **certo**, o loop que está executando aquele worker. 16 linhas adicionadas, 3 removidas. Só isso.
 
 A história de ontem foi um generator que não fechava a sessão do Postgres. Hoje foi um lock que nascia no loop errado. O padrão é o mesmo: **o recurso precisa nascer no contexto onde vai viver**.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -103,7 +102,7 @@ A história de ontem foi um generator que não fechava a sessão do Postgres. Ho
 | Sintoma de negócio | "browser agent não disponível neste worker" (intermitente) |
 | Testes do Arachne | 2.732 |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Recurso async global = problema de loop** — `asyncio.Lock()`, `asyncio.Queue()` e afins criados no import ficam presos ao loop do processo. Se o código roda em threadpool/outro loop (cron, workers), quebra com "bound to a different event loop".
 
@@ -115,9 +114,9 @@ A história de ontem foi um generator que não fechava a sessão do Postgres. Ho
 
 <Terminal
   lines={[
-    { cmd: 'grep -n "bound to a different event loop" /tmp/arachne-workflow.log', output: 'RuntimeError: <asyncio.locks.Lock> is bound to a different event loop' },
-    { cmd: 'git show 457326e -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
-    { cmd: 'grep -n "async with await _get_lock()" api/app/browser_agent/engine.py', output: 'Linhas 140 e 177: os 2 usos corrigidos' },
-    { cmd: 'grep -c "def test_" api/tests/test_*.py | awk -F: \'{s+=$2} END {print s}\'', output: '2732 testes — suíte completa do Arachne' },
+  { cmd: 'grep -n "bound to a different event loop" /tmp/arachne-workflow.log', output: 'RuntimeError: <asyncio.locks.Lock> is bound to a different event loop' },
+  { cmd: 'git show 457326e -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
+  { cmd: 'grep -n "async with await _get_lock()" api/app/browser_agent/engine.py', output: 'Linhas 140 e 177: os 2 usos corrigidos' },
+  { cmd: 'grep -c "def test_" api/tests/test_*.py | awk -F: \'{s+=$2} END {print s}\'', output: '2732 testes — suíte completa do Arachne' },
   ]}
 />

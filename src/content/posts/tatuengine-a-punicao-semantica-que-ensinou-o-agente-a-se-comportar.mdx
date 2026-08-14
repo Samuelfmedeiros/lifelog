@@ -5,18 +5,17 @@ date: 2026-08-06 12:00:00 -03:00
 pubDate: 2026-08-09 12:00:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "agent", "punishment", "goal-hamiltonian", "self-improvement"]
-icon: "🦔"
 cover: /covers/tatuengine-a-punicao-semantica-que-ensinou-o-agente-a-se-comportar.webp
 featured: false
 ---
 
-## ⚡ O agente que precisava de limites
+##  O agente que precisava de limites
 
 O TatuEngine tem um agente autopoiético — com LTM, ToolUse, GoalStack, SafetyGuard e GoalHamiltonian. Ele é projetado pra aprender, agir e evoluir sozinho. Mas tem um problema: **um agente que só é recompensado pelo que faz certo nunca aprende o quanto o erro custa.**
 
 A versão 1 e 2 da punição eram rudimentares. A v3 mudou o jogo: **multa progressiva por reincidência**.
 
-## 🧠 O contexto: punir como sistema imunológico
+##  O contexto: punir como sistema imunológico
 
 A ideia da v3 é simples e poderosa: se o agente erra uma vez, a multa é pequena. Se erra de novo, a multa **multiplica**. Se persiste, o agente perde a capacidade de usar ferramentas temporariamente — e recebe uma **reprimenda** no output.
 
@@ -27,7 +26,7 @@ A ideia da v3 é simples e poderosa: se o agente erra uma vez, a multa é pequen
 
 Isso é como um sistema imunológico: a primeira exposição gera resposta leve, mas o sistema **memoriza** e responde mais forte a cada reincidência. O agente não só é punido — ele aprende que o comportamento tem **custo crescente**.
 
-## 🔧 A luta: as 3 versões
+##  A luta: as 3 versões
 
 **v1 — punição fixa.** Todo erro custava o mesmo. O agente não tinha incentivo pra não repetir — a multa era previsível e "tolerável".
 
@@ -44,7 +43,7 @@ Isso é como um sistema imunológico: a primeira exposição gera resposta leve,
 
 O melhor: o estado é **consultável** — as métricas de punição ficam expostas nas bindings Python. O sistema pode ser observado e ajustado.
 
-## 💡 A resolução: punição que educa
+##  A resolução: punição que educa
 
 O resultado é um agente que:
 1. **Erra pouco** — a multa crescente torna o erro cada vez mais caro
@@ -54,7 +53,7 @@ O resultado é um agente que:
 
 A v3 foi validada com **27 ocorrências de teste** no módulo de punição — o sistema tem cobertura real.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -63,7 +62,7 @@ A v3 foi validada com **27 ocorrências de teste** no módulo de punição — o
 | Fórmula da multa | `fine_amplitude = base × fine_mult^fine_count` |
 | Testes do GoalHamiltonian | 27 ocorrências de punição/denied |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Punição progressiva > punição fixa** — o agente tolera um custo previsível. O que muda comportamento é o **custo crescente** da reincidência.
 2. **Punição temporária educa, punição permanente mutila** — o tool deny por N tokens força reflexão sem quebrar o agente.

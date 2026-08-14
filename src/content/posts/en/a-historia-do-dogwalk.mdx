@@ -6,20 +6,19 @@ pubDate: 2026-08-01 12:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "ci-cd", "testing", "stripe", "open-design"]
-icon: "🐶"
 cover: /covers/a-historia-do-dogwalk.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The app that couldn't break on deploy
+##  The app that couldn't break on deploy
 
 Every project has a moment when you realize: **you can't keep deploying on hope**. For Dogwalk, that moment came twice — first when the build broke because of an npm-cli.js without execute permission, and then when 1456 tests became the bar for any change.
 
 But Dogwalk wasn't born that way. It was born as a pet marketplace that needed to prove it worked.
 
-## 🧠 Context — from zero to marketplace
+##  Context — from zero to marketplace
 
 The first commit was on April 24, 2026:
 
@@ -31,7 +30,7 @@ The idea was simple: connect pet owners to walkers. The owner schedules a walk, 
 
 The catch: "simple" is never simple when it involves **real-time GPS, geofencing, payments, and two user types** (tutor and walker).
 
-## 🔧 The struggle — when the build broke on WSL
+##  The struggle — when the build broke on WSL
 
 The most memorable saga was the **WSL build break**. The `which npm` on Samuel's environment resolved to the Windows npm (`/mnt/c/Program Files/nodejs/npm`) instead of the Hermes node npm. And CMD.EXE with a UNC path broke everything:
 
@@ -49,7 +48,7 @@ But the bigger lesson came from there: **deploy can't depend on a specific envir
 
 In parallel came the **visual reformulation**: the role-aware UniversalHeader (different navigation for Tutor vs Walker), the DesktopSidebar with Tailwind v4, and the refactor of TutorDashboard (464 → 298 lines) and WalkerDashboard (807 → 409 lines). All following a DESIGN.md created with the Open Design pattern — CSS tokens, role themes, and a component gallery in `components.html`.
 
-## 💡 Resolution — 1456 tests as the bar
+##  Resolution — 1456 tests as the bar
 
 The turning point was test week. Five giant components gained real coverage:
 
@@ -65,7 +64,7 @@ And Scheduling was optimized with `useCallback`/`useMemo` — 7 memoized handler
 
 The result: **1456/1456 tests passing, 93 files, 100% clean build** — and the confidence that any change that broke something would be caught before deploy.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | 24/04 (birth) | 31/07 (today) |
 |--------|---------------|---------------|
@@ -75,7 +74,7 @@ The result: **1456/1456 tests passing, 93 files, 100% clean build** — and the 
 | Stack | idea | React 19 + FastAPI + PG |
 | Deploy | — | Cloudflare Pages CI/CD |
 
-## 🎯 Takeaways
+##  Takeaways
 
 Dogwalk taught that **quality isn't a feature — it's an architecture decision**. After breaking the WSL build because of a file without permission, the project gained: local + remote CI, manual deploy scripts, and a test suite that prevents regression.
 
@@ -83,9 +82,9 @@ And Open Design proved that a design system isn't a luxury: when WalkerDashboard
 
 <Terminal
   lines={[
-    { cmd: 'git rev-list --count HEAD', output: '970 commits since the start' },
-    { cmd: 'pnpm test 2>&1 | tail -1', output: '1456 passed, 93 files' },
-    { cmd: 'git log --reverse --format="%ad" --date=short | head -1', output: '2026-04-24 — the birth' },
-    { cmd: 'chmod +x ~/.local/share/npm/bin/npm-cli.js', output: 'the fix that unlocked the WSL build' },
+  { cmd: 'git rev-list --count HEAD', output: '970 commits since the start' },
+  { cmd: 'pnpm test 2>&1 | tail -1', output: '1456 passed, 93 files' },
+  { cmd: 'git log --reverse --format="%ad" --date=short | head -1', output: '2026-04-24 — the birth' },
+  { cmd: 'chmod +x ~/.local/share/npm/bin/npm-cli.js', output: 'the fix that unlocked the WSL build' },
   ]}
 />

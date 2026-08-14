@@ -6,7 +6,6 @@ pubDate: 2026-07-13 06:00:00 -03:00
 lang: 'en'
 project: portfolio
 tags: ["portfolio", "vue", "vite", "refactor", "rebuild"]
-icon: "🚀"
 cover: /covers/portfolio-v3-vue-35-vite-8-o-rebuild-que-eu-precisava.webp
 ---
 
@@ -23,23 +22,23 @@ So I decided: complete rebuild, from scratch. Vue 3.5 + Vite 8. No SSR. No Next.
 ```json
 {
   "dependencies": {
-    "@vueuse/core": "^14.3.0",
-    "gsap": "^3.15.0",
-    "lucide-vue-next": "^1.0.0",
-    "vue": "^3.5.34",
-    "vue-router": "4"
+  "@vueuse/core": "^14.3.0",
+  "gsap": "^3.15.0",
+  "lucide-vue-next": "^1.0.0",
+  "vue": "^3.5.34",
+  "vue-router": "4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.0",
-    "@tailwindcss/vite": "^4.3.1",
-    "@vitejs/plugin-vue": "^6.0.6",
-    "@vue/test-utils": "^2.4.11",
-    "happy-dom": "^20.10.6",
-    "tailwindcss": "^4.0.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.0.12",
-    "vitest": "^4.1.9",
-    "vue-tsc": "^3.2.8"
+  "@playwright/test": "^1.61.0",
+  "@tailwindcss/vite": "^4.3.1",
+  "@vitejs/plugin-vue": "^6.0.6",
+  "@vue/test-utils": "^2.4.11",
+  "happy-dom": "^20.10.6",
+  "tailwindcss": "^4.0.0",
+  "typescript": "~6.0.2",
+  "vite": "^8.0.12",
+  "vitest": "^4.1.9",
+  "vue-tsc": "^3.2.8"
   }
 }
 ```
@@ -71,11 +70,11 @@ const _currentLang = ref(localStorage.getItem('lang') || detectBrowserLang())
 
 export function useI18n() {
   function t(key: string): string {
-    return locales[_currentLang.value]?.[key] || locales.pt[key] || key
+  return locales[_currentLang.value]?.[key] || locales.pt[key] || key
   }
   function setLang(lang: string) {
-    _currentLang.value = lang
-    localStorage.setItem('lang', lang)
+  _currentLang.value = lang
+  localStorage.setItem('lang', lang)
   }
   return { t, setLang, currentLang, lang: _currentLang }
 }
@@ -91,16 +90,16 @@ The cockpit animations are still the highlight. I adapted the multi-layer parall
 // src/composables/useGsap.ts
 export function useGsap() {
   function parallaxLayer(el: Ref<HTMLElement | null>, speed: number) {
-    if (!import.meta.client) return
-    gsap.to(el.value, {
-      y: () => window.innerHeight * speed,
-      scrollTrigger: {
-        trigger: el.value,
-        start: 'top top',
-        end: 'bottom top',
-        scrub: true,
-      },
-    })
+  if (!import.meta.client) return
+  gsap.to(el.value, {
+  y: () => window.innerHeight * speed,
+  scrollTrigger: {
+  trigger: el.value,
+  start: 'top top',
+  end: 'bottom top',
+  scrub: true,
+  },
+  })
   }
   return { parallaxLayer }
 }
@@ -117,14 +116,14 @@ The 6 palettes (cyberpunk, nature, ocean, sunset, mono, retro) are controlled vi
 ```typescript
 const routes: RouteRecordRaw[] = [
   {
-    path: '/',
-    name: 'home',
-    component: () => import('./pages/HomePage.vue'),
+  path: '/',
+  name: 'home',
+  component: () => import('./pages/HomePage.vue'),
   },
   {
-    path: '/:pathMatch(.*)*',
-    name: 'not-found',
-    component: () => import('./pages/NotFoundPage.vue'),
+  path: '/:pathMatch(.*)*',
+  name: 'not-found',
+  component: () => import('./pages/NotFoundPage.vue'),
   },
 ]
 ```
@@ -148,7 +147,7 @@ I migrated from Jest to Vitest + happy-dom (which runs 2x faster than jsdom for 
 # v3: pnpm test → 12s with Vitest
 ```
 
-I ran all 122 tests from v3 — **0 failures** ✅ (including the 5 E2E mini-game tests, which are the most prone to break).
+I ran all 122 tests from v3 — **0 failures**  (including the 5 E2E mini-game tests, which are the most prone to break).
 
 ## CI/CD
 
@@ -186,6 +185,6 @@ PRs get automatic Vercel previews with a link commented on the PR. Dependabot en
 - **Palettes:** 6
 - **Components:** 30+ (Hero, Navbar, Profile, Projects, Games, Contact, Terminal, Footer, etc.)
 
-The code is on [GitHub](https://github.com/Samuelfmedeiros/portifolio-3.0) and live at [portifolio-30.vercel.app](https://portifolio-30.vercel.app) 🚀
+The code is on [GitHub](https://github.com/Samuelfmedeiros/portifolio-3.0) and live at [portifolio-30.vercel.app](https://portifolio-30.vercel.app) 
 
 > **TL;DR:** I swapped Next.js + React for Vue 3.5 + Vite 8, cut SSR and services I didn't need, and the portfolio became 20x faster to build, 3x smaller in bundle, and much more fun to maintain.

@@ -5,41 +5,40 @@ date: 2026-08-03 14:00:00 -03:00
 pubDate: 2026-08-07 18:00:00 -03:00
 project: dogwalk
 tags: ["dogwalk", "websocket", "fastapi", "starlette", "debugging"]
-icon: "🐶"
 cover: /covers/dogwalk-o-websocket-que-nao-apertava-a-mao.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The handshake that never happened
+##  The handshake that never happened
 
 It was the kind of bug that doesn't make noise. Dogwalk ran, the database responded, the deploy was green. But the **notifications WebSocket** — and all the other 4 — returned **HTTP 500 on handshake**.
 
 Real-time notifications, chat with the walker, live walk tracking, status updates: **all silent**. Nobody shouted, because the error appeared as a 500 in the browser console and everyone moved on.
 
-## 🧠 The context: WebSocket in Starlette has a handshake protocol
+##  The context: WebSocket in Starlette has a handshake protocol
 
 In Starlette (the heart of FastAPI), a WebSocket isn't just "open and talk". There's a mandatory order:
 
 ```python
-# ❌ What the code did (implicitly)
+#  What the code did (implicitly)
 async def await_ws_auth(websocket: WebSocket) -> Optional[dict]:
-    raw = await websocket.receive_text()   # ← LISTENS BEFORE ACCEPTING
-    ...
+  raw = await websocket.receive_text()  # ← LISTENS BEFORE ACCEPTING
+  ...
 ```
 
 Starlette **requires `accept()` before `receive()` or `send()`**. It's the handshake: first you accept the connection, then you talk. Calling `receive_text()` without accepting is like answering the phone and talking without saying "hello".
 
 ```python
-# ✅ What Starlette requires
+#  What Starlette requires
 async def await_ws_auth(websocket: WebSocket) -> Optional[dict]:
-    await websocket.accept()              # ← HELLO
-    raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
-    ...
+  await websocket.accept()  # ← HELLO
+  raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+  ...
 ```
 
-## 🔧 The struggle: 5 affected endpoints, one pattern
+##  The struggle: 5 affected endpoints, one pattern
 
 The worst part: the bug wasn't in 1 place. It was **spread across 5 routes** sharing the same `await_ws_auth()` helper:
 
@@ -55,23 +54,23 @@ All called `await_ws_auth()` at the start. One helper failure = 5 silent endpoin
 
 The handshake HTTP 500 wasn't obvious in the health test — because `/health` is plain HTTP. The WebSocket only showed up when the **browser** tried to connect, and then... silence.
 
-## 💡 The resolution: one line that unlocked everything
+##  The resolution: one line that unlocked everything
 
 ```python
 # backend/app/routers/ws.py
 async def await_ws_auth(websocket: WebSocket) -> Optional[dict]:
-    # 🔴 FIX 03/08/2026: Starlette requires accept() BEFORE receive_text/send_json.
-    await websocket.accept()
-    try:
-        raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
-        ...
+  #  FIX 03/08/2026: Starlette requires accept() BEFORE receive_text/send_json.
+  await websocket.accept()
+  try:
+  raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+  ...
 ```
 
 One line: `await websocket.accept()` at the start. All 5 endpoints came back.
 
 Real verification: **6/6 WebSockets via tunnel OK** + all 5 endpoints OK + **pytest 32/32**.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -81,7 +80,7 @@ Real verification: **6/6 WebSockets via tunnel OK** + all 5 endpoints OK + **pyt
 | WebSockets via tunnel | 6/6 OK |
 | Verified endpoints | 5/5 |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **WebSocket has a handshake protocol** — Starlette requires `accept()` before `receive()`/`send()`. It's the phone's "hello". Without it, handshake becomes a silent HTTP 500.
 
@@ -93,9 +92,9 @@ Real verification: **6/6 WebSockets via tunnel OK** + all 5 endpoints OK + **pyt
 
 <Terminal
   lines={[
-    { cmd: 'grep -rn "await_ws_auth" backend/app/routers/', output: '5 endpoints sharing the broken helper' },
-    { cmd: 'sed -n "97,100p" backend/app/routers/ws.py', output: '# FIX 03/08: await websocket.accept() ← the line that unlocked' },
-    { cmd: 'pytest tests/ -q', output: '32/32 passed after the fix' },
-    { cmd: 'curl -s https://dogwalk-api.seu.pet/ws/notifications', output: 'Before: HTTP 500 on handshake. After: WS handshake OK' },
+  { cmd: 'grep -rn "await_ws_auth" backend/app/routers/', output: '5 endpoints sharing the broken helper' },
+  { cmd: 'sed -n "97,100p" backend/app/routers/ws.py', output: '# FIX 03/08: await websocket.accept() ← the line that unlocked' },
+  { cmd: 'pytest tests/ -q', output: '32/32 passed after the fix' },
+  { cmd: 'curl -s https://dogwalk-api.seu.pet/ws/notifications', output: 'Before: HTTP 500 on handshake. After: WS handshake OK' },
   ]}
 />

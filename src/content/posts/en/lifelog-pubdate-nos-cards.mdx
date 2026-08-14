@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-09 16:00:00 -03:00
 project: lifelog
 tags: [lifelog, astro, ux, data, narrative]
-icon: "📖"
 cover: /covers/lifelog-pubdate-nos-cards.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The home looked messy — and nobody had noticed why
+##  The home looked messy — and nobody had noticed why
 
 Every blog has a detail that goes unnoticed until someone points it out: **the date the card shows**.
 
@@ -24,12 +23,12 @@ It works beautifully for retrospectives. But it has a side effect:
 
 That's exactly what Samuel pointed out: *"posts out of order too"*. The order was correct (by `pubDate`), but the cards **displayed** the historical dates — and the brain reads the displayed date as the ordering criterion.
 
-## 🧠 The conflict: event date vs publish date
+##  The conflict: event date vs publish date
 
 LifeLog has a dual date system in frontmatter:
 
 ```yaml
-date: 2026-08-06 12:00:00 -03:00    # when the EVENT happened
+date: 2026-08-06 12:00:00 -03:00  # when the EVENT happened
 pubDate: 2026-08-09 16:00:00 -03:00 # when we PUBLISHED
 ```
 
@@ -43,28 +42,28 @@ The fix was one line in `src/pages/index.astro` and `src/pages/en/index.astro`:
 date={post.data.pubDate || post.data.date}
 ```
 
-## ⚡ The resolution — and what it revealed
+##  The resolution — and what it revealed
 
 With `pubDate` on the card, the home became consistent: **09, 09, 09, 09, 08, 08, 07, 07** — the displayed date now matches the ordering.
 
 The lesson goes beyond dates: **every displayed metric must use the same criterion as the ordering.** A card that shows "07" but sits on top because it was published on the 9th creates cognitive dissonance — the user assumes it's wrong, even when the underlying logic is correct.
 
-## 🧠 Technical details
+##  Technical details
 
 | Item | Before | After |
 |------|--------|-------|
 | Card shows | `date` (historical event) | `pubDate` (publish) |
-| Home sorts by | `pubDate` ✓ | `pubDate` ✓ |
-| Visual consistency | ❌ mixed dates | ✅ 09, 09, 08, 08... |
+| Home sorts by | `pubDate`  | `pubDate`  |
+| Visual consistency |  mixed dates |  09, 09, 08, 08... |
 
 ```bash
 # PT and EN
 sed -i "s/date={post.data.date}/date={post.data.pubDate || post.data.date}/" \
   src/pages/index.astro src/pages/en/index.astro
-npx astro build   # 148 pages, clean build
+npx astro build  # 148 pages, clean build
 ```
 
-## 🛠️ And the portfolio?
+##  And the portfolio?
 
 The same discussion happened in the Portfolio: the RSS parser now **sorts by pubDate desc** and filters EN during parsing — ensuring the 3 "From the Blog" cards show the truly most recent posts, not the first ones in the XML.
 

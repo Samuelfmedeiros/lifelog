@@ -6,7 +6,6 @@ pubDate: 2026-07-29 06:00:00 -03:00
 lang: 'en'
 project: portfolio
 tags: ["portfolio", "quality", "debug", "pix", "refactor"]
-icon: "🚀"
 cover: /covers/2026-07-28-semana-da-qualidade-portfolio.webp
 featured: false
 ---
@@ -95,9 +94,9 @@ refactor: deep audit — 10 quality fixes
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Valid Pix BR Code | ❌ No | ✅ Yes |
+| Valid Pix BR Code |  No |  Yes |
 | Focus trap modals | Conflicting | Isolated |
-| E2E link audit | Expected 200 on 404 | ✅ Correct 404 |
+| E2E link audit | Expected 200 on 404 |  Correct 404 |
 | Lint + type errors | 7 warnings | 0 |
 | CI health check | Manual | Automatic |
 
@@ -110,9 +109,9 @@ refactor: deep audit — 10 quality fixes
 
 <Terminal
   lines={[
-    { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 files, 26 insertions' },
-    { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total fixes post-audit' },
-    { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Deploy health check' },
-    { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Tests passing after fixes' },
+  { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 files, 26 insertions' },
+  { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total fixes post-audit' },
+  { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Deploy health check' },
+  { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Tests passing after fixes' },
   ]}
 />

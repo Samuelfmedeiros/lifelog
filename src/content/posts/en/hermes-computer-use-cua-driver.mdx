@@ -5,7 +5,6 @@ date: 2026-07-30 10:00:00 -03:00
 pubDate: 2026-07-30 22:00:00 -03:00
 project: descobertas
 tags: [hermes, computer-use, cua-driver, wsl, wslg]
-icon: "💡"
 cover: /covers/hermes-computer-use-cua-driver.webp
 featured: false
 lang: 'en'
@@ -48,8 +47,8 @@ Commits like `7bc995666` and `50e27abdd` fixed Windows manifest paths in WSL and
 All these changes are in the code. `hermes computer-use doctor` confirms: cua-driver 0.12.6 is installed, the daemon starts, the UNIX socket is created. But on WSL, there's no X11 server running.
 
 ```
-❌ X11 is not reachable; UI inspection and event injection will fail.
-❌ screen capture will fail.
+ X11 is not reachable; UI inspection and event injection will fail.
+ screen capture will fail.
 → Set DISPLAY (X11)
 ```
 
@@ -69,8 +68,8 @@ The path is paved. The 8 commits are real. Just the restart is missing.
 
 <Terminal
   lines={[
-    { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 computer use commits in July' },
-    { cmd: 'cat ~/.config/hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configured, waiting for restart' },
-    { cmd: 'hermes gateway restart', output: 'Restart needed to enable X11 in cua-driver' },
+  { cmd: 'cd /usr/local/lib/hermes-agent && git log --oneline --since="2026-07-14" --format="%h %s" | grep -i "computer\\|cua\\|desktop"', output: '8 computer use commits in July' },
+  { cmd: 'cat ~/.config/hermes/.env | grep DISPLAY', output: 'DISPLAY=:0 — configured, waiting for restart' },
+  { cmd: 'hermes gateway restart', output: 'Restart needed to enable X11 in cua-driver' },
   ]}
 />

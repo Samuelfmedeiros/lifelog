@@ -5,12 +5,11 @@ date: 2026-08-03 14:00:00 -03:00
 pubDate: 2026-08-03 14:00:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "ssm", "cuda", "gpu", "agent", "phase-field"]
-icon: "🦔"
 cover: /covers/a-historia-do-tatuengine.webp
 featured: false
 ---
 
-## ⚡ The engine that started with an absurd question
+##  The engine that started with an absurd question
 
 "Modern GPUs have RT Cores idle 99% of the time. What if we used them to process neural networks?"
 
@@ -18,7 +17,7 @@ That provocation gave birth to TatuEngine in June 2026. The vision was mesmerizi
 
 Thirty-odd days later, the project has 302 commits, a BitMamba-2 1B model running on GPU orders of magnitude faster than CPU, 400+ tests and an autopoietic agent. But the road here started with the dream dying on day one.
 
-## 🧠 Context — the OptiX dream
+##  Context — the OptiX dream
 
 The planned stack was ambitious:
 
@@ -29,7 +28,7 @@ The planned stack was ambitious:
 
 Sprint 1 built everything around that vision: `src/core` with lock-free pipeline and triple buffering, `src/rt` with OptiX 9.1 headers compiling PTX, `src/mamba` with a CUDA SSM kernel, `src/field_theory` with the Phase Field prototype. The docs from that era — PLANO_MESTRE.md and CARVEKNOWLEDGE.md — both reflected a vision that would never work in the real environment.
 
-## 🔧 The struggle — the dream that died on WSL2
+##  The struggle — the dream that died on WSL2
 
 ### The blow: RT Cores don't exist on WSL2
 
@@ -74,26 +73,26 @@ The GPU traversal kernel processes entire blocks in parallel, with warp reductio
 | 16-ray traversal | 74.2 ms | 0.52 ms | **146×** |
 | Bake 100K cells | ~70 ms | 4.8 ms | **15×** |
 
-## 💡 Resolution — the autopoietic agent
+##  Resolution — the autopoietic agent
 
 With inference solved, TatuEngine became an agent. The **GenerationContext** gathers the subsystems that let the model self-evaluate and use tools: fixed-attractor detection, associative memory in the SSM latent space, tool execution via sandbox, recursive reasoning with checkpoint/restore, safety invariance and a semantic goal supervisor.
 
 And the **Hybrid Sandbox** to protect file tools — path validation, size/type enforcement, isolation levels. Tests passing: `51 passed`.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | June (birth) | Today |
 |--------|--------------|-------|
 | Commits | 1 | 302 |
 | Tests | 0 | 400+ C++ (30 suites) + 51 sandbox |
-| GPU speedup | ❌ (OptiX didn't work) | 252× block-traversal |
+| GPU speedup |  (OptiX didn't work) | 252× block-traversal |
 | Compression | 27.26 GB (float32) | 245 MB (block codec, 114×) |
 | Pipeline | Conceptual | Hybrid CPU/GPU bit-exact |
 | Agent | 0 subsystems | 8 subsystems |
 | Model | Mamba 2.8B (planned) | BitMamba-2 1B (functional) |
 | Sandbox | didn't exist | 3 levels, 51/51 tests |
 
-## 🎯 Lessons
+##  Lessons
 
 1. **Don't force a technology where it doesn't fit** — OptiX on WSL cost ~2 weeks; the hybrid approach was discovered in 3 days and solved it.
 2. **Native ternary models vs post-training** — ternarizing a float32 after training destroys coherence. BitMamba-2 works because it was born with ternary weights.

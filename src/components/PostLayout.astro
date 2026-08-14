@@ -1,6 +1,7 @@
 ---
 // PostLayout — Template compartilhado de post (PT e EN)
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ProjectIcon from './ProjectIcon.astro';
 import { render } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 
@@ -9,7 +10,6 @@ export interface Props {
   locale: string;
   prevPost: CollectionEntry<'posts'> | null;
   nextPost: CollectionEntry<'posts'> | null;
-  projectIcons: Record<string, string>;
   projectLabels: Record<string, string>;
   readLabel: string;
   backText: string;
@@ -20,7 +20,7 @@ export interface Props {
   postHref: string;
 }
 
-const { post, locale, prevPost, nextPost, projectIcons, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref } = Astro.props;
+const { post, locale, prevPost, nextPost, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref } = Astro.props;
 const coverImage = post.data.cover;
 const { Content } = await render(post);
 ---
@@ -38,7 +38,7 @@ const { Content } = await render(post);
         <div class="absolute inset-0" style="background-image: var(--pattern-url); background-size: 120px; opacity: var(--pattern-opacity); background-blend-mode: var(--pattern-blend);"></div>
         <div class="absolute inset-0 flex items-center justify-center">
           <span style="font-size: 5rem; filter: drop-shadow(0 0 40px var(--color-accent)); opacity: 0.6;">
-            {projectIcons[post.data.project] || '📝'}
+            <ProjectIcon project={post.data.project} />
           </span>
         </div>
         </>
@@ -49,7 +49,7 @@ const { Content } = await render(post);
       <!-- Header -->
       <header class="mb-12">
         <div class="flex items-center gap-2 text-sm mb-4" style="color: var(--color-accent);">
-          <span>{projectIcons[post.data.project]} {projectLabels[post.data.project] || post.data.project}</span>
+          <span class="inline-flex items-center gap-1.5"><ProjectIcon project={post.data.project} /> {projectLabels[post.data.project] || post.data.project}</span>
           <span class="opacity-40">·</span>
           <time datetime={(post.data.pubDate || post.data.date).toISOString()} style="color: var(--color-text-muted)">
             {(post.data.pubDate || post.data.date).toLocaleDateString(dateLocale, { day: '2-digit', month: 'long', year: 'numeric' })}
@@ -61,7 +61,7 @@ const { Content } = await render(post);
         </h1>
 
         <div class="flex flex-wrap items-center gap-3 text-sm mb-6" style="color: var(--color-text-muted);">
-          <span>📖 {readLabel}</span>
+          <span class="inline-flex items-center gap-1.5"><ProjectIcon project="lifelog" /> {readLabel}</span>
           <span class="w-1 h-1 rounded-full bg-current opacity-40" />
           <a href={backHref} style="color: var(--color-accent); text-decoration: none;"
              class="hover:underline">{backText}</a>
@@ -94,7 +94,7 @@ const { Content } = await render(post);
                 </span>
                 <span class="block mt-1 text-sm font-medium group-hover:underline"
                       style="color: var(--color-accent);">
-                  {projectIcons[prevPost.data.project]} {prevPost.data.title}
+                  <span class="inline-flex items-center gap-1.5"><ProjectIcon project={prevPost.data.project} /> {prevPost.data.title}</span>
                 </span>
               </a>
             )}
@@ -107,7 +107,7 @@ const { Content } = await render(post);
                 </span>
                 <span class="block mt-1 text-sm font-medium group-hover:underline"
                       style="color: var(--color-accent);">
-                  {nextPost.data.title} {projectIcons[nextPost.data.project]}
+                  <span class="inline-flex items-center gap-1.5">{nextPost.data.title} <ProjectIcon project={nextPost.data.project} /></span>
                 </span>
               </a>
             )}

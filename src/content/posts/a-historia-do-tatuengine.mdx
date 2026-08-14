@@ -5,13 +5,12 @@ date: 2026-08-03 14:00:00 -03:00
 pubDate: 2026-08-03 14:00:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "ssm", "cuda", "gpu", "agente", "campo-de-fase"]
-icon: "🦔"
 cover: /covers/a-historia-do-tatuengine.webp
 featured: false
 ---
 
 
-## ⚡ A engine que começou com uma pergunta absurda
+##  A engine que começou com uma pergunta absurda
 
 "GPUs modernas têm RT Cores parados 99% do tempo. E se a gente usasse eles pra processar redes neurais?"
 
@@ -19,7 +18,7 @@ Foi essa provocação que deu origem ao TatuEngine em junho de 2026. A visão er
 
 Trinta e poucos dias depois, o projeto tem 302 commits, um modelo BitMamba-2 1B rodando em GPU ordens de grandeza mais rápido que CPU, 400+ testes e um agente autopoiético. Mas o caminho até aqui começou com o sonho morrendo no primeiro dia.
 
-## 🧠 Contexto — o sonho OptiX
+##  Contexto — o sonho OptiX
 
 O stack planejado era ambicioso:
 
@@ -30,7 +29,7 @@ O stack planejado era ambicioso:
 
 O Sprint 1 construiu tudo ao redor dessa visão: `src/core` com pipeline lock-free e triple buffering, `src/rt` com headers OptiX 9.1 compilando PTX, `src/mamba` com SSM kernel CUDA, `src/field_theory` com o protótipo do Campo de Fase. Documentação da época: PLANO_MESTRE.md e CARVEKNOWLEDGE.md — ambos refletindo uma visão que nunca funcionaria no ambiente real.
 
-## 🔧 A luta — o sonho que morreu no WSL2
+##  A luta — o sonho que morreu no WSL2
 
 ### O baque: RT Cores não existem no WSL2
 
@@ -75,26 +74,26 @@ O kernel de travessia em GPU processa blocos inteiros em paralelo, com redução
 | Traversal 16 raios | 74.2 ms | 0.52 ms | **146×** |
 | Bake 100K células | ~70 ms | 4.8 ms | **15×** |
 
-## 💡 Resolução — o agente autopoiético
+##  Resolução — o agente autopoiético
 
 Com a inferência resolvida, o TatuEngine virou agente. O **GenerationContext** reúne os subsistemas que fazem o modelo se auto-avaliar e usar ferramentas: detecção de atrator fixo, memória associativa no espaço latente do SSM, execução de ferramentas via sandbox, raciocínio recursivo com checkpoint/restore, invariância de segurança e um supervisor semântico de objetivo.
 
 E o **Sandbox Híbrido** pra proteger as tools de arquivo — path validation, size/type enforcement, níveis de isolamento. Testes passando: `51 passed`.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Junho (nascimento) | Hoje |
 |---------|--------------------|------|
 | Commits | 1 | 302 |
 | Testes | 0 | 400+ C++ (30 suites) + 51 sandbox |
-| Speedup GPU | ❌ (OptiX não funcionava) | 252× block-traversal |
+| Speedup GPU |  (OptiX não funcionava) | 252× block-traversal |
 | Compressão | 27.26 GB (float32) | 245 MB (block codec, 114×) |
 | Pipeline | Conceitual | Híbrido CPU/GPU bit-a-bit |
 | Agente | 0 subsistemas | 8 subsistemas |
 | Modelo | Mamba 2.8B (planejado) | BitMamba-2 1B (funcional) |
 | Sandbox | não existia | 3 níveis, 51/51 testes |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Não force uma tecnologia onde ela não encaixa** — OptiX no WSL custou ~2 semanas; a abordagem híbrida foi descoberta em 3 dias e resolveu.
 2. **Modelos ternários nativos vs pós-treino** — ternarizar um float32 depois do treino destrói a coerência. O BitMamba-2 funciona porque nasceu com pesos ternários.

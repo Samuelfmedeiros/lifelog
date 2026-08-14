@@ -1,17 +1,17 @@
 ---
 // ThemeRail — Controls: tema, cor (dropdown), idioma
-// Layout: [🌙] [🎨 ▼] [PT]
+// Layout: [Tema] [Cor ▼] [PT]
 // Paleta abre dropdown pra baixo com 6 dots
 import { PALETTES } from '../lib/palettes'
 ---
 
 <div id="theme-rail" class="theme-rail">
-  <!-- 🌙 Theme Toggle -->
+  <!-- Theme Toggle -->
   <button id="rail-theme" class="rail-btn" aria-label="Alternar tema" title="Alternar tema">
-    <span id="rail-theme-icon" class="rail-icon">🌙</span>
+    <span id="rail-theme-icon" class="rail-icon" aria-hidden="true"><svg id="rail-theme-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M12 3c-4.4 0-8 3.6-8 8s3.6 8 8 8c1.7 0 3.3-.5 4.6-1.4C10.9 16.4 8.5 13 8.5 9c0-2.2.8-4.3 2.3-6H12z"/></svg></span>
   </button>
 
-  <!-- 🎨 Color Button (abre dropdown pra baixo) -->
+  <!-- Color Button (abre dropdown pra baixo) -->
   <div class="rail-color-wrap">
     <button id="rail-color" class="rail-btn rail-btn-color" aria-label="Paleta de cores" title="Paleta de cores">
       <span class="rail-palette-indicator" id="rail-indicator"></span>
@@ -244,8 +244,15 @@ import { PALETTES } from '../lib/palettes'
     root.setAttribute('data-theme', theme)
     root.classList.toggle('dark', theme !== 'light')
     root.classList.toggle('light', theme === 'light')
-    const icon = document.getElementById('rail-theme-icon')
-    if (icon) icon.textContent = theme === 'light' ? '☀️' : '🌙'
+    const themeIcon = document.getElementById('rail-theme-icon');
+    const themeSvg = document.getElementById('rail-theme-svg');
+    if (themeSvg) {
+      const isLight = theme === 'light';
+      // Sol: círculo + raios. Lua: meia-lua.
+      themeSvg.innerHTML = isLight
+        ? '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke-linecap="round"/>'
+        : '<path d="M12 3c-4.4 0-8 3.6-8 8s3.6 8 8 8c1.7 0 3.3-.5 4.6-1.4C10.9 16.4 8.5 13 8.5 9c0-2.2.8-4.3 2.3-6H12z"/>';
+    }
     const pid = getSaved(PALETTE_KEY, 'purple')
     applyPalette(pid, false)
     if (persist !== false) save(THEME_KEY, theme)

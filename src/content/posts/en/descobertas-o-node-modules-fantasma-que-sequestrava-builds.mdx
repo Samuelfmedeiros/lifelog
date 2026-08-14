@@ -5,14 +5,13 @@ date: 2026-08-05 12:00:00 -03:00
 pubDate: 2026-08-06 17:15:00 -03:00
 project: descobertas
 tags: ["descobertas", "node", "npm", "debug", "wsl"]
-icon: "💡"
 cover: /covers/descobertas-o-node-modules-fantasma-que-sequestrava-builds.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The error that made no sense
+##  The error that made no sense
 
 It was 20:10 on 2026-08-05. I was fixing the LifeLog theme animation — just adjusting some View Transition CSS rules. Local build, push, CI. Routine.
 
@@ -25,13 +24,13 @@ The requested module 'cookie' is a CommonJS module...
 
 Weird. The `cookie` package in the lockfile was `2.0.1` (ESM, with `parseCookie`). The CI from the last commit had passed. Nobody touched dependencies. Why did it break locally?
 
-## 🧠 The context: CI passes, local breaks
+##  The context: CI passes, local breaks
 
 This is the most infuriating kind of error. The CI (GitHub Actions) builds in a clean environment — everything works. Locally, same code, same dependencies, same Node — breaks.
 
 ```bash
 # Check 1: is the lockfile identical to CI's?
-git show HEAD:pnpm-lock.yaml | grep -c "cookie@2.0.1"    # 2 — same
+git show HEAD:pnpm-lock.yaml | grep -c "cookie@2.0.1"  # 2 — same
 
 # Check 2: does the package exist in node_modules?
 ls node_modules/.pnpm/cookie@2.0.1/node_modules/cookie/dist/index.js
@@ -39,19 +38,19 @@ ls node_modules/.pnpm/cookie@2.0.1/node_modules/cookie/dist/index.js
 
 # Check 3: what does Node actually resolve?
 node --input-type=module -e "import('cookie').then(m => console.log(Object.keys(m)))"
-# [ 'default', 'parse', 'serialize' ]  — ⚠️ parseCookie missing!
+# [ 'default', 'parse', 'serialize' ]  —  parseCookie missing!
 ```
 
 Node was resolving a **different** `cookie` than what was in the project's `node_modules`. Something in the directory tree was hijacking resolution.
 
-## 🔧 The struggle: following Node Module Resolution's trail
+##  The struggle: following Node Module Resolution's trail
 
 Node resolves modules by climbing the directory tree: first the local `node_modules`, then the parent's, all the way to root. If a package with the same name exists at any level above, it wins.
 
 ```bash
 # Where is Node resolving 'cookie'?
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file://~/projetos/node_modules/cookie/index.js   ← WHAT?
+# file://~/projetos/node_modules/cookie/index.js  ← WHAT?
 ```
 
 `~/projetos/node_modules/`. That shouldn't exist.
@@ -69,18 +68,18 @@ The question remained: **who installed this in ~/?**
 ```bash
 cat ~/projetos/package.json
 # {
-#   "dependencies": {
-#     "better-sqlite3": "^12.11.1",
-#     "camofox-browser": "^2.4.6",
-#     "puppeteer": "^25.1.0",
-#     "vercel": "^34.0.0"
-#   }
+#  "dependencies": {
+#  "better-sqlite3": "^12.11.1",
+#  "camofox-browser": "^2.4.6",
+#  "puppeteer": "^25.1.0",
+#  "vercel": "^34.0.0"
+#  }
 # }
 ```
 
 Someone (probably a setup script or another agent) ran `npm install` in home on 2026-08-04 at 18:33 — and nobody noticed. `better-sqlite3` pulled 453 packages, including `cookie@0.7.2` as a transitive dependency. A 253MB global node_modules, silent, hijacking every Node build on the WSL.
 
-## 💡 The resolution: mv + backup
+##  The resolution: mv + backup
 
 ```bash
 # 1. Move to backup (never rm -rf 253MB directly)
@@ -93,12 +92,12 @@ node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
 
 # 3. Build
 pnpm run build
-# ✓ 130 page(s) built in 25.62s
+#  130 page(s) built in 25.62s
 ```
 
 Build passed. The error simply vanished.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -109,7 +108,7 @@ Build passed. The error simply vanished.
 | Projects affected | All on WSL (LifeLog, LEVE LAVANDA, etc.) |
 | Time lost debugging | ~5 min (found it fast by following the resolve trail) |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **`import.meta.resolve()` is Node's most underrated debugging tool** — when an import breaks and the package exists in `node_modules`, the first thing to ask is **where** Node is resolving it. `import.meta.resolve('package')` shows the REAL path. Takes 2 seconds and saves hours of debugging.
 
@@ -121,9 +120,9 @@ Build passed. The error simply vanished.
 
 <Terminal
   lines={[
-    { cmd: "node --input-type=module -e \"console.log(import.meta.resolve(process.argv[1]))\" cookie", output: 'Shows where Node RESOLVES a package — not where it SHOULD be' },
-    { cmd: 'find ~ -maxdepth 2 -name "node_modules" -type d', output: 'Hunt down rogue node_modules in home' },
-    { cmd: 'ls ~/.npm-home-backup-20260805/', output: '253MB backup of the ghost — a lesson in module resolution' },
-    { cmd: 'pnpm run build 2>&1 | tail -3', output: '✓ 130 page(s) built — after killing the ghost' },
+  { cmd: "node --input-type=module -e \"console.log(import.meta.resolve(process.argv[1]))\" cookie", output: 'Shows where Node RESOLVES a package — not where it SHOULD be' },
+  { cmd: 'find ~ -maxdepth 2 -name "node_modules" -type d', output: 'Hunt down rogue node_modules in home' },
+  { cmd: 'ls ~/.npm-home-backup-20260805/', output: '253MB backup of the ghost — a lesson in module resolution' },
+  { cmd: 'pnpm run build 2>&1 | tail -3', output: ' 130 page(s) built — after killing the ghost' },
   ]}
 />

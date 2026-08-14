@@ -5,7 +5,6 @@ date: 2026-07-21T12:07:00 -03:00
 pubDate: 2026-07-21 12:07:00 -03:00
 project: dogwalk
 tags: ["ci-cd", "python", "github-actions", "dogwalk", "debug"]
-icon: "🔧"
 cover: /covers/2026-07-21-dogwalk-ci-debug-spiral.webp
 featured: false
 ---
@@ -21,13 +20,13 @@ O primeiro round foi bobo, mas traiçoeiro. O workflow do GitHub Actions tinha u
 ```yaml
 - name: Run backend tests
   run: |
-    python -c "
-      import asyncio
-      from app.database import init_db, settings
-      settings.db_url = '...'
-      asyncio.run(init_db())
-    "
-    python -m pytest app/tests/ -v --tb=short -x
+  python -c "
+  import asyncio
+  from app.database import init_db, settings
+  settings.db_url = '...'
+  asyncio.run(init_db())
+  "
+  python -m pytest app/tests/ -v --tb=short -x
 ```
 
 O problema? O YAML do GitHub Actions não trata indentação dentro de `python -c "..."` do jeito que você espera. Na prática, o shell recebia linhas quebradas em posições erradas — e o Python reclamava de sintaxe. A solução foi condensar tudo numa linha só com `;`:
@@ -54,11 +53,11 @@ A solução foi simples: marcar o teste com `@pytest.mark.skipif` e ignorar no C
 
 ```python
 @pytest.mark.skipif(
-    os.environ.get("CI") == "true",
-    reason="Precisa de servidor rodando"
+  os.environ.get("CI") == "true",
+  reason="Precisa de servidor rodando"
 )
 def test_api_contract():
-    ...
+  ...
 ```
 
 ## O que ficou

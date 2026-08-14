@@ -6,7 +6,6 @@ pubDate: 2026-07-13 00:00:00 -03:00
 project: arachne
 tags: ["arachne", "pipeline", "multi-engine", "fallback", "scraping"]
 
-icon: 🕷️
 cover: /covers/pipeline-multi-engine-in-arachne-4-fallback-layers.webp
 featured: true
 lang: 'en'
@@ -28,52 +27,52 @@ The flow is a progressive staircase. Each step is slower than the previous, but 
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                    INPUT URL                          │
+│  INPUT URL  │
 └────────────────────┬─────────────────────────────────┘
-                     │
-                     ▼
-        ┌─────────────────────────┐
-        │   DomainHistory check   │ ← Have we visited this domain before?
-        └────────┬────────────────┘
-                 │
-    ┌────────────┴────────────┐
-    │  Fastest engine         │ ← If history exists, start with the best one
-    │  that has worked        │
-    └────────────┬────────────┘
-                 │
-    ╔════════════╪══════════════════════╗
-    ║            ▼                     ║
-    ║  ┌──────────────────┐            ║
-    ║  │ TRAFILATURA      │  250ms      ║  ─── Layer 1
-    ║  │ Pure HTTP        │  ~70% sites ║
-    ║  └───────┬──────────┘            ║
-    ║          │ Failed? Low content?  ║
-    ║          │ SPA detected?         ║
-    ║          ▼                       ║
-    ║  ┌──────────────────┐            ║
-    ║  │ CRAWL4AI SDK     │  1-2s      ║  ─── Layer 2
-    ║  │ Chromium headless│  +JS sites ║
-    ║  └───────┬──────────┘            ║
-    ║          │ Failed?               ║
-    ║          ▼                       ║
-    ║  ┌──────────────────┐            ║
-    ║  │ DOCKER SIDECAR   │  3-8s      ║  ─── Layer 3
-    ║  │ Isolated container│  Heavy    ║
-    ║  └───────┬──────────┘            ║
-    ║          │ Blocked?              ║
-    ║          ▼                       ║
-    ║  ┌──────────────────┐            ║
-    ║  │ CAMOUFOX         │  5-15s     ║  ─── Layer 4
-    ║  │ Firefox stealth  │  Cloudflare║
-    ║  └───────┬──────────┘            ║
-    ║          │                       ║
-    ║          ▼                       ║
-    ║  ┌──────────────────┐            ║
-    ║  │ CIRCUIT BREAKER  │            ║
-    ║  │ Log + retry after│            ║
-    ║  │ backoff          │            ║
-    ║  └──────────────────┘            ║
-    ╚══════════════════════════════════╝
+  │
+  ▼
+  ┌─────────────────────────┐
+  │  DomainHistory check  │ ← Have we visited this domain before?
+  └────────┬────────────────┘
+  │
+  ┌────────────┴────────────┐
+  │  Fastest engine  │ ← If history exists, start with the best one
+  │  that has worked  │
+  └────────────┬────────────┘
+  │
+  ╔════════════╪══════════════════════╗
+  ║  ▼  ║
+  ║  ┌──────────────────┐  ║
+  ║  │ TRAFILATURA  │  250ms  ║  ─── Layer 1
+  ║  │ Pure HTTP  │  ~70% sites ║
+  ║  └───────┬──────────┘  ║
+  ║  │ Failed? Low content?  ║
+  ║  │ SPA detected?  ║
+  ║  ▼  ║
+  ║  ┌──────────────────┐  ║
+  ║  │ CRAWL4AI SDK  │  1-2s  ║  ─── Layer 2
+  ║  │ Chromium headless│  +JS sites ║
+  ║  └───────┬──────────┘  ║
+  ║  │ Failed?  ║
+  ║  ▼  ║
+  ║  ┌──────────────────┐  ║
+  ║  │ DOCKER SIDECAR  │  3-8s  ║  ─── Layer 3
+  ║  │ Isolated container│  Heavy  ║
+  ║  └───────┬──────────┘  ║
+  ║  │ Blocked?  ║
+  ║  ▼  ║
+  ║  ┌──────────────────┐  ║
+  ║  │ CAMOUFOX  │  5-15s  ║  ─── Layer 4
+  ║  │ Firefox stealth  │  Cloudflare║
+  ║  └───────┬──────────┘  ║
+  ║  │  ║
+  ║  ▼  ║
+  ║  ┌──────────────────┐  ║
+  ║  │ CIRCUIT BREAKER  │  ║
+  ║  │ Log + retry after│  ║
+  ║  │ backoff  │  ║
+  ║  └──────────────────┘  ║
+  ╚══════════════════════════════════╝
 ```
 
 Each layer attempts extraction, computes a **confidence score**, and decides whether the result is good enough or whether to escalate to the next engine.
@@ -84,38 +83,38 @@ Trafilatura is the sprinter of the group. It doesn't open a browser — it downl
 
 ```python
 async def _try_trafilatura(url: str, timeout: int = 5) -> Optional[dict]:
-    cfg = trafilatura_settings.use_config()
-    cfg["DEFAULT"]["EXTRACTION_TIMEOUT"] = str(timeout)
+  cfg = trafilatura_settings.use_config()
+  cfg["DEFAULT"]["EXTRACTION_TIMEOUT"] = str(timeout)
 
-    downloaded = trafilatura.fetch_url(url)
-    if not downloaded or not downloaded.strip():
-        return {"status": "failed", "error": "Empty fetch", "engine": "trafilatura"}
+  downloaded = trafilatura.fetch_url(url)
+  if not downloaded or not downloaded.strip():
+  return {"status": "failed", "error": "Empty fetch", "engine": "trafilatura"}
 
-    result = trafilatura.bare_extraction(
-        downloaded,
-        url=url,
-        include_comments=False,
-        include_tables=True,
-        include_formatting=True,
-        favor_precision=True,
-    )
+  result = trafilatura.bare_extraction(
+  downloaded,
+  url=url,
+  include_comments=False,
+  include_tables=True,
+  include_formatting=True,
+  favor_precision=True,
+  )
 
-    if not result:
-        # Fallback: try more aggressive extract()
-        content = trafilatura.extract(downloaded)
-        if not content or len(content.strip()) < MIN_CONTENT_CHARS:
-            return {"status": "failed", "error": "Empty extraction",
-                    "html": downloaded, "engine": "trafilatura"}
+  if not result:
+  # Fallback: try more aggressive extract()
+  content = trafilatura.extract(downloaded)
+  if not content or len(content.strip()) < MIN_CONTENT_CHARS:
+  return {"status": "failed", "error": "Empty extraction",
+  "html": downloaded, "engine": "trafilatura"}
 
-        return {
-            "status": "ok",
-            "markdown": content,
-            "html": downloaded,
-            "chars": len(content),
-            "engine": "trafilatura",
-        }
+  return {
+  "status": "ok",
+  "markdown": content,
+  "html": downloaded,
+  "chars": len(content),
+  "engine": "trafilatura",
+  }
 
-    # ... extract title, description, author from result
+  # ... extract title, description, author from result
 ```
 
 The trick: I set `favor_precision=True` to avoid false positives. I'd rather fail fast (and escalate to the next engine) than return truncated content.
@@ -131,34 +130,34 @@ If Trafilatura fails, the Crawl4AI SDK opens a headless Chromium and renders the
 
 ```python
 async def _try_crawl4ai(url: str) -> Optional[dict]:
-    from crawl4ai import AsyncWebCrawler
-    from crawl4ai.async_configs import CrawlerRunConfig
+  from crawl4ai import AsyncWebCrawler
+  from crawl4ai.async_configs import CrawlerRunConfig
 
-    config = CrawlerRunConfig(
-        word_count_threshold=5,
-        excluded_tags=["nav", "footer", "script", "style"],
-        wait_until="networkidle",
-        page_timeout=5000,
-    )
+  config = CrawlerRunConfig(
+  word_count_threshold=5,
+  excluded_tags=["nav", "footer", "script", "style"],
+  wait_until="networkidle",
+  page_timeout=5000,
+  )
 
-    async with AsyncWebCrawler() as crawler:
-        crawl_result = await crawler.arun(url=url, config=config)
+  async with AsyncWebCrawler() as crawler:
+  crawl_result = await crawler.arun(url=url, config=config)
 
-    if not crawl_result.success:
-        return {"status": "failed", "error": crawl_result.error_message,
-                "engine": "crawl4ai"}
+  if not crawl_result.success:
+  return {"status": "failed", "error": crawl_result.error_message,
+  "engine": "crawl4ai"}
 
-    # Crawl4AI 0.8.9: markdown may come as fit_markdown or raw_markdown
-    markdown = ""
-    if crawl_result.markdown:
-        if isinstance(crawl_result.markdown, str):
-            markdown = crawl_result.markdown
-        elif hasattr(crawl_result.markdown, 'fit_markdown') \
-                and crawl_result.markdown.fit_markdown:
-            markdown = crawl_result.markdown.fit_markdown
-        elif hasattr(crawl_result.markdown, 'raw_markdown') \
-                and crawl_result.markdown.raw_markdown:
-            markdown = crawl_result.markdown.raw_markdown
+  # Crawl4AI 0.8.9: markdown may come as fit_markdown or raw_markdown
+  markdown = ""
+  if crawl_result.markdown:
+  if isinstance(crawl_result.markdown, str):
+  markdown = crawl_result.markdown
+  elif hasattr(crawl_result.markdown, 'fit_markdown') \
+  and crawl_result.markdown.fit_markdown:
+  markdown = crawl_result.markdown.fit_markdown
+  elif hasattr(crawl_result.markdown, 'raw_markdown') \
+  and crawl_result.markdown.raw_markdown:
+  markdown = crawl_result.markdown.raw_markdown
 ```
 
 The difference from Trafilatura is brutal on SPAs. A Next.js page that Trafilatura returns as empty `<script>...</script>`, Crawl4AI renders into clean markdown with titles, paragraphs, and tables.
@@ -174,27 +173,27 @@ The Sidecar is Crawl4AI running in a separate Docker container. Same engine, but
 
 ```python
 async def _try_sidecar(url: str) -> Optional[dict]:
-    from app.engines.crawl4ai_sidecar import check_health, scrape_with_sidecar
+  from app.engines.crawl4ai_sidecar import check_health, scrape_with_sidecar
 
-    if not check_health():
-        return {
-            "status": "failed",
-            "error": "Sidecar offline (check docker compose)",
-            "engine": "sidecar",
-        }
+  if not check_health():
+  return {
+  "status": "failed",
+  "error": "Sidecar offline (check docker compose)",
+  "engine": "sidecar",
+  }
 
-    result = await scrape_with_sidecar(url)
-    if not result.get("success"):
-        return {"status": "failed", "error": result.get("error"),
-                "engine": "sidecar"}
+  result = await scrape_with_sidecar(url)
+  if not result.get("success"):
+  return {"status": "failed", "error": result.get("error"),
+  "engine": "sidecar"}
 
-    markdown = result.get("markdown", "") or ""
-    cleaned_html = result.get("cleaned_html") or result.get("html", "") or ""
+  markdown = result.get("markdown", "") or ""
+  cleaned_html = result.get("cleaned_html") or result.get("html", "") or ""
 
-    # Extract structured data (JSON-LD, Open Graph)
-    if cleaned_html:
-        from app.scraper.extractors import extract_structured
-        structured_data = extract_structured(cleaned_html, url=url)
+  # Extract structured data (JSON-LD, Open Graph)
+  if cleaned_html:
+  from app.scraper.extractors import extract_structured
+  structured_data = extract_structured(cleaned_html, url=url)
 ```
 
 The Sidecar runs on `localhost:11235`. The health check is a GET `/health` — if it doesn't respond in 2s, we don't even bother and escalate straight to Layer 4.
@@ -212,29 +211,29 @@ Camoufox is the last resort. It's a Firefox with anti-detection patches — it g
 
 ```python
 async def _try_camoufox(url: str) -> Optional[dict]:
-    from app.scraper.engine import fetch_camoufox
-    from app.scraper.extractors import extract_all, extract_structured
+  from app.scraper.engine import fetch_camoufox
+  from app.scraper.extractors import extract_all, extract_structured
 
-    fetch_result = fetch_camoufox(url)
+  fetch_result = fetch_camoufox(url)
 
-    if fetch_result.was_blocked or fetch_result.status == 0:
-        return {"status": "failed",
-                "error": f"Camoufox blocked: {fetch_result.reason}",
-                "engine": "camoufox"}
+  if fetch_result.was_blocked or fetch_result.status == 0:
+  return {"status": "failed",
+  "error": f"Camoufox blocked: {fetch_result.reason}",
+  "engine": "camoufox"}
 
-    html = fetch_result.html
-    pre_extracted = fetch_result.pre_extracted or {}
+  html = fetch_result.html
+  pre_extracted = fetch_result.pre_extracted or {}
 
-    extracted = extract_all(html, url=url,
-                            do_structured=True, do_text=True, do_structure=True)
+  extracted = extract_all(html, url=url,
+  do_structured=True, do_text=True, do_structure=True)
 
-    if extracted:
-        content = extracted.text_content or ""
-        title = extracted.title or ""
-    else:
-        # Fallback: Trafilatura on rendered HTML
-        tr = trafilatura.bare_extraction(html, url=url)
-        content = tr.text if tr and hasattr(tr, 'text') else ""
+  if extracted:
+  content = extracted.text_content or ""
+  title = extracted.title or ""
+  else:
+  # Fallback: Trafilatura on rendered HTML
+  tr = trafilatura.bare_extraction(html, url=url)
+  content = tr.text if tr and hasattr(tr, 'text') else ""
 ```
 
 It's slow — 5 seconds minimum, 15 on heavy pages. But **it gets through where nothing else does**. Sites with Cloudflare Advanced, pages requiring interaction, heavy single-page apps — Camoufox handles them.
@@ -245,26 +244,26 @@ The cache is dual: **SyncCache** (Redis-like in-memory) + **SQLite** with config
 
 ```python
 def _get_cached(url: str, session: Session, max_age: int = 3600) -> Optional[dict]:
-    # Try fast cache first (SyncCache in RAM)
-    cached = sync_cache.get(f"pipeline:{url}")
-    if cached is not None:
-        return cached
+  # Try fast cache first (SyncCache in RAM)
+  cached = sync_cache.get(f"pipeline:{url}")
+  if cached is not None:
+  return cached
 
-    # Fallback: SQLite CacheEntry
-    entry = session.exec(
-        select(CacheEntry).where(CacheEntry.url == url)
-        .order_by(desc(CacheEntry.created_at)).limit(1)
-    ).first()
-    if not entry:
-        return None
+  # Fallback: SQLite CacheEntry
+  entry = session.exec(
+  select(CacheEntry).where(CacheEntry.url == url)
+  .order_by(desc(CacheEntry.created_at)).limit(1)
+  ).first()
+  if not entry:
+  return None
 
-    age = (datetime.now(timezone.utc) - entry.created_at.replace(tzinfo=timezone.utc)).total_seconds()
-    if age > entry.ttl_seconds:
-        session.delete(entry)
-        session.commit()
-        return None
+  age = (datetime.now(timezone.utc) - entry.created_at.replace(tzinfo=timezone.utc)).total_seconds()
+  if age > entry.ttl_seconds:
+  session.delete(entry)
+  session.commit()
+  return None
 
-    return json.loads(entry.data_snapshot)
+  return json.loads(entry.data_snapshot)
 ```
 
 The default TTL is 1 hour. Cached URL = response in milliseconds. New URL = full pipeline. In the future I want adaptive caching — pages that rarely change (documentation) get longer TTL, dynamic pages (news) get shorter TTL.
@@ -275,42 +274,42 @@ The heart of the pipeline is the `score_result` function. It evaluates result qu
 
 ```python
 def score_result(result: dict) -> float:
-    if not result or result.get("status") in ("failed", "blocked"):
-        return 0.0
+  if not result or result.get("status") in ("failed", "blocked"):
+  return 0.0
 
-    content = result.get("markdown") or result.get("text") or result.get("content") or ""
-    html = result.get("html", "")
-    chars = len(content)
-    html_len = len(html)
+  content = result.get("markdown") or result.get("text") or result.get("content") or ""
+  html = result.get("html", "")
+  chars = len(content)
+  html_len = len(html)
 
-    # 1. Content size (weight 0.4)
-    if chars < 100:       length_score = 0.0
-    elif chars < 500:     length_score = 0.2
-    elif chars < 2000:    length_score = 0.5
-    elif chars < 8000:    length_score = 0.8
-    else:                 length_score = 1.0
+  # 1. Content size (weight 0.4)
+  if chars < 100:  length_score = 0.0
+  elif chars < 500:  length_score = 0.2
+  elif chars < 2000:  length_score = 0.5
+  elif chars < 8000:  length_score = 0.8
+  else:  length_score = 1.0
 
-    # 2. Text/HTML ratio (weight 0.3) — less junk, more content
-    if html_len > 0 and chars > 0:
-        ratio = chars / html_len
-        if ratio > 0.5:      ratio_score = 1.0
-        elif ratio > 0.2:    ratio_score = 0.7
-        elif ratio > 0.05:   ratio_score = 0.4
-        else:                ratio_score = ratio * 5
-    else:
-        ratio_score = 0.0
+  # 2. Text/HTML ratio (weight 0.3) — less junk, more content
+  if html_len > 0 and chars > 0:
+  ratio = chars / html_len
+  if ratio > 0.5:  ratio_score = 1.0
+  elif ratio > 0.2:  ratio_score = 0.7
+  elif ratio > 0.05:  ratio_score = 0.4
+  else:  ratio_score = ratio * 5
+  else:
+  ratio_score = 0.0
 
-    # 3. Structured data bonus (weight 0.2) — JSON-LD, Open Graph
-    # 4. Metadata bonus (weight 0.1) — title, description, author
+  # 3. Structured data bonus (weight 0.2) — JSON-LD, Open Graph
+  # 4. Metadata bonus (weight 0.1) — title, description, author
 
-    # Weighted combination
-    final = (
-        length_score * 0.40 +
-        ratio_score * 0.30 +
-        structured_score * 0.20 +
-        metadata_score * 0.10
-    )
-    return round(min(final, 1.0), 4)
+  # Weighted combination
+  final = (
+  length_score * 0.40 +
+  ratio_score * 0.30 +
+  structured_score * 0.20 +
+  metadata_score * 0.10
+  )
+  return round(min(final, 1.0), 4)
 ```
 
 The constants are:
@@ -329,25 +328,25 @@ One of the most important lessons learned: **the web is not homogeneous**. Each 
 
 ```python
 class DomainHistory:
-    def __init__(self):
-        self._data: dict[str, dict[str, int]] = {}
-        # domain -> {engine: score}
+  def __init__(self):
+  self._data: dict[str, dict[str, int]] = {}
+  # domain -> {engine: score}
 
-    def record_success(self, url: str, engine: str):
-        domain = urlparse(url).netloc.lower()
-        self._data.setdefault(domain, {})
-        self._data[domain][engine] = \
-            self._data[domain].get(engine, 0) + 1
+  def record_success(self, url: str, engine: str):
+  domain = urlparse(url).netloc.lower()
+  self._data.setdefault(domain, {})
+  self._data[domain][engine] = \
+  self._data[domain].get(engine, 0) + 1
 
-    def best_engine(self, url: str) -> Optional[str]:
-        domain = urlparse(url).netloc.lower()
-        scores = self._data.get(domain, {})
-        if not scores:
-            return None
-        positive = {e: s for e, s in scores.items() if s > 0}
-        if not positive:
-            return None
-        return max(positive, key=positive.get)
+  def best_engine(self, url: str) -> Optional[str]:
+  domain = urlparse(url).netloc.lower()
+  scores = self._data.get(domain, {})
+  if not scores:
+  return None
+  positive = {e: s for e, s in scores.items() if s > 0}
+  if not positive:
+  return None
+  return max(positive, key=positive.get)
 ```
 
 `DomainHistory` becomes a `before_fetch` hook that reorders the engines: if `example.com` always worked with Crawl4AI, we start with it next time, skipping Trafilatura.
@@ -360,15 +359,15 @@ The pipeline is extensible via hooks at 9 different points:
 
 ```python
 HOOK_POINTS = {
-    "before_fetch":      "Before HTTP request",
-    "after_fetch":       "After raw HTML",
-    "before_extract":    "Before extracting content",
-    "after_extract":     "After extraction",
-    "before_cache":      "Before saving to cache",
-    "before_crawl_url":  "Before each URL in a BFS crawl",
-    "on_error":          "When an error occurs",
-    "on_retry":          "When about to retry",
-    "on_complete":       "Pipeline completed successfully",
+  "before_fetch":  "Before HTTP request",
+  "after_fetch":  "After raw HTML",
+  "before_extract":  "Before extracting content",
+  "after_extract":  "After extraction",
+  "before_cache":  "Before saving to cache",
+  "before_crawl_url":  "Before each URL in a BFS crawl",
+  "on_error":  "When an error occurs",
+  "on_retry":  "When about to retry",
+  "on_complete":  "Pipeline completed successfully",
 }
 ```
 
@@ -376,18 +375,18 @@ The multi-engine's `after_extract` hook, for example, detects when Trafilatura r
 
 ```python
 async def _after_extract_hook(ctx: dict) -> dict:
-    result = ctx.get("result")
-    if not result:
-        return ctx
+  result = ctx.get("result")
+  if not result:
+  return ctx
 
-    confidence = score_result(result)
-    result["confidence"] = confidence
+  confidence = score_result(result)
+  result["confidence"] = confidence
 
-    engine = result.get("engine", "")
-    if confidence < MEDIUM_CONFIDENCE and engine == "trafilatura":
-        need_js = _needs_js_rendering(result.get("html", ""))
-        if need_js or result.get("chars", 0) < MIN_CONTENT_CHARS:
-            ctx["try_next_engine"] = True
+  engine = result.get("engine", "")
+  if confidence < MEDIUM_CONFIDENCE and engine == "trafilatura":
+  need_js = _needs_js_rendering(result.get("html", ""))
+  if need_js or result.get("chars", 0) < MIN_CONTENT_CHARS:
+  ctx["try_next_engine"] = True
 ```
 
 This allows the pipeline to be **composed** — you add a hook that filters ads, another that extracts assets, another that detects SPAs. Each handles its own concern without cluttering the main flow.
@@ -398,10 +397,10 @@ Parallel to the multi-engine pipeline (which focuses on extraction), there's `pr
 
 ```python
 _FETCH_REGISTRY = [
-    (FetchLevel.BASIC,     "fetch_basic"),     # scrapling Fetcher.get()
-    (FetchLevel.STEALTH,   "fetch_stealth"),   # scrapling StealthyFetcher
-    (FetchLevel.DYNAMIC,   "fetch_dynamic"),   # scrapling DynamicFetcher
-    (FetchLevel.CAMOUFOX,  "fetch_camoufox"),  # FetchManager pool
+  (FetchLevel.BASIC,  "fetch_basic"),  # scrapling Fetcher.get()
+  (FetchLevel.STEALTH,  "fetch_stealth"),  # scrapling StealthyFetcher
+  (FetchLevel.DYNAMIC,  "fetch_dynamic"),  # scrapling DynamicFetcher
+  (FetchLevel.CAMOUFOX,  "fetch_camoufox"),  # FetchManager pool
 ]
 ```
 
@@ -415,16 +414,16 @@ And the coolest part: it automatically detects **SPA shells**. If the returned H
 
 ```python
 def _needs_js_rendering(html: str) -> bool:
-    if len(html) < 3000:
-        return True  # Ultra-small = SPA shell
+  if len(html) < 3000:
+  return True  # Ultra-small = SPA shell
 
-    markers = ["__next_data__", "__nuxt__", 'id="__next"',
-               'id="app"', 'id="root"', "react-root"]
-    if len(html) < 8000:
-        for marker in markers:
-            if marker.lower() in html.lower():
-                return True
-    return False
+  markers = ["__next_data__", "__nuxt__", 'id="__next"',
+  'id="app"', 'id="root"', "react-root"]
+  if len(html) < 8000:
+  for marker in markers:
+  if marker.lower() in html.lower():
+  return True
+  return False
 ```
 
 ## What I learned implementing this
@@ -475,18 +474,18 @@ The multi-engine pipeline has a CLI helper that I use directly for debugging:
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Arachne', output: '' },
-    { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://example.com\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"])"', output: "trafilatura 0.8523" },
-    { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://httpbin.org/html\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"])"', output: "trafilatura 0.7841" },
-    { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import MultiEnginePipeline; p = MultiEnginePipeline(); r = asyncio.run(p.fetch(\\\"https://pt.wikipedia.org\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"], len(r[\\\"_trials\\\"]))"', output: "trafilatura 0.8921 1" },
-    { cmd: '# Force specific engine', output: '' },
-    { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://example.com\\\", engine=\\\"camoufox\\\")); print(r[\\\"engine\\\"] if r.get(\\\"status\\\") == \\\"ok\\\" else r[\\\"error\\\"])"', output: "camoufox" },
-    { cmd: '# Run multi-engine unit tests', output: '' },
-    { cmd: 'cd ~/projetos/Arachne && python3 -m pytest tests/test_multi_engine.py -v -x --tb=short 2>&1 | tail -20', output: "22 passed in 0.84s" },
-    { cmd: '# View engine history by domain', output: '' },
-    { cmd: 'python3 -c "from app.scraper.multi_engine import get_domain_history; dh = get_domain_history(); print(dh.get_summary())"', output: "{'example.com': {'trafilatura': 5, 'crawl4ai': 2}}" },
-    { cmd: '# Full pipeline (progressive + extraction)', output: '' },
-    { cmd: 'python3 -c "from app.scraper.pipeline import run_pipeline; from app.database import SessionLocal; s = SessionLocal(); r = run_pipeline(\\\"https://example.com\\\", s); print(r[\\\"status\\\"], r.get(\\\"engine\\\", \\\"?\\\"), r.get(\\\"confidence\\\", \\\"?\\\"))"', output: "ok trafilatura 0.85" },
+  { cmd: 'cd ~/projetos/Arachne', output: '' },
+  { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://example.com\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"])"', output: "trafilatura 0.8523" },
+  { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://httpbin.org/html\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"])"', output: "trafilatura 0.7841" },
+  { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import MultiEnginePipeline; p = MultiEnginePipeline(); r = asyncio.run(p.fetch(\\\"https://pt.wikipedia.org\\\")); print(r[\\\"engine\\\"], r[\\\"confidence\\\"], len(r[\\\"_trials\\\"]))"', output: "trafilatura 0.8921 1" },
+  { cmd: '# Force specific engine', output: '' },
+  { cmd: 'python3 -c "import asyncio; from app.scraper.multi_engine import fetch_url; r = asyncio.run(fetch_url(\\\"https://example.com\\\", engine=\\\"camoufox\\\")); print(r[\\\"engine\\\"] if r.get(\\\"status\\\") == \\\"ok\\\" else r[\\\"error\\\"])"', output: "camoufox" },
+  { cmd: '# Run multi-engine unit tests', output: '' },
+  { cmd: 'cd ~/projetos/Arachne && python3 -m pytest tests/test_multi_engine.py -v -x --tb=short 2>&1 | tail -20', output: "22 passed in 0.84s" },
+  { cmd: '# View engine history by domain', output: '' },
+  { cmd: 'python3 -c "from app.scraper.multi_engine import get_domain_history; dh = get_domain_history(); print(dh.get_summary())"', output: "{'example.com': {'trafilatura': 5, 'crawl4ai': 2}}" },
+  { cmd: '# Full pipeline (progressive + extraction)', output: '' },
+  { cmd: 'python3 -c "from app.scraper.pipeline import run_pipeline; from app.database import SessionLocal; s = SessionLocal(); r = run_pipeline(\\\"https://example.com\\\", s); print(r[\\\"status\\\"], r.get(\\\"engine\\\", \\\"?\\\"), r.get(\\\"confidence\\\", \\\"?\\\"))"', output: "ok trafilatura 0.85" },
   ]}
 />
 

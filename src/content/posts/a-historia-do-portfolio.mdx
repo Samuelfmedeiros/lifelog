@@ -5,32 +5,31 @@ date: 2026-08-02 16:00:00 -03:00
 pubDate: 2026-08-02 16:00:00 -03:00
 project: portfolio
 tags: ["portfolio", "nextjs", "react", "games", "frontend"]
-icon: "🚀"
 cover: /covers/a-historia-do-portfolio.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O portfólio que virou uma nave espacial
+##  O portfólio que virou uma nave espacial
 
 Existe uma regra não escrita do mercado dev: **seu portfólio precisa ser tão bom quanto o código que você entrega**. Mas em maio de 2026, o meu era só um "Mission Control Portfolio" genérico com um grid de projetos.
 
 Hoje ele é uma **nave espacial interativa**: parallax scene multicamada com cockpit SVG, 5 mini-games jogáveis, terminal com 15+ comandos, i18n PT/EN completo e 218 testes segurando tudo. Tudo com tema ciano+preto cinematográfico — nada de template.
 
-## 🧠 Contexto — do template ao playground
+##  Contexto — do template ao playground
 
 O commit inicial (06/05/2026) foi modesto:
 
 ```
-607df2d 🚀 Initial commit: Mission Control Portfolio
+607df2d  Initial commit: Mission Control Portfolio
 ```
 
 Next.js + React + Tailwind, o básico de todo portfólio. Mas a identidade visual mudou rápido: o tema **Treasure Planet** foi arquivado em junho e nasceu a estética sci-fi ciano+preto com **parallax layers (L0-L3)** e cockpit SVG animado.
 
 A virada conceitual: em vez de mostrar meus projetos em cards estáticos, eu queria que o visitante **interagisse com o portfólio como se estivesse numa cabine de nave**. Daí vieram os 5 mini-games.
 
-## 🔧 A luta — games, animações e o deploy que quebrava
+##  A luta — games, animações e o deploy que quebrava
 
 ### Os 5 mini-games
 
@@ -57,7 +56,7 @@ npm install gsap --save-prod
 
 O Portifólio vive em **três ambientes**: Vercel (produção), self-host na 3001, e staging na 3000 via proxy do Capivara. O deploy da Vercel foi manual por muito tempo — `vercel --token "$VERCEL_TOKEN" --prod` — até o CI/CD automatizar.
 
-## 💡 Resolução — a vitrine que responde comandos
+##  Resolução — a vitrine que responde comandos
 
 O momento mais legal: o **terminal interativo**. Digite `help` e veja 15+ comandos; `projects` lista os projetos; `contact` abre o formulário. É o portfólio conversando com o visitante.
 
@@ -71,7 +70,7 @@ A arquitetura final:
 - **i18n PT/EN** — todos os componentes traduzidos
 - **Umami Analytics** — eventos, pageviews, heatmaps (self-hosted na 3100)
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | 06/05 (nascimento) | Hoje |
 |---------|-------------------|------|
@@ -83,7 +82,7 @@ A arquitetura final:
 | Lint errors | — | 0 |
 | Parallax layers | 0 | 4 (L0-L3) |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 O Portifólio me ensinou que **experiência de marca é código**. Um portfólio não mostra só o que você sabe fazer — ele demonstra. Cada mini-game, cada animação, cada comando do terminal é uma entrevista de emprego silenciosa acontecendo em tempo real.
 
@@ -91,9 +90,9 @@ E a lição prática: **sempre testar o build no ambiente de deploy**. GSAP na d
 
 <Terminal
   lines={[
-    { cmd: 'git rev-list --count HEAD', output: '529 commits desde o início' },
-    { cmd: 'pnpm vitest run | tail -1', output: '218+ testes passando' },
-    { cmd: 'curl -s https://samuelmedeiros.vercel.app | grep -c "terminal"', output: 'terminal presente no HTML' },
-    { cmd: 'vercel --prod', output: 'deploy pra produção' },
+  { cmd: 'git rev-list --count HEAD', output: '529 commits desde o início' },
+  { cmd: 'pnpm vitest run | tail -1', output: '218+ testes passando' },
+  { cmd: 'curl -s https://samuelmedeiros.vercel.app | grep -c "terminal"', output: 'terminal presente no HTML' },
+  { cmd: 'vercel --prod', output: 'deploy pra produção' },
   ]}
 />

@@ -6,7 +6,6 @@ pubDate: 2026-07-16 14:00:00 -03:00
 project: descobertas
 tags: ["ecosystem", "projects", "arachne", "capivara", "overview"]
 
-icon: 🌐
 cover: /covers/o-ecossistema-hoje.webp
 featured: true
 lang: 'en'
@@ -20,45 +19,45 @@ The previous post about the ecosystem (June 30) showed 3 projects starting to ta
 
 | Project | June | Today | + |
 |---------|-------|------|---|
-| **Arachne** | Pipeline + scraper | RAG, MCP, Vision, Stripe, 2,818 tests | 🚀 |
-| **Dogwalk** | Screens + auth | Geofencing, GPS, Stripe Connect, 852 commits | 🐶 |
-| **Capivara** | Skeleton | Dashboard, 2FA, D1, 7 admin routes | 🐹 |
-| **Portfolio** | v2 sketch | Next.js 16, 5 games, i18n, 219 tests | 🛸 |
-| **TatuEngine** | Didn't exist | C++23 + CUDA, 252× speedup, MCP agent | 🦔 |
-| **LifeLog** | Didn't exist | 26 posts, Astro 7, CI/CD, AI covers | 📖 |
-| **Hermes** | DM only | 7 profiles, Kanban, MCP, 25+ crons | 🤖 |
+| **Arachne** | Pipeline + scraper | RAG, MCP, Vision, Stripe, 2,818 tests |  |
+| **Dogwalk** | Screens + auth | Geofencing, GPS, Stripe Connect, 852 commits |  |
+| **Capivara** | Skeleton | Dashboard, 2FA, D1, 7 admin routes |  |
+| **Portfolio** | v2 sketch | Next.js 16, 5 games, i18n, 219 tests |  |
+| **TatuEngine** | Didn't exist | C++23 + CUDA, 252× speedup, MCP agent |  |
+| **LifeLog** | Didn't exist | 26 posts, Astro 7, CI/CD, AI covers |  |
+| **Hermes** | DM only | 7 profiles, Kanban, MCP, 25+ crons |  |
 
 The ecosystem has gone from a collection of scripts to an operational platform.
 
-## 🌐 The ecosystem map
+##  The ecosystem map
 
 Each project has a specific role and connects to others through well-defined channels:
 
 ```
-                    ┌─────────────┐
-                    │   Hermes    │ ← Brain orchestrating EVERYTHING
-                    │  (Agent)    │
-                    └──────┬──────┘
-          ┌────────────────┼────────────────┐
-          ▼                ▼                ▼
-   ┌──────────┐    ┌──────────┐    ┌──────────────┐
-   │  Arachne │    │ Capivara │    │   Dogwalk    │
-   │  :9000   │◄──►│  :8001   │    │  seu.pet     │
-   │ MCP+RAG  │    │ Hub+Admin│    │ Stripe+GPS   │
-   └──────────┘    └──────────┘    └──────────────┘
-          │              │
-          ▼              ▼
-   ┌──────────┐    ┌──────────────┐
-   │ LifeLog  │    │  Portfolio   │
-   │ Blog 26  │    │ Next.js 16   │
-   │ posts    │    │ 5 mini-games │
-   └──────────┘    └──────────────┘
-          │
-          ▼
-   ┌──────────────┐
-   │  TatuEngine  │ ← The newest, the most ambitious
-   │ C++23 + CUDA │
-   └──────────────┘
+  ┌─────────────┐
+  │  Hermes  │ ← Brain orchestrating EVERYTHING
+  │  (Agent)  │
+  └──────┬──────┘
+  ┌────────────────┼────────────────┐
+  ▼  ▼  ▼
+  ┌──────────┐  ┌──────────┐  ┌──────────────┐
+  │  Arachne │  │ Capivara │  │  Dogwalk  │
+  │  :9000  │◄──►│  :8001  │  │  seu.pet  │
+  │ MCP+RAG  │  │ Hub+Admin│  │ Stripe+GPS  │
+  └──────────┘  └──────────┘  └──────────────┘
+  │  │
+  ▼  ▼
+  ┌──────────┐  ┌──────────────┐
+  │ LifeLog  │  │  Portfolio  │
+  │ Blog 26  │  │ Next.js 16  │
+  │ posts  │  │ 5 mini-games │
+  └──────────┘  └──────────────┘
+  │
+  ▼
+  ┌──────────────┐
+  │  TatuEngine  │ ← The newest, the most ambitious
+  │ C++23 + CUDA │
+  └──────────────┘
 ```
 
 **Real connections today:**
@@ -73,7 +72,7 @@ It's not an architecture planned on paper — it grew organically, and that has 
 
 ---
 
-## 🕷️ 1. Arachne — the most mature
+##  1. Arachne — the most mature
 
 **2,818 tests · 654 commits · 18 connectors · 4 extraction levels**
 
@@ -101,7 +100,7 @@ arachne.seu.pet
 
 ---
 
-## 🐕 2. Dogwalk / PataPass — the real product
+##  2. Dogwalk / PataPass — the real product
 
 **852 commits · 15 E2E specs · Stripe Connect · MapLibre GL · GPS tracking**
 
@@ -123,7 +122,7 @@ seu.pet
 
 ---
 
-## 🐹 3. Capivara — central personal hub
+##  3. Capivara — central personal hub
 
 **86 commits · 75 tests · 2FA TOTP · D1 Disaster Recovery**
 
@@ -140,7 +139,7 @@ Stack: FastAPI + React 19 + SQLite + Cloudflare Tunnel. Last major refactoring r
 
 ---
 
-## 🛸 4. Samuel Portfolio — the showcase
+##  4. Samuel Portfolio — the showcase
 
 **495 commits · 219 tests · Next.js 16 · 5 mini-games**
 
@@ -157,7 +156,7 @@ Deploy is automatic on push to master → CI/CD → Vercel. The recent post *5 i
 
 ---
 
-## 🦔 5. TatuEngine — the most ambitious
+##  5. TatuEngine — the most ambitious
 
 **289 commits · 400+ tests · C++23 + CUDA · SSM × Phase Field**
 
@@ -178,7 +177,7 @@ BitMamba 1B already trained and validated. The SFT training pipeline with Adafac
 
 ---
 
-## 🤖 The brain: Hermes Agent
+##  The brain: Hermes Agent
 
 All of this is orchestrated by **Hermes Agent** — my autonomous personal assistant that:
 
@@ -193,7 +192,7 @@ Hermes is not a chatbot — it's a **system operator** that lives on Telegram, e
 
 ---
 
-## 📊 The ecosystem in numbers
+##  The ecosystem in numbers
 
 | Metric | Value |
 |---------|-------|
@@ -209,7 +208,7 @@ Hermes is not a chatbot — it's a **system operator** that lives on Telegram, e
 
 ---
 
-## 🧠 Learnings
+##  Learnings
 
 **1. An ecosystem is not planned — it's cultivated.**
 
@@ -233,7 +232,7 @@ LifeLog was born from this need. There's no point building 5 projects if nobody 
 
 ---
 
-## 🗺️ What's next
+##  What's next
 
 - [ ] **Arachne SDK** — pip install arachne-sdk (publish to PyPI)
 - [ ] **Arachne MCP Registry** — submit to the official MCP server directory

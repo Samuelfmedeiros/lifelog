@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-10 00:30:00 -03:00
 project: seguranca
 tags: [security, ai-jail, sandbox, hermes, bwrap, lessons]
-icon: "🔒"
 cover: /covers/seguranca-ai-jail-na-pratica.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The first time the sandbox saved us
+##  The first time the sandbox saved us
 
 The previous post told how ai-jail entered Hermes — the Rust sandbox that isolates every terminal execution with bubblewrap, Landlock and Seccomp. That was the story of the **installation**.
 
@@ -22,7 +21,7 @@ The first time it truly saved me was on a `pip install` of an unknown package. B
 
 > The feeling is strange at first: you realize every Hermes execution **could** leak your life — and that there's now a safety net.
 
-## 🧠 The context: from installing to coexisting
+##  The context: from installing to coexisting
 
 The initial config (`~/.ai-jail`) defines the rules:
 
@@ -36,7 +35,7 @@ The initial config (`~/.ai-jail`) defines the rules:
 
 Real usage revealed 3 lessons the docs don't tell you:
 
-## ⚡ Lesson 1: Landlock is expensive — so we turned it off
+##  Lesson 1: Landlock is expensive — so we turned it off
 
 First benchmark: with Landlock active, the jail took **5.2s**; without it, **3.8s**. Almost 40% slower on quick operations.
 
@@ -44,12 +43,12 @@ On WSL (where Hermes runs), the modern kernel supports Landlock — but the late
 
 ```bash
 # ~/.ai-jail — pragmatic decision
-no_landlock = true   # 5.2s → 3.8s on WSL
+no_landlock = true  # 5.2s → 3.8s on WSL
 ```
 
 The lesson: **security is a trade-off**. A sandbox nobody uses because of latency protects less than a fast one that becomes routine.
 
-## ⚡ Lesson 2: every command has its own needs
+##  Lesson 2: every command has its own needs
 
 At first, `jail npm install` failed because npm couldn't find its cache. The solution: **command-specific mounts**:
 
@@ -63,19 +62,19 @@ At first, `jail npm install` failed because npm couldn't find its cache. The sol
 
 Each one mounts only what it needs — **least privilege applied to caches**. The process runs isolated, but with access to what legitimately belongs to it.
 
-## ⚡ Lesson 3: worker mode is Hermes' default mode
+##  Lesson 3: worker mode is Hermes' default mode
 
 When Hermes spawns a worker (delegate_task / Kanban), it automatically detects `HERMES_KANBAN_TASK` and enters **worker mode**: GPU, Docker and Display off.
 
 Why? Because a disposable worker doesn't need GPU (Ollama), Docker or display — and each one is **one less attack surface**.
 
 ```bash
-jail --worker python3 analyze.py   # no GPU, no Docker, no display
+jail --worker python3 analyze.py  # no GPU, no Docker, no display
 ```
 
 The practical result: **every command Hermes runs in production is isolated** — normal for common tasks, lockdown for critical operations (deploy, DB restore), worker for disposable processes.
 
-## 🛠️ The Arachne integration
+##  The Arachne integration
 
 Arachne took the concept further: `app/sandbox.py` uses ai-jail as a backend to isolate:
 - **Browser** (Playwright) — Chrome with OS sandbox (no `--no-sandbox`)
@@ -85,22 +84,22 @@ Arachne took the concept further: `app/sandbox.py` uses ai-jail as a backend to 
 ```python
 # app/sandbox.py — the essence
 def run_sandboxed(cmd, ro_maps=[], rw_maps=[], no_net=False, timeout=60):
-    # mounts paths, runs inside the jail, returns stdout/stderr
+  # mounts paths, runs inside the jail, returns stdout/stderr
 ```
 
 And the MCP tool `arachne_sandbox_status` shows active protections in real time — transparency about what's protected.
 
-## 📊 Real usage metrics
+##  Real usage metrics
 
 | Item | Value |
 |------|-------|
-| Landlock active | ❌ (5.2s vs 3.8s — off on WSL) |
+| Landlock active |  (5.2s vs 3.8s — off on WSL) |
 | Commands with custom mounts | 5 (python, npm, pip, uv, cargo) |
 | Execution modes | 3 (normal, lockdown, worker) |
 | Worker mode | Auto via `HERMES_KANBAN_TASK` |
 | Arachne sandboxable | Browser + eval + code stage |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **Security is a trade-off** — slow sandbox = nobody uses it; fast = becomes routine
 2. **Least privilege applied to caches** — each command mounts only what it needs

@@ -1,35 +1,34 @@
 ---
 title: "Dogwalk: o backup que mentia — tar truncado de 786KB escondido pelo 2>/dev/null"
-description: "O script logava ✅ Docs backup, mas o tar tinha só 53 dos 218 arquivos — OOM de madrugada engolido pelo 2>/dev/null."
+description: "O script logava  Docs backup, mas o tar tinha só 53 dos 218 arquivos — OOM de madrugada engolido pelo 2>/dev/null."
 date: 2026-08-12T12:00:00 -03:00
 pubDate: 2026-08-12 12:00:00 -03:00
 project: dogwalk
 tags: [backup, bash, reliability, observability, integrity]
-icon: "💾"
 cover: /covers/dogwalk-o-backup-que-mentia.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O backup que dizia "✅" enquanto falhava
+##  O backup que dizia "" enquanto falhava
 
-Tinha tudo pra passar despercebido. Na madrugada de 12/08, às 03:00, o cron de backup do Dogwalk rodou como sempre roda — e o log registrou `✅ Docs backup`, como sempre registra. O problema? O tar tinha sido truncado a 786KB com apenas 53 dos 218 arquivos de `docs/`. O `2>/dev/null` tinha engolido o erro real: `Cannot allocate memory` — OOM durante o gzip na madrugada.
+Tinha tudo pra passar despercebido. Na madrugada de 12/08, às 03:00, o cron de backup do Dogwalk rodou como sempre roda — e o log registrou ` Docs backup`, como sempre registra. O problema? O tar tinha sido truncado a 786KB com apenas 53 dos 218 arquivos de `docs/`. O `2>/dev/null` tinha engolido o erro real: `Cannot allocate memory` — OOM durante o gzip na madrugada.
 
 Eu só descobri porque fui olhar o tamanho dos arquivos. Um backup de docs que nas noites anteriores tinha 5.4–6.6MB de repente tinha 786KB. O script jurava que estava tudo certo.
 
-## 🧠 Contexto
+##  Contexto
 
 O `scripts/backup.sh` do Dogwalk faz quatro backups em sequência: `db` (pg_dump), `kanban`, `env` e `docs` (tar.gz de `docs/` inteiro). Ele roda via cron de madrugada e grava num log com timestamps. A função `backup_docs` era simples:
 
 ```bash
 tar czf "$BACKUP_DIR/full/docs_$DATE.tar.gz" -C "$PROJECT_DIR" docs/ 2>/dev/null
-log "✅ Docs backup: $(du -h "$BACKUP_DIR/full/docs_$DATE.tar.gz" | cut -f1)"
+log " Docs backup: $(du -h "$BACKUP_DIR/full/docs_$DATE.tar.gz" | cut -f1)"
 ```
 
-Repara na armadilha: o `2>/dev/null` não existe pra esconder erro — existe pra silenciar o aviso chato de "file changed as we read it". Mas ele esconde TAMBÉM o OOM do gzip. E o `log` de ✅ só imprime o tamanho — 786KB passa como sucesso. O backup corrompido virava "backup feito" no log, e ninguém desconfiaria até precisar restaurar.
+Repara na armadilha: o `2>/dev/null` não existe pra esconder erro — existe pra silenciar o aviso chato de "file changed as we read it". Mas ele esconde TAMBÉM o OOM do gzip. E o `log` de  só imprime o tamanho — 786KB passa como sucesso. O backup corrompido virava "backup feito" no log, e ninguém desconfiaria até precisar restaurar.
 
-## 🔧 A luta
+##  A luta
 
 O primeiro passo foi confirmar a corrupção. O `gzip -t` (teste de integridade) falhava na hora — o stream estava truncado no meio. E o pior: `tar` às vezes "aceita" um arquivo truncado se o header ainda está íntegro, então nem o exit code do tar era confiável.
 
@@ -44,35 +43,35 @@ OUT="$BACKUP_DIR/full/docs_$DATE.tar.gz"
 tar czf "$OUT" -C "$PROJECT_DIR" docs/
 # Verificação de integridade — pega tar truncado que o tar às vezes "aceita"
 if ! gzip -t "$OUT" >/dev/null 2>&1; then
-    log "⚠️ Docs backup corrompido (gzip -t falhou), retentando..."
-    sleep 10
-    tar czf "$OUT" -C "$PROJECT_DIR" docs/
-    if ! gzip -t "$OUT" >/dev/null 2>&1; then
-        log "❌ Docs backup FALHOU após retry — tar/gzip corrompido"
-        return 1
-    fi
+  log " Docs backup corrompido (gzip -t falhou), retentando..."
+  sleep 10
+  tar czf "$OUT" -C "$PROJECT_DIR" docs/
+  if ! gzip -t "$OUT" >/dev/null 2>&1; then
+  log " Docs backup FALHOU após retry — tar/gzip corrompido"
+  return 1
+  fi
 fi
-log "✅ Docs backup: $(du -h "$OUT" | cut -f1)"
+log " Docs backup: $(du -h "$OUT" | cut -f1)"
 ```
 
-Nota: o `>/dev/null 2>&1` no `gzip -t` é intencional — a verificação usa o exit code, e o log de erro do próprio gzip não interessa. A diferença é que agora o ✅ só aparece DEPOIS de passar na verificação. O script não mente mais.
+Nota: o `>/dev/null 2>&1` no `gzip -t` é intencional — a verificação usa o exit code, e o log de erro do próprio gzip não interessa. A diferença é que agora o  só aparece DEPOIS de passar na verificação. O script não mente mais.
 
-## 💡 Resolução
+##  Resolução
 
-O commit `3d4b9dca` (12/08, +15/−2) resolveu na raiz. Rodando na mão depois do fix, o backup saiu íntegro: **8.3MB**, verificado com `gzip -t` antes do ✅. E o log da próxima madrugada vai gritar se algo falhar — não vai mais sorrir com um arquivo morto.
+O commit `3d4b9dca` (12/08, +15/−2) resolveu na raiz. Rodando na mão depois do fix, o backup saiu íntegro: **8.3MB**, verificado com `gzip -t` antes do . E o log da próxima madrugada vai gritar se algo falhar — não vai mais sorrir com um arquivo morto.
 
-A lição maior não é sobre backup, é sobre observabilidade: **toda mensagem de sucesso precisa ser conquistada**. Se o ✅ é impresso antes da verificação real, você não tem um log de sucesso — tem um log de esperança.
+A lição maior não é sobre backup, é sobre observabilidade: **toda mensagem de sucesso precisa ser conquistada**. Se o  é impresso antes da verificação real, você não tem um log de sucesso — tem um log de esperança.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
 | Tamanho do backup (03:00 12/08) | 786KB truncado (53/218 arquivos) | 8.3MB íntegro |
 | Verificação de integridade | nenhuma (`2>/dev/null` + `du -h`) | `gzip -t` pós-tar + retry 10s |
-| Erro no log quando falha | ❌ silenciado | ✅ aparece no log |
+| Erro no log quando falha |  silenciado |  aparece no log |
 | Diff do fix | — | +15 −2 em `scripts/backup.sh` |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 - `2>/dev/null` em backup é como tampar o alarme de incêndio porque o som incomoda — ele não esconde só o que você quer.
 - `tar` pode "aceitar" arquivo truncado; exit code não é prova de integridade. Teste o artefato, não o processo.

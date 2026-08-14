@@ -5,7 +5,6 @@ date: 2026-07-17 10:00:00 -03:00
 pubDate: 2026-07-17 23:00:00 -03:00
 project: capivara
 tags: ["capivara", "update", "progress"]
-icon: "🐷"
 cover: /covers/capivara-updates-e-proximos-passos.webp
 featured: false
 lang: 'en'
@@ -72,12 +71,12 @@ function navigate(path: string) {
 // After: React Router v7 with BrowserRouter
 <BrowserRouter>
   <Routes>
-    <Route path="/" element={<Dashboard />} />
-    <Route path="/admin" element={<AdminPage />} />
-    <Route path="/login" element={<Login />} />
-    <Route path="/cadastro" element={<Register />} />
-    <Route path="/status" element={<StatusPage />} />
-    <Route path="*" element={<NotFound />} />
+  <Route path="/" element={<Dashboard />} />
+  <Route path="/admin" element={<AdminPage />} />
+  <Route path="/login" element={<Login />} />
+  <Route path="/cadastro" element={<Register />} />
+  <Route path="/status" element={<StatusPage />} />
+  <Route path="*" element={<NotFound />} />
   </Routes>
 </BrowserRouter>
 ```
@@ -99,13 +98,13 @@ The admin panel queries Arachne data by reading **directly from its SQLite datab
 ```python
 # The silent error
 def _query_sqlite(db_path, sql, params):
-    try:
-        conn = sqlite3.connect(str(db_path))
-        cur = conn.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
-    except Exception as e:
-        log.warning("SQLite query failed: %s", e)
-        return []  # ← silent!
+  try:
+  conn = sqlite3.connect(str(db_path))
+  cur = conn.execute(sql, params)
+  return [dict(row) for row in cur.fetchall()]
+  except Exception as e:
+  log.warning("SQLite query failed: %s", e)
+  return []  # ← silent!
 ```
 
 The security scan detected columns that no longer existed. The worst part: the error was caught and returned `[]` — the Arachne section in admin simply appeared empty, no crash, no visual feedback.
@@ -120,12 +119,12 @@ from database import Base
 import models
 lines = []
 for table_name in sorted(Base.metadata.tables.keys()):
-    table = Base.metadata.tables[table_name]
-    lines.append(f'TABLE: {table_name}')
-    for col_name, col in sorted(table.columns.items()):
-        col_repr = f'  {col_name}: {col.type!r} nullable={col.nullable}'
-        if col.primary_key: col_repr += ' PK'
-        lines.append(col_repr)
+  table = Base.metadata.tables[table_name]
+  lines.append(f'TABLE: {table_name}')
+  for col_name, col in sorted(table.columns.items()):
+  col_repr = f'  {col_name}: {col.type!r} nullable={col.nullable}'
+  if col.primary_key: col_repr += ' PK'
+  lines.append(col_repr)
 print(hashlib.sha256('\\\\n'.join(lines).encode()).hexdigest())
 ")
 ```
@@ -159,9 +158,9 @@ Small UX improvements that make a difference:
 ```typescript
 function ThemeToggle() {
   const [dark, setDark] = useState(() => {
-    const stored = localStorage.getItem('capivara_theme')
-    if (stored) return stored === 'dark'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  const stored = localStorage.getItem('capivara_theme')
+  if (stored) return stored === 'dark'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
   })
   // ...
 }
@@ -182,7 +181,7 @@ toast('Invite created successfully!', 'success')
 ```typescript
 <ErrorBoundary name="Admin">
   <Suspense fallback={<PageLoader />}>
-    <AdminPage />
+  <AdminPage />
   </Suspense>
 </ErrorBoundary>
 ```
@@ -224,8 +223,8 @@ Capivara is in a good place now — lean, organized, with tests passing (44/44 b
 
 ```bash
 # Deploy remains simple
-cd ~/projetos/Capivara/frontend && pnpm build            # 238 kB initial bundle
-systemctl --user restart capivara-backend.service         # zero downtime
+cd ~/projetos/Capivara/frontend && pnpm build  # 238 kB initial bundle
+systemctl --user restart capivara-backend.service  # zero downtime
 ```
 
 > _Lean code, healthy system, next feature on the way. Capivara grew, was pruned, and came back stronger._
@@ -236,10 +235,10 @@ systemctl --user restart capivara-backend.service         # zero downtime
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Capivara/frontend && pnpm build', output: 'vite v8.0.0 building for production...\\n✓ 42 modules transformed.\\n✓ built in 1.8s' },
-    { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\\n44 passed in 3.2s' },
-    { cmd: 'bash ~/projetos/Capivara/scripts/schema_drift_guard.sh', output: 'capivara-schema-guard: Schema hash matches: a1b2... — no drift detected' },
-    { cmd: 'systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\\n   Active: active (running)\\n   Port: 8001' },
-    { cmd: 'curl -s https://capivara.seu.pet/api/health/all | jq .', output: '{\\n  "status": "healthy",\\n  "services": {\\n    "capivara_backend": true,\\n    "tunnel": true\\n  }\\n}' },
+  { cmd: 'cd ~/projetos/Capivara/frontend && pnpm build', output: 'vite v8.0.0 building for production...\\n 42 modules transformed.\\n built in 1.8s' },
+  { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\\n44 passed in 3.2s' },
+  { cmd: 'bash ~/projetos/Capivara/scripts/schema_drift_guard.sh', output: 'capivara-schema-guard: Schema hash matches: a1b2... — no drift detected' },
+  { cmd: 'systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\\n  Active: active (running)\\n  Port: 8001' },
+  { cmd: 'curl -s https://capivara.seu.pet/api/health/all | jq .', output: '{\\n  "status": "healthy",\\n  "services": {\\n  "capivara_backend": true,\\n  "tunnel": true\\n  }\\n}' },
   ]}
 />

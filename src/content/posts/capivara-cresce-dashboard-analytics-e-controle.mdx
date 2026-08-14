@@ -5,7 +5,6 @@ date: 2026-06-12 10:00:00 -03:00
 pubDate: 2026-07-13 22:00:00 -03:00
 project: capivara
 tags: ["capivara", "dashboard", "umami", "analytics", "fastapi", "react"]
-icon: "🐷"
 cover: /covers/capivara-cresce-dashboard-analytics-e-controle.webp
 featured: true
 ---
@@ -33,14 +32,14 @@ O Capivara precisava crescer.
 Antes do dashboard, eu tava no nível **planilha cagada**:
 
 ```
-📊 Dogwalk Revenue — Junho
+ Dogwalk Revenue — Junho
 ┌──────────┬────────┬──────────┐
-│ Semana   │ R$     │ Passeios │
+│ Semana  │ R$  │ Passeios │
 ├──────────┼────────┼──────────┤
-│ Semana 1 │ 1.250  │ 14       │
-│ Semana 2 │ 980    │ 11       │  ← Google Sheets
-│ Semana 3 │ 1.470  │ 17       │     raw dog
-│ Semana 4 │ 2.100  │ 23       │
+│ Semana 1 │ 1.250  │ 14  │
+│ Semana 2 │ 980  │ 11  │  ← Google Sheets
+│ Semana 3 │ 1.470  │ 17  │  raw dog
+│ Semana 4 │ 2.100  │ 23  │
 └──────────┴────────┴──────────┘
 ```
 
@@ -76,48 +75,48 @@ TUNNEL_URL = "https://capivara.seu.pet"
 
 @router.get("/all")
 def health_all():
-    """Check ALL ecosystem services and return consolidated status."""
-    return _check_all()
+  """Check ALL ecosystem services and return consolidated status."""
+  return _check_all()
 
 def _check_all() -> dict:
-    results: dict[str, bool | dict] = {}
+  results: dict[str, bool | dict] = {}
 
-    # 1. Self — Capivara sempre tá online se respondeu
-    results["capivara_backend"] = True
+  # 1. Self — Capivara sempre tá online se respondeu
+  results["capivara_backend"] = True
 
-    # 2. Portifolio Staging
-    results["portifolio_staging"] = _check_url(PORTIFOLIO_STAGING)
+  # 2. Portifolio Staging
+  results["portifolio_staging"] = _check_url(PORTIFOLIO_STAGING)
 
-    # 3. Portifolio Production
-    results["portifolio_production"] = _check_url(PORTIFOLIO_PROD)
+  # 3. Portifolio Production
+  results["portifolio_production"] = _check_url(PORTIFOLIO_PROD)
 
-    # 4. Tunnel
-    results["tunnel"] = _check_url(TUNNEL_URL)
+  # 4. Tunnel
+  results["tunnel"] = _check_url(TUNNEL_URL)
 
-    # Overall status
-    required = ["capivara_backend", "tunnel"]
-    all_ok = all(
-        isinstance(results[r], bool) and results[r]
-        or isinstance(results[r], dict) and results[r].get("online", False)
-        for r in required
-    )
+  # Overall status
+  required = ["capivara_backend", "tunnel"]
+  all_ok = all(
+  isinstance(results[r], bool) and results[r]
+  or isinstance(results[r], dict) and results[r].get("online", False)
+  for r in required
+  )
 
-    return {
-        "status": "healthy" if all_ok else "degraded",
-        "services": results,
-    }
+  return {
+  "status": "healthy" if all_ok else "degraded",
+  "services": results,
+  }
 
 def _check_url(url: str, timeout: int = 5) -> dict:
-    try:
-        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
-            r = c.get(url)
-            if r.status_code == 404:
-                alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
-                if alt != url:
-                    r = c.get(alt)
-            return {"online": r.status_code == 200, "status": r.status_code}
-    except httpx.RequestError as e:
-        return {"online": False, "error": str(e)}
+  try:
+  with httpx.Client(timeout=timeout, follow_redirects=True) as c:
+  r = c.get(url)
+  if r.status_code == 404:
+  alt = url.rstrip("/") + "/" if not url.endswith("/") else url.rstrip("/")
+  if alt != url:
+  r = c.get(alt)
+  return {"online": r.status_code == 200, "status": r.status_code}
+  except httpx.RequestError as e:
+  return {"online": False, "error": str(e)}
 ```
 
 O endpoint virou um **cron job systemd** que roda a cada 5 minutos. Se algo crítico cai, o `capivara-health-check.py` dispara alerta no Telegram:
@@ -132,23 +131,23 @@ CAPIVARA_URL = "http://localhost:8001/api/health/all"
 CRITICAL = ["capivara_backend", "tunnel"]
 
 try:
-    req = urllib.request.Request(CAPIVARA_URL, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read().decode())
+  req = urllib.request.Request(CAPIVARA_URL, headers={"Accept": "application/json"})
+  with urllib.request.urlopen(req, timeout=10) as resp:
+  data = json.loads(resp.read().decode())
 except Exception as e:
-    print(f"⚠️  Capivara HEALTH CHECK FAILED: {e}")
-    sys.exit(1)
+  print(f"  Capivara HEALTH CHECK FAILED: {e}")
+  sys.exit(1)
 
 services = data.get("services", {})
 offline = [
-    name for name in CRITICAL
-    if not (services.get(name) is True
-            or services.get(name, {}).get("online"))
+  name for name in CRITICAL
+  if not (services.get(name) is True
+  or services.get(name, {}).get("online"))
 ]
 
 if offline:
-    print(f"🔴 Degradado — críticos offline: {', '.join(offline)}")
-    sys.exit(1)
+  print(f" Degradado — críticos offline: {', '.join(offline)}")
+  sys.exit(1)
 
 sys.exit(0)  # Silent = tudo limpo
 ```
@@ -158,31 +157,31 @@ No frontend, a **ServiceHealthBar** mostra o status num piscar de olhos:
 ```tsx
 function ServiceHealthBar({ health }: { health: ServiceHealth }) {
   const items = [
-    { key: 'capivara_backend', label: 'Backend', ok: health.capivara_backend },
-    { key: 'tunnel', label: 'Tunnel', ok: health.tunnel },
-    { key: 'portifolio_staging', label: 'Portifolio Staging',
-      ok: health.portifolio_staging === true,
-      unknown: health.portifolio_staging === null },
+  { key: 'capivara_backend', label: 'Backend', ok: health.capivara_backend },
+  { key: 'tunnel', label: 'Tunnel', ok: health.tunnel },
+  { key: 'portifolio_staging', label: 'Portifolio Staging',
+  ok: health.portifolio_staging === true,
+  unknown: health.portifolio_staging === null },
   ]
 
   return (
-    <div className="glass p-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"
-         role="region" aria-label="Status dos serviços">
-      <span className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase
-                       tracking-wide font-medium shrink-0">Serviços</span>
-      {items.map(item => (
-        <div key={item.key} className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${
-            item.unknown ? 'bg-[rgba(255,255,255,0.2)]'
-            : item.ok ? 'bg-green-400' : 'bg-red-500'
-          }`} />
-          <span className={item.unknown ? 'text-[rgba(255,255,255,0.25)]'
-                                   : 'text-[rgba(255,255,255,0.5)]'}>
-            {item.label}
-          </span>
-        </div>
-      ))}
-    </div>
+  <div className="glass p-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"
+  role="region" aria-label="Status dos serviços">
+  <span className="text-[10px] text-[rgba(255,255,255,0.3)] uppercase
+  tracking-wide font-medium shrink-0">Serviços</span>
+  {items.map(item => (
+  <div key={item.key} className="flex items-center gap-1.5">
+  <span className={`w-1.5 h-1.5 rounded-full ${
+  item.unknown ? 'bg-[rgba(255,255,255,0.2)]'
+  : item.ok ? 'bg-green-400' : 'bg-red-500'
+  }`} />
+  <span className={item.unknown ? 'text-[rgba(255,255,255,0.25)]'
+  : 'text-[rgba(255,255,255,0.5)]'}>
+  {item.label}
+  </span>
+  </div>
+  ))}
+  </div>
   )
 }
 ```
@@ -212,32 +211,32 @@ UMAMI_API = "http://localhost:3100"
 
 @router.get("/status")
 async def umami_status():
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.get(f"{UMAMI_API}/")
-            return {"online": resp.status_code == 200}
-    except httpx.ConnectError:
-        return {"online": False, "error": "Conexão recusada"}
+  try:
+  async with httpx.AsyncClient(timeout=3) as client:
+  resp = await client.get(f"{UMAMI_API}/")
+  return {"online": resp.status_code == 200}
+  except httpx.ConnectError:
+  return {"online": False, "error": "Conexão recusada"}
 
 async def _proxy(path: str, request: Request) -> Response:
-    url = f"{UMAMI_API}{path}"
-    body = await request.body()
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
+  url = f"{UMAMI_API}{path}"
+  body = await request.body()
+  headers = dict(request.headers)
+  headers.pop("host", None)
+  headers.pop("content-length", None)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.request(
-            method=request.method, url=url,
-            headers=headers, content=body,
-            follow_redirects=True,
-        )
-    return Response(content=resp.content, status_code=resp.status_code,
-                    headers=dict(resp.headers))
+  async with httpx.AsyncClient(timeout=30) as client:
+  resp = await client.request(
+  method=request.method, url=url,
+  headers=headers, content=body,
+  follow_redirects=True,
+  )
+  return Response(content=resp.content, status_code=resp.status_code,
+  headers=dict(resp.headers))
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_umami(path: str, request: Request):
-    return await _proxy(f"/{path}", request)
+  return await _proxy(f"/{path}", request)
 ```
 
 No frontend, o auto-login acontece assim:
@@ -250,27 +249,27 @@ function openUmami() {
 
 function UmamiMiniCard() {
   return (
-    <div className="glass p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-[rgba(255,255,255,0.4)]
-                         uppercase tracking-wide font-medium">
-          📊 Umami Analytics
-        </span>
-        <span className="text-[10px] px-2 py-0.5 rounded-full
-                         bg-green-500/10 text-green-400">online</span>
-      </div>
-      <p className="text-xs text-[rgba(255,255,255,0.5)] mb-3">
-        Portifolio Samuel e Dogwalk
-      </p>
-      <button onClick={openUmami}
-        className="text-[11px] px-3 py-2 rounded-lg
-                   bg-[rgba(0,212,255,0.05)] border
-                   border-[rgba(0,212,255,0.1)] text-cyan
-                   hover:text-white hover:border-[rgba(0,212,255,0.3)]
-                   transition-all">
-        📊 Abrir Umami
-      </button>
-    </div>
+  <div className="glass p-4">
+  <div className="flex items-center justify-between mb-2">
+  <span className="text-xs text-[rgba(255,255,255,0.4)]
+  uppercase tracking-wide font-medium">
+  Umami Analytics
+  </span>
+  <span className="text-[10px] px-2 py-0.5 rounded-full
+  bg-green-500/10 text-green-400">online</span>
+  </div>
+  <p className="text-xs text-[rgba(255,255,255,0.5)] mb-3">
+  Portifolio Samuel e Dogwalk
+  </p>
+  <button onClick={openUmami}
+  className="text-[11px] px-3 py-2 rounded-lg
+  bg-[rgba(0,212,255,0.05)] border
+  border-[rgba(0,212,255,0.1)] text-cyan
+  hover:text-white hover:border-[rgba(0,212,255,0.3)]
+  transition-all">
+  Abrir Umami
+  </button>
+  </div>
   )
 }
 ```
@@ -279,23 +278,23 @@ Também adicionei **server-side tracking** — eventos como login, logout, sync 
 
 ```python
 def _send(event: str, url: str = "/api", hostname: str = "capivara.seu.pet"):
-    payload = json.dumps({
-        "type": "event",
-        "payload": {
-            "hostname": hostname,
-            "url": url,
-            "website": CAPIVARA_WEBSITE_ID,
-            "name": event,
-        },
-    }).encode()
-    req = Request(COLLECTOR_URL, data=payload,
-                  headers={"Content-Type": "application/json",
-                           "User-Agent": "capivara/1.0"},
-                  method="POST")
-    try:
-        urlopen(req, timeout=3)
-    except URLError:
-        pass  # fire-and-forget: falha silenciosa
+  payload = json.dumps({
+  "type": "event",
+  "payload": {
+  "hostname": hostname,
+  "url": url,
+  "website": CAPIVARA_WEBSITE_ID,
+  "name": event,
+  },
+  }).encode()
+  req = Request(COLLECTOR_URL, data=payload,
+  headers={"Content-Type": "application/json",
+  "User-Agent": "capivara/1.0"},
+  method="POST")
+  try:
+  urlopen(req, timeout=3)
+  except URLError:
+  pass  # fire-and-forget: falha silenciosa
 ```
 
 Isso me deu visibilidade de **quem acessa o quê e quando** — sem depender de logs de servidor.
@@ -304,45 +303,45 @@ Isso me deu visibilidade de **quem acessa o quê e quando** — sem depender de 
 
 O Dogwalk processa ~50 transações por mês entre passeios, saques e estornos. Cada transação tem um valor, um walker, um tutor, e um status. Mas **o que realmente importa** é a categorização:
 
-| Categoria     | Junho/26 | Julho/26 | Variação |
+| Categoria  | Junho/26 | Julho/26 | Variação |
 |---------------|:--------:|:--------:|:--------:|
-| Passeios      | R$ 4.720 | R$ 5.810 | +23%     |
-| Saques        | R$ 3.100 | R$ 4.200 | +35%     |
-| Taxas         | R$ 470   | R$ 580   | +23%     |
-| Estornos      | R$ 120   | R$ 90    | -25%     |
-| **Líquido**   | **R$ 1.030** | **R$ 940** | **-9%** |
+| Passeios  | R$ 4.720 | R$ 5.810 | +23%  |
+| Saques  | R$ 3.100 | R$ 4.200 | +35%  |
+| Taxas  | R$ 470  | R$ 580  | +23%  |
+| Estornos  | R$ 120  | R$ 90  | -25%  |
+| **Líquido**  | **R$ 1.030** | **R$ 940** | **-9%** |
 
 O backend expõe esses dados agregados via endpoint `/dogwalk/revenue`:
 
 ```python
 @router.get("/revenue")
 async def revenue_stats(current_user=Depends(get_current_user),
-                        db=Depends(get_db)):
-    """Revenue aggregated by month with category breakdown."""
-    twelve_months_ago = datetime.now(timezone.utc) - timedelta(days=365)
+  db=Depends(get_db)):
+  """Revenue aggregated by month with category breakdown."""
+  twelve_months_ago = datetime.now(timezone.utc) - timedelta(days=365)
 
-    bookings = db.query(Booking).filter(
-        Booking.status == "finished",
-        Booking.scheduled_date >= twelve_months_ago,
-    ).order_by(Booking.scheduled_date).all()
+  bookings = db.query(Booking).filter(
+  Booking.status == "finished",
+  Booking.scheduled_date >= twelve_months_ago,
+  ).order_by(Booking.scheduled_date).all()
 
-    monthly = defaultdict(lambda: {"revenue": 0, "walks": 0, "categories": {}})
-    for b in bookings:
-        month_key = b.scheduled_date.strftime("%Y-%m")
-        monthly[month_key]["revenue"] += float(b.price or 0)
-        monthly[month_key]["walks"] += 1
-        cat = categorize_booking(b)
-        monthly[month_key]["categories"][cat] = \
-            monthly[month_key]["categories"].get(cat, 0) + float(b.price or 0)
+  monthly = defaultdict(lambda: {"revenue": 0, "walks": 0, "categories": {}})
+  for b in bookings:
+  month_key = b.scheduled_date.strftime("%Y-%m")
+  monthly[month_key]["revenue"] += float(b.price or 0)
+  monthly[month_key]["walks"] += 1
+  cat = categorize_booking(b)
+  monthly[month_key]["categories"][cat] = \
+  monthly[month_key]["categories"].get(cat, 0) + float(b.price or 0)
 
-    return {
-        "total_revenue": sum(m["revenue"] for m in monthly.values()),
-        "total_walks": sum(m["walks"] for m in monthly.values()),
-        "monthly": [
-            {"month": k, **v}
-            for k, v in sorted(monthly.items())
-        ],
-    }
+  return {
+  "total_revenue": sum(m["revenue"] for m in monthly.values()),
+  "total_walks": sum(m["walks"] for m in monthly.values()),
+  "monthly": [
+  {"month": k, **v}
+  for k, v in sorted(monthly.items())
+  ],
+  }
 ```
 
 No frontend, a visualização é um gráfico de barras horizontal com gradiente:
@@ -352,27 +351,27 @@ No frontend, a visualização é um gráfico de barras horizontal com gradiente:
   const maxRev = Math.max(...monthlyData.map((x: any) => x.revenue))
   const pct = maxRev > 0 ? (m.revenue / maxRev) * 100 : 0
   const monthLabel = new Date(m.month + '-02')
-    .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+  .toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
   return (
-    <div key={m.month} className="flex items-center gap-2 text-xs">
-      <span className="w-14 text-[rgba(255,255,255,0.3)] shrink-0">
-        {monthLabel}
-      </span>
-      <div className="flex-1 h-5 rounded
-                      bg-[rgba(255,255,255,0.03)] overflow-hidden relative">
-        <div className="h-full rounded bg-gradient-to-r
-                        from-[#00d4ff]/40 to-[#00d4ff]
-                        transition-all duration-500"
-             style={{ width: `${Math.max(pct, 3)}%` }} />
-      </div>
-      <span className="w-20 text-right text-[rgba(255,255,255,0.5)] shrink-0">
-        R$ {m.revenue.toFixed(0)}
-      </span>
-      <span className="w-6 text-right text-[rgba(255,255,255,0.2)]
-                       text-[10px] shrink-0">
-        {m.walks}
-      </span>
-    </div>
+  <div key={m.month} className="flex items-center gap-2 text-xs">
+  <span className="w-14 text-[rgba(255,255,255,0.3)] shrink-0">
+  {monthLabel}
+  </span>
+  <div className="flex-1 h-5 rounded
+  bg-[rgba(255,255,255,0.03)] overflow-hidden relative">
+  <div className="h-full rounded bg-gradient-to-r
+  from-[#00d4ff]/40 to-[#00d4ff]
+  transition-all duration-500"
+  style={{ width: `${Math.max(pct, 3)}%` }} />
+  </div>
+  <span className="w-20 text-right text-[rgba(255,255,255,0.5)] shrink-0">
+  R$ {m.revenue.toFixed(0)}
+  </span>
+  <span className="w-6 text-right text-[rgba(255,255,255,0.2)]
+  text-[10px] shrink-0">
+  {m.walks}
+  </span>
+  </div>
   )
 })}
 ```
@@ -382,15 +381,15 @@ A cereja do bolo: um **Revenue Change Indicator** que calcula automaticamente a 
 ```tsx
 const revenueChange = prevMonth && currentMonth
   ? ((currentMonth.revenue - prevMonth.revenue)
-     / prevMonth.revenue * 100).toFixed(0)
+  / prevMonth.revenue * 100).toFixed(0)
   : null
 
 // ...
 
 {revenueChange && (
   <div className="mt-2 text-[10px] text-[rgba(255,255,255,0.3)]">
-    {Number(revenueChange) >= 0 ? '↗' : '↘'}
-    {' '}{Math.abs(Number(revenueChange))}% vs mês anterior
+  {Number(revenueChange) >= 0 ? '↗' : '↘'}
+  {' '}{Math.abs(Number(revenueChange))}% vs mês anterior
   </div>
 )}
 ```
@@ -411,9 +410,9 @@ function Skeleton({ className = '' }: { className?: string }) {
 // Uso:
 {loading && !error && (
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-    <Skeleton className="h-[100px]" />
-    <Skeleton className="h-[100px]" />
-    ...
+  <Skeleton className="h-[100px]" />
+  <Skeleton className="h-[100px]" />
+  ...
   </div>
 )}
 ```
@@ -426,21 +425,21 @@ Um `RefreshIndicator` mostra **há quanto tempo** os dados foram atualizados, n�
 function RefreshIndicator({ lastUpdated, onRefresh }) {
   const [ago, setAgo] = useState('')
   useEffect(() => {
-    const tick = () => {
-      const sec = Math.floor((Date.now() - lastUpdated) / 1000)
-      if (sec < 5) setAgo('agora')
-      else if (sec < 60) setAgo(`${sec}s atrás`)
-      else setAgo(`${Math.floor(sec / 60)}min atrás`)
-    }
-    tick()
-    const interval = setInterval(tick, 5000)
-    return () => clearInterval(interval)
+  const tick = () => {
+  const sec = Math.floor((Date.now() - lastUpdated) / 1000)
+  if (sec < 5) setAgo('agora')
+  else if (sec < 60) setAgo(`${sec}s atrás`)
+  else setAgo(`${Math.floor(sec / 60)}min atrás`)
+  }
+  tick()
+  const interval = setInterval(tick, 5000)
+  return () => clearInterval(interval)
   }, [lastUpdated])
 
   return (
-    <span className="text-[10px] text-[rgba(255,255,255,0.25)]">
-      atualizado {ago}
-    </span>
+  <span className="text-[10px] text-[rgba(255,255,255,0.25)]">
+  atualizado {ago}
+  </span>
   )
 }
 ```
@@ -455,17 +454,17 @@ const contentRef = useRef<HTMLDivElement>(null)
 
 useEffect(() => {
   if (contentRef.current) {
-    setHeight(open ? contentRef.current.scrollHeight : 0)
+  setHeight(open ? contentRef.current.scrollHeight : 0)
   }
 }, [open, children])
 
 return (
   <div className="overflow-hidden transition-[height] duration-300
-                  ease-[cubic-bezier(0.16,1,0.3,1)]"
-       style={{ height: height > 0 ? height : undefined }}>
-    <div ref={contentRef}>
-      {open && children}
-    </div>
+  ease-[cubic-bezier(0.16,1,0.3,1)]"
+  style={{ height: height > 0 ? height : undefined }}>
+  <div ref={contentRef}>
+  {open && children}
+  </div>
   </div>
 )
 ```
@@ -487,9 +486,9 @@ Ver "R$ 5.810" isolado não diz nada. Ver "R$ 5.810 — 23% maior que mês passa
 | Endpoints da API | 5 | 25+ |
 | Componentes React | ~200 LOC | ~1.100 LOC (Dashboard) + ~1.100 LOC (Admin) |
 | Autenticação | JWT simples | JWT + bcrypt + 2FA + convites expiráveis |
-| Umami tracking | ❌ via pageview | ✅ 7 eventos server-side |
-| Backup | ❌ nenhum | ✅ D1 Cloudflare (sync 6h) |
-| Alertas | ❌ | ✅ Telegram + health check cron |
+| Umami tracking |  via pageview |  7 eventos server-side |
+| Backup |  nenhum |  D1 Cloudflare (sync 6h) |
+| Alertas |  |  Telegram + health check cron |
 
 ## Telemetria unificada
 
@@ -498,17 +497,17 @@ Além do Umami, criei um sistema de **telemetria própria** — todos os projeto
 ```python
 @router.post("/ingest")
 async def ingest(event: TelemetryPayload, request: Request, db=Depends(get_db)):
-    record = TelemetryEvent(
-        event_type=event.event_type,
-        source=event.source,
-        payload=json.dumps(event.payload, ensure_ascii=False),
-        ip=event.ip or (request.client.host if request.client else None),
-        user_agent=event.user_agent or request.headers.get("user-agent"),
-        referrer=event.referrer or request.headers.get("referer"),
-    )
-    db.add(record)
-    db.commit()
-    return {"ok": True, "id": record.id}
+  record = TelemetryEvent(
+  event_type=event.event_type,
+  source=event.source,
+  payload=json.dumps(event.payload, ensure_ascii=False),
+  ip=event.ip or (request.client.host if request.client else None),
+  user_agent=event.user_agent or request.headers.get("user-agent"),
+  referrer=event.referrer or request.headers.get("referer"),
+  )
+  db.add(record)
+  db.commit()
+  return {"ok": True, "id": record.id}
 ```
 
 Isso me permite rastrear eventos como:
@@ -522,22 +521,22 @@ O dashboard de telemetria mostra tudo agregado:
 ```tsx
 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
   <div className="bg-[rgba(255,255,255,0.02)] rounded-lg p-3 text-center">
-    <div className="text-lg font-semibold text-[#00d4ff]">
-      {stats.total_events}
-    </div>
-    <div className="text-[9px] text-[rgba(255,255,255,0.3)]
-                    uppercase tracking-wide">
-      Eventos (30d)
-    </div>
+  <div className="text-lg font-semibold text-[#00d4ff]">
+  {stats.total_events}
+  </div>
+  <div className="text-[9px] text-[rgba(255,255,255,0.3)]
+  uppercase tracking-wide">
+  Eventos (30d)
+  </div>
   </div>
   <div className="bg-[rgba(255,255,255,0.02)] rounded-lg p-3 text-center">
-    <div className="text-lg font-semibold text-green-400">
-      {stats.cv_downloads}
-    </div>
-    <div className="text-[9px] text-[rgba(255,255,255,0.3)]
-                    uppercase tracking-wide">
-      Downloads CV
-    </div>
+  <div className="text-lg font-semibold text-green-400">
+  {stats.cv_downloads}
+  </div>
+  <div className="text-[9px] text-[rgba(255,255,255,0.3)]
+  uppercase tracking-wide">
+  Downloads CV
+  </div>
   </div>
   {/* ... mais métricas ... */}
 </div>
@@ -562,10 +561,10 @@ O Capivara 2.0 tá funcional, mas não acabou. Os próximos passos na fila:
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Capivara && systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\n   Active: active (running)\n   Port: 8001' },
-    { cmd: 'curl -s http://localhost:8001/api/health/all | jq .', output: '{\n  "status": "healthy",\n  "services": {\n    "capivara_backend": true,\n    "portifolio_staging": {"online": true, "status": 200},\n    "portifolio_production": {"online": true, "status": 200},\n    "tunnel": {"online": true, "status": 200}\n  }\n}' },
-    { cmd: 'cd ~/projetos/Capivara/frontend && npx vite build', output: 'vite v8.0.0 building for production...\n✓ 42 modules transformed.\n✓ built in 1.8s' },
-    { cmd: 'python3 ~/projetos/Capivara/backend/capivara-health-check.py', output: '(silent — tudo limpo)' },
-    { cmd: 'cd ~/projetos/Capivara && git log --oneline | wc -l', output: '37' },
+  { cmd: 'cd ~/projetos/Capivara && systemctl --user status capivara-backend', output: '● capivara-backend.service — Capivara API (FastAPI)\n  Active: active (running)\n  Port: 8001' },
+  { cmd: 'curl -s http://localhost:8001/api/health/all | jq .', output: '{\n  "status": "healthy",\n  "services": {\n  "capivara_backend": true,\n  "portifolio_staging": {"online": true, "status": 200},\n  "portifolio_production": {"online": true, "status": 200},\n  "tunnel": {"online": true, "status": 200}\n  }\n}' },
+  { cmd: 'cd ~/projetos/Capivara/frontend && npx vite build', output: 'vite v8.0.0 building for production...\n 42 modules transformed.\n built in 1.8s' },
+  { cmd: 'python3 ~/projetos/Capivara/backend/capivara-health-check.py', output: '(silent — tudo limpo)' },
+  { cmd: 'cd ~/projetos/Capivara && git log --oneline | wc -l', output: '37' },
   ]}
 />

@@ -6,14 +6,13 @@ pubDate: 2026-07-28 10:00:00 -03:00
 lang: 'en'
 project: seguranca
 tags: [security, ai-jail, sandbox, herm es, bwrap, secrets]
-icon: "🔒"
 cover: /covers/blindando-hermes-ai-jail.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ Hermes Could Leak My Life at Any Moment
+##  Hermes Could Leak My Life at Any Moment
 
 My Hermes agent runs terminal commands all the time: `npm install`, `pip install`, arbitrary Python scripts. And it has access to **everything** — API tokens, Stripe keys, bank credentials, Bitwarden SM secrets.
 
@@ -21,7 +20,7 @@ A malicious package in npm, a Python script with `os.environ`, an accidental `cu
 
 I needed a barrier. "Just being careful" wasn't going to cut it.
 
-## 🧠 Meeting ai-jail
+##  Meeting ai-jail
 
 [ai-jail](https://github.com/akitaonrails/ai-jail) is a Rust sandbox that combines three isolation layers:
 
@@ -31,7 +30,7 @@ I needed a barrier. "Just being careful" wasn't going to cut it.
 
 The idea: every command Hermes runs, runs inside a cage. The project has write permissions, but `~/.env`, `secrets/`, `*.pem` — all masked or denied.
 
-## 🔧 The Struggle — Three Modes, One Hook, and a Playbook
+##  The Struggle — Three Modes, One Hook, and a Playbook
 
 ### Mode 1: Normal
 
@@ -67,9 +66,9 @@ The breaking point was having to remember to type `jail` before every command. I
 # ~/.bashrc.d/jail-auto.sh (abbreviated)
 enter_project() {
   if [ -f "$PWD/.ai-jail/config.toml" ]; then
-    alias npm='jail npm'
-    alias pip='jail pip'
-    alias python3='jail python3'
+  alias npm='jail npm'
+  alias pip='jail pip'
+  alias python3='jail python3'
   fi
 }
 cd() { builtin cd "$@" && enter_project; }
@@ -91,7 +90,7 @@ To complete the picture, I created an incident response playbook (`~/.config/her
 
 And [Gitleaks](https://github.com/gitleaks/gitleaks) in TatuEngine's CI — every time someone commits a credential, CI rejects it automatically.
 
-## 💡 Resolution
+##  Resolution
 
 The sandbox is now integrated at three layers:
 
@@ -101,7 +100,7 @@ The sandbox is now integrated at three layers:
 
 And the best part: when `jail --dry-run python3 script.py` shows what will be mounted, you see exactly what each command can access. No "wait for a disaster to find out."
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Before | After |
 |--------|--------|-------|
@@ -111,7 +110,7 @@ And the best part: when `jail --dry-run python3 script.py` shows what will be mo
 | IR playbooks | 0 | 5 |
 | False positives (broken by jail) | — | 0 so far |
 
-## 🎯 Lessons Learned
+##  Lessons Learned
 
 - **Security isn't a feature, it's a layer** — you can't bolt it on at the end. ai-jail was configured before any worker hit production.
 - **The auto hook was the real MVP** — if I had to remember to type `jail`, half the commands would run unprotected.

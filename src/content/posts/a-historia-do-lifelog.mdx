@@ -5,20 +5,19 @@ date: 2026-07-31 10:00:00 -03:00
 pubDate: 2026-07-31 14:00:00 -03:00
 project: lifelog
 tags: ["lifelog", "narrativa", "arquitetura", "astro", "open-design", "e2e"]
-icon: "📖"
 cover: /covers/a-historia-do-lifelog.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O blog que não era o centro
+##  O blog que não era o centro
 
 No começo de julho de 2026, eu tinha seis projetos ativos — Arachne, Dogwalk, Capivara, Portfólio, TatuEngine, e uma lista crescente de descobertas técnicas. Cada um com seu repositório, seu CI/CD, seu conjunto de bugs e decisões. Eu sabia que o dia seguinte teria sido melhor se eu lembrasse o que aprendi hoje.
 
 Foi assim que o LifeLog nasceu: não como "mais um blog", mas como **o diário de bordo do ecossistema**.
 
-## 🧠 Contexto — por que mais um blog?
+##  Contexto — por que mais um blog?
 
 Eu já tive blogs antes. WordPress, Ghost, Medium — todos morreram depois do terceiro post. A diferença agora era o **motivo**: eu não queria escrever pra audiência, queria escrever pra **mim mesmo do futuro**.
 
@@ -34,7 +33,7 @@ b5152e8 Initial commit: LifeLog Astro site com Playwright E2E tests
 
 O nome "LifeLog" veio de life + log — o registro da vida de um ecossistema digital. A primeira versão era funcional mas espartana: uma timeline de posts, um tema claro/escuro simples, e 3 E2E tests.
 
-## 🔧 A luta — 4 temas em 2 semanas
+##  A luta — 4 temas em 2 semanas
 
 O que parecia um projeto simples (tabela + posts) virou um laboratório de UI/UX. Nos primeiros 10 dias, eu reescrevi o sistema de temas **4 vezes**:
 
@@ -69,7 +68,7 @@ const index = JSON.parse(
 
 E pra completar o trio de problemas: **as tags**. O Tailwind 4 com `color-mix` e temas claro/escuro exigia hacks de opacidade que quebravam em um dos temas. A solução veio com `color-mix(in srgb, var(--color-accent) 12%, transparent)` — que funciona nos dois temas sem precisar de fallback.
 
-## 💡 Resolução — quando matei o robô
+##  Resolução — quando matei o robô
 
 No dia 19 de julho, o blog já tinha 20+ posts. Mas algo estava errado: os posts eram **relatórios**, não histórias. Eu estava automatizando a escrita com um cron diário que agregava commits e gerava changelogs.
 
@@ -81,7 +80,7 @@ A partir daí, cada post virou um capítulo: Setup → Conflito → Resolução.
 
 No final de julho, o LifeLog também ganhou **Open Design** — um design system formal com DESIGN.md (12KB), tokens CSS, e craft rules. Cada paleta de cor, cada componente, cada transição documentada num contrato de design que o próprio site consome.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | 04/07 (nascimento) | 31/07 (hoje) |
 |---------|-------------------|--------------|
@@ -94,7 +93,7 @@ No final de julho, o LifeLog também ganhou **Open Design** — um design system
 | Temas (iterações) | 1 | 4 |
 | Build time | ~30s | ~15s |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 A maior lição não foi técnica — foi sobre **o que vale a pena automatizar**. Automatizar deploy? Sim. Automatizar testes? Sim. Automatizar a escrita de posts? Não — porque aí você perde a história.
 
@@ -102,10 +101,10 @@ O LifeLog me ensinou que documentar o trabalho não é sobre relatar o que foi f
 
 <Terminal
   lines={[
-    { cmd: 'ls src/content/posts/ | wc -l', output: '50 — total de posts PT' },
-    { cmd: 'ls src/content/posts/en/ | wc -l', output: '50 — total de posts EN' },
-    { cmd: 'git rev-list --count HEAD', output: '158 commits desde o início' },
-    { cmd: 'ls e2e/*.spec.ts', output: 'lifelog.spec.ts  record-demo.spec.ts  theme-mobile.spec.ts  theme-rail.spec.ts' },
-    { cmd: 'pnpm build 2>&1 | tail -3', output: '[build] 108 page(s) built in 10.29s' },
+  { cmd: 'ls src/content/posts/ | wc -l', output: '50 — total de posts PT' },
+  { cmd: 'ls src/content/posts/en/ | wc -l', output: '50 — total de posts EN' },
+  { cmd: 'git rev-list --count HEAD', output: '158 commits desde o início' },
+  { cmd: 'ls e2e/*.spec.ts', output: 'lifelog.spec.ts  record-demo.spec.ts  theme-mobile.spec.ts  theme-rail.spec.ts' },
+  { cmd: 'pnpm build 2>&1 | tail -3', output: '[build] 108 page(s) built in 10.29s' },
   ]}
 />

@@ -5,14 +5,13 @@ date: 2026-07-28 10:30:00 -03:00
 pubDate: 2026-07-28 10:30:00 -03:00
 project: estudos
 tags: [ollama, llm, debugging, context-length, wsl]
-icon: "📚"
 cover: /covers/ollama-truncation-loop-4096.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O Hermes desistiu de responder 4 vezes seguidas
+##  O Hermes desistiu de responder 4 vezes seguidas
 
 Eu tinha acabado de configurar o Ollama como fallback local pro Hermes. Modelo qwen3.5:4b — suporta 262.144 tokens de contexto nativamente. Mais que suficiente pro system prompt de ~4K tokens.
 
@@ -20,7 +19,7 @@ Só que o Hermes entrava em loop. Toda resposta era "incompleta", ele tentava co
 
 Debug mode ligado. O que estava acontecendo?
 
-## 🧠 O problema: dois números diferentes de contexto
+##  O problema: dois números diferentes de contexto
 
 O Ollama tem **dois** valores de `num_ctx`:
 
@@ -37,7 +36,7 @@ ollama[...]: slot print_timing: eval time = 0.00 ms / 1 tokens  ← SÓ 1 TOKEN
 
 O prompt de 49.379 tokens (system prompt do Hermes + histórico) era truncado para 4.095. O modelo recebia um fragmento sem sentido. Gerava 1 token. O Hermes via resposta incompleta e tentava continuation. O novo prompt também era truncado. Loop infinito.
 
-## 🔧 A luta — encontrando a agulha no palheiro
+##  A luta — encontrando a agulha no palheiro
 
 ### Tentativa 1: Ler o stdout do Ollama
 
@@ -86,7 +85,7 @@ Environment="OLLAMA_CONTEXT_LENGTH=65536"
 sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
 
-## 💡 Resolução
+##  Resolução
 
 Duas coisas que aprendi (e documentei na skill `wsl-llm-local-ops`):
 
@@ -95,7 +94,7 @@ Duas coisas que aprendi (e documentei na skill `wsl-llm-local-ops`):
 
 Depois do fix: respostas completas, zero loops de continuation, ~30 tokens/segundo de geração.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Antes (4K) | Depois (64K) |
 |---------|-----------|-------------|
@@ -105,7 +104,7 @@ Depois do fix: respostas completas, zero loops de continuation, ~30 tokens/segun
 | Consumo de RAM | ~2 GB | ~4 GB |
 | Velocidade de geração | 0.04 tok/s (só 1 token) | ~30 tok/s |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 - **`ollama show` mostra o que o modelo suporta, não o que o slot aloca** — dois números completamente diferentes.
 - **Sempre testar via API direta** (`/api/generate`) quando algo parece errado. O CLI do Ollama esconde os warnings.

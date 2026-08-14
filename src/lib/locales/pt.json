@@ -3,12 +3,12 @@
     "home": "Início",
     "homeIcon": "",
     "archive": "Arquivo",
-    "archiveIcon": "📚",
+    "archiveIcon": "",
     "about": "Sobre",
-    "aboutIcon": "ℹ️",
+    "aboutIcon": "",
     "portfolio": "Portfólio",
-    "portfolioIcon": "🚀",
-    "logo": "📖 LifeLog"
+    "portfolioIcon": "",
+    "logo": "LifeLog"
   },
   "home": {
     "title": "Início",
@@ -17,18 +17,18 @@
     "loading": "Carregando..."
   },
   "archive": {
-    "title": "📚 Arquivo",
+    "title": "Arquivo",
     "description": "Todos os posts do LifeLog",
     "pageTitle": "Arquivo"
   },
   "about": {
-    "title": "📖 Sobre o LifeLog",
+    "title": "Sobre o LifeLog",
     "description": "Sobre o LifeLog",
     "p1": "LifeLog é meu diário de bordo técnico. Um registro vivo da minha jornada como desenvolvedor — projetos, descobertas, bugs épicos, e tudo que aprendo pelo caminho.",
     "p2": "Cada post tem um tema visual único dependendo do projeto. Se tô falando do Arachne, você vê a teia roxa. Se é sobre o Dogwalk, a paleta muda pra laranja. O projeto define a cara do post.",
     "projects": "Projetos",
-    "projectsList": "🕷️ Arachne · 🐶 Dogwalk · 🐷 Capivara · 🚀 Portfólio · 📚 Estudos",
-    "portfolio": "🚀 Portfólio",
+    "projectsList": "Arachne · Dogwalk · Capivara · Portfólio · Estudos",
+    "portfolio": "Portfólio",
     "portfolioUrl": "https://samuelmedeiros.vercel.app"
   },
   "post": {
@@ -67,8 +67,8 @@
     "projects": "→ Detalhes dos projetos",
     "catAbout": "→ Sobre mim",
     "notFound": "Comando não encontrado. Digite \"help\" para ver os comandos disponíveis.",
-    "projectsList": "📁 projetos/",
-    "featured": "📦 PROJETOS EM DESTAQUE"
+    "projectsList": "projetos/",
+    "featured": "PROJETOS EM DESTAQUE"
   },
   "theme": {
     "toggleLabel": "Alternar tema",
@@ -83,6 +83,9 @@
     "dogwalk": "Dogwalk",
     "portfolio": "Portfólio",
     "capivara": "Capivara",
+    "tatuengine": "TatuEngine",
+    "seguranca": "Segurança",
+    "lifelog": "LifeLog",
     "estudos": "Estudos",
     "descobertas": "Descobertas"
   }

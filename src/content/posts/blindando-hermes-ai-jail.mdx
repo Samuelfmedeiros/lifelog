@@ -5,14 +5,13 @@ date: 2026-07-28 10:00:00 -03:00
 pubDate: 2026-07-28 10:00:00 -03:00
 project: seguranca
 tags: [seguranca, ai-jail, sandbox, herm es, bwrap, secrets]
-icon: "🔒"
 cover: /covers/blindando-hermes-ai-jail.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O Hermes podia vazar minha vida a qualquer momento
+##  O Hermes podia vazar minha vida a qualquer momento
 
 Meu assistente Hermes executa comandos no terminal o tempo todo: `npm install`, `pip install`, scripts Python arbitrários. E ele tem acesso a **tudo** — tokens de API, chaves Stripe, credenciais de banco, secrets do Bitwarden SM.
 
@@ -20,7 +19,7 @@ Um comando malicioso num pacote npm, um script Python com `os.environ`, um `curl
 
 Precisava de uma barreira. Não dava pra confiar só em "tomar cuidado".
 
-## 🧠 Conhecendo o ai-jail
+##  Conhecendo o ai-jail
 
 O [ai-jail](https://github.com/akitaonrails/ai-jail) é um sandbox em Rust que combina três camadas de isolamento:
 
@@ -30,7 +29,7 @@ O [ai-jail](https://github.com/akitaonrails/ai-jail) é um sandbox em Rust que c
 
 A ideia: cada comando que o Hermes roda, roda dentro de uma jaula. O projeto tem permissão de escrita, mas `~/.env`, `secrets/`, `*.pem` — tudo mascarado ou negado.
 
-## 🔧 A luta — três modos, um hook e um playbook
+##  A luta — três modos, um hook e um playbook
 
 ### Modo 1: normal
 
@@ -66,9 +65,9 @@ A gota d'água foi ter que lembrar de digitar `jail` antes de cada comando. Inst
 # ~/.bashrc.d/jail-auto.sh (resumido)
 enter_project() {
   if [ -f "$PWD/.ai-jail/config.toml" ]; then
-    alias npm='jail npm'
-    alias pip='jail pip'
-    alias python3='jail python3'
+  alias npm='jail npm'
+  alias pip='jail pip'
+  alias python3='jail python3'
   fi
 }
 cd() { builtin cd "$@" && enter_project; }
@@ -90,7 +89,7 @@ Pra completar, criei um playbook de resposta a incidentes (`~/.config/hermes/scr
 
 E o [Gitleaks](https://github.com/gitleaks/gitleaks) no CI do TatuEngine — toda vez que alguém faz commit com credencial, o CI reprova automático.
 
-## 💡 Resolução
+##  Resolução
 
 O sandbox hoje tá integrado em três camadas:
 
@@ -100,7 +99,7 @@ O sandbox hoje tá integrado em três camadas:
 
 E o melhor: quando `jail --dry-run python3 script.py` mostra o que vai montar, você vê exatamente o que cada comando pode acessar. Nada de "esperar dar merda pra descobrir".
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
@@ -110,7 +109,7 @@ E o melhor: quando `jail --dry-run python3 script.py` mostra o que vai montar, v
 | Playbooks de IR | 0 | 5 |
 | Falsos positivos (comandos quebrados pelo jail) | — | 0 até agora |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 - **Segurança não é feature, é camada** — não adianta colocar no final. O ai-jail foi configurado antes de qualquer worker em produção.
 - **O hook automático foi o que salvou** — se dependesse de lembrar de digitar `jail`, metade dos comandos rodava sem proteção.

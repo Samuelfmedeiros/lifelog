@@ -6,7 +6,6 @@ pubDate: 2026-07-16 18:00:00 -03:00
 project: arachne
 tags: ["arachne", "mcp", "multimodal", "update", "ecossistema"]
 
-icon: "🕷️"
 cover: /covers/arachne-updates-e-proximos-passos.webp
 featured: true
 ---
@@ -22,8 +21,8 @@ Esse post não é sobre o começo — é sobre *onde o Arachne está agora* e co
 O pulo do gato foi o protocolo MCP. Em junho, o Arachne tinha 4 ferramentas MCP expostas via STDIO. Hoje são **25**, com dois transportes:
 
 ```
-📡 STDIO — tools locais, acoplamento direto
-☁️ SSE  — remoto via arachne.seu.pet/mcp, autenticação X-API-Key
+ STDIO — tools locais, acoplamento direto
+ SSE  — remoto via arachne.seu.pet/mcp, autenticação X-API-Key
 ```
 
 Cada tool tem descrição, timing estimado e fallback chain. O `arachne_plan` é a orquestradora — você me pergunta "como faço X" e ela monta o plano de execução antes de qualquer tool rodar.
@@ -31,12 +30,12 @@ Cada tool tem descrição, timing estimado e fallback chain. O `arachne_plan` é
 ```python
 # Exemplo: fallback chain do browser
 async def browser_extract(url: str) -> str:
-    try:
-        return await playwright_extract(url)       # 🎭 Playwright stealth
-    except BlockedError:
-        return await camoufox_extract(url)          # 🦊 Camoufox evasão
-    except TimeoutError:
-        return await screenshot_ocr(url)            # 📸 fallback: captura + OCR
+  try:
+  return await playwright_extract(url)  #  Playwright stealth
+  except BlockedError:
+  return await camoufox_extract(url)  #  Camoufox evasão
+  except TimeoutError:
+  return await screenshot_ocr(url)  #  fallback: captura + OCR
 ```
 
 E foi pro **MCP Registry oficial** como `io.github.Samuelfmedeiros/arachne` — descoberta automática por qualquer cliente MCP que conheça o nome.
@@ -48,14 +47,14 @@ A feature mais recente e a que mais me orgulha: o pipeline de visão que roda tu
 ```python
 # app/vision/pipeline.py — simplified
 stages = [
-    metadata_extract,    # 📐 dimensões, formato, EXIF
-    color_analysis,      # 🎨 histograma, paleta dominante
-    ocr_extract,         # 🔤 texto via Tesseract
-    edge_detect,         # 📏 contornos Canny
-    face_detect,         # 👤 detecção facial
-    texture_analysis,    # 🧶 padrões e texturas
-    quality_assess,      # ⭐ nitidez, ruído, exposição
-    vlm_describe,        # 🧠 IA opcional (gemma4:12b)
+  metadata_extract,  #  dimensões, formato, EXIF
+  color_analysis,  #  histograma, paleta dominante
+  ocr_extract,  #  texto via Tesseract
+  edge_detect,  #  contornos Canny
+  face_detect,  #  detecção facial
+  texture_analysis,  #  padrões e texturas
+  quality_assess,  #  nitidez, ruído, exposição
+  vlm_describe,  #  IA opcional (gemma4:12b)
 ]
 ```
 
@@ -79,17 +78,17 @@ Implementei cabeçalhos `X-Called-By` e `X-MCP-Tool` injetados em toda chamada M
 
 ```python
 class ApiUsageLog(BaseModel):
-    id: int | None
-    user_id: int
-    endpoint: str
-    method: str
-    status_code: int
-    response_time_ms: float
-    tokens_in: int | None
-    tokens_out: int | None
-    called_by: str | None     # 🤖 qual agente chamou
-    mcp_tool: str | None      # 🛠️ qual tool MCP
-    created_at: datetime
+  id: int | None
+  user_id: int
+  endpoint: str
+  method: str
+  status_code: int
+  response_time_ms: float
+  tokens_in: int | None
+  tokens_out: int | None
+  called_by: str | None  #  qual agente chamou
+  mcp_tool: str | None  #  qual tool MCP
+  created_at: datetime
 ```
 
 Isso permite responder perguntas como "quem está usando mais o browser?" e "qual tool está consumindo mais tokens?" — dados reais, não achismo.
@@ -135,7 +134,7 @@ No momento em que escrevo:
 | RAM | 11.9 GB (76.9% usado) |
 | Disco | 690 GB livre (27.8% usado) |
 | Browser processes | 6 instâncias |
-| Heavy tasks | ✅ seguro |
+| Heavy tasks |  seguro |
 
 O servidor aguenta bem. 6 instâncias de browser ativas, mas o pool de workers (20/40 gunicorn) dá conta do recado.
 
@@ -151,10 +150,10 @@ O roadmap imediato:
 
 <Terminal
   lines={[
-    { cmd: 'mcp_tools_count=$(curl -s https://arachne.seu.pet/mcp/tools | jq length)', output: '25 tools expostas via protocolo MCP' },
-    { cmd: 'curl -s https://arachne.seu.pet/ping | jq .version', output: '"2.1.0"' },
-    { cmd: 'curl -s https://arachne.seu.pet/metrics | jq .cpu_percent', output: '0.6' },
-    { cmd: 'echo "🏗️ Em construção — sempre"', output: 'mas funcionando em produção' },
+  { cmd: 'mcp_tools_count=$(curl -s https://arachne.seu.pet/mcp/tools | jq length)', output: '25 tools expostas via protocolo MCP' },
+  { cmd: 'curl -s https://arachne.seu.pet/ping | jq .version', output: '"2.1.0"' },
+  { cmd: 'curl -s https://arachne.seu.pet/metrics | jq .cpu_percent', output: '0.6' },
+  { cmd: 'echo " Em construção — sempre"', output: 'mas funcionando em produção' },
   ]}
 />
 

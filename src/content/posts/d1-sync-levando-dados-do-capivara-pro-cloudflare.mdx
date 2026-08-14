@@ -5,7 +5,6 @@ date: 2026-06-25 10:00:00 -03:00
 pubDate: 2026-07-14 00:00:00 -03:00
 project: capivara
 tags: [capivara, cloudflare, d1, sync]
-icon: "🐷"
 cover: /covers/d1-sync-levando-dados-do-capivara-pro-cloudflare.webp
 featured: false
 ---
@@ -37,14 +36,14 @@ Mas prum hub pessoal como o Capivara? Servia perfeitamente.
 ## A arquitetura
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  PostgreSQL  │────→│   D1 Sync   │────→│  Cloudflare  │
-│  (local)     │     │   (Worker)  │     │  D1 (edge)  │
-└─────────────┘     └──────────────┘     └─────────────┘
-       │                   │                     │
-  users, tokens,      Clean + map           Read replicas
-  preferences,        schemas +             via Workers
-  activity_logs       batch insert
+┌─────────────┐  ┌──────────────┐  ┌─────────────┐
+│  PostgreSQL  │────→│  D1 Sync  │────→│  Cloudflare  │
+│  (local)  │  │  (Worker)  │  │  D1 (edge)  │
+└─────────────┘  └──────────────┘  └─────────────┘
+  │  │  │
+  users, tokens,  Clean + map  Read replicas
+  preferences,  schemas +  via Workers
+  activity_logs  batch insert
 ```
 
 O fluxo é:
@@ -75,9 +74,9 @@ const results = [];
 for (let i = 0; i < records.length; i += BATCH_SIZE) {
   const batch = records.slice(i, i + BATCH_SIZE);
   const stmts = batch.map(r => ({
-    sql: `INSERT OR REPLACE INTO users (id, name, email, preferences, updated_at)
-          VALUES (?, ?, ?, ?, ?)`,
-    params: [r.id, r.name, r.email, JSON.stringify(r.preferences), r.updated_at]
+  sql: `INSERT OR REPLACE INTO users (id, name, email, preferences, updated_at)
+  VALUES (?, ?, ?, ?, ?)`,
+  params: [r.id, r.name, r.email, JSON.stringify(r.preferences), r.updated_at]
   }));
   results.push(await db.batch(stmts));
 }
@@ -122,13 +121,13 @@ D1 não tem tipo `timestamptz`. Tudo se torna `TEXT`. A conversão `datetime.utc
 ```python
 # Python side
 def serialize_value(val):
-    if isinstance(val, datetime):
-        return val.isoformat()
-    if isinstance(val, UUID):
-        return str(val)
-    if isinstance(val, dict | list):
-        return json.dumps(val, ensure_ascii=False)
-    return val
+  if isinstance(val, datetime):
+  return val.isoformat()
+  if isinstance(val, UUID):
+  return str(val)
+  if isinstance(val, dict | list):
+  return json.dumps(val, ensure_ascii=False)
+  return val
 ```
 
 ```js
@@ -146,7 +145,7 @@ D1 suporta `INSERT OR REPLACE`, mas isso **reinsere o registro inteiro** — qua
 -- Insere ou substitui COMPLETAMENTE (cuidado!)
 INSERT OR REPLACE INTO users (id, name, email, updated_at)
 VALUES (?, ?, ?, ?);
--- ⚠️ preferences vira NULL se não estiver no INSERT!
+--  preferences vira NULL se não estiver no INSERT!
 
 -- Upsert seletivo (só atualiza campos especificados)
 INSERT INTO users (id, name, email, preferences, updated_at)
@@ -177,20 +176,20 @@ Como o sync roda a cada 6h, o mesmo registro pode ser sincronizado múltiplas ve
 
 ```python
 def sync_table(table_name, columns, query, batch_size=50):
-    conn = get_pg_connection()
-    cursor = conn.cursor()
-    cursor.execute(query)  # query filtrada por updated_at > last_sync
+  conn = get_pg_connection()
+  cursor = conn.cursor()
+  cursor.execute(query)  # query filtrada por updated_at > last_sync
 
-    batch = []
-    for row in cursor.fetchall():
-        serialized = [serialize_value(v) for v in row]
-        batch.append(serialized)
-        if len(batch) >= batch_size:
-            send_batch(table_name, columns, batch)
-            batch = []
+  batch = []
+  for row in cursor.fetchall():
+  serialized = [serialize_value(v) for v in row]
+  batch.append(serialized)
+  if len(batch) >= batch_size:
+  send_batch(table_name, columns, batch)
+  batch = []
 
-    if batch:
-        send_batch(table_name, columns, batch)
+  if batch:
+  send_batch(table_name, columns, batch)
 ```
 
 O cursor com `fetchall()` não carrega tudo na memória de uma vez — PostgreSQL já faz buffering server-side. Mas pra 800 registros, nem esquenta.
@@ -225,17 +224,17 @@ python3 scripts/d1-sync.py --tables users,tokens,activity_logs,preferences
 > _O D1 Sync foi uma das primeiras peças de infraestrutura cloud que conectei no Capivara. Parecia simples — "só copiar dados pro banco da Cloudflare" — mas cada detalhe (timezone, batch limits, idempotência, schema drift) ensinou algo novo. E o melhor: agora o Capivara tem presença na edge sem abrir mão do Postgres local._
 
 <Terminal>
-    python3 scripts/d1-sync.py --dry-run
+  python3 scripts/d1-sync.py --dry-run
 
-    [DRY-RUN] Syncing table: users
-    [DRY-RUN]   42 rows to sync (last_sync: 2026-06-24T12:00:00)
-    [DRY-RUN]   0 rows skipped (schema OK)
-    [DRY-RUN] Syncing table: activity_logs
-    [DRY-RUN]   153 rows to sync
-    [DRY-RUN] Syncing table: tokens
-    [DRY-RUN]   12 rows to sync
-    [DRY-RUN] Syncing table: preferences
-    [DRY-RUN]   18 rows to sync
-    [DRY-RUN] Total: 225 rows, ~4 batches
-    [DRY-RUN] D1 sync OK (simulated)
+  [DRY-RUN] Syncing table: users
+  [DRY-RUN]  42 rows to sync (last_sync: 2026-06-24T12:00:00)
+  [DRY-RUN]  0 rows skipped (schema OK)
+  [DRY-RUN] Syncing table: activity_logs
+  [DRY-RUN]  153 rows to sync
+  [DRY-RUN] Syncing table: tokens
+  [DRY-RUN]  12 rows to sync
+  [DRY-RUN] Syncing table: preferences
+  [DRY-RUN]  18 rows to sync
+  [DRY-RUN] Total: 225 rows, ~4 batches
+  [DRY-RUN] D1 sync OK (simulated)
 </Terminal>

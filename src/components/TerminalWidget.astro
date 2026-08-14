@@ -57,42 +57,42 @@
   uptime       → Há quanto tempo o LifeLog existe
   clear        → Limpar terminal
   help         → Esta ajuda`,
-    ls: () => `📁 projetos/
-  🕷️  arachne/       — Plataforma de extração inteligente
-  🐶 dogwalk/       — App de passeios para pets
-  🐷 capivara/      — Hub pessoal de ferramentas
-  🚀 portfolio/      — Site pessoal sci-fi
-  🧠 tatuengine/     — Motor de linguagem SSM
+    ls: () => `projetos/
+  arachne/       — Plataforma de extração inteligente
+  dogwalk/       — App de passeios para pets
+  capivara/      — Hub pessoal de ferramentas
+  portfolio/     — Site pessoal sci-fi
+  tatuengine/    — Motor de linguagem SSM
 
-📁 estudos/
-  📚 fts5/           — Full-text search na prática
-  🔬 ssm/            — State Space Models
+estudos/
+  fts5/          — Full-text search na prática
+  ssm/           — State Space Models
 
-📄 posts (8 entradas)`,
-    skills: () => `🧰 Stack Principal
+posts (8 entradas)`,
+    skills: () => `Stack Principal
   Python • TypeScript • Rust • React • Vue
   FastAPI • Next.js • Astro • Tailwind
 
-🗄️ Infra & Dados
+Infra & Dados
   SQLite • Supabase • Cloudflare • Docker
   SQLAlchemy • Redis • git
 
-🤖 AI/ML
+AI/ML
   LLMs • RAG • Mamba • SSM • Whisper
   Fine-tuning • Embeddings • Busca vetorial`,
-    contact: () => `📬 Onde me encontrar:
+    contact: () => `Onde me encontrar:
 
   GitHub:  github.com/Samuelfmedeiros
   LinkedIn: linkedin.com/in/samuelandrademedeiros
   Site:     samuelmedeiros.vercel.app
   Email:    [via formulário no site]`,
-    projects: () => `📦 PROJETOS EM DESTAQUE
+    projects: () => `PROJETOS EM DESTAQUE
 
-  🕷️  Arachne     — Scraping + RAG + MCP Server
-  🐶  Dogwalk     — Plataforma de passeios (Stripe Connect)
-  🐷  Capivara    — Hub pessoal com finanças
-  🚀  Portfolio   — Site sci-fi com 5 mini-games
-  🧠  TatuEngine  — Motor SSM com GoalHamiltonian`,
+  Arachne     — Scraping + RAG + MCP Server
+  Dogwalk     — Plataforma de passeios (Stripe Connect)
+  Capivara    — Hub pessoal com finanças
+  Portfolio   — Site sci-fi com 5 mini-games
+  TatuEngine  — Motor SSM com GoalHamiltonian`,
     'cat about': () => `Samuel Medeiros
 
 Desenvolvedor senior brasileiro, trabalho com 
@@ -109,7 +109,7 @@ Atualmente focado em:
       const start = new Date('2026-05-31');
       const now = new Date();
       const days = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-      return `☝️ LifeLog no ar há ${days} dias (desde 31/05/2026)`;
+      return `LifeLog no ar há ${days} dias (desde 31/05/2026)`;
     },
     clear: () => null,
   };
@@ -134,7 +134,7 @@ Atualmente focado em:
     if (resolved === 'clear') return null;
     
     if (handler) return handler();
-    return `❌ Comando não encontrado: "${cmd}". Digite "help" para ver os comandos disponíveis.`;
+    return `ERRO: Comando não encontrado: "${cmd}". Digite "help" para ver os comandos disponíveis.`;
   }
 
   function addOutput(text, isCmd = false) {

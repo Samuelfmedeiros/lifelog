@@ -5,7 +5,6 @@ date: 2026-07-17 10:00:00 -03:00
 pubDate: 2026-07-18 00:00:00 -03:00
 project: capivara
 tags: ["capivara", "refatoracao", "ghost-components", "react-router", "schema-drift", "systemd", "devops"]
-icon: "🐷"
 cover: /covers/capivara-updates-2026-07-17.webp
 featured: false
 ---
@@ -34,8 +33,8 @@ Descobri 3 ghost components procurando por `^function` nos arquivos de página e
 
 ```bash
 # O diagnóstico
-$ grep -c 'export function' components/*/*.tsx    # 17 exports
-$ grep -c '^function ' pages/*.tsx                # 8 funções inline
+$ grep -c 'export function' components/*/*.tsx  # 17 exports
+$ grep -c '^function ' pages/*.tsx  # 8 funções inline
 ```
 
 Das 8 funções inline, 3 já tinham versão em arquivo. Alguém tinha começado a extração e parado no meio — o código inline continuava sendo a versão "verdadeira" enquanto os arquivos acumulavam poeira.
@@ -55,16 +54,16 @@ O painel admin do Capivara consulta dados do Arachne lendo diretamente o SQLite 
 
 ```python
 def _query_sqlite(db_path: Path, sql: str, params: tuple = ()) -> list[dict]:
-    try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        cur = conn.execute(sql, params)
-        rows = [dict(row) for row in cur.fetchall()]
-        conn.close()
-        return rows
-    except Exception as e:
-        log.warning("SQLite query failed on %s: %s", db_path, e)
-        return []  # ← silencioso!
+  try:
+  conn = sqlite3.connect(str(db_path))
+  conn.row_factory = sqlite3.Row
+  cur = conn.execute(sql, params)
+  rows = [dict(row) for row in cur.fetchall()]
+  conn.close()
+  return rows
+  except Exception as e:
+  log.warning("SQLite query failed on %s: %s", db_path, e)
+  return []  # ← silencioso!
 ```
 
 O esquema do Arachne evolui sem avisar o Capivara. O security scan reportou três ocorrências de `no such column`:
@@ -82,12 +81,12 @@ A solução foi dupla: corrigir as queries e criar um **schema drift guard** que
 
 ```python
 SCHEMA_HASH = hashlib.sha256('\n'.join(
-    f'TABLE: {t}\n' + '\n'.join(
-        f'  {c.name}: {c.type!r} nullable={c.nullable}'
-        + (' PK' if c.primary_key else '')
-        for c in sorted(t.columns, key=lambda x: x.name)
-    )
-    for t in sorted(Base.metadata.tables.values(), key=lambda x: x.name)
+  f'TABLE: {t}\n' + '\n'.join(
+  f'  {c.name}: {c.type!r} nullable={c.nullable}'
+  + (' PK' if c.primary_key else '')
+  for c in sorted(t.columns, key=lambda x: x.name)
+  )
+  for t in sorted(Base.metadata.tables.values(), key=lambda x: x.name)
 ).encode()).hexdigest()
 ```
 
@@ -99,8 +98,8 @@ Um dia notei que o Capivara estava com uptime de semanas, mas o `systemctl statu
 
 ```
 ● capivara.service — Capivara API (FastAPI)
-   Active: activating (auto-restart) (Result: exit-code)
-   NRestarts: 869
+  Active: activating (auto-restart) (Result: exit-code)
+  NRestarts: 869
 ```
 
 **869 tentativas de restart.** Cada uma falhando com `address already in use` porque o user-level `capivara-backend.service` já estava rodando na porta 8001.
@@ -208,9 +207,9 @@ $ systemctl --user status capivara-backend
 
 <Terminal
   lines={[
-    { cmd: 'grep -c \'^function \' frontend/src/pages/*.tsx', output: '0' },
-    { cmd: 'prgrep -oP \'NRestarts: \\K\\d+\' <<< "$(systemctl show capivara)"', output: '0' },
-    { cmd: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/_next/static/chunks/main.js', output: '200' },
-    { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\n44 passed in 3.2s' },
+  { cmd: 'grep -c \'^function \' frontend/src/pages/*.tsx', output: '0' },
+  { cmd: 'prgrep -oP \'NRestarts: \\K\\d+\' <<< "$(systemctl show capivara)"', output: '0' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/_next/static/chunks/main.js', output: '200' },
+  { cmd: 'cd ~/projetos/Capivara/backend && python -m pytest -q', output: '...........................................................................\n44 passed in 3.2s' },
   ]}
 />

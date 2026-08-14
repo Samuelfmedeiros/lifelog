@@ -5,14 +5,13 @@ date: 2026-08-07 12:00:00 -03:00
 pubDate: 2026-08-08 12:00:00 -03:00
 project: arachne
 tags: ["arachne", "postgres", "sqlalchemy", "pool", "debugging"]
-icon: "🕷️"
 cover: /covers/arachne-o-pool-de-conexoes-que-exauriu.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The hub that responded but was empty
+##  The hub that responded but was empty
 
 It was 12:00 on 08/07. The Bug Hunter (the automated auditor that renders routes and checks whether content actually mounted) ran as usual. Result: `/hub`, `/playground`, `/knowledge`, `/tools/scrape` with `#app len=7` — the HTML only had an empty `<div id="app"></div>`, nothing inside.
 
@@ -20,7 +19,7 @@ Arachne responded **HTTP 200**. The deploy was green. But authenticated routes r
 
 And in the journal: **1,239 errors** of `QueuePool limit ... timeout 30.00` accumulated since **02:57**.
 
-## 🧠 The context: connection pools are finite
+##  The context: connection pools are finite
 
 Arachne uses SQLAlchemy with PostgreSQL. The default pool is `QueuePool` with **10 active connections + 20 overflow** = max 30 concurrent.
 
@@ -28,13 +27,13 @@ When the pool fills, new requests **wait** (`timeout 30.00`) and then fail. Clas
 
 The suspect: the X-API-Key authentication middleware.
 
-## 🔧 The struggle: the generator that was never closed
+##  The struggle: the generator that was never closed
 
 The `auth_middleware` did a query to validate the API key:
 
 ```python
-# ❌ Before — the generator leaks the connection
-_session = next(_get_session())   # opens the session... and NEVER closes
+#  Before — the generator leaks the connection
+_session = next(_get_session())  # opens the session... and NEVER closes
 # uses _session to validate the key
 # ... request ends, generator stays open
 ```
@@ -54,16 +53,16 @@ WHERE datname = 'arachne' GROUP BY state;
 # 38 idle in transaction  ← the orphans
 ```
 
-## 💡 The resolution: close the generator in finally
+##  The resolution: close the generator in finally
 
 ```python
-# ✅ After — keep the generator and close it in finally
+#  After — keep the generator and close it in finally
 _session_gen = _get_session()
 try:
-    _session = next(_session_gen)
-    # validates the key
+  _session = next(_session_gen)
+  # validates the key
 finally:
-    _session_gen.close()   # runs __exit__ → session.close() → connection returns to pool
+  _session_gen.close()  # runs __exit__ → session.close() → connection returns to pool
 ```
 
 A 22-line change. The generator is now **closed in finally** — the connection returns to the pool immediately, no matter what happens in between.
@@ -72,7 +71,7 @@ Immediate mitigation for the incident: `pg_terminate_backend` on the 38 orphaned
 
 Verification: Bug Hunter re-run → **11/11 checks OK, 0 failures**, `/api/auth/me` 200.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -83,7 +82,7 @@ Verification: Bug Hunter re-run → **11/11 checks OK, 0 failures**, `/api/auth/
 | Fix | `_session_gen.close()` in finally (22 lines) |
 | Post-fix verification | Bug Hunter 11/11, `/api/auth/me` 200 |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **SQLAlchemy generator without close = connection leak** — `next(_get_session())` without `finally` is a trap. The session opens, but the connection only returns to the pool when the generator closes.
 
@@ -95,9 +94,9 @@ Verification: Bug Hunter re-run → **11/11 checks OK, 0 failures**, `/api/auth/
 
 <Terminal
   lines={[
-    { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — the orphans' },
-    { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'The fix: _session_gen.close() in finally (22 lines)' },
-    { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Line 847: runs __exit__ → connection returns to pool' },
-    { cmd: 'pg_terminate_backend(pid)', output: 'Immediate mitigation: kill the 38 orphans + restart' },
+  { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — the orphans' },
+  { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'The fix: _session_gen.close() in finally (22 lines)' },
+  { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Line 847: runs __exit__ → connection returns to pool' },
+  { cmd: 'pg_terminate_backend(pid)', output: 'Immediate mitigation: kill the 38 orphans + restart' },
   ]}
 />

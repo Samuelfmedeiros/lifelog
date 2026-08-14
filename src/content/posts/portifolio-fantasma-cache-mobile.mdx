@@ -5,20 +5,19 @@ date: 2026-08-04 12:00:00 -03:00
 pubDate: 2026-08-04 12:00:00 -03:00
 project: portfolio
 tags: ["portfolio", "cache", "bfcache", "chrome", "mobile", "nextjs"]
-icon: "🚀"
 cover: /covers/portifolio-fantasma-cache-mobile.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## 👻 O fantasma do cache mobile
+##  O fantasma do cache mobile
 
 Tem uma categoria de bug que é especialmente irritante: **o site funciona perfeitamente nos testes, no CI, no desktop... mas no celular do usuário final mostra coisa velha**.
 
 Era exatamente isso que tava rolando com o Portfólio (`samuelmedeiros.vercel.app`) no começo de agosto. O site tava impecável: 218 testes passando (28 suites Vitest), build Next.js limpo, deploy Vercel sem erro. Mas volta e meia chegava o relato: "abri o site no Chrome do celular e tava uma versão antiga".
 
-## 🧠 Contexto — o que é bfcache e por que ele ignora seus headers
+##  Contexto — o que é bfcache e por que ele ignora seus headers
 
 O Chrome mobile tem uma feature chamada **bfcache** (back-forward cache). Quando você navega pra outra aba e volta, ou fecha o app e reabre, o Chrome **não faz uma requisição nova** — ele restaura a página INTEIRA da memória, incluindo estado JavaScript, scroll position, tudo.
 
@@ -31,21 +30,21 @@ O Portfólio já tinha o `vercel.json` configurado certinho:
 ```json
 {
   "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" }
-      ]
-    }
+  {
+  "source": "/(.*)",
+  "headers": [
+  { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+  { "key": "Pragma", "value": "no-cache" },
+  { "key": "Expires", "value": "0" }
+  ]
+  }
   ]
 }
 ```
 
 E mesmo assim o Chrome mobile servia versão velha. Porque o bfcache não lê isso.
 
-## 🔍 O diagnóstico — pageshow e `e.persisted`
+##  O diagnóstico — pageshow e `e.persisted`
 
 O LifeLog (blog Astro) tinha sofrido do **mesmo problema** uns dias antes. O Samuel abria o blog no celular, via posts antigos, dava refresh manual e os novos apareciam. A solução aplicada lá (commit `8f257c7`) virou referência e foi portada pro Portfólio (commit `283ebbc`).
 
@@ -61,14 +60,14 @@ import { useEffect } from "react";
 
 function BfcacheGuard() {
   useEffect(() => {
-    const handlePageshow = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        // Página foi restaurada do bfcache — força reload
-        window.location.reload();
-      }
-    };
-    window.addEventListener("pageshow", handlePageshow);
-    return () => window.removeEventListener("pageshow", handlePageshow);
+  const handlePageshow = (e: PageTransitionEvent) => {
+  if (e.persisted) {
+  // Página foi restaurada do bfcache — força reload
+  window.location.reload();
+  }
+  };
+  window.addEventListener("pageshow", handlePageshow);
+  return () => window.removeEventListener("pageshow", handlePageshow);
   }, []);
   return null;
 }
@@ -76,7 +75,7 @@ function BfcacheGuard() {
 
 O componente `BfcacheGuard` é renderizado no layout raiz, antes de qualquer conteúdo. Quando o Chrome mobile restaura a aba do bfcache, o `pageshow` dispara com `persisted: true`, e o guard força um `window.location.reload()` — que **dessa vez** respeita os headers `Cache-Control` e baixa a versão nova do servidor.
 
-## 🔗 Aprendizado cruzado — por que o LifeLog salvou o Portfólio
+##  Aprendizado cruzado — por que o LifeLog salvou o Portfólio
 
 Esse é um daqueles casos em que **dois projetos aparentemente independentes se beneficiam da mesma correção**. O LifeLog (Astro 7, SSG) e o Portfólio (Next.js 16, React 19) têm stacks completamente diferentes — mas o problema é da **plataforma** (Chrome mobile), não do framework.
 
@@ -84,7 +83,7 @@ O LifeLog foi o canário na mina: como é atualizado com mais frequência (posts
 
 E aí foi só portar: mesmo conceito, sintaxe diferente. No LifeLog é vanilla JS inline no `<script>` do `BaseLayout.astro`. No Portfólio é um componente React `BfcacheGuard` com `useEffect`. Mesma lógica, mesmo resultado.
 
-## 📊 O estado atual — 218 testes, open source maduro
+##  O estado atual — 218 testes, open source maduro
 
 O Portfólio tá num momento de maturidade. Os números:
 
@@ -101,7 +100,7 @@ O repositório ganhou templates de issue/PR (`acd55d6`), guia de contribuição,
 
 O bug do bfcache foi o último grande "silent bug" resolvido. Agora o site carrega a versão correta em qualquer dispositivo, em qualquer cenário de restauração de aba — sem o usuário precisar dar refresh manual.
 
-## 🚀 O que vem depois
+##  O que vem depois
 
 Com a base sólida (218 testes, cache resolvido, deploy estável), os próximos passos são:
 
@@ -111,8 +110,8 @@ Com a base sólida (218 testes, cache resolvido, deploy estável), os próximos 
 
 <Terminal
   commands={[
-    { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: '283ebbc fix(cache): no-cache no HTML + meta tags + guard bfcache\n0aa26b2 fix(deploy): remove node-linker=hoisted\n6e90b6b fix(deploy): packageManager pnpm@10.34.5\nacd55d6 chore: issue/PR templates + contributing guide\nd88eda2 docs: add MIT license' },
-    { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n      Tests  218 passed (218)\n   Duration  11.58s' },
-    { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
+  { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: '283ebbc fix(cache): no-cache no HTML + meta tags + guard bfcache\n0aa26b2 fix(deploy): remove node-linker=hoisted\n6e90b6b fix(deploy): packageManager pnpm@10.34.5\nacd55d6 chore: issue/PR templates + contributing guide\nd88eda2 docs: add MIT license' },
+  { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n  Tests  218 passed (218)\n  Duration  11.58s' },
+  { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
   ]}
 />

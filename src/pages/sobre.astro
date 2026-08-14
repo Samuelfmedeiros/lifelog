@@ -14,7 +14,7 @@ const t = (await import('../lib/i18n')).getTranslations(locale);
 const statsPosts = locale === 'en' ? 'Posts' : 'Posts';
 const statsProjects = locale === 'en' ? 'Projects' : 'Projetos';
 const statsSince = locale === 'en' ? 'Since' : 'Desde';
-const linksTitle = locale === 'en' ? '🔗 Links' : '📎 Links';
+const linksTitle = locale === 'en' ? 'Links' : 'Links';
 ---
 
 <BaseLayout title={t.about.title} description={t.about.description} locale={locale}>
@@ -27,7 +27,7 @@ const linksTitle = locale === 'en' ? '🔗 Links' : '📎 Links';
 
       <hr style="border-color: var(--color-border); margin: 2rem 0;" />
 
-      <h2 class="text-xl font-bold" style="color: var(--color-heading)">📊 {locale === 'en' ? 'Statistics' : 'Estatísticas'}</h2>
+      <h2 class="text-xl font-bold" style="color: var(--color-heading)">{locale === 'en' ? 'Statistics' : 'Estatísticas'}</h2>
       <div class="grid grid-cols-3 gap-4 my-6">
         <div class="p-4 rounded-xl text-center" style="background: var(--color-bg-card); border: 1px solid var(--color-border);">
           <p class="text-2xl font-bold" style="color: var(--color-accent)">{totalPosts}</p>
@@ -54,7 +54,7 @@ const linksTitle = locale === 'en' ? '🔗 Links' : '📎 Links';
         </li>
         <li class="mb-2">
           <a href="/rss.xml" style="color: var(--color-accent)">
-            📡 RSS Feed
+            RSS Feed
           </a>
         </li>
       </ul>

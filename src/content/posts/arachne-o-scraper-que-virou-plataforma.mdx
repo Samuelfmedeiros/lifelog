@@ -5,7 +5,6 @@ date: 2026-06-01 10:00:00 -03:00
 pubDate: 2026-07-13 22:00:00 -03:00
 project: arachne
 tags: ["arachne","scraping","crawl4ai","python","fastapi"]
-icon: "🕷️"
 cover: /covers/arachne-o-scraper-que-virou-plataforma.webp
 featured: true
 ---
@@ -31,13 +30,13 @@ import requests
 from bs4 import BeautifulSoup
 
 def scrape(url):
-    resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-    soup = BeautifulSoup(resp.text, 'html.parser')
-    return {
-        'title': soup.title.text if soup.title else '',
-        'text': soup.get_text(separator='\n', strip=True),
-        'links': [a['href'] for a in soup.find_all('a', href=True)]
-    }
+  resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+  soup = BeautifulSoup(resp.text, 'html.parser')
+  return {
+  'title': soup.title.text if soup.title else '',
+  'text': soup.get_text(separator='\n', strip=True),
+  'links': [a['href'] for a in soup.find_all('a', href=True)]
+  }
 ```
 
 Funcionava pra sites estáticos. Mas sites reais são tudo menos estáticos: Cloudflare, CAPTCHA, renderização JS, rate limiting, anti-bot. Cada obstáculo virava um `try/except` novo. O código virou uma monstruosidade de 2000 linhas em 3 meses.
@@ -59,20 +58,20 @@ Em vez de um scraper só, criei **camadas progressivas de fallback**:
 
 ```python
 class ProgressiveFetcher:
-    def __init__(self):
-        self.engines = [
-            TrafilaturaEngine(),
-            Crawl4AIEngine(),
-            PlaywrightStealthEngine(),
-            CamoufoxEngine(),
-        ]
+  def __init__(self):
+  self.engines = [
+  TrafilaturaEngine(),
+  Crawl4AIEngine(),
+  PlaywrightStealthEngine(),
+  CamoufoxEngine(),
+  ]
 
-    def fetch(self, url):
-        for engine in self.engines:
-            result = engine.try_fetch(url)
-            if result and not result.error:
-                return result
-        raise AllEnginesFailed(url)
+  def fetch(self, url):
+  for engine in self.engines:
+  result = engine.try_fetch(url)
+  if result and not result.error:
+  return result
+  raise AllEnginesFailed(url)
 ```
 
 Cada engine tem um `try_fetch()` que retorna `None` se falhar. O segredo não é ter um scraper perfeito — é ter 4 que juntos cobrem 98% dos casos.
@@ -95,12 +94,12 @@ Aí veio o RAG — mas não o RAG genérico de "joga tudo no vector store". Cada
 ```python
 # Seis estratégias de chunking, uma linha cada
 strategies = {
-    'recursive': RecursiveCharacterTextSplitter(500, 50),
-    'semantic': SemanticChunker(embedding_model),
-    'paragraph': ParagraphSplitter(min_chars=200),
-    'sliding_window': SlidingWindowChunker(300, 100),
-    'topic': TopicAwareSplitter(),
-    'markdown': MarkdownStructureSplitter(),
+  'recursive': RecursiveCharacterTextSplitter(500, 50),
+  'semantic': SemanticChunker(embedding_model),
+  'paragraph': ParagraphSplitter(min_chars=200),
+  'sliding_window': SlidingWindowChunker(300, 100),
+  'topic': TopicAwareSplitter(),
+  'markdown': MarkdownStructureSplitter(),
 }
 ```
 
@@ -108,11 +107,11 @@ O pulo do gato foi a **busca híbrida**. Vector search sozinho é bom pra simila
 
 ```python
 def hybrid_search(query, kb_id, top_k=10):
-    fts5_results = search_fts5(query, kb_id)       # keyword match
-    vector_results = search_vector(query, kb_id)    # semantic match
-    merged = merge_ranked(fts5_results, vector_results,
-                         fts5_weight=0.6, vector_weight=0.4)
-    return rerank_cross_encoder(query, merged[:top_k])
+  fts5_results = search_fts5(query, kb_id)  # keyword match
+  vector_results = search_vector(query, kb_id)  # semantic match
+  merged = merge_ranked(fts5_results, vector_results,
+  fts5_weight=0.6, vector_weight=0.4)
+  return rerank_cross_encoder(query, merged[:top_k])
 ```
 
 ## Pipelines: do CLI ao visual builder
@@ -148,19 +147,19 @@ from app.mcp.server import MCPServer
 
 server = MCPServer()
 server.register_tools([
-    arachne_scrape, arachne_browser_extract,
-    arachne_search, arachne_query,
-    arachne_transcribe, arachne_vision,
-    arachne_calc, arachne_screenshot,
-    arachne_format_converter, arachne_record,
-    arachne_metrics, arachne_plan,
-    arachne_capabilities,
+  arachne_scrape, arachne_browser_extract,
+  arachne_search, arachne_query,
+  arachne_transcribe, arachne_vision,
+  arachne_calc, arachne_screenshot,
+  arachne_format_converter, arachne_record,
+  arachne_metrics, arachne_plan,
+  arachne_capabilities,
 ])
 
 if 'PORT' in os.environ:
-    server.run_sse(port=int(os.environ['PORT']))
+  server.run_sse(port=int(os.environ['PORT']))
 else:
-    server.run_stdio()
+  server.run_stdio()
 ```
 
 13 ferramentas MCP hoje. De um scraper de 200 linhas a um servidor de ferramentas que roda dentro do Cursor, Claude e Hermes. Cada ferramenta tem fallchain própria, timeouts, cache, e evasão automática.
@@ -206,9 +205,9 @@ Cada feature nova no Arachne nasce como API. Só depois vem UI, CLI, MCP tool. I
 # Toda ferramenta MCP é uma API existente + wrapper
 @router.post("/scrape")
 async def scrape_endpoint(url: str = Body(...)):
-    engine = select_engine(url)           # lógica real
-    result = await engine.extract(url)    # lógica real
-    return result                         # reuso total
+  engine = select_engine(url)  # lógica real
+  result = await engine.extract(url)  # lógica real
+  return result  # reuso total
 ```
 
 ### 5. 740 arquivos Python não é feature — é responsabilidade
@@ -234,10 +233,10 @@ De 200 linhas de Python a 3763 arquivos, 36 ferramentas ReAct e 13 MCP tools. Tu
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Arachne && python -m app.main', output: 'Sobe servidor na :9000' },
-    { cmd: 'curl -X POST http://localhost:9000/api/scrape -H "Content-Type: application/json" -d \'{"url":"https://example.com"}\'', output: 'Extrai página via API REST' },
-    { cmd: 'cd ~/projetos/Arachne && python tests/run_all.py --coverage', output: 'Roda 2698 testes com cobertura' },
-    { cmd: 'python run_mcp.py', output: 'Inicia MCP Server em modo stdio (para Cursor/Claude)' },
-    { cmd: 'cd ~/projetos/Arachne && curl http://localhost:9000/health', output: 'Health check — status da plataforma' },
+  { cmd: 'cd ~/projetos/Arachne && python -m app.main', output: 'Sobe servidor na :9000' },
+  { cmd: 'curl -X POST http://localhost:9000/api/scrape -H "Content-Type: application/json" -d \'{"url":"https://example.com"}\'', output: 'Extrai página via API REST' },
+  { cmd: 'cd ~/projetos/Arachne && python tests/run_all.py --coverage', output: 'Roda 2698 testes com cobertura' },
+  { cmd: 'python run_mcp.py', output: 'Inicia MCP Server em modo stdio (para Cursor/Claude)' },
+  { cmd: 'cd ~/projetos/Arachne && curl http://localhost:9000/health', output: 'Health check — status da plataforma' },
   ]}
 />

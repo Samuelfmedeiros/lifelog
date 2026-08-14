@@ -7,7 +7,6 @@ lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "marketplace", "pets", "beginning", "ideation"]
 
-icon: 🐶
 cover: /covers/inicio-dogwalk-marketplace-pets.webp
 featured: false
 ---
@@ -29,36 +28,36 @@ from datetime import datetime
 from typing import Optional
 
 class StatusPasseio(Enum):
-    PENDENTE = "pendente"
-    CONFIRMADO = "confirmado"
-    EM_ANDAMENTO = "em_andamento"
-    CONCLUIDO = "concluido"
-    CANCELADO = "cancelado"
+  PENDENTE = "pendente"
+  CONFIRMADO = "confirmado"
+  EM_ANDAMENTO = "em_andamento"
+  CONCLUIDO = "concluido"
+  CANCELADO = "cancelado"
 
 class Passeio:
-    def __init__(self, tutor, passeador, pet):
-        self.tutor = tutor
-        self.passeador = passeador
-        self.pet = pet
-        self.status = StatusPasseio.PENDENTE
-        self.inicio: Optional[datetime] = None
-        self.fim: Optional[datetime] = None
+  def __init__(self, tutor, passeador, pet):
+  self.tutor = tutor
+  self.passeador = passeador
+  self.pet = pet
+  self.status = StatusPasseio.PENDENTE
+  self.inicio: Optional[datetime] = None
+  self.fim: Optional[datetime] = None
 
-    def confirmar(self):
-        self.status = StatusPasseio.CONFIRMADO
-        print(f"🐾 Walk for {self.pet.nome} confirmed with {self.passeador.nome}!")
+  def confirmar(self):
+  self.status = StatusPasseio.CONFIRMADO
+  print(f" Walk for {self.pet.nome} confirmed with {self.passeador.nome}!")
 
-    def iniciar(self):
-        if self.status != StatusPasseio.CONFIRMADO:
-            raise ValueError("Can only start a confirmed walk")
-        self.inicio = datetime.now()
-        self.status = StatusPasseio.EM_ANDAMENTO
+  def iniciar(self):
+  if self.status != StatusPasseio.CONFIRMADO:
+  raise ValueError("Can only start a confirmed walk")
+  self.inicio = datetime.now()
+  self.status = StatusPasseio.EM_ANDAMENTO
 
-    def concluir(self):
-        self.fim = datetime.now()
-        self.status = StatusPasseio.CONCLUIDO
-        duracao = (self.fim - self.inicio).total_seconds() / 60
-        print(f"✅ Walk completed in {duracao:.0f} minutes")
+  def concluir(self):
+  self.fim = datetime.now()
+  self.status = StatusPasseio.CONCLUIDO
+  duracao = (self.fim - self.inicio).total_seconds() / 60
+  print(f" Walk completed in {duracao:.0f} minutes")
 ```
 
 This code never went to production, obviously. But it represents the moment I stopped complaining and started building. The `StatusPasseio` with Enum was the first design decision that's held up to today — the booking state machine still follows these same 5 states.
@@ -75,11 +74,11 @@ Before writing actual code, I made a spreadsheet of competitors. The landscape w
 
 | Competitor | Fee | UX | Coverage | Mobile App |
 |------------|-----|----|----------|------------|
-| DogHero | 20% | 😐 Average | SP/RJ only | ✅ |
-| PetBacker | 18-25% | 😕 Bad | International | ✅ |
-| Cão Leve | Fixed R$15 | 😞 Terrible | SP only | ❌ (WebView) |
-| Guru dos Pets | 15% | 😊 Good | 3 capitals | ✅ (slow) |
-| *Dogwalk (idea)* | *10%* | *😎 Excellent* | *National* | *✅ PWA* |
+| DogHero | 20% |  Average | SP/RJ only |  |
+| PetBacker | 18-25% |  Bad | International |  |
+| Cão Leve | Fixed R$15 |  Terrible | SP only |  (WebView) |
+| Guru dos Pets | 15% |  Good | 3 capitals |  (slow) |
+| *Dogwalk (idea)* | *10%* | * Excellent* | *National* | * PWA* |
 
 The table made it clear: **high fees and poor UX were the norm.** I could compete just by doing the basics well — fair fee, app that doesn't crash, support that answers.
 
@@ -97,27 +96,27 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 @router.get("/walkers")
 async def search_walkers(
-    city: Optional[str] = Query(None),
-    min_rating: Optional[float] = Query(None, ge=0, le=5),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+  city: Optional[str] = Query(None),
+  min_rating: Optional[float] = Query(None, ge=0, le=5),
+  limit: int = Query(20, ge=1, le=100),
+  offset: int = Query(0, ge=0),
 ):
-    async with get_db() as db:
-        query = "SELECT * FROM profiles WHERE role = 'passeador'"
-        params = []
+  async with get_db() as db:
+  query = "SELECT * FROM profiles WHERE role = 'passeador'"
+  params = []
 
-        if city:
-            query += " AND city = $1"
-            params.append(city)
-        if min_rating:
-            query += " AND rating >= $2"
-            params.append(min_rating)
+  if city:
+  query += " AND city = $1"
+  params.append(city)
+  if min_rating:
+  query += " AND rating >= $2"
+  params.append(min_rating)
 
-        query += " ORDER BY rating DESC NULLS LAST LIMIT $3 OFFSET $4"
-        params.extend([limit, offset])
+  query += " ORDER BY rating DESC NULLS LAST LIMIT $3 OFFSET $4"
+  params.extend([limit, offset])
 
-        rows = await db.fetch(query, *params)
-        return {"walkers": [dict(r) for r in rows], "total": len(rows)}
+  rows = await db.fetch(query, *params)
+  return {"walkers": [dict(r) for r in rows], "total": len(rows)}
 ```
 
 The `NULLS LAST` was a detail I learned the hard way — without it, walkers without ratings would appear at the top of search results.
@@ -141,28 +140,28 @@ interface WalkerMarker {
 
 function WalkerMapMarkers({ walkers }: { walkers: WalkerMarker[] }) {
   const iconColors: Record<string, string> = {
-    walk: '#f59e0b',     // amber → walk
-    boarding: '#3b82f6', // blue → boarding
-    transport: '#7c3aed', // purple → transport
+  walk: '#f59e0b',  // amber → walk
+  boarding: '#3b82f6', // blue → boarding
+  transport: '#7c3aed', // purple → transport
   };
 
   return (
-    <>
-      {walkers.map(w => (
-        <Marker
-          key={w.id}
-          position={{ lat: w.lat, lng: w.lng }}
-          icon={{
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: iconColors[w.services[0]],
-            fillOpacity: 0.9,
-            strokeWeight: 2,
-            strokeColor: '#ffffff',
-          }}
-        />
-      ))}
-    </>
+  <>
+  {walkers.map(w => (
+  <Marker
+  key={w.id}
+  position={{ lat: w.lat, lng: w.lng }}
+  icon={{
+  path: google.maps.SymbolPath.CIRCLE,
+  scale: 8,
+  fillColor: iconColors[w.services[0]],
+  fillOpacity: 0.9,
+  strokeWeight: 2,
+  strokeColor: '#ffffff',
+  }}
+  />
+  ))}
+  </>
   );
 }
 ```
@@ -184,8 +183,8 @@ function useProfile() {
   const { data: profiles, mutate } = useSWR('/profiles/me');
 
   const switchProfile = async (profileId: string) => {
-    await api.post('/profiles/switch', { profile_id: profileId });
-    mutate(); // revalidate data
+  await api.post('/profiles/switch', { profile_id: profileId });
+  mutate(); // revalidate data
   };
 
   return { profiles, activeProfile: profiles?.active_profile_id, switchProfile };
@@ -204,14 +203,14 @@ In a few days, the prototype turned into an MVP with:
 
 | Feature | Day 1 status | Status today |
 |---------|--------------|--------------|
-| Tutor registration | ✅ | ✅ Social login + email |
-| Walker registration | ✅ | ✅ + verification + ID |
-| City search | 🚧 SP only | ✅ multi-city |
-| Scheduling | ❌ | ✅ + Stripe Connect |
-| Live GPS | ❌ | ✅ WebSocket |
-| Chat | ❌ | ✅ WebSocket |
-| Reviews | ❌ | ✅ after each walk |
-| Finances | ❌ | ✅ statement + withdrawal |
+| Tutor registration |  |  Social login + email |
+| Walker registration |  |  + verification + ID |
+| City search |  SP only |  multi-city |
+| Scheduling |  |  + Stripe Connect |
+| Live GPS |  |  WebSocket |
+| Chat |  |  WebSocket |
+| Reviews |  |  after each walk |
+| Finances |  |  statement + withdrawal |
 
 What started with 53 lines of Python on a Saturday afternoon turned into 35+ API endpoints, 3 WebSocket channels, Stripe Connect integration, and hundreds of active users.
 
@@ -221,10 +220,10 @@ What started with 53 lines of Python on a Saturday afternoon turned into 35+ API
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Dogwalk && find backend -name "*.py" | wc -l', output: 'Total Python files in the backend' },
-    { cmd: "psql -d dogwalk -c \"SELECT count(*) FROM users;\"", output: 'Total registered users' },
-    { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d[\\\"paths\\\"]))"', output: 'Total API endpoints' },
-    { cmd: 'cd ~/projetos/Dogwalk/frontend && npx vitest run --reporter=dot 2>&1 | tail -5', output: 'Frontend tests' },
-    { cmd: "grep -r 'featured: true' src/content/posts/ | wc -l", output: 'Featured LifeLog posts' },
+  { cmd: 'cd ~/projetos/Dogwalk && find backend -name "*.py" | wc -l', output: 'Total Python files in the backend' },
+  { cmd: "psql -d dogwalk -c \"SELECT count(*) FROM users;\"", output: 'Total registered users' },
+  { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d[\\\"paths\\\"]))"', output: 'Total API endpoints' },
+  { cmd: 'cd ~/projetos/Dogwalk/frontend && npx vitest run --reporter=dot 2>&1 | tail -5', output: 'Frontend tests' },
+  { cmd: "grep -r 'featured: true' src/content/posts/ | wc -l", output: 'Featured LifeLog posts' },
   ]}
 />

@@ -5,20 +5,19 @@ date: 2026-08-03 19:00:00 -03:00
 pubDate: 2026-08-03 19:00:00 -03:00
 project: capivara
 tags: ["capivara", "high-availability", "failover", "douglas", "infra"]
-icon: "🐹"
 cover: /covers/capivara-espelho-douglas-failover-real.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O hub pessoal que não pode cair
+##  O hub pessoal que não pode cair
 
 O Capivara é o painel de comando do meu ecossistema: dashboard, health checks dos serviços, Umami, admin de tudo, Segundo Cérebro. Se ele cai, **tudo parece morto** — mesmo que os outros projetos estejam de pé.
 
 Em agosto de 2026, ele tava devolvendo **502 intermitente** no tunnel. Não era um crash — era pior: um downtime invisível, que aparecia e sumia. A resposta foi o princípio arquitetural que vale pra todo o ecossistema: **Douglas = espelho + fallback**. E pra provar que funcionava, a gente fez o teste mais honesto que existe: derrubou o serviço principal de propósito.
 
-## 🧠 Contexto — o 502 que ia e voltava
+##  Contexto — o 502 que ia e voltava
 
 O Capivara roda no Samuel: FastAPI na porta 8001, Cloudflare Tunnel expondo `capivara.seu.pet`. O Douglas é o PC espelho/fallback do ecossistema — o mesmo papel que já cumpre pro Arachne e pro Dogwalk.
 
@@ -26,7 +25,7 @@ O problema: o tunnel respondia **200/502 alternando**. Um healthcheck de passage
 
 A regra do ecossistema: **se Samuel OU Douglas cair, o site continua de pé**. O Capivara ainda não seguia essa regra.
 
-## 🔧 A luta — montando o espelho
+##  A luta — montando o espelho
 
 A implementação (Opção A — espelho completo, decidida em 03/08/2026) foi cirúrgica:
 
@@ -38,7 +37,7 @@ A implementação (Opção A — espelho completo, decidida em 03/08/2026) foi c
 
 ```bash
 # capivara-db-sync-douglas.sh — snapshot consistente mesmo com o app rodando
-sqlite3 capivara.db ".backup /tmp/capivara_sync.db"   # snapshot
+sqlite3 capivara.db ".backup /tmp/capivara_sync.db"  # snapshot
 scp /tmp/capivara_sync.db samuel@192.168.7.5:C:/Temp/  # transfere
 # no Douglas: para o serviço, troca o db, sobe de novo
 ```
@@ -49,7 +48,7 @@ O sync usa **SQLite mode delete (sem WAL)** — snapshot via `.backup` é consis
 
 Depois de montado, o teste imediato: `/health` **10/10 = 200** via tunnel com o Douglas ativo (antes: 200/502 alternando).
 
-## 💡 Resolução — o failover que funcionou sozinho
+##  Resolução — o failover que funcionou sozinho
 
 A prova final foi o **teste de failover real**: o cloudflared do Samuel foi **parado por ~40 segundos**. Sem tocar em nada no Douglas.
 
@@ -63,7 +62,7 @@ religou o cloudflared do Samuel → 5/5 = 200
 
 O detalhe mais bonito: a prova não veio de um log do Capivara — veio do **uptime do Dogwalk**, que conta de onde a resposta veio. O contador pulou pro Douglas no momento exato do failover e voltou quando o Samuel religou. High availability validada de verdade, não na teoria.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
@@ -74,7 +73,7 @@ O detalhe mais bonito: a prova não veio de um log do Capivara — veio do **upt
 | Healthcheck | — | timer 5min no Douglas |
 | Uptime Dogwalk | origem única | 61024→61104 (prova de troca) |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Disponibilidade se PROVA, não se promete** — o teste de failover real (derrubar o principal e ver o espelho assumir) vale mais que qualquer arquitetura documentada.
 2. **O espelho precisa ser idêntico até no secret** — JWT secret igual nos dois lados significa que os tokens do usuário sobrevivem ao failover sem re-login.
@@ -83,9 +82,9 @@ O detalhe mais bonito: a prova não veio de um log do Capivara — veio do **upt
 
 <Terminal
   lines={[
-    { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'snapshot sqlite3 .backup → scp → swap no Douglas' },
-    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — Douglas assumindo durante o failover' },
-    { cmd: 'git log --oneline -3', output: '9477700 docs+req: espelho Douglas do Capivara (2026-08-03)' },
-    { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart do backend no Samuel' },
+  { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'snapshot sqlite3 .backup → scp → swap no Douglas' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — Douglas assumindo durante o failover' },
+  { cmd: 'git log --oneline -3', output: '9477700 docs+req: espelho Douglas do Capivara (2026-08-03)' },
+  { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart do backend no Samuel' },
   ]}
 />

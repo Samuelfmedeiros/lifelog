@@ -6,7 +6,6 @@ pubDate: 2026-07-08 00:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "fastapi", "react", "stack"]
-icon: "🐶"
 cover: /covers/fastapi-react-por-que-escolhi-essa-stack-pro-dogwalk.webp
 ---
 
@@ -66,23 +65,23 @@ The final choice wasn't emotional — it was a spreadsheet.
 
 ```python
 criterios = {
-    "performance": {"peso": 3, "fastapi": 9, "next": 8, "django": 6},
-    "ecosystem": {"peso": 3, "fastapi": 8, "next": 9, "django": 9},
-    "productivity": {"peso": 4, "fastapi": 9, "next": 7, "django": 8},
-    "scalability": {"peso": 2, "fastapi": 8, "next": 6, "django": 7},
-    "infra_cost": {"peso": 3, "fastapi": 8, "next": 5, "django": 8},
-    "maturity": {"peso": 2, "fastapi": 7, "next": 7, "django": 10},
+  "performance": {"peso": 3, "fastapi": 9, "next": 8, "django": 6},
+  "ecosystem": {"peso": 3, "fastapi": 8, "next": 9, "django": 9},
+  "productivity": {"peso": 4, "fastapi": 9, "next": 7, "django": 8},
+  "scalability": {"peso": 2, "fastapi": 8, "next": 6, "django": 7},
+  "infra_cost": {"peso": 3, "fastapi": 8, "next": 5, "django": 8},
+  "maturity": {"peso": 2, "fastapi": 7, "next": 7, "django": 10},
 }
 
 def calcular_nota(criterios, stack):
-    total = sum(
-        v["peso"] * v[stack]
-        for k, v in criterios.items()
-    )
-    return total / sum(v["peso"] for v in criterios.values())
+  total = sum(
+  v["peso"] * v[stack]
+  for k, v in criterios.items()
+  )
+  return total / sum(v["peso"] for v in criterios.values())
 
 for stack in ["fastapi", "next", "django"]:
-    print(f"{stack}: {calcular_nota(criterios, stack):.2f}")
+  print(f"{stack}: {calcular_nota(criterios, stack):.2f}")
 
 # → fastapi: 8.35
 # → next: 7.06
@@ -115,32 +114,32 @@ With the stack decided, I drew the project architecture:
 
 ```
 dogwalk/
-├── api/                       # FastAPI backend
-│   ├── app/
-│   │   ├── main.py            # Entry point + middleware
-│   │   ├── config.py          # Settings via pydantic-settings
-│   │   ├── models/            # SQLAlchemy + Pydantic models
-│   │   ├── routers/           # REST endpoints
-│   │   ├── services/          # Business logic
-│   │   └── workers/           # Async tasks
-│   ├── alembic/               # Migrations
-│   └── tests/                 # Tests with pytest
+├── api/  # FastAPI backend
+│  ├── app/
+│  │  ├── main.py  # Entry point + middleware
+│  │  ├── config.py  # Settings via pydantic-settings
+│  │  ├── models/  # SQLAlchemy + Pydantic models
+│  │  ├── routers/  # REST endpoints
+│  │  ├── services/  # Business logic
+│  │  └── workers/  # Async tasks
+│  ├── alembic/  # Migrations
+│  └── tests/  # Tests with pytest
 │
-├── web/                       # React frontend
-│   ├── src/
-│   │   ├── components/        # Reusable components
-│   │   ├── pages/             # Application pages
-│   │   ├── hooks/             # Custom hooks
-│   │   ├── services/          # API client (axios)
-│   │   └── stores/            # Global state (zustand)
-│   ├── public/                # Static assets
-│   └── tests/                 # Tests with vitest
+├── web/  # React frontend
+│  ├── src/
+│  │  ├── components/  # Reusable components
+│  │  ├── pages/  # Application pages
+│  │  ├── hooks/  # Custom hooks
+│  │  ├── services/  # API client (axios)
+│  │  └── stores/  # Global state (zustand)
+│  ├── public/  # Static assets
+│  └── tests/  # Tests with vitest
 │
-└── infra/                     # Docker + deploy
-    ├── docker-compose.yml
-    ├── Dockerfile.api
-    ├── Dockerfile.web
-    └── nginx.conf
+└── infra/  # Docker + deploy
+  ├── docker-compose.yml
+  ├── Dockerfile.api
+  ├── Dockerfile.web
+  └── nginx.conf
 ```
 
 One decision I made a point of making early: **clear separation between api and web**, in different folders, each with its own `package.json`/`pyproject.toml`. No monorepo with everything mixed together. Each part can be developed, tested, and deployed independently.
@@ -171,20 +170,20 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    app_name: str = "Dogwalk API"
-    debug: bool = False
-    database_url: str = "postgresql+asyncpg://localhost:5432/dogwalk"
-    secret_key: str = "change-me-in-production"
-    cors_origins: list[str] = ["http://localhost:5173"]
-    sentry_dsn: str | None = None
-    cloudflare_r2_endpoint: str | None = None
-    maps_api_key: str | None = None
+  app_name: str = "Dogwalk API"
+  debug: bool = False
+  database_url: str = "postgresql+asyncpg://localhost:5432/dogwalk"
+  secret_key: str = "change-me-in-production"
+  cors_origins: list[str] = ["http://localhost:5173"]
+  sentry_dsn: str | None = None
+  cloudflare_r2_endpoint: str | None = None
+  maps_api_key: str | None = None
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+  model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 @lru_cache()
 def get_settings():
-    return Settings()
+  return Settings()
 ```
 
 ```typescript
@@ -195,7 +194,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   timeout: 10000,
   headers: {
-    'Content-Type': 'application/json',
+  'Content-Type': 'application/json',
   },
 });
 
@@ -223,43 +222,43 @@ router = APIRouter(prefix="/prestadores", tags=["prestadores"])
 
 @router.get("/", response_model=list[PrestadorOut])
 async def listar_prestadores(
-    lat: float | None = None,
-    lng: float | None = None,
-    raio_km: float = 5.0,
-    servico: str | None = None,
-    db: AsyncSession = Depends(get_db),
+  lat: float | None = None,
+  lng: float | None = None,
+  raio_km: float = 5.0,
+  servico: str | None = None,
+  db: AsyncSession = Depends(get_db),
 ):
-    """List providers with optional geolocation filter"""
-    query = "SELECT * FROM prestadores WHERE 1=1"
-    params = {}
+  """List providers with optional geolocation filter"""
+  query = "SELECT * FROM prestadores WHERE 1=1"
+  params = {}
 
-    if lat and lng:
-        query += """ AND ST_DWithin(
-            ST_MakePoint(:lng, :lat)::geography,
-            localizacao::geography,
-            :raio
-        )"""
-        params["lat"] = lat
-        params["lng"] = lng
-        params["raio"] = raio_km * 1000
+  if lat and lng:
+  query += """ AND ST_DWithin(
+  ST_MakePoint(:lng, :lat)::geography,
+  localizacao::geography,
+  :raio
+  )"""
+  params["lat"] = lat
+  params["lng"] = lng
+  params["raio"] = raio_km * 1000
 
-    if servico:
-        query += " AND :servico = ANY(servicos)"
-        params["servico"] = servico
+  if servico:
+  query += " AND :servico = ANY(servicos)"
+  params["servico"] = servico
 
-    result = await db.execute(query, params)
-    return result.scalars().all()
+  result = await db.execute(query, params)
+  return result.scalars().all()
 
 
 @router.get("/{prestador_id}", response_model=PrestadorOut)
 async def detalhe_prestador(
-    prestador_id: int,
-    db: AsyncSession = Depends(get_db),
+  prestador_id: int,
+  db: AsyncSession = Depends(get_db),
 ):
-    prestador = await db.get(Prestador, prestador_id)
-    if not prestador:
-        raise HTTPException(status_code=404, detail="Provider not found")
-    return prestador
+  prestador = await db.get(Prestador, prestador_id)
+  if not prestador:
+  raise HTTPException(status_code=404, detail="Provider not found")
+  return prestador
 ```
 
 FastAPI's async really shone here — with `asyncpg` and `AsyncSession`, queries run without blocking the event loop, and the API can handle hundreds of concurrent requests even on a small instance.
@@ -306,9 +305,9 @@ I create the Pydantic schemas on the backend and the corresponding TypeScript ty
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/dogwalk && tree -L 2 -I "node_modules|__pycache__|.venv|dist"', output: 'dogwalk/\\n├── api/\\n│   ├── alembic/\\n│   ├── app/\\n│   ├── pyproject.toml\\n│   └── tests/\\n├── web/\\n│   ├── public/\\n│   ├── src/\\n│   ├── package.json\\n│   ├── vite.config.ts\\n│   └── tailwind.config.js\\n└── infra/' },
-    { cmd: 'cd api && source .venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000', output: 'INFO:     Uvicorn running on http://0.0.0.0:8000' },
-    { cmd: 'cd web && npm run dev', output: 'VITE v6.2.0 ready in 236ms\\nLocal: http://localhost:5173' },
-    { cmd: 'curl -s http://localhost:8000/docs | grep -o "openapi.*\\\\.\\\\(json\\\\|yaml\\\\)" | head -1', output: 'openapi.json' },
+  { cmd: 'cd ~/projetos/dogwalk && tree -L 2 -I "node_modules|__pycache__|.venv|dist"', output: 'dogwalk/\\n├── api/\\n│  ├── alembic/\\n│  ├── app/\\n│  ├── pyproject.toml\\n│  └── tests/\\n├── web/\\n│  ├── public/\\n│  ├── src/\\n│  ├── package.json\\n│  ├── vite.config.ts\\n│  └── tailwind.config.js\\n└── infra/' },
+  { cmd: 'cd api && source .venv/bin/activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000', output: 'INFO:  Uvicorn running on http://0.0.0.0:8000' },
+  { cmd: 'cd web && npm run dev', output: 'VITE v6.2.0 ready in 236ms\\nLocal: http://localhost:5173' },
+  { cmd: 'curl -s http://localhost:8000/docs | grep -o "openapi.*\\\\.\\\\(json\\\\|yaml\\\\)" | head -1', output: 'openapi.json' },
   ]}
 />

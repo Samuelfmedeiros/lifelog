@@ -5,20 +5,19 @@ date: 2026-08-13 21:00:00 -03:00
 pubDate: 2026-08-13 21:00:00 -03:00
 project: estudos
 tags: ["studies", "ollama", "mamba", "ssm", "wave-field", "learning"]
-icon: "📚"
 cover: /covers/a-historia-do-estudos.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ One post out of 78 — and the discovery it hides
+##  One post out of 78 — and the discovery it hides
 
 On the day LifeLog had 78 posts, the **Studies** section had exactly **1**: the Ollama truncation loop (`ollama-truncation-loop-4096`). One post, two months of journey. Any reader would look and think: "studies? this blog doesn't study."
 
 Nothing could be further from the truth. It was in the studies that **TatuEngine** was born — wave field theory, Mamba SSM, the BitMamba-2 1B — and it was by studying that Ollama revealed the bug that cost 2h of debugging and became a permanent lesson. The blog's most neglected section is the one that produces the most content... it just didn't publish it.
 
-## 🧠 Context — why Studies fell behind
+##  Context — why Studies fell behind
 
 LifeLog was born to document the journey. Each project had its voice: Arachne, Dogwalk, Capivara, Portifólio, LifeLog. The studies — paper reading, concept tests, discarded experiments — were orphaned:
 
@@ -28,7 +27,7 @@ LifeLog was born to document the journey. Each project had its voice: Arachne, D
 
 The result: when the posting pipeline looked at the grid, Studies was always last in line. Because nobody knew what to publish from it.
 
-## 🔧 The struggle — what the studies actually produced
+##  The struggle — what the studies actually produced
 
 ### The truncation loop (the first lesson)
 
@@ -52,7 +51,7 @@ Not everything the studies produced became a project. There was an attention arc
 
 A **documented** discarded experiment is worth more than a forgotten successful one. It stops the next project from walking the dead path again.
 
-## 💡 Resolution — why publishing now is worth it
+##  Resolution — why publishing now is worth it
 
 The turning point was realizing the Studies section doesn't need a "perfect" post — it needs an **honest record of the process**:
 
@@ -60,7 +59,7 @@ The turning point was realizing the Studies section doesn't need a "perfect" pos
 2. **The discarded is also content** — noting the dead path stops it from being walked again.
 3. **Study feeds everything** — wave field theory → TatuEngine; Mamba → BitMamba-2; num_ctx → Docs First rule. Publishing the study is publishing the root of the projects.
 
-## 📊 Metrics
+##  Metrics
 
 | Study | Result | Where it went |
 |-------|--------|---------------|
@@ -69,7 +68,7 @@ The turning point was realizing the Studies section doesn't need a "perfect" pos
 | Mamba SSM | BitMamba-2 1B (GPU inference) | Trained model |
 | Discarded experiments | None became a post | ← the error this post fixes |
 
-## 🎯 Learnings
+##  Learnings
 
 1. **Neglected section ≠ idle area** — Studies had 1 post and produced the ecosystem's most ambitious project. The blog didn't reflect reality.
 2. **Documented study is worth double** — what was learned studying Ollama's docs became a rule that crosses every project.
@@ -78,9 +77,9 @@ The turning point was realizing the Studies section doesn't need a "perfect" pos
 
 <Terminal
   lines={[
-    { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '1 — the blog\'s most neglected section' },
-    { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'the truncation loop fix (num_ctx 4096 → 32768)' },
-    { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — the study that became a model' },
-    { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'the note that gave birth to TatuEngine' },
+  { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '1 — the blog\'s most neglected section' },
+  { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'the truncation loop fix (num_ctx 4096 → 32768)' },
+  { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — the study that became a model' },
+  { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'the note that gave birth to TatuEngine' },
   ]}
 />

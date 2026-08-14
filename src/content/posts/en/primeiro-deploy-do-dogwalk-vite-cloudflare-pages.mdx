@@ -6,7 +6,6 @@ pubDate: 2026-07-08 00:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "deploy", "cloudflare", "vite", "frontend"]
-icon: "🐶"
 cover: /covers/primeiro-deploy-do-dogwalk-vite-cloudflare-pages.webp
 featured: false
 ---
@@ -61,7 +60,7 @@ const router = createBrowserRouter([
 
 ```
 # public/_redirects — Cloudflare Pages SPA fallback
-/*    /index.html    200
+/*  /index.html  200
 ```
 
 Yes, one line. One LINE of config that cost me 2 hours of debugging. It was in the documentation, but who reads the entire documentation before their first deploy?
@@ -75,10 +74,10 @@ The FastAPI backend was running locally (`localhost:8000`), so the frontend live
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://dogwalk.pages.dev"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+  CORSMiddleware,
+  allow_origins=["https://dogwalk.pages.dev"],
+  allow_methods=["*"],
+  allow_headers=["*"],
 )
 ```
 
@@ -102,9 +101,9 @@ At the end of the day, Dogwalk was online. The site was ugly, had a login screen
 
 <Terminal
   lines={[
-    { cmd: 'npx wrangler pages deploy dist/ --project-name dogwalk', output: 'Deploy frontend on Cloudflare Pages' },
-    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://dogwalk.pages.dev', output: '200 — site is live' },
-    { cmd: 'npx wrangler pages project list', output: 'List published projects' },
-    { cmd: 'echo "/* /index.html 200" > public/_redirects', output: 'SPA fallback routing' },
+  { cmd: 'npx wrangler pages deploy dist/ --project-name dogwalk', output: 'Deploy frontend on Cloudflare Pages' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://dogwalk.pages.dev', output: '200 — site is live' },
+  { cmd: 'npx wrangler pages project list', output: 'List published projects' },
+  { cmd: 'echo "/* /index.html 200" > public/_redirects', output: 'SPA fallback routing' },
   ]}
 />
