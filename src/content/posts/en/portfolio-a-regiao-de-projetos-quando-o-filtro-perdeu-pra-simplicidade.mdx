@@ -1,0 +1,109 @@
+---
+title: "The projects region — when the filter lost to simplicity"
+description: "The portfolio's projects section almost got a category filter. It didn't — and that was the best decision. The story of a 2-column grid that resisted the lure of complexity."
+date: 2026-08-14T12:00:00 -03:00
+pubDate: 2026-08-14 16:00:00 -03:00
+project: portfolio
+tags: [portfolio, projects, ui, ux, simplicity, mobile]
+cover: /covers/portfolio-a-regiao-de-projetos-quando-o-filtro-perdeu-pra-simplicidade.webp
+featured: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The territory
+
+Every portfolio homepage has a sacred region: the project list. It's where the visitor decides whether it's worth keeping an eye on you. In my case, that region was born with the v3 rebuild (Vue 3.5 + Vite 8) and became `ProjectHangar` — a hangar indeed, because each card looks like a ship waiting for takeoff.
+
+The territory's rules were settled early, with no ceremony:
+
+- **2 columns on desktop, 1 column on mobile** — big cards that breathe;
+- **16:9 covers** at the top of each card, with `object-cover` so nothing ever distorts;
+- **PT/EN descriptions** — the active language swaps the card text on the fly, via `getProjectI18n(locale, repo.name)`;
+- **A "From the Blog" badge** tying the region to LifeLog, for anyone who wants to read the story behind each project;
+- **Decent touch targets** — on mobile, buttons with a 40px minimum height, no link the size of an ant;
+- **Light/cream theme as the default**, with the toggle respected — if the visitor prefers dark, dark it stays.
+
+In code, the grid is almost poetic in its shortness:
+
+```tsx
+{/* Cards grid — 2 colunas desktop, 1 mobile (cards maiores) */}
+<motion.div
+  className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6"
+  layout
+>
+```
+
+`grid-cols-1 md:grid-cols-2`. One line. Mobile stacks, desktop splits. No custom breakpoints, no hand-rolled media queries — Tailwind handles it.
+
+## The conflict
+
+Then came the temptation. Every "serious" portfolio has a category filter, right? Chips for "Web", "AI", "Infra", "Games"... The visitor clicks and the grid reorders with animation. Professional, organized, modern.
+
+I had everything to build it: `AnimatePresence` from framer-motion was already there, the `layout` prop already animated reordering, the grid's `motion.div` wouldn't even need to change. Adding a filter was literally: a `useState` for the active category, a `filter()` on the array, and three chips on top. Two hours of work, tops.
+
+But then I stopped and looked at the hangar through the eyes of someone arriving from outside. How many projects are in there? Few enough to fit on screen without a filter. It's not a catalog — it's a showcase. And a showcase doesn't need a filter; it needs order. Who lands on a personal site looking for "all of someone's infra projects"? No one. People come to see what the owner does, feel the style, click whatever shines.
+
+On mobile, the filter would be even worse: another row of chips eating space, one more gesture before reaching the content, one more "no results" state to explain. The filter didn't solve a real problem — it created three.
+
+## The resolution
+
+The filter lost. On purpose.
+
+Instead of categories, each card got a click that opens a details modal (the same pattern as Arachne): more info, links, and the project's context without navigating away. The hangar stays a clean grid:
+
+```tsx
+const handleClick = () => {
+  // Todos os cards abrem o modal de detalhes (padrão Arachne)
+  if (onSelect) {
+    onSelect(repo);
+  }
+};
+```
+
+And the stats bar on top kept only the essentials:
+
+```tsx
+<div className="flex items-center justify-center gap-4 mb-6 font-mono text-xs text-[var(--text-secondary)]">
+  <span>{t("projects.count").replace("{count}", String(repos.length))}</span>
+</div>
+```
+
+One number. No per-category counters, no active-filter badge, no empty state to handle. The visitor knows how many projects exist, and that's it.
+
+## What I learned
+
+1. **Filters are for catalogs, not showcases.** With few items, the best experience is showing them all. A filter only adds friction for the user and maintenance for me.
+2. **Simplicity is an active decision.** It's not "I ran out of time" — it's "I chose not to". Writing that choice down keeps it from being revisited on a whim.
+3. **Mobile charges a heavy toll for every extra element.** Each chip is wasted screen space, one more touch target, one more state to test. On a phone, less is literally more.
+4. **The card matters more than the organization.** Details modal + localized description + a nice cover communicate more than any filter.
+
+## Metrics of the region
+
+| Decision | Result |
+|----------|--------|
+| Desktop columns | 2 (`md:grid-cols-2`) |
+| Mobile columns | 1 (`grid-cols-1`) |
+| Card cover | 16:9, `object-cover`, `object-top` |
+| Descriptions | PT/EN via `getProjectI18n(locale, name)` |
+| Touch target (buttons) | `min-h-[40px]` |
+| "From the Blog" badge | Ties the region to LifeLog |
+| Category filter | ❌ Rejected |
+
+## What's next
+
+The projects region stays filter-free — and it stays great that way. The next step isn't adding, it's refining: the details modal will get real screenshots of each project, and the "From the Blog" badge will point straight to the project's latest post instead of the general page.
+
+---
+
+## Useful commands
+
+<Terminal
+  lines={[
+    { cmd: 'grep -n "grid-cols" src/components/ProjectHangar.tsx', output: 'The whole decision in one line: grid-cols-1 md:grid-cols-2' },
+    { cmd: 'grep -n "min-h-\\[40px\\]" src/components/ProjectHangar.tsx | wc -l', output: '2 — every button with a minimum touch height' },
+    { cmd: 'grep -rn "getProjectI18n" src/ | head -3', output: 'The PT/EN bridge for descriptions' },
+    { cmd: 'git log --oneline -1', output: 'The commit that did NOT add a filter (and that\'s fine)' },
+  ]}
+/>
