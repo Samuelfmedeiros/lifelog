@@ -155,7 +155,7 @@ test('animação tema: limpeza SÓ após a animação completar (regressão t.fi
   });
 
   await page.mouse.click(tx, ty);
-  await page.waitForTimeout(200); // meio da animação desktop (800ms)
+  await page.waitForTimeout(200); // meio da animação desktop (1400ms)
 
   const during = await page.evaluate(() => ({
     vtRunning: document.documentElement.classList.contains('vt-running'),
@@ -167,11 +167,11 @@ test('animação tema: limpeza SÓ após a animação completar (regressão t.fi
   // Com t.finished (bug), já teria sido removido (~0ms) → este expect falha.
   expect(during.vtRunning).toBe(true);
 
-  // Após a animação completar (800ms) + margem, a limpeza deve ter ocorrido.
-  await page.waitForTimeout(900);
+  // Após a animação completar (1400ms) + margem, a limpeza deve ter ocorrido.
+  await page.waitForTimeout(1700);
   const after = await page.evaluate(() => ({
     vtRunning: document.documentElement.classList.contains('vt-running'),
   }));
-  console.log('após animação (t≈1100ms):', JSON.stringify(after));
+  console.log('após animação (t≈1900ms):', JSON.stringify(after));
   expect(after.vtRunning).toBe(false);
 });

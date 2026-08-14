@@ -287,12 +287,13 @@ import { PALETTES } from '../lib/palettes'
       // ─── Círculo expansivo — MESMO no mobile (sincronizado com a web) ───
       // Samuel quer a troca de temas com animação circular no mobile TAMBÉM
       // (12/08/2026 — reverter crossfade do 08a3d2d). Mobile usa duração
-      // menor (400ms) + easing que começa rápido (GPU fraca aguenta suave;
-      // os fixes anti-stutter estão no global.css: isolation + mix-blend
-      // normal + vt-running desliga CSS transitions durante o VT).
+      // menor (700ms) + easing ease-in-out suave — 14/08: Samuel pediu MAIS
+      // LENTO + fluido do início ao fim (o ease-out anterior congelava no
+      // final; ease-in-out não trava e mantém fluidez). Anti-stutter:
+      // isolation + mix-blend normal + vt-running desliga CSS transitions.
       const isMobile = window.innerWidth <= 768
-      const animDuration = isMobile ? 400 : 800
-      const easing = 'cubic-bezier(0.22, 1, 0.36, 1)' // ease-out: começa rápido, desacelera suave
+      const animDuration = isMobile ? 700 : 1400
+      const easing = 'cubic-bezier(0.45, 0, 0.55, 1)' // ease-in-out suave: sem trava no final
 
       // Clip-path circular — único caminho (mobile E desktop), origem = toque
       // 🔴 PITFALL CRÍTICO (skill view-transitions-theme-animations): NUNCA
@@ -336,35 +337,39 @@ import { PALETTES } from '../lib/palettes'
     }
 
     // ─── Fallback (sem VT) — overlay clip-path circular ───
-    // Mesma prioridade: toque real > clientX/Y > centro do botão
+    // Mesma prioridade: toque real > clientX/Y > centro do botão.
+    // Simplificado (14/08, opção B): mesmo raio do caminho VT (viewport,
+    // não documento — o overlay é fixed e cobre só a viewport), duração
+    // consistente com o principal (700 mobile / 1400 desktop), sem
+    // will-change (micro-otimização desnecessária em overlay de 1s).
     const [fx, fy] = themeOrigin(e)
     if (e && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       animating = true
       // Cores REAIS dos temas (themes.css): light = creme #f5f2eb, dark = #0a0a0f.
       // NÃO ler getComputedStyle aqui — o --color-bg computado é do tema ATUAL,
       // e o overlay precisa da cor do tema DESTINO (next).
+      const fallbackMs = window.innerWidth <= 768 ? 700 : 1400
       const overlay = document.createElement('div')
       overlay.style.cssText =
         'position:fixed;inset:0;z-index:9999;pointer-events:none;' +
         'clip-path:circle(0px at ' + fx + 'px ' + fy + 'px);' +
         'background:' + (next === 'light' ? '#f5f2eb' : '#0a0a0f') + ';' +
-        'transition:clip-path 0.4s cubic-bezier(0.22, 1, 0.36, 1);' +
-        'will-change:clip-path'
+        'transition:clip-path ' + (fallbackMs / 1000) + 's cubic-bezier(0.45, 0, 0.55, 1)'
       document.body.appendChild(overlay)
       overlay.offsetHeight // force layout
       const endR = Math.hypot(
-        Math.max(fx, document.documentElement.scrollWidth - fx, innerWidth - fx),
-        Math.max(fy, document.documentElement.scrollHeight - fy, innerHeight - fy)
+        Math.max(fx, innerWidth - fx),
+        Math.max(fy, innerHeight - fy)
       )
       overlay.style.clipPath = 'circle(' + endR + 'px at ' + fx + 'px ' + fy + 'px)'
-      // Timing alinhado: espera a expansão cobrir TUDO (400ms), SÓ ENTÃO muda o
+      // Timing alinhado: espera a expansão cobrir TUDO, SÓ ENTÃO muda o
       // tema + remove overlay. Mudar antes = flash do tema novo fora do círculo.
       setTimeout(() => {
         setTheme(next)
         overlay.remove()
         animating = false
         lastTouchX = 0; lastTouchY = 0
-      }, 400)
+      }, fallbackMs)
     } else {
       setTheme(next)
     }
