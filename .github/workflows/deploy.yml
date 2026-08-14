@@ -24,6 +24,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # história completa p/ git diff-tree listar arquivos na notificação
 
     # ── Validação ──────────────────────────────────────────────
     - name: Validate project
@@ -226,10 +228,21 @@ jobs:
     - name: Notify Telegram Success
       if: github.ref_name == 'main' && github.event_name != 'pull_request' && success()
       run: |
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        COMMIT_SUBJECT=$(git log -1 --pretty=%s | sed 's/[*_`]/\\&/g')
+        FILE_COUNT=$(git diff-tree --no-commit-id --name-only -r HEAD | wc -l)
+        CHANGED=$(git diff-tree --no-commit-id --name-status -r HEAD | head -15 | sed 's/^/• /' | tr '\t' ' ' | sed 's/[*_`]/\\&/g')
+        TEXT="✅ *LifeLog CI*
+
+        📦 *Status:* Sucesso
+        🔗 *URL:* https://lifelog-sepia.vercel.app
+        📝 *Commit:* \`$COMMIT_SHA\` — $COMMIT_SUBJECT
+        📄 *Alterações ($FILE_COUNT arquivos):*
+        $CHANGED"
         curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d "text=✅ *LifeLog CI*%0A%0A📦 *Status:* Sucesso%0A🔗 *URL:* https://lifelog-sepia.vercel.app%0A📝 *Commit:* \`$(git rev-parse --short HEAD)\`" \
-          -d "parse_mode=Markdown"
+          --data-urlencode "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          --data-urlencode "text=$TEXT" \
+          --data-urlencode "parse_mode=Markdown"
 
     - name: Notify Telegram Failure
       if: github.ref_name == 'main' && github.event_name != 'pull_request' && failure()
