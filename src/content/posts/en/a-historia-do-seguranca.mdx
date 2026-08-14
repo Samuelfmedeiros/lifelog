@@ -1,0 +1,99 @@
+---
+title: "The story of Security — from ai-jail to the watchdog that hunts leaks on its own"
+description: "The ecosystem's security went through 3 phases: the ai-jail that sandboxed the agent (bwrap + landlock), active vulnerability hunting (ZAP, gitleaks, bandit, opengrep across every project) and the automatic watchdog that monitors what nobody looks at. 2 posts so far — and this is the full story."
+date: 2026-08-13 21:30:00 -03:00
+pubDate: 2026-08-13 21:30:00 -03:00
+project: seguranca
+tags: ["security", "ai-jail", "watchdog", "hardening", "agents"]
+icon: "🔒"
+cover: /covers/a-historia-do-seguranca.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## ⚡ The day the secrets almost leaked
+
+At the end of July, Hermes ran with full shell access. A well-crafted prompt injection and the agent's tokens would be gone — along with `.env`, SSH keys, Cloudflare credentials. Security was a hope, not a layer.
+
+Two months later, the story is different: the agent runs sandboxed (**ai-jail** with bwrap + landlock), all 4 projects go through **automatic agentic scanning** (ZAP, gitleaks, bandit, opengrep), and a **watchdog** monitors secret leaks without anyone looking. And the ecosystem has 2 security posts — which tell parts, but not the whole story. Until now.
+
+## 🧠 Context — the problem of a 7-project ecosystem
+
+Security in a personal ecosystem is treacherous: no CISO, no audit, no "security team". There are 7 projects (Arachne, Dogwalk, Capivara, Portifólio, TatuEngine, LifeLog, Ajudante), each with its own database, deploy and secrets — and a single agent with shell power.
+
+Three problem fronts:
+
+- **The agent itself** — full shell access = one prompt injection away from token exfiltration.
+- **The code** — unlocked database, route delivering too much data, exposed key in the repo, unvalidated input.
+- **Surveillance** — what nobody looks at, nobody fixes. A vulnerability found and not documented is a vulnerability that comes back.
+
+## 🔧 The struggle — three hardening phases
+
+### Phase 1: the ai-jail (07/28) — the agent's sandbox
+
+The first response was isolating the agent. **ai-jail** uses bwrap (bubblewrap) + landlock to run commands in a sandbox that masks secrets and hides sensitive directories:
+
+```yaml
+# ~/.ai-jail — the most important part:
+mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
+hide_dotdirs = [".hermes"]        # Hermes tokens protected
+deny_paths = ["secrets/", "*.key", ".gnupg/"]
+```
+
+The fine detail: `hide_dotdirs = [".hermes"]` — hiding Hermes' **entire** directory inside the sandbox. Neither the agent nor a prompt injection can read the tokens. Then came phase 2 in practice (08/10): the sandbox learned from our mistakes — new masks, deny_paths, and TatuEngine took the concept to code with a **Hybrid Sandbox with 51/51 tests**.
+
+### Phase 2: active hunting (08/11) — agentic scan in every project
+
+A sandbox protects the agent, but not the code. The second phase was **actively hunting** vulnerabilities in every project, with agentic scanning:
+
+- **ZAP** — web security scanner (OWASP ZAP) against the apps
+- **gitleaks** — hunts leaked secrets in git history
+- **bandit** — static security analysis for Python
+- **opengrep** — insecure pattern analysis across multiple languages
+
+The hunt found what nobody was looking for: unlocked database, browser permission too broad, route delivering data without checks, exposed key, unvalidated input. Every finding became a fix — and a standard: **every change goes through a scan before deploy**.
+
+### Phase 3: the watchdog (always on) — surveillance that never sleeps
+
+The third phase was the most important: turning surveillance into a **continuous process**, not a campaign. The `security-watchdog.py` monitors the points nobody looks at and alerts the Notifications channel when something changes:
+
+- secrets appearing where they shouldn't
+- health checks failing without explanation
+- processes that should be running but aren't
+- unusual access patterns
+
+The golden rule: **crons only notify when there's a problem** — a silent system is a healthy system. The watchdog doesn't spam the group; it waits for a problem to happen to scream.
+
+## 💡 Resolution — the rules born from the struggle
+
+1. **Agent security is a layer, not a feature** — sandbox, mask and hide_dotdirs protect against the worst case (prompt injection), not against the user. Design for the adversary.
+2. **Scan before deploy, always** — ZAP + gitleaks + bandit + opengrep run in CI before any delivery. Check failed = no delivery.
+3. **Surveillance is a process, not a campaign** — a 24/7 watchdog beats a weekend audit.
+4. **Fixes apply to ALL accounts** — a security fix found in my project applies to Douglas, Juliana, any ecosystem user.
+
+## 📊 Metrics
+
+| Phase | Tool | Result |
+|-------|------|--------|
+| Sandbox | ai-jail (bwrap + landlock) | Agent isolated, tokens masked |
+| Sandbox in code | TatuEngine Hybrid Sandbox | 51/51 tests |
+| Static scan | gitleaks + bandit + opengrep | Secrets hunted in history, audited code |
+| Web scan | ZAP | Apps scanned against OWASP |
+| Surveillance | security-watchdog.py | 24/7 monitoring with Notifications alert |
+
+## 🎯 Learnings
+
+1. **Security is not a feature, it's a layer** — you can't "add it later"; it has to be in the foundation of the agent and the deploy.
+2. **The agent is the target** — whoever has shell power needs the worst case in mind: prompt injection, not user error.
+3. **What nobody looks at breaks** — active hunting found real vulnerabilities no functional test would catch.
+4. **Documenting the threat is half the defense** — every documented finding became a rule protecting all projects.
+
+<Terminal
+  lines={[
+    { cmd: 'ai-jail run -- "cat ~/.hermes/secrets.env"', output: 'permission denied — mask applied in the sandbox' },
+    { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan of git history' },
+    { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — static analysis' },
+    { cmd: 'python3 security-watchdog.py', output: 'monitoring 24/7 — alert only on problems' },
+  ]}
+/>
