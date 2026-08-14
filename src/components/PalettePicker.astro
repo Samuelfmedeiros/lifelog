@@ -294,31 +294,39 @@ import { PALETTES } from '../lib/palettes'
       const animDuration = isMobile ? 400 : 800
       const easing = 'cubic-bezier(0.22, 1, 0.36, 1)' // ease-out: começa rápido, desacelera suave
 
+      // Clip-path circular — único caminho (mobile E desktop), origem = toque
+      // 🔴 PITFALL CRÍTICO (skill view-transitions-theme-animations): NUNCA
+      // sincronizar a limpeza com t.finished — como o global.css seta
+      // animation:none nos pseudo-elementos do VT, o t.finished resolve ~0ms,
+      // ANTES da animação WAAPI (400/800ms) terminar. Se limpar por ele,
+      // animating=false volta cedo → segundo clique no meio dispara outra
+      // animação (origem errada) + vt-running removido cedo → CSS transitions
+      // voltam → stutter. Sincronizar SEMPRE pelo .finished da PRÓPRIA
+      // animação WAAPI (done), não pelo finished do ViewTransition.
       const [x, y] = themeOrigin(e)
       document.documentElement.classList.add('vt-running')
       const t = document.startViewTransition(() => setTheme(next))
       animating = true
 
-      // Clip-path circular — único caminho (mobile E desktop), origem = toque
-      t.ready.then(() => {
-        const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+      const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
+      const done = t.ready.then(() =>
         document.documentElement.animate(
           { clipPath: [
             `circle(0px at ${x}px ${y}px)`,
             `circle(${r}px at ${x}px ${y}px)`
           ]},
           { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
-        )
-      })
-      t.finished.catch(() => setTheme(next)).finally(() => {
+        ).finished
+      )
+      done.catch(() => setTheme(next)).finally(() => {
         animating = false
         // Reset da origem — não deixar o toque antigo vazar pro próximo
         // clique (ghost click pós-scroll usaria posição de outra viewport)
         lastTouchX = 0; lastTouchY = 0
         document.documentElement.classList.remove('vt-running')
       })
-      // Safety: se t.ready/t.finished nunca resolverem (edge case), não deixar
-      // vt-running preso — transitions ficariam desligadas pra sempre
+      // Safety: se done nunca resolver (edge case), não deixar vt-running
+      // preso — transitions ficariam desligadas pra sempre
       setTimeout(() => {
         animating = false
         lastTouchX = 0; lastTouchY = 0
