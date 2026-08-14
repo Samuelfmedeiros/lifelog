@@ -83,4 +83,7 @@ Baseado em: git logs, timestamps de arquivos, backups, sessões Hermes
 
 25. ✅ **A saga da animação — o desfecho** — círculo expansivo no mobile, crossfade revertido (12/08)
 
-### Total: 25 posts — 17 publicados, 8 pendentes 🚀
+26. ✅ **A história dos Estudos** — o canto mais silencioso do blog e o que ele esconde (13/08)
+27. ✅ **A história da Segurança** — do ai-jail ao watchdog que caça vazamento sozinho (13/08)
+
+### Total: 27 posts — 19 publicados, 8 pendentes 🚀
