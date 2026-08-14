@@ -122,3 +122,56 @@ test('animação tema: desktop mantém clip-path circular da origem do clique', 
   expect(Math.abs(cx - tx)).toBeLessThanOrEqual(8);
   expect(Math.abs(cy - ty)).toBeLessThanOrEqual(8);
 });
+
+// 🔴 REGRESSÃO 14/08/2026 — sincronização da limpeza com a animação WAAPI.
+// O código antigo limpava (animating=false, vt-running removido, lastTouch=0)
+// no t.finished do ViewTransition — que resolve ~0ms (global.css tem
+// animation:none nos pseudo-elementos VT) ANTES da animação WAAPI de
+// 400/800ms terminar. Sintoma: segundo clique no meio do círculo disparava
+// outra animação (origem errada) + transitions reativadas (stutter).
+// O fix sincroniza a limpeza com `.finished` da PRÓPRIA animação (done).
+// Este teste FALHA no código antigo: com t.finished, vt-running some em ~0ms;
+// com o fix, vt-running permanece ATÉ a animação completar.
+test('animação tema: limpeza SÓ após a animação completar (regressão t.finished → done)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+
+  const btn = page.locator('#rail-theme');
+  const box = await btn.boundingBox();
+  expect(box).toBeTruthy();
+  const tx = Math.round(box.x + box.width / 2);
+  const ty = Math.round(box.y + box.height / 2);
+
+  await page.evaluate(() => {
+    window.__animStartedAt = 0;
+    const orig = Element.prototype.animate;
+    Element.prototype.animate = function (frames, opts) {
+      if (opts && opts.pseudoElement === '::view-transition-new(root)') {
+        window.__animStartedAt = performance.now();
+      }
+      return orig.call(this, frames, opts);
+    };
+  });
+
+  await page.mouse.click(tx, ty);
+  await page.waitForTimeout(200); // meio da animação desktop (800ms)
+
+  const during = await page.evaluate(() => ({
+    vtRunning: document.documentElement.classList.contains('vt-running'),
+    started: window.__animStartedAt || 0,
+  }));
+  console.log('durante animação (t=200ms):', JSON.stringify(during));
+  expect(during.started).toBeGreaterThan(0);
+  // Com o fix, vt-running DEVE continuar ativo no meio da animação.
+  // Com t.finished (bug), já teria sido removido (~0ms) → este expect falha.
+  expect(during.vtRunning).toBe(true);
+
+  // Após a animação completar (800ms) + margem, a limpeza deve ter ocorrido.
+  await page.waitForTimeout(900);
+  const after = await page.evaluate(() => ({
+    vtRunning: document.documentElement.classList.contains('vt-running'),
+  }));
+  console.log('após animação (t≈1100ms):', JSON.stringify(after));
+  expect(after.vtRunning).toBe(false);
+});
