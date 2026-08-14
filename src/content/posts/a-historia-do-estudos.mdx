@@ -1,0 +1,86 @@
+---
+title: "A história dos Estudos — o canto mais silencioso do blog (e o que ele esconde)"
+description: "De 78 posts, só 1 era de estudos — o loop de truncamento do Ollama. Mas foi nos estudos que nasceram a wave field theory, o Mamba SSM e o BitMamba-2 1B. A história do que a seção mais carente do blog realmente produziu."
+date: 2026-08-13 21:00:00 -03:00
+pubDate: 2026-08-13 21:00:00 -03:00
+project: estudos
+tags: ["estudos", "ollama", "mamba", "ssm", "wave-field", "aprendizado"]
+icon: "📚"
+cover: /covers/a-historia-do-estudos.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## ⚡ Um post em 78 — e a descoberta que ele esconde
+
+No dia em que o LifeLog tinha 78 posts, a seção **Estudos** tinha exatamente **1**: o loop de truncamento do Ollama (`ollama-truncation-loop-4096`). Um post, dois meses de jornada. Qualquer leitor olharia e pensaria: "estudos? esse blog não estuda".
+
+Nada mais longe da verdade. Foi nos estudos que nasceu o **TatuEngine** — a wave field theory, o Mamba SSM, o BitMamba-2 1B — e foi estudando que o Ollama revelou o bug que custou 2h de debug e virou lição permanente. A seção mais carente do blog é a que mais produz conteúdo... ela só não publicava.
+
+## 🧠 Contexto — por que estudos ficou pra trás
+
+O LifeLog nasceu pra documentar a jornada. Cada projeto tinha sua voz: Arachne, Dogwalk, Capivara, Portifólio, LifeLog. Os estudos — leitura de papers, testes de conceito, experimentos descartados — ficaram órfãos:
+
+- **Não eram um projeto** — eram a matéria-prima dos projetos. Paper lido virava código no TatuEngine, não virava post.
+- **Pareciam "inacabados"** — teste de conceito que não deu certo parecia vergonha, não conteúdo.
+- **Caíam no esquecimento** — o que foi estudado em junho já era "óbvio" em agosto. O processo sumia.
+
+O resultado: quando o pipeline de postagem olhava pra grade, Estudos era sempre o último da fila. Porque ninguém sabia o que publicar dele.
+
+## 🔧 A luta — o que os estudos realmente produziram
+
+### O loop de truncamento (a primeira lição)
+
+O único post de estudos existia porque a dor foi grande demais pra ignorar: o Hermes entrava em loop de continuation 4x seguidas, toda resposta "incompleta", 2h de debug. A causa estava na documentação do Ollama, mas num canto que ninguém lê:
+
+```
+num_ctx do modelo ≠ num_ctx do slot
+```
+
+O `qwen3.5:4b` suporta **262.144 tokens** de contexto — mas o slot de inferência aloca só **4096** por padrão. O modelo trunca o prompt sem avisar no stdout. O fix: `OLLAMA_CONTEXT_LENGTH=32768` no environment. Um estudo de 30 minutos de documentação economizou horas de debug — e virou regra: **Docs First**.
+
+### A wave field theory (o estudo que virou projeto)
+
+Enquanto os posts de projeto contavam features, os estudos acumulavam a parte teórica: a **teoria de campo de fase baseada em wave** — uma forma de modelar informação como ondas em um campo, em vez de vetores discretos. Paper lido, anotações no vault, testes de conceito em notebooks.
+
+Foi esse estudo que deu origem ao TatuEngine, que virou o modelo **BitMamba-2 1B**: um SSM (State Space Model) baseado no Mamba, treinado com inferência GPU local. O estudo virou código, o código virou modelo, e o modelo virou o projeto mais ambicioso do ecossistema — com sandbox de segurança e agente autopoiético.
+
+### Os experimentos que não deram certo (o que ninguém viu)
+
+Nem tudo que os estudos produziram virou projeto. Teve arquitetura de atenção que não convergiu, teste de conceito com FTS5 que foi engavetado, abordagem de embedding que o RAG do Arachne rejeitou depois de benchmark. Nenhum virou post — e isso era o erro.
+
+O experimento descartado **documentado** vale mais que o experimento bem-sucedido esquecido. Ele evita que o próximo projeto repita o caminho morto.
+
+## 💡 Resolução — por que agora vale a pena publicar
+
+A virada foi perceber que a seção Estudos não precisa de post "perfeito" — precisa de **registro honesto do processo**:
+
+1. **Estudo é processo, não resultado** — o post do Ollama não é sobre o bug, é sobre como se estuda documentação quando tudo parece estar funcionando.
+2. **O descartado também é conteúdo** — anotar o caminho morto evita que ele seja trilhado de novo.
+3. **Estudo alimenta tudo** — wave field theory → TatuEngine; Mamba → BitMamba-2; num_ctx → regra Docs First. Publicar o estudo é publicar a raiz dos projetos.
+
+## 📊 Métricas
+
+| Estudo | Resultado | Onde foi parar |
+|--------|-----------|----------------|
+| num_ctx do Ollama | 4096 → 32768 | Regra Docs First + post publicado |
+| Wave field theory | TatuEngine + BitMamba-2 1B | Projeto de pesquisa |
+| Mamba SSM | BitMamba-2 1B (inferência GPU) | Modelo treinado |
+| Experimentos descartados | Nenhum virou post | ← o erro que este post corrige |
+
+## 🎯 Aprendizados
+
+1. **Seção carente ≠ área parada** — Estudos tinha 1 post e produziu o projeto mais ambicioso do ecossistema. O blog não refletia a realidade.
+2. **Estudo documentado vale o dobro** — o que foi aprendido estudando a documentação do Ollama virou regra que atravessa todos os projetos.
+3. **O processo é o conteúdo** — não precisa do resultado final pra publicar; o caminho até ele já é a história.
+4. **Todo projeto tem uma raiz nos estudos** — publicar a raiz dá profundidade pros posts de feature.
+
+<Terminal
+  lines={[
+    { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '1 — a seção mais carente do blog' },
+    { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'o fix do loop de truncamento (num_ctx 4096 → 32768)' },
+    { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — o estudo que virou modelo' },
+    { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'a anotação que deu origem ao TatuEngine' },
+  ]}
+/>
