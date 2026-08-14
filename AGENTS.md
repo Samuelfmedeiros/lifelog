@@ -9,6 +9,14 @@
 
 ---
 
+## Sessão 2026-08-13 (fim de dia) — 📝 Posts Estudos/Segurança + saga animação + ProjectIcon sem emojis
+- **feat(posts)**: Estudos e Segurança (PT+EN) — os 2 projetos mais carentes da grade (`dfe5d3a`) + timeline (`6a8378b`)
+- **feat(post)**: desfecho da saga da animação — círculo expansivo no mobile (PT+EN, `1f8e8d9`) + timeline (`15f7b14`)
+- **refactor**: remove TODOS os emojis da UI e posts — SVGs próprios por projeto (ProjectIcon) (`d59fd43`) + regenera 11 covers PIL sem tofu de emojis (`50a6b78`)
+- **chore**: CI notificação Telegram com subject + arquivos alterados (`d373a53`) · remove script temp de video (`8373179`)
+- **docs**: plano aprovado da maratona de posts 14-16/08 — grade fixa + conteúdo (`fe3b127`)
+- 8 commits no dia · push origin OK · HEAD: `50a6b78`
+
 ## Sessão 2026-08-12 — 🔒 Scrub posts (caminhos internos + codec TatuEngine) + círculo expansivo mobile
 - **fix(theme)**: círculo expansivo no mobile — revert crossfade 08a3d2d (pedido Samuel 12/08) (`37ed927`)
 - **security(blog)**: remove caminhos internos (~/.hermes, /home/samuel) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
