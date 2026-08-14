@@ -1,0 +1,95 @@
+---
+title: "The ghost of ::1 — when localhost hung and 127.0.0.1 didn't"
+description: "Local services hanging intermittently: Qdrant on port 6333, helper APIs — everything pointing to 'localhost'. On Windows, 'localhost' resolves to IPv6 (::1) first — and the connection hangs. '127.0.0.1' forces IPv4 and works. Confirmed 88 times until it became a rule: always use 127.0.0.1."
+date: 2026-08-14 12:00:00 -03:00
+pubDate: 2026-08-14 12:15:00 -03:00
+project: descobertas
+tags: ["descobertas", "rede", "ipv6", "localhost", "windows", "debug"]
+cover: /covers/o-fantasma-do-loopback-ipv6.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+##  The service that answered "sometimes"
+
+There was a service in my workflow that I learned to distrust: Qdrant, on port 6333. Most of the time it answered right away. Every now and then — for no apparent reason — the connection simply hung. A command that ran in 200ms would stall until timeout.
+
+The worst part was that it was **intermittent**. I'd try again, and it worked. Try again, it hung. Restart the app, it worked. Five minutes later, it hung again. For a vector database that the pipeline queries all the time, this is the kind of instability that drives you crazy: it's not a crash, it's not an error — it's a **ghost**.
+
+And it wasn't just Qdrant. Local helper APIs showed the same pattern. Anything using `localhost` in the connection had a chance of hanging.
+
+##  Hunting the ghost
+
+The first obvious suspect: the service. Maybe Qdrant was crashing, maybe memory was blowing up, maybe WSL was going to sleep. I went down that path and found nothing — the process was up, healthy, responding.
+
+Until one day, with the command stuck on screen, I did the simplest test in the world: I swapped `localhost` for `127.0.0.1`.
+
+```bash
+# Hung (again)
+curl -v http://localhost:6333/health
+
+# Answered instantly
+curl -v http://127.0.0.1:6333/health
+```
+
+Instant response. HTTP 200, health check body, zero drama. Same service, same process, same port — only the **hostname** changed.
+
+##  The explanation: Windows resolves localhost to ::1
+
+Then came the part that explains everything: on Windows, `localhost` is **not** a guaranteed IPv4 alias. The system resolves `localhost` to **IPv6 ::1 first** — and if the IPv6 loopback connection doesn't complete (IPv6 stack disturbed by a VPN, service listening on IPv4 only, networking config in the way), the connection **hangs**. It doesn't refuse, it doesn't fail fast: it stays stuck trying ::1, until it gives up.
+
+`127.0.0.1` cuts that ambiguity at the root: it's a literal IPv4 address, no name resolution, no "first" or "second" — it goes straight to IPv4 loopback, which was working all along.
+
+```bash
+# On Windows, ping localhost shows the ghost:
+# Reply from ::1: time<1ms   ← IPv6 first
+
+# With the literal address, IPv4 answers:
+ping 127.0.0.1
+```
+
+The pattern I saw as "intermittent" wasn't the service fluctuating. It was **name resolution** fluctuating: sometimes the system completed the IPv6 path, sometimes it didn't. The service was never sick — the address was a lottery.
+
+##  The rule of 88
+
+After the discovery, I started logging every occurrence. Every time a command with `localhost` hung and the same command with `127.0.0.1` answered instantly, I recorded it. **88 times.** 88 confirmations that the problem wasn't the service, wasn't the network, wasn't the time of day — it was the name `localhost`.
+
+From then on it became a rule: **always use `127.0.0.1`**. In every local service config, every API endpoint, every connection script:
+
+```yaml
+# Qdrant / clients config
+host: 127.0.0.1
+port: 6333
+```
+
+No more `localhost` in local production. The name is comfortable, but on Windows it carries an ambiguity that costs minutes of debugging every day.
+
+##  The lessons that stuck
+
+1. **`localhost` ≠ `127.0.0.1` on Windows** — the system resolves `localhost` to IPv6 `::1` first. If the IPv6 path fails, the connection hangs instead of refusing.
+2. **An intermittent network symptom can be IPv6 loopback** — when a local service "sometimes hangs, sometimes works", suspect name resolution before blaming the process.
+3. **A literal address removes the lottery** — `127.0.0.1` is pure IPv4: no DNS, no address family preference, no surprise.
+4. **A simple A/B test solves it** — before diving into logs and profiling, swap the hostname for the literal address and see if the symptom disappears.
+
+##  Technical details
+
+| Scenario | Result |
+|----------|--------|
+| `curl http://localhost:6333/health` | Intermittent hang (timeout) |
+| `curl http://127.0.0.1:6333/health` | Instant HTTP 200 |
+| `localhost` resolution on Windows | IPv6 `::1` first |
+| `127.0.0.1` | Literal IPv4 address, no resolution |
+| Pattern confirmations (hung ↔ answered) | **88 times** |
+| Adopted rule | `127.0.0.1` always, never `localhost` |
+
+The ghost was never the service. It was a six-character address that Windows insisted on resolving to the wrong side of the address family. Once the rule stuck, the timeouts disappeared — and I never wrote `localhost` in a local service config again.
+
+<Terminal commands={[
+  { cmd: 'curl -v http://localhost:6333/health   # hangs (intermittent)' },
+  { cmd: 'curl -v http://127.0.0.1:6333/health   # instant HTTP 200' },
+  { cmd: 'ping localhost    # Windows: Reply from ::1 (IPv6 first)' },
+  { cmd: 'ping 127.0.0.1    # literal IPv4, always answers' },
+  { cmd: '# rule: 127.0.0.1 in every local service config' }
+]}/>

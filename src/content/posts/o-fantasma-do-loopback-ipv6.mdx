@@ -1,0 +1,94 @@
+---
+title: "O fantasma do ::1 — quando localhost travava e 127.0.0.1 não"
+description: "Serviços locais travando de forma intermitente: o Qdrant na 6333, APIs de apoio, tudo que apontava para 'localhost'. No Windows, 'localhost' resolve para IPv6 (::1) primeiro — e a conexão trava. '127.0.0.1' força IPv4 e funciona. Confirmado 88 vezes até virar regra: usar 127.0.0.1 sempre."
+date: 2026-08-14 12:00:00 -03:00
+pubDate: 2026-08-14 12:15:00 -03:00
+project: descobertas
+tags: ["descobertas", "rede", "ipv6", "localhost", "windows", "debug"]
+cover: /covers/o-fantasma-do-loopback-ipv6.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+##  O serviço que respondia "às vezes"
+
+Tinha um serviço no meu fluxo que eu aprendi a desconfiar: o Qdrant, na porta 6333. Na maioria das vezes ele respondia na hora. De vez em quando — sem motivo aparente — a conexão simplesmente travava. Um comando que rodava em 200ms passava a pendurar até dar timeout.
+
+O pior é que era **intermitente**. Eu tentava de novo, e funcionava. Tentava de novo, travava. Aplicação reiniciada, funcionava. Cinco minutos depois, travava de novo. Para um banco vetorial que o pipeline consulta o tempo todo, isso é o tipo de instabilidade que enlouquece: não é queda, não é erro — é um **fantasma**.
+
+E não era só o Qdrant. APIs locais de apoio apresentavam o mesmo padrão. Tudo que usava `localhost` na conexão tinha chance de pendurar.
+
+##  A caça ao fantasma
+
+A primeira suspeita óbvia: o serviço. Talvez o Qdrant estivesse caindo, talvez a memória estivesse estourando, talvez o WSL estivesse dormindo. Fui por esse caminho e não achei nada — o processo estava de pé, saudável, respondendo.
+
+Até que um dia, com o comando pendurado na tela, eu fiz o teste mais simples do mundo: troquei `localhost` por `127.0.0.1`.
+
+```bash
+# Travou (de novo)
+curl -v http://localhost:6333/health
+
+# Respondeu na hora
+curl -v http://127.0.0.1:6333/health
+```
+
+Resposta instantânea. HTTP 200, corpo do health check, zero drama. O mesmo serviço, o mesmo processo, a mesma porta — só o **nome** do host mudou.
+
+##  A explicação: o Windows resolve localhost para ::1
+
+Aí veio a parte que explica tudo: no Windows, `localhost` **não** é um alias garantido de IPv4. O sistema resolve `localhost` para **IPv6 ::1 primeiro** — e se a conexão com o loopback IPv6 não completa (pilha IPv6 atrapalhada por VPN, serviço escutando só em IPv4, configuração de rede no meio do caminho), a conexão **trava**. Ela não recusa, não falha rápido: fica pendurada tentando o ::1, até desistir.
+
+O `127.0.0.1` corta essa ambiguidade pela raiz: é endereço IPv4 literal, não passa por resolução de nome, não tem "primeiro" nem "segundo" — vai direto pro loopback IPv4, que estava funcionando o tempo todo.
+
+```bash
+# No Windows, o ping localhost mostra o fantasma:
+# Resposta de ::1: tempo<1ms   ← IPv6 primeiro
+
+# Com o endereço literal, o IPv4 responde:
+ping 127.0.0.1
+```
+
+O padrão que eu via como "intermitente" não era o serviço oscilando. Era a **resolução de nome** oscilando: às vezes o sistema completava o caminho IPv6, às vezes não. O serviço nunca esteve doente — o endereço é que era loteria.
+
+##  A regra dos 88
+
+Depois da descoberta, comecei a anotar cada ocorrência. Cada vez que um comando com `localhost` travava e o mesmo comando com `127.0.0.1` respondia na hora, eu registrava. **88 vezes.** 88 confirmações de que o problema não era o serviço, não era a rede, não era a hora do dia — era o nome `localhost`.
+
+A partir daí virou regra: **usar `127.0.0.1` SEMPRE**. Em todo config de serviço local, em todo endpoint de API, em todo script de conexão:
+
+```yaml
+# config do Qdrant / clientes
+host: 127.0.0.1
+port: 6333
+```
+
+Nada de `localhost` em produção local. O nome é confortável, mas no Windows ele carrega uma ambiguidade que custa minutos de debug por dia.
+
+##  As lições que ficaram
+
+1. **`localhost` ≠ `127.0.0.1` no Windows** — o sistema resolve `localhost` para IPv6 `::1` primeiro. Se o caminho IPv6 falha, a conexão trava em vez de recusar.
+2. **Sintoma intermitente de rede pode ser loopback IPv6** — quando um serviço local "às vezes trava, às vezes funciona", desconfie da resolução de nome antes de culpar o processo.
+3. **Endereço literal elimina a loteria** — `127.0.0.1` é IPv4 puro, sem DNS, sem preferência de família de endereço, sem surpresa.
+4. **Teste A/B simples resolve** — antes de mergulhar em logs e profiling, troque o hostname pelo endereço literal e veja se o sintoma some.
+
+##  Detalhes técnicos
+
+| Cenário | Resultado |
+|---------|-----------|
+| `curl http://localhost:6333/health` | Trava intermitente (timeout) |
+| `curl http://127.0.0.1:6333/health` | HTTP 200 imediato |
+| Resolução de `localhost` no Windows | IPv6 `::1` primeiro |
+| `127.0.0.1` | Endereço IPv4 literal, sem resolução |
+| Confirmações do padrão (travou ↔ respondeu) | **88 vezes** |
+| Regra adotada | `127.0.0.1` sempre, nunca `localhost` |
+
+O fantasma nunca foi o serviço. Era um endereço de seis caracteres que o Windows insistia em resolver para o lado errado da família de endereços. Depois que a regra pegou, os timeouts sumiram — e eu nunca mais escrevi `localhost` num config de serviço local.
+
+<Terminal commands={[
+  { cmd: 'curl -v http://localhost:6333/health   # trava (intermitente)' },
+  { cmd: 'curl -v http://127.0.0.1:6333/health   # HTTP 200 imediato' },
+  { cmd: 'ping localhost    # Windows: Resposta de ::1 (IPv6 primeiro)' },
+  { cmd: 'ping 127.0.0.1    # IPv4 literal, responde sempre' },
+  { cmd: '# regra: 127.0.0.1 em todo config de serviço local' }
+]}/>
