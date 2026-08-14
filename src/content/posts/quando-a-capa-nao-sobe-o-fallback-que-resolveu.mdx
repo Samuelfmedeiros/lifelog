@@ -1,0 +1,46 @@
+---
+title: "Quando a capa não sobe — o fallback que resolveu"
+description: "Um post que subiu com capa escura me fez construir um sistema de garantia: geração de imagem com fallback em duas camadas e um watchdog silencioso que troca capa ruim sozinho. A história de como o blog parou de depender de um único caminho."
+date: 2026-08-14T20:30:00 -03:00
+pubDate: 2026-08-14 20:30:00 -03:00
+project: lifelog
+tags: [lifelog, blog, devops, automacao, ai, capas]
+cover: /covers/quando-a-capa-nao-sobe-o-fallback-que-resolveu.webp
+featured: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma
+
+Tem coisa que a gente só descobre quando o usuário reclama. No meu caso, o usuário fui eu: naveguei até o blog depois da publicação automática e vi o card com uma mancha escura no lugar da capa. O post estava no ar, o texto perfeito, o link funcionando — mas a capa parecia ter sumido.
+
+Ela não tinha sumido. Ela estava ali, só que escura demais para parecer uma imagem.
+
+## A investigação
+
+O primeiro instinto foi culpar o upload. Arquivo faltando? Caminho errado no frontmatter? Nada disso: o arquivo existia, o caminho estava certo, o HTTP respondia 200. O problema era outro: a capa tinha sido gerada por um caminho que produz uma imagem pequena, escura, com quase todo o espaço ocupado por um azul quase preto.
+
+Foi quando percebi a raiz: o pipeline automático tinha um passo que usava a geração por PIL (desenho programático) como caminho padrão — não como fallback. Quando o serviço principal de imagem estava lento, ele caía naquele caminho e publicava mesmo assim. Ninguém conferia se a capa era, de verdade, uma capa.
+
+## A solução em duas camadas
+
+Em vez de remendar o sintoma, tratei a cadeia inteira:
+
+**Camada 1 — geração com fallback de verdade.** O passo de capa agora exige imagem gerada por IA, com fallback explícito para um segundo provedor de geração (via API NVIDIA). Se o primeiro falha, o segundo assume. O desenho programático foi rebaixado para o que ele sempre deveria ter sido: última opção, usada só em posts antigos.
+
+**Camada 2 — um watchdog silencioso.** Um script verifica duas vezes por dia os posts mais recentes. Se uma capa estiver pequena demais (sinal clássico de imagem ruim), ele regenera sozinho, faz commit, publica e só então avisa. Quando tudo está certo, ele fica mudo — silêncio é o status OK.
+
+## O teste de fogo
+
+Eu não ia confiar sem provar. Peguei uma capa boa, troquei por uma versão ruim no repositório e esperei o watchdog rodar. Ele detectou, regenerou pela cadeia com fallback, commitou e publicou. A capa de 22KB virou uma de quase 500KB. Depois restaurei a original e o sistema seguiu em paz.
+
+## As lições
+
+1. **Tamanho é um proxy barato e eficaz.** Uma capa boa gerada por IA tem centenas de kilobytes; uma imagem programática escura tem dezenas. Não precisa de visão computacional para detectar o problema — bytes bastam.
+2. **Fallback é uma decisão de design, não um acidente.** Deixar o pipeline "escolher" o caminho mais fácil sem critério é receita para o pior resultado possível silenciosamente.
+3. **Automação boa é silenciosa.** O watchdog não enche o chat quando tudo funciona. Ele só aparece quando faz algo ou quando algo quebrou de verdade.
+4. **Teste de fogo vale ouro.** Simular a falha antes de confiar no sistema é o que separa "funciona na minha máquina" de "funciona quando ninguém está olhando".
+
+O blog segue publicando duas vezes por dia, e eu sigo sem olhar por cima do ombro.
