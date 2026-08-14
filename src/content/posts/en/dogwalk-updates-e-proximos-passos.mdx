@@ -6,7 +6,6 @@ pubDate: 2026-07-16 22:02:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "update", "progress"]
-icon: "🐶"
 cover: /covers/dogwalk-updates-e-proximos-passos.webp
 featured: false
 ---
@@ -34,35 +33,35 @@ function ServiceAreaDrawer({ profileId }: Props) {
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    setIsSaving(true);
-    await api.put(`/profiles/${profileId}/service-areas`, { areas });
-    setIsSaving(false);
-    toast.success('Service area updated!');
+  setIsSaving(true);
+  await api.put(`/profiles/${profileId}/service-areas`, { areas });
+  setIsSaving(false);
+  toast.success('Service area updated!');
   };
 
   return (
-    <div className="space-y-4">
-      <MapContainer>
-        {areas.map((area, i) => (
-          <DraggableCircle
-            key={i}
-            center={area.center}
-            radius={area.radius}
-            onChange={(updated) => updateArea(i, updated)}
-          />
-        ))}
-      </MapContainer>
-      <Slider
-        value={radius}
-        min={500}
-        max={10000}
-        onChange={setRadius}
-        label={`Radius: ${(radius / 1000).toFixed(1)} km`}
-      />
-      <Button onClick={handleSave} loading={isSaving}>
-        Save areas
-      </Button>
-    </div>
+  <div className="space-y-4">
+  <MapContainer>
+  {areas.map((area, i) => (
+  <DraggableCircle
+  key={i}
+  center={area.center}
+  radius={area.radius}
+  onChange={(updated) => updateArea(i, updated)}
+  />
+  ))}
+  </MapContainer>
+  <Slider
+  value={radius}
+  min={500}
+  max={10000}
+  onChange={setRadius}
+  label={`Radius: ${(radius / 1000).toFixed(1)} km`}
+  />
+  <Button onClick={handleSave} loading={isSaving}>
+  Save areas
+  </Button>
+  </div>
   );
 }
 ```
@@ -74,8 +73,8 @@ The most challenging part was the `useCallback` dance with Rolldown (Vite 8). In
 When the walker is on a walk and passes near (< 50m) a point of interest (POI), the app automatically alerts:
 
 ```
-📍 {"lat": -23.587, "lng": -46.657} — Near Gate 7 (Ibirapuera)
-📢 "You're passing near a point of interest!"
+ {"lat": -23.587, "lng": -46.657} — Near Gate 7 (Ibirapuera)
+ "You're passing near a point of interest!"
 ```
 
 The POIs are real — 33 seeded points around the Ibirapuera region, with names, coordinates and categories. The proximity logic runs on the frontend during the walk via GPS tracking, with no server latency.
@@ -88,8 +87,8 @@ function checkProximity(
   threshold = 50 // meters
 ): MapPoint[] {
   return pois.filter(poi => {
-    const dist = haversineDistance(currentPos, [poi.lat, poi.lng]);
-    return dist <= threshold;
+  const dist = haversineDistance(currentPos, [poi.lat, poi.lng]);
+  return dist <= threshold;
   });
 }
 ```
@@ -103,9 +102,9 @@ The geofencing module came with migration tests that validate seeded data. I lea
 Previously, search was naive — it brought all walkers regardless of location. Now it has **two new routers** in the backend:
 
 ```
-GET /cities                    → list all cities with walkers
-GET /cities/{city}/walkers     → walkers filtered by city
-GET /search/walkers            → unified search: city + price + rating
+GET /cities  → list all cities with walkers
+GET /cities/{city}/walkers  → walkers filtered by city
+GET /search/walkers  → unified search: city + price + rating
 ```
 
 The implementation followed the pattern already working in other endpoints: `get_optional_user` for public endpoints, ordering by descending rating with nulls last, pagination via `limit`/`offset`.
@@ -118,8 +117,8 @@ One of the most common feedbacks from testing was: "tutor and walker look like t
 
 | Profile | Color | Vibe |
 |---------|-------|------|
-| Tutor 🐕 | Orange (#f97316) | Welcoming, ownership |
-| Walker 🦮 | Green (#22c55e) | Nature, trust |
+| Tutor  | Orange (#f97316) | Welcoming, ownership |
+| Walker  | Green (#22c55e) | Nature, trust |
 
 In practice, it's a CSS custom properties swap on login:
 
@@ -142,13 +141,13 @@ How many times did a build break in CI because of a broken import that I only fo
 // vite.config.ts — build guard
 function unresolvedImportGuard(): Plugin {
   return {
-    name: 'unresolved-import-guard',
-    buildEnd(error) {
-      if (error?.message?.includes('UNRESOLVED_IMPORT')) {
-        console.error('[BUILD GUARD] Unresolved import detected!');
-        process.exit(1);
-      }
-    },
+  name: 'unresolved-import-guard',
+  buildEnd(error) {
+  if (error?.message?.includes('UNRESOLVED_IMPORT')) {
+  console.error('[BUILD GUARD] Unresolved import detected!');
+  process.exit(1);
+  }
+  },
   };
 }
 ```

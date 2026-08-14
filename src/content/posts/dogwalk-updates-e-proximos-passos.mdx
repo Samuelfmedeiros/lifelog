@@ -5,7 +5,6 @@ date: 2026-07-16
 pubDate: 2026-07-16 22:02:00 -03:00
 project: dogwalk
 tags: ["dogwalk", "update", "progresso"]
-icon: "🐶"
 cover: /covers/dogwalk-updates-e-proximos-passos.webp
 featured: false
 ---
@@ -33,35 +32,35 @@ function ServiceAreaDrawer({ profileId }: Props) {
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    setIsSaving(true);
-    await api.put(`/profiles/${profileId}/service-areas`, { areas });
-    setIsSaving(false);
-    toast.success('Área de serviço atualizada!');
+  setIsSaving(true);
+  await api.put(`/profiles/${profileId}/service-areas`, { areas });
+  setIsSaving(false);
+  toast.success('Área de serviço atualizada!');
   };
 
   return (
-    <div className="space-y-4">
-      <MapContainer>
-        {areas.map((area, i) => (
-          <DraggableCircle
-            key={i}
-            center={area.center}
-            radius={area.radius}
-            onChange={(updated) => updateArea(i, updated)}
-          />
-        ))}
-      </MapContainer>
-      <Slider
-        value={radius}
-        min={500}
-        max={10000}
-        onChange={setRadius}
-        label={`Raio: ${(radius / 1000).toFixed(1)} km`}
-      />
-      <Button onClick={handleSave} loading={isSaving}>
-        Salvar áreas
-      </Button>
-    </div>
+  <div className="space-y-4">
+  <MapContainer>
+  {areas.map((area, i) => (
+  <DraggableCircle
+  key={i}
+  center={area.center}
+  radius={area.radius}
+  onChange={(updated) => updateArea(i, updated)}
+  />
+  ))}
+  </MapContainer>
+  <Slider
+  value={radius}
+  min={500}
+  max={10000}
+  onChange={setRadius}
+  label={`Raio: ${(radius / 1000).toFixed(1)} km`}
+  />
+  <Button onClick={handleSave} loading={isSaving}>
+  Salvar áreas
+  </Button>
+  </div>
   );
 }
 ```
@@ -73,8 +72,8 @@ A parte mais desafiadora foi o `useCallback` dance com Rolldown (Vite 8). Inline
 Quando o passeador está numa walk e passa perto (< 50m) de um ponto de interesse (POI), o app avisa automaticamente:
 
 ```
-📍 {"lat": -23.587, "lng": -46.657} — Próximo ao Portão 7 (Ibirapuera)
-📢 "Você está passando perto de um ponto de interesse!"
+ {"lat": -23.587, "lng": -46.657} — Próximo ao Portão 7 (Ibirapuera)
+ "Você está passando perto de um ponto de interesse!"
 ```
 
 Os POIs são reais — 33 pontos seedados na região do Ibirapuera, com nomes, coordenadas e categorias. A lógica de proximidade roda no frontend durante a walk via GPS tracking, sem latência de servidor.
@@ -87,8 +86,8 @@ function checkProximity(
   threshold = 50 // metros
 ): MapPoint[] {
   return pois.filter(poi => {
-    const dist = haversineDistance(currentPos, [poi.lat, poi.lng]);
-    return dist <= threshold;
+  const dist = haversineDistance(currentPos, [poi.lat, poi.lng]);
+  return dist <= threshold;
   });
 }
 ```
@@ -102,9 +101,9 @@ O módulo de geofencing veio com testes de migração que validam dados seedados
 Antes, a busca era ingênua — trazia todos os passeadores, independente de onde estavam. Agora tem **dois novos routers** no backend:
 
 ```
-GET /cities                    → lista todas as cidades com walkers
-GET /cities/{city}/walkers     → walkers filtrados por cidade
-GET /search/walkers            → busca unificada: city + price + rating
+GET /cities  → lista todas as cidades com walkers
+GET /cities/{city}/walkers  → walkers filtrados por cidade
+GET /search/walkers  → busca unificada: city + price + rating
 ```
 
 A implementação seguiu o padrão que já estava funcionando em outros endpoints: `get_optional_user` para endpoints públicos, ordenação por rating descendente com nulls last, paginação via `limit`/`offset`.
@@ -117,8 +116,8 @@ Um dos feedbacks que mais ouvi nos testes foi: "tutor e passeador parecem o mesm
 
 | Perfil | Cor | Sensação |
 |--------|-----|----------|
-| Tutor 🐕 | Laranja (#f97316) | Acolhedor, dono |
-| Passeador 🦮 | Verde (#22c55e) | Natureza, confiança |
+| Tutor  | Laranja (#f97316) | Acolhedor, dono |
+| Passeador  | Verde (#22c55e) | Natureza, confiança |
 
 Na prática, é um CSS custom properties swap no login:
 
@@ -141,13 +140,13 @@ Quantas vezes um build quebrou no CI por causa de um import quebrado que eu só 
 // vite.config.ts — build guard
 function unresolvedImportGuard(): Plugin {
   return {
-    name: 'unresolved-import-guard',
-    buildEnd(error) {
-      if (error?.message?.includes('UNRESOLVED_IMPORT')) {
-        console.error('[BUILD GUARD] Import não resolvido detectado!');
-        process.exit(1);
-      }
-    },
+  name: 'unresolved-import-guard',
+  buildEnd(error) {
+  if (error?.message?.includes('UNRESOLVED_IMPORT')) {
+  console.error('[BUILD GUARD] Import não resolvido detectado!');
+  process.exit(1);
+  }
+  },
   };
 }
 ```

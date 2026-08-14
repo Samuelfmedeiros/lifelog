@@ -5,12 +5,11 @@ date: 2026-08-03 20:30:00 -03:00
 pubDate: 2026-08-03 20:30:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "convergence", "teacher-student", "sft", "reasoning"]
-icon: "🦔"
 cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
 featured: false
 ---
 
-## ⚡ The engine that decided to teach itself
+##  The engine that decided to teach itself
 
 First TatuEngine learned to **infer**: a ternary 1B-parameter model running on GPU with 252× speedup, 114× compression, bit-identical to CPU. Then it learned to **act**: an autopoietic agent with 8 subsystems, a security sandbox, MCP, memory.
 
@@ -18,7 +17,7 @@ Then came the question that changes everything: **what if the engine learns to t
 
 The answer was **Operation Convergence** — an intense R&D day (04/07/2026) that stacked six versions (v0.17.0 → v0.22.2) to build the **Master-Apprentice** cycle: a teacher model distilling reasoning into a student model. And like any good saga, it almost didn't work.
 
-## 🧠 Context — the teacher and the student
+##  Context — the teacher and the student
 
 The Master-Apprentice cycle is the gateway to self-improvement:
 
@@ -28,7 +27,7 @@ The Master-Apprentice cycle is the gateway to self-improvement:
 
 Before Operation Convergence, the engine already had the base: OpenAI-compatible API (v0.13), chat TUI (v0.15), benchmark (v0.16), TatuViz with cognitive graph (v0.17). What was missing: **structured reasoning** — and the bridge between the two models.
 
-## 🔧 The struggle — six versions in one day
+##  The struggle — six versions in one day
 
 ### v0.18: Cognitive Density
 
@@ -53,7 +52,7 @@ The student doesn't just learn the answer — it learns the **format of thinking
 
 **Forced semantic mining + Mamba-2 R&D** — pushes the model to mine knowledge, not just reproduce it.
 
-### 💥 The critical moment: the convergence that wouldn't come
+###  The critical moment: the convergence that wouldn't come
 
 This is where the saga almost died. The student **wasn't converging** — the answers didn't follow the format, alignment kept breaking. Two commits fixed it: Operation Convergence (forced semantic mining) and the teacher system message fix.
 
@@ -63,7 +62,7 @@ The villain was the **teacher's system message**: the instruction the teacher re
 
 Only accepts what has closed tags, coherent steps and a complete thought/answer pair.
 
-## 💡 Resolution — the complete cycle
+##  Resolution — the complete cycle
 
 Operation Convergence delivered the entire Master-Apprentice infrastructure:
 
@@ -74,7 +73,7 @@ Operation Convergence delivered the entire Master-Apprentice infrastructure:
 
 The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs, 381 examples, GPU) and comparing Student vs Teacher. The engine learned to infer, learned to act, and now it's learning to **learn**.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -85,7 +84,7 @@ The next milestone: **Student SFT** — actually training BitMamba-1B (3 epochs,
 | Convergence fix | teacher system message (v0.22.0) |
 | Validator | rigorous: tags, steps, thought/answer (v0.22.1) |
 
-## 🎯 Lessons
+##  Lessons
 
 1. **Convergence isn't automatic — the teacher matters** — the fix that unlocked everything was the **teacher's system message**, not the student. The apprentice only converges if the master teaches the right way.
 2. **Teaching format is teaching reasoning** — the `[THOUGHT]/[ANSWER]` protocol makes the student learn the process, not just the answer.

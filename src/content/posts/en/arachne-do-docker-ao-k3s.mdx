@@ -5,14 +5,13 @@ date: 2026-08-11 14:00:00 -03:00
 pubDate: 2026-08-11 14:00:00 -03:00
 project: arachne
 tags: ["arachne", "kubernetes", "k3s", "infra", "docker", "decision"]
-icon: "🕷️"
 cover: /covers/arachne-do-docker-ao-k3s.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The keyword I didn't know how to use
+##  The keyword I didn't know how to use
 
 My resume went through an ATS (Applicant Tracking System) audit — the software that filters resumes before any human sees them. The score reached **98.8/100**. Two keywords were missing: `Automation` (would be keyword stuffing — each language already has its own) and `Kubernetes`.
 
@@ -20,7 +19,7 @@ Kubernetes. The platform that orchestrates containers in production. Technical r
 
 The alternative was worse: leaving it out and losing the match. So the decision was the only honest one: **adopt Kubernetes for real**.
 
-## 🧠 The right question: where does it make sense?
+##  The right question: where does it make sense?
 
 Kubernetes isn't a silver bullet. For a static site (Portfolio, LifeLog), it's a huge overkill. For Jellyfin/TDarr (GPU passthrough, volumes, host networking), it's a nightmare. But **Arachne** has a real microservice architecture:
 
@@ -38,16 +37,16 @@ Kubernetes isn't a silver bullet. For a static site (Portfolio, LifeLog), it's a
 
 Ten services, queues, GPU, vector database. That's exactly the kind of workload Kubernetes was built to orchestrate: **worker isolation** (a crash doesn't take down the queue), **rolling updates with zero downtime**, **self-healing** (container dies → it comes back), **native secrets**.
 
-## 🔧 The choice: k3s single-node
+##  The choice: k3s single-node
 
 Options evaluated:
 
 | Option | Verdict |
 |--------|---------|
-| **k3s single-node** | ✅ Chosen — real K8s, lightweight, real production |
-| Homegrown multi-node cluster | ⏳ Possible future (after it stabilizes) |
-| k3d/kind (dev only) | ❌ Rejected — not production, doesn't justify on the resume |
-| Don't adopt | ❌ Discarded — I want the real skill |
+| **k3s single-node** |  Chosen — real K8s, lightweight, real production |
+| Homegrown multi-node cluster | Possible future (after it stabilizes) |
+| k3d/kind (dev only) |  Rejected — not production, doesn't justify on the resume |
+| Don't adopt |  Discarded — I want the real skill |
 
 **k3s** (Rancher) is the lightweight Kubernetes distribution for edge — a single binary, under 100MB footprint, compatible with standard K8s. It runs on WSL2 without drama. It's real Kubernetes: same API server, same kubectl, same manifest.
 
@@ -56,7 +55,7 @@ Options evaluated:
 - GPU on WSL2 + K8s: `nvidia-container-toolkit` + device plugin (annoying config, but documented).
 - New maintenance: k3s updates, certificates.
 
-## 📋 The phased plan (with rollback at any moment)
+##  The phased plan (with rollback at any moment)
 
 The rule was simple: **never break what's working**. The current Docker Compose stays intact until the last phase.
 
@@ -64,7 +63,7 @@ The rule was simple: **never break what's working**. The current Docker Compose 
 F0  Detailed plan (official k3s docs first)
 F1  Install k3s + measure real RAM overhead
 F2  Port stateless (api, worker, nginx, crawl4ai, redis)
-    → running in PARALLEL with compose (different ports)
+  → running in PARALLEL with compose (different ports)
 F3  Port stateful (postgres, umami-db) with migrated volumes
 F4  GPU for the VLM worker + validate arachne-vlm-jobs queue
 F5  DNS/tunnel cutover + turn off compose + monitor 72h
@@ -74,7 +73,7 @@ Each phase has **a test with evidence**: health check, RQ queue processing, RAG 
 
 **Rollback:** if any phase fails, it's back to compose in minutes — it was never turned off.
 
-## 🎯 Lessons (so far)
+##  Lessons (so far)
 
 1. **Not lying on your resume is an architecture decision** — the keyword became a real infrastructure driver. Honesty became a roadmap.
 2. **Evaluate project by project** — K8s only makes sense where the architecture demands it. Forcing it everywhere is fashion, not engineering.
@@ -83,13 +82,13 @@ Each phase has **a test with evidence**: health check, RQ queue processing, RAG 
 
 <Terminal
   lines={[
-    { cmd: 'k3s version', output: 'k3s version v1.x (Rancher — lightweight K8s for edge)' },
-    { cmd: 'kubectl get nodes', output: 'NAME    STATUS   ROLES    AGE   VERSION\nnode    Ready    control-plane   Xm   v1.x+k3s1' },
-    { cmd: 'kubectl get pods -A', output: 'kube-system + Arachne services (state F2-F5)' },
-    { cmd: 'docker compose ps', output: 'compose intact — rollback available at any moment' },
+  { cmd: 'k3s version', output: 'k3s version v1.x (Rancher — lightweight K8s for edge)' },
+  { cmd: 'kubectl get nodes', output: 'NAME  STATUS  ROLES  AGE  VERSION\nnode  Ready  control-plane  Xm  v1.x+k3s1' },
+  { cmd: 'kubectl get pods -A', output: 'kube-system + Arachne services (state F2-F5)' },
+  { cmd: 'docker compose ps', output: 'compose intact — rollback available at any moment' },
   ]}
 />
 
-## 🚀 What's next
+##  What's next
 
 The migration runs in phases, each one approved before execution. Once k3s stabilizes in production for 1-2 months, "Kubernetes (k3s)" goes on the resume **for real**. And the multi-node cluster (option B) is noted as a future experiment — first the single-node has to prove its value.

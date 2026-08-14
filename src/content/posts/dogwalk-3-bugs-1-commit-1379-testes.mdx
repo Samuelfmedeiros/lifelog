@@ -5,7 +5,6 @@ date: 2026-07-25 10:00:00 -03:00
 pubDate: 2026-07-25 00:00:00 -03:00
 project: dogwalk
 tags: [dogwalk, debugging, react, mapbox-gl, performance]
-icon: "🐶"
 cover: /covers/dogwalk-3-bugs-1-commit.webp
 featured: false
 ---
@@ -34,8 +33,8 @@ A solução foi adicionar um flag `opts.public`:
 ```javascript
 async function request(url, opts = {}) {
   if (!opts.public) {
-    const token = await refreshIfNeeded()
-    headers.Authorization = `Bearer ${token}`
+  const token = await refreshIfNeeded()
+  headers.Authorization = `Bearer ${token}`
   }
   return fetch(url, { headers, ...opts })
 }
@@ -50,7 +49,7 @@ E marcar os 4 consumidores de `/profiles/walkers` com `{ public: true }`. **1379
 ```jsx
 // Antes (quebrado):
 function ClusterLayer({ map, ... }) {
-  map.addSource('clusters', { ... })  // ❌ crash intermitente
+  map.addSource('clusters', { ... })  //  crash intermitente
 }
 ```
 
@@ -62,9 +61,9 @@ function ClusterLayer({ mapRef, ... }) {
   const map = mapRef.current
   if (!map || !map.isStyleLoaded()) return null
   try {
-    map.addSource('clusters', { ... })
+  map.addSource('clusters', { ... })
   } catch (e) {
-    console.warn('ClusterLayer: source already exists', e)
+  console.warn('ClusterLayer: source already exists', e)
   }
 }
 ```
@@ -79,9 +78,9 @@ A correção teve 3 partes:
 Depois de resolver DW-036, fui atrás dos outros warnings. O console do DevTools vivia lotado:
 
 ```
-❌ isLoaded is not a function (IsochroneLayer)
-❌ addSource is not a function (HeatmapLayer, ClusterLayer)
-⚠️ Style not loaded (Polyline, vários layers)
+ isLoaded is not a function (IsochroneLayer)
+ addSource is not a function (HeatmapLayer, ClusterLayer)
+ Style not loaded (Polyline, vários layers)
 ```
 
 Cada um era uma variação do mesmo padrão: o componente tentava acessar o mapa antes dele estar pronto. Aplicando o mesmo padrão `isStyleLoaded` + `mapRef.current` em **5 componentes**, os erros foram de 42 pra **zero absoluto**.
@@ -103,9 +102,9 @@ if (!map || !map.isStyleLoaded()) return null
 
 | Bug | Arquivos | Linhas | Testes |
 |:----|:---------|-------:|-------:|
-| DW-050 | api.js + 4 consumers | +3 linhas | 1379 ✅ |
-| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refatoradas | 1379 ✅ |
-| DW-053 | IsochroneLayer + Polyline + layers | ~20 linhas | 1379 ✅ |
+| DW-050 | api.js + 4 consumers | +3 linhas | 1379  |
+| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refatoradas | 1379  |
+| DW-053 | IsochroneLayer + Polyline + layers | ~20 linhas | 1379  |
 
 Total: **5 arquivos, 141 novas, 146 removidas. Zero testes quebrados.**
 
@@ -118,9 +117,9 @@ Total: **5 arquivos, 141 novas, 146 removidas. Zero testes quebrados.**
 <Terminal
   title="~/dogwalk — bash"
   commands={[
-    { cmd: 'git show cd31f0dd --stat', description: 'Ver as mudanças do commit dos 3 bugs' },
-    { cmd: 'npx vitest run | tail -5', description: 'Rodar testes — 1379 passando' },
-    { cmd: 'grep -r "opts.public" src/services/api.js', description: 'Ver o padrão public endpoint' },
-    { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'Ver todos os guards de mapa' },
+  { cmd: 'git show cd31f0dd --stat', description: 'Ver as mudanças do commit dos 3 bugs' },
+  { cmd: 'npx vitest run | tail -5', description: 'Rodar testes — 1379 passando' },
+  { cmd: 'grep -r "opts.public" src/services/api.js', description: 'Ver o padrão public endpoint' },
+  { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'Ver todos os guards de mapa' },
   ]}
 />

@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-09 16:00:00 -03:00
 project: lifelog
 tags: [lifelog, astro, ux, data, narrativa]
-icon: "📖"
 cover: /covers/lifelog-pubdate-nos-cards.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ A home parecia bagunçada — e ninguém tinha notado o motivo
+##  A home parecia bagunçada — e ninguém tinha notado o motivo
 
 Todo blog tem um detalhe que passa despercebido até alguém apontar: **a data que o card mostra**.
 
@@ -24,12 +23,12 @@ Funciona lindamente em retrospectivas. Mas tem um efeito colateral:
 
 Foi exatamente o que o Samuel apontou: *"ordem dos posts errado também"*. A ordem estava certa (por `pubDate`), mas os cards **mostravam** as datas históricas — e o cérebro lê a data exibida como critério de ordenação.
 
-## 🧠 O conflito: data do evento vs data de publicação
+##  O conflito: data do evento vs data de publicação
 
 O LifeLog tem um sistema duplo de datas no frontmatter:
 
 ```yaml
-date: 2026-08-06 12:00:00 -03:00    # quando o EVENTO aconteceu
+date: 2026-08-06 12:00:00 -03:00  # quando o EVENTO aconteceu
 pubDate: 2026-08-09 16:00:00 -03:00 # quando PUBLICAMOS
 ```
 
@@ -43,28 +42,28 @@ A correção foi uma linha em `src/pages/index.astro` e `src/pages/en/index.astr
 date={post.data.pubDate || post.data.date}
 ```
 
-## ⚡ A resolução — e o que ela revelou
+##  A resolução — e o que ela revelou
 
 Com `pubDate` no card, a home ficou consistente: **09, 09, 09, 09, 08, 08, 07, 07** — a data exibida bate com a ordenação.
 
 A lição vai além de datas: **toda métrica exibida precisa usar o mesmo critério da ordenação.** Um card que mostra "07" mas está no topo por ter sido publicado dia 09 cria dissonância cognitiva — o usuário assume que está errado, mesmo quando a lógica por trás é correta.
 
-## 🧠 Detalhes técnicos
+##  Detalhes técnicos
 
 | Item | Antes | Depois |
 |------|-------|--------|
 | Card mostra | `date` (evento histórico) | `pubDate` (publicação) |
-| Home ordena por | `pubDate` ✓ | `pubDate` ✓ |
-| Consistência visual | ❌ datas misturadas | ✅ 09, 09, 08, 08... |
+| Home ordena por | `pubDate`  | `pubDate`  |
+| Consistência visual |  datas misturadas |  09, 09, 08, 08... |
 
 ```bash
 # PT e EN
 sed -i "s/date={post.data.date}/date={post.data.pubDate || post.data.date}/" \
   src/pages/index.astro src/pages/en/index.astro
-npx astro build   # 148 páginas, build limpo
+npx astro build  # 148 páginas, build limpo
 ```
 
-## 🛠️ E o portifólio?
+##  E o portifólio?
 
 A mesma discussão rolou no Portifólio: o parser do RSS agora **ordena por pubDate desc** e filtra EN durante o parse — garantindo que os 3 cards "Do Blog" mostrem os posts mais recentes de verdade, não os primeiros do XML.
 

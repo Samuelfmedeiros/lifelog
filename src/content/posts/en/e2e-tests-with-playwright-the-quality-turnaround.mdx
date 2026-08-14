@@ -5,7 +5,6 @@ date: 2026-06-15 10:00:00 -03:00
 pubDate: 2026-07-13 00:00:00 -03:00
 project: dogwalk
 tags: ["dogwalk", "playwright", "testing", "e2e", "ci-cd", "quality", "automation"]
-icon: "🐶"
 cover: /covers/e2e-tests-with-playwright-the-quality-turnaround.webp
 featured: true
 lang: 'en'
@@ -70,18 +69,18 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,
   use: {
-    baseURL: process.env.PLAYWRIGHT_TEST_URL || 'http://localhost:5173',
-    headless: true,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
-    lang: 'en-US',
-    timezoneId: 'America/Sao_Paulo',
+  baseURL: process.env.PLAYWRIGHT_TEST_URL || 'http://localhost:5173',
+  headless: true,
+  trace: 'on-first-retry',
+  screenshot: 'only-on-failure',
+  video: 'retain-on-failure',
+  lang: 'en-US',
+  timezoneId: 'America/Sao_Paulo',
   },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
-    { name: 'firefox', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
-    { name: 'mobile-chrome', use: { browserName: 'chromium', ...devices['Pixel 5'] } },
+  { name: 'chromium', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+  { name: 'firefox', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+  { name: 'mobile-chrome', use: { browserName: 'chromium', ...devices['Pixel 5'] } },
   ],
 })
 ```
@@ -136,8 +135,8 @@ The result? **Zero seconds waiting for authentication**. ProtectedRoute resolves
 ```js
 // helpers/auth.js — realistic mock data
 const MOCK_PETS = [
-  { id: 'mock-pet-001', name: 'Rex', species: 'dog', breed: 'Labrador', age: 3, weight: 28.5, emoji: '🐕' },
-  { id: 'mock-pet-002', name: 'Luna', species: 'dog', breed: 'Golden Retriever', age: 2, weight: 22.0, emoji: '🐩' },
+  { id: 'mock-pet-001', name: 'Rex', species: 'dog', breed: 'Labrador', age: 3, weight: 28.5, emoji: '' },
+  { id: 'mock-pet-002', name: 'Luna', species: 'dog', breed: 'Golden Retriever', age: 2, weight: 22.0, emoji: '' },
 ]
 
 const MOCK_WALKERS = [
@@ -171,15 +170,15 @@ This also feeds the **flaky tracking system**:
 ```python
 # track-flaky.py — CSV history of flaky tests
 def record(results_json_path: str):
-    data = json.load(open(results_json_path))
-    stats = data.get("stats", {})
-    passed = stats.get("expected", 0)
-    failed = stats.get("unexpected", 0)
-    total = stats.get("total", 0)
+  data = json.load(open(results_json_path))
+  stats = data.get("stats", {})
+  passed = stats.get("expected", 0)
+  failed = stats.get("unexpected", 0)
+  total = stats.get("total", 0)
 
-    with open("test-results/flaky-history.csv", "a") as f:
-        writer = csv.writer(f)
-        writer.writerow([datetime.now(), passed, failed, total])
+  with open("test-results/flaky-history.csv", "a") as f:
+  writer = csv.writer(f)
+  writer.writerow([datetime.now(), passed, failed, total])
 ```
 
 ## The CI trinity: E2E tests before deploy
@@ -189,7 +188,7 @@ Dogwalk's deploy has a CI/CD pipeline with **quality as a gate**. The flow is:
 1. **Lint** — ESLint checks code standards
 2. **Unit tests** — Vitest runs full suite
 3. **Build** — Vite build with env vars
-4. **E2E tests** (⬅️ here!) — Preview server + Playwright
+4. **E2E tests** ( here!) — Preview server + Playwright
 5. **Deploy** — Only if ALL steps pass
 6. **Health check** — Multi-route curl post-deploy
 
@@ -198,16 +197,16 @@ Dogwalk's deploy has a CI/CD pipeline with **quality as a gate**. The flow is:
 - name: Run E2E tests
   if: github.ref_name == 'master'
   env:
-    PLAYWRIGHT_TEST_URL: http://localhost:4173
+  PLAYWRIGHT_TEST_URL: http://localhost:4173
   run: pnpm test:e2e:ci
 
 - name: Health Check — Multi-Route
   if: github.ref_name == 'master'
   run: |
-    for ROUTE in "/" "/login" "/plans"; do
-      CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://seu.pet${ROUTE}")
-      echo "${ROUTE} → $CODE"
-    done
+  for ROUTE in "/" "/login" "/plans"; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://seu.pet${ROUTE}")
+  echo "${ROUTE} → $CODE"
+  done
 ```
 
 This means: **every push to master runs E2E against the exact build that will go live**. If it breaks, no deploy.
@@ -218,8 +217,8 @@ The pipeline was also optimized with Playwright browser caching — the first bu
 - name: Cache Playwright browsers
   uses: actions/cache@v4
   with:
-    path: ~/.cache/ms-playwright
-    key: playwright-\${{ hashFiles('pnpm-lock.yaml') }}
+  path: ~/.cache/ms-playwright
+  key: playwright-\${{ hashFiles('pnpm-lock.yaml') }}
 ```
 
 ## Current coverage: what each test covers
@@ -262,9 +261,9 @@ Dogwalk's cookie banner has `pointer-events: none` on the container so it doesn'
 ```js
 export async function dismissCookieBanner(page) {
   await page.evaluate(() => {
-    document.querySelectorAll('[style*="position: sticky"], [style*="position:fixed"]').forEach(el => {
-      if (el.style.top === '0px') el.style.display = 'none'
-    })
+  document.querySelectorAll('[style*="position: sticky"], [style*="position:fixed"]').forEach(el => {
+  if (el.style.top === '0px') el.style.display = 'none'
+  })
   })
 }
 ```
@@ -308,11 +307,11 @@ In the end, the biggest change wasn't technical — it was **mental**. Before, d
 
 <Terminal
   lines={[
-    { cmd: 'pnpm test:e2e', output: 'Run all E2E tests' },
-    { cmd: 'pnpm test:e2e:ci', output: 'CI wrapper with JSON + notification' },
-    { cmd: 'pnpm test:e2e:quick', output: 'Chromium only, 15s timeout' },
-    { cmd: 'pnpm test:e2e:debug', output: 'Headed browser with infinite timeout' },
-    { cmd: 'pnpm test:e2e:report', output: 'Open HTML report' },
-    { cmd: 'PLAYWRIGHT_TEST_URL=https://seu.pet pnpm test:e2e', output: 'Against production' },
+  { cmd: 'pnpm test:e2e', output: 'Run all E2E tests' },
+  { cmd: 'pnpm test:e2e:ci', output: 'CI wrapper with JSON + notification' },
+  { cmd: 'pnpm test:e2e:quick', output: 'Chromium only, 15s timeout' },
+  { cmd: 'pnpm test:e2e:debug', output: 'Headed browser with infinite timeout' },
+  { cmd: 'pnpm test:e2e:report', output: 'Open HTML report' },
+  { cmd: 'PLAYWRIGHT_TEST_URL=https://seu.pet pnpm test:e2e', output: 'Against production' },
   ]}
 />

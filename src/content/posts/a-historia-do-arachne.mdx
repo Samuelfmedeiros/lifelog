@@ -5,20 +5,19 @@ date: 2026-08-01 14:00:00 -03:00
 pubDate: 2026-08-01 16:00:00 -03:00
 project: arachne
 tags: ["arachne", "rag", "mcp", "agent", "conhecimento"]
-icon: "🕷️"
 cover: /covers/a-historia-do-arachne.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O scraper que virou um sistema operacional de conhecimento
+##  O scraper que virou um sistema operacional de conhecimento
 
 Tudo começou com uma necessidade simples: **extrair conteúdo de sites que bloqueiam scraping**. O Arachne nasceu como um scraper especializado pra iMasters, com quatro níveis de evasão (Basic → Stealth → Headless → Camoufox).
 
 Mas hoje ele é uma plataforma com RAG híbrido, chatbot com ReAct Agent de 42 ferramentas, MCP server, pipeline visual com 38 handlers, visão computacional, áudio, e monetização — **2.818 testes** garantindo que nada disso quebra.
 
-## 🧠 Contexto — do crawler à plataforma
+##  Contexto — do crawler à plataforma
 
 O commit inicial foi em 9 de junho de 2026:
 
@@ -30,7 +29,7 @@ Esse commit é revelador: o Arachne já nasceu **sabendo que ia além do scrapin
 
 A virada de produto veio com o **Knowledge OS**: bases de conhecimento com wizard de 3 passos, ingestão por URL ou texto, e busca híbrida (FTS5 + vetorial + RRF) com cross-encoder reranker.
 
-## 🔧 A luta — 4 camadas de evasão e a busca que não achava
+##  A luta — 4 camadas de evasão e a busca que não achava
 
 A batalha inicial foi contra o Cloudflare. Cada site tinha um nível de proteção diferente — e o pipeline precisava escalar:
 
@@ -50,13 +49,13 @@ results = rrf_fusion(fts_results, vector_results)
 results = cross_encoder_rerank(query, results, top_k=5)
 ```
 
-## 💡 Resolução — o ReAct Agent e o MCP server
+##  Resolução — o ReAct Agent e o MCP server
 
 O ponto alto foi quando o Arachne deixou de ser uma API e virou um **agente**. O ReAct Agent cresceu de 36 pra 42 ferramentas com router planner + fallback + cache. E o MCP server (stdio + SSE) expôs tudo pra agentes externos — Cursor, Claude, Hermes.
 
 A cereja do bolo: o **SDK Python publicado no PyPI** (`pip install arachne-sdk`), e o pipeline de **vision-to-text v2** — 5 extratores (PySceneDetect, OpenCV K-Means, EasyOCR, Florence-2, Whisper) que transformam vídeo em texto estruturado pra LLM.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | 09/06 (nascimento) | 31/07 (hoje) |
 |---------|-------------------|--------------|
@@ -67,7 +66,7 @@ A cereja do bolo: o **SDK Python publicado no PyPI** (`pip install arachne-sdk`)
 | Conectores | 0 | 18 |
 | Crawlers | 1 (iMasters) | 13 especializados |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 O Arachne provou que **escalar não é adicionar feature — é adicionar arquitetura**. Cada nível de evasão, cada camada de busca, cada tool do agente foi uma resposta a um problema real, não especulação.
 
@@ -75,9 +74,9 @@ E a lição mais importante: quando a ferramenta fica boa o suficiente, **os age
 
 <Terminal
   lines={[
-    { cmd: 'git rev-list --count HEAD', output: '777 commits desde o início' },
-    { cmd: 'pytest --collect-only -q | tail -1', output: '2818+ testes coletados' },
-    { cmd: 'curl -s http://localhost:9000/api/health | python3 -m json.tool', output: '{"status": "ok", "server": "arachne"}' },
-    { cmd: 'pip install arachne-sdk', output: 'v0.2.3 — SDK no PyPI' },
+  { cmd: 'git rev-list --count HEAD', output: '777 commits desde o início' },
+  { cmd: 'pytest --collect-only -q | tail -1', output: '2818+ testes coletados' },
+  { cmd: 'curl -s http://localhost:9000/api/health | python3 -m json.tool', output: '{"status": "ok", "server": "arachne"}' },
+  { cmd: 'pip install arachne-sdk', output: 'v0.2.3 — SDK no PyPI' },
   ]}
 />

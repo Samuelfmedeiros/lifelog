@@ -7,7 +7,6 @@ pubDate: 2026-07-12 00:00:00 -03:00
 project: descobertas
 tags: ["backup", "seguranca", "automacao", "ecossistema", "devops"]
 
-icon: 💡
 cover: /covers/ecossistema-backups-seguranca-automacao.webp
 featured: false
 ---
@@ -29,8 +28,8 @@ mkdir -p "$BACKUP_DIR"
 
 # Projetos
 for project in arachne dogwalk capivara; do
-    sqlite3 "~/projetos/$project/data/$project.db" \
-        ".backup '$BACKUP_DIR/${project}_$(date +%H%M).db'"
+  sqlite3 "~/projetos/$project/data/$project.db" \
+  ".backup '$BACKUP_DIR/${project}_$(date +%H%M).db'"
 done
 
 # Sincronizar com M: (backup secundário)
@@ -68,10 +67,10 @@ Quando o relógio bateu meia-noite de 1º de julho, o ecossistema estava assim:
 
 | Projeto | Status | Backup | CI |
 |---------|--------|--------|----|
-| Arachne | Pipeline multi-engine rodando | Automático | ✅ |
-| Dogwalk | Testes E2E + CI | Automático | ✅ |
-| Capivara | Hub pessoal seguro em construção | Automático | 🔄 |
-| Portifolio | Redesign começando | Estático | 🔄 |
+| Arachne | Pipeline multi-engine rodando | Automático |  |
+| Dogwalk | Testes E2E + CI | Automático |  |
+| Capivara | Hub pessoal seguro em construção | Automático |  |
+| Portifolio | Redesign começando | Estático |  |
 
 Não era perfeito. Mas era robusto. E era meu.
 

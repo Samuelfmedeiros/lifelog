@@ -5,7 +5,6 @@ date: 2026-07-01 10:00:00 -03:00
 pubDate: 2026-07-14 22:00:00 -03:00
 project: descobertas
 tags: ["discoveries", "tools", "dev", "productivity"]
-icon: "💡"
 cover: /covers/july-discoveries-tools-that-changed-my-flow.webp
 featured: false
 lang: 'en'
@@ -35,12 +34,12 @@ First impact: installing Arachne's dependencies (380+ packages) dropped from **4
 # Before: pip + manual venv
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt       # 47s
+pip install -r requirements.txt  # 47s
 
 # After: uv handles everything
-uv sync                                # 6s
-uv add fastapi                         # install + lock
-uv tool run pytest                     # without activating venv
+uv sync  # 6s
+uv add fastapi  # install + lock
+uv tool run pytest  # without activating venv
 ```
 
 But what really got me hooked was `uv tool` — it runs isolated Python tools without contaminating the global environment, like `npx` for Node:
@@ -92,11 +91,11 @@ The ecosystem I built in July:
 
 ```
 mcp-servers/
-├── filesystem/    # read/write files with permissions
-├── github/        # PRs, issues, code search
+├── filesystem/  # read/write files with permissions
+├── github/  # PRs, issues, code search
 ├── sequential-thinking/  # structured reasoning
-├── fetch/         # fetch web pages
-└── arachne/       # scraping, vision, transcribe, RAG → 36 tools
+├── fetch/  # fetch web pages
+└── arachne/  # scraping, vision, transcribe, RAG → 36 tools
 ```
 
 Each server exposes tools that any agent can consume. When I connected Hermes to MCP Arachne for the first time, it was magical:
@@ -117,14 +116,14 @@ Hermes didn't need to know _how_ scraping worked — it just asked. MCP made the
 ```yaml
 mcp_servers:
   filesystem:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projetos/projetos"]
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "~/projetos/projetos"]
   github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
   arachne:
-    command: python3
-    args: ["-m", "arachne.mcp.server"]
+  command: python3
+  args: ["-m", "arachne.mcp.server"]
 ```
 
 Done. Hermes discovers and exposes the tools on the next interaction. No restart, no extra config.
@@ -140,8 +139,8 @@ After a month of experimentation, my daily flow became:
 
 ```
 # Real example: debug + fix + deploy
-codex "fix the timezone bug in the scheduler"     # 30s → fixes
-hermes "run the tests, deploy the hotfix"          # 2min → tests + deploy
+codex "fix the timezone bug in the scheduler"  # 30s → fixes
+hermes "run the tests, deploy the hotfix"  # 2min → tests + deploy
 ```
 
 Each tool in its niche. None trying to do everything alone.

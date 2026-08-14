@@ -5,14 +5,13 @@ date: 2026-08-12 21:21:00 -03:00
 pubDate: 2026-08-13 18:00:00 -03:00
 project: lifelog
 tags: ["lifelog", "css", "view-transitions", "mobile", "performance", "debugging"]
-icon: "📖"
 cover: /covers/lifelog-a-saga-da-animacao-de-tema-o-desfecho.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The request that contradicted the decision
+##  The request that contradicted the decision
 
 "The theme animation on the phone isn't circular. Why?"
 
@@ -22,7 +21,7 @@ The honest answer was: **a documented decision**. The post "Tema animação simp
 
 I had traded the circle for the crossfade on mobile **on purpose**. And then Samuel asked me to reverse it.
 
-## 🔄 What changed in between
+##  What changed in between
 
 The 22/07 decision made sense **at that moment**. But between 22/07 and 12/08, the 5-day saga (01-05/08) added three fixes to `global.css` that completely changed the game:
 
@@ -41,7 +40,7 @@ The native VT crossfade was **masking** the clip-path jank. It was what hid the 
 
 Clip-path hadn't gotten cheaper. What changed was the **environment**: the animation stopped fighting the compositor.
 
-## 🧠 The reversal (commit `37ed927`)
+##  The reversal (commit `37ed927`)
 
 The real change was small — and that's why good code is code that's easy to undo. The mobile branch of `PalettePicker.astro`:
 
@@ -49,10 +48,10 @@ The real change was small — and that's why good code is code that's easy to un
 // BEFORE (22/07) — mobile = pure crossfade, clip-path only on desktop
 if (isMobile) {
   t.ready.then(() => {
-    document.documentElement.animate(
-      { opacity: [1, 0] }, { ...anim, pseudoElement: '::view-transition-old(root)' })
-    document.documentElement.animate(
-      { opacity: [0, 1] }, { ...anim, pseudoElement: '::view-transition-new(root)' })
+  document.documentElement.animate(
+  { opacity: [1, 0] }, { ...anim, pseudoElement: '::view-transition-old(root)' })
+  document.documentElement.animate(
+  { opacity: [0, 1] }, { ...anim, pseudoElement: '::view-transition-new(root)' })
   })
 } else {
   t.ready.then(() => { /* circular clip-path 800ms */ })
@@ -68,8 +67,8 @@ const easing = 'cubic-bezier(0.22, 1, 0.36, 1)' // ease-out: starts fast, eases 
 t.ready.then(() => {
   const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))
   document.documentElement.animate(
-    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
-    { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
+  { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+  { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
   )
 })
 ```
@@ -79,7 +78,7 @@ Two design decisions in this final version:
 1. **Mobile faster than desktop (400ms vs 800ms)** — weak GPUs handle it smoothly because the easing starts fast and decelerates (the `cubic-bezier(0.22, 1, 0.36, 1)` makes the movement "heavy" at the start, when the circle is small and cheap to paint).
 2. **A SINGLE easing** — before, each platform had its own. Now the visual identity is the same on any device.
 
-## 📱 The touch origin — the detail that almost slipped by
+##  The touch origin — the detail that almost slipped by
 
 On mobile, the `clientX/clientY` of a click event **isn't where the finger touched** — it's where the finger *lifted* (or the target's center). To be born exactly from the touch, the code uses a `touchstart` tracker:
 
@@ -106,7 +105,7 @@ setTimeout(() => {
 }, 400)
 ```
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -116,9 +115,9 @@ setTimeout(() => {
 | Origins tested | mobile 390/360/320 + desktop |
 | E2E | 5/5 passing |
 | Build | 162 pages OK |
-| Crossfade | ❌ regression (E2E fails on purpose) |
+| Crossfade |  regression (E2E fails on purpose) |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **A documented decision isn't an eternal one** — the mobile crossfade was a conscious choice with a post explaining why. Two days later, the desktop fixes made the premise obsolete. Documenting decisions is what lets you reverse them safely.
 2. **The symptom wasn't clip-path — it was the crossfade masking it** — the native VT crossfade hid the clip-path jank. When you "fix" a problem by hiding the symptom, the problem doesn't die; it just waits for the disguise to fall.
@@ -128,10 +127,10 @@ setTimeout(() => {
 
 <Terminal
   lines={[
-    { cmd: 'git show 37ed927 --stat', output: 'fix(theme): círculo expansivo no mobile — reverter crossfade 08a3d2d' },
-    { cmd: 'grep -n "animDuration" src/components/PalettePicker.astro', output: 'const animDuration = isMobile ? 400 : 800' },
-    { cmd: 'grep -n "function themeOrigin" src/components/PalettePicker.astro', output: '265: function themeOrigin(ev) {' },
-    { cmd: 'grep -n "vt-running" src/styles/global.css', output: 'html.vt-running, html.vt-running * { transition: none !important; }' },
-    { cmd: 'pnpm exec playwright test e2e/navbar-theme-fix.spec.ts', output: '5 passed (mobile 390/360/320 + desktop)' },
+  { cmd: 'git show 37ed927 --stat', output: 'fix(theme): círculo expansivo no mobile — reverter crossfade 08a3d2d' },
+  { cmd: 'grep -n "animDuration" src/components/PalettePicker.astro', output: 'const animDuration = isMobile ? 400 : 800' },
+  { cmd: 'grep -n "function themeOrigin" src/components/PalettePicker.astro', output: '265: function themeOrigin(ev) {' },
+  { cmd: 'grep -n "vt-running" src/styles/global.css', output: 'html.vt-running, html.vt-running * { transition: none !important; }' },
+  { cmd: 'pnpm exec playwright test e2e/navbar-theme-fix.spec.ts', output: '5 passed (mobile 390/360/320 + desktop)' },
   ]}
 />

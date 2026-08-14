@@ -10,7 +10,6 @@ tags:
   - astro
   - documentação
   - mdx
-icon: "💡"
 cover: /covers/lifelog-nasce-o-blog-que-documenta-a-jornada.webp
 featured: true
 ---
@@ -57,17 +56,17 @@ import { defineCollection, z } from 'astro:content'
 const posts = defineCollection({
   type: 'content',
   schema: z.object({
-    title: z.string(),
-    description: z.string(),
-    date: z.date(),
-    pubDate: z.date().optional(),
-    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
-                      'tatuengine', 'estudos', 'descobertas']),
-    tags: z.array(z.string()),
-    icon: z.string().optional(),
-    cover: z.string().optional(),
-    featured: z.boolean().default(false),
-    draft: z.boolean().default(false),
+  title: z.string(),
+  description: z.string(),
+  date: z.date(),
+  pubDate: z.date().optional(),
+  project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+  'tatuengine', 'estudos', 'descobertas']),
+  tags: z.array(z.string()),
+  icon: z.string().optional(),
+  cover: z.string().optional(),
+  featured: z.boolean().default(false),
+  draft: z.boolean().default(false),
   }),
 })
 ```
@@ -92,18 +91,18 @@ O deploy vai pra Vercel via GitHub Actions:
 name: Deploy
 on:
   push:
-    branches: [main]
+  branches: [main]
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npm run build
-      - run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+  runs-on: ubuntu-latest
+  steps:
+  - uses: actions/checkout@v4
+  - uses: actions/setup-node@v4
+  with:
+  node-version: 22
+  - run: npm ci
+  - run: npm run build
+  - run: npx vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
 ```
 
 Build em ~30 segundos. Post novo no ar em 1 minuto depois do push. Zero infra pra gerenciar.
@@ -114,10 +113,10 @@ A maioria dos posts termina com um componente terminal fake que resume as ideias
 
 <Terminal
   lines={[
-    { cmd: 'cat ~/projetos/lifelog/src/content/posts/*.mdx | wc -l', output: 'cada post vira página automaticamente' },
-    { cmd: 'npm run build 2>&1 | tail -2', output: '30 pages built in 3.34s' },
-    { cmd: 'echo "blog > plataforma"', output: 'arquivos .mdx > lock-in de CMS' },
-    { cmd: 'git log --oneline --after="2026-07-07" src/content/posts/', output: 'cada post é um commit' },
+  { cmd: 'cat ~/projetos/lifelog/src/content/posts/*.mdx | wc -l', output: 'cada post vira página automaticamente' },
+  { cmd: 'npm run build 2>&1 | tail -2', output: '30 pages built in 3.34s' },
+  { cmd: 'echo "blog > plataforma"', output: 'arquivos .mdx > lock-in de CMS' },
+  { cmd: 'git log --oneline --after="2026-07-07" src/content/posts/', output: 'cada post é um commit' },
   ]}
 />
 

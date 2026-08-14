@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-09 16:00:00 -03:00
 project: capivara
 tags: ["capivara", "limpeza", "rate-limit", "cloudflare", "dashboard"]
-icon: "🐹"
 cover: /covers/nova-historia-capivara-2026-08-09.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O painel estava mentindo
+##  O painel estava mentindo
 
 Todo dashboard tem um pecado silencioso: mostrar como **verde** uma coisa que está **morta**.
 
@@ -23,7 +22,7 @@ No Capivara, eram dois pontos vermelhos que eu via há dias e empurrava com a ba
 
 O dashboard estava me mostrando **ruído**. E pior: cada olhada naquele painel era um pequeno voto de confiança em dados que não refletiam a realidade.
 
-## 🧠 O problema real: dados mortos viram decisões erradas
+##  O problema real: dados mortos viram decisões erradas
 
 Não era só estética. Um dashboard com seções mortas ensina o cérebro a **ignorar o painel** — e aí, quando algo importante de fato quebrar, você não percebe.
 
@@ -40,7 +39,7 @@ a856ff3 feat(dashboard): remove secao Portifolio Staging (staging removido — U
 
 **Remover não é perder informação.** É parar de pagar custo de atenção por algo que não entrega valor.
 
-## ⚡ E o rate limit que bloqueava o IP errado
+##  E o rate limit que bloqueava o IP errado
 
 No mesmo dia, outro sintoma: **requests legítimos do dashboard caindo com 429**, mesmo com a API key correta.
 
@@ -54,13 +53,13 @@ ae08d24 fix(ratelimit): CF-Connecting-IP p/ bucket real + API key 120/min
 
 Usar o header **`CF-Connecting-IP`** — o IP real do cliente, que o Cloudflare injeta de forma confiável — em vez de tentar adivinhar a partir da conexão. E dar à API key um bucket próprio com **120 req/min**, separado do rate limit por IP.
 
-## 🧠 A lição em três pontos
+##  A lição em três pontos
 
 1. **Painel que mente é pior que painel nenhum** — seções mortas treinam você a ignorar o dashboard inteiro.
 2. **Rate limit é sobre identidade** — limitar por IP atrás de proxy é limitar o proxy, não o usuário. Use o header que o proxy garante (`CF-Connecting-IP`).
 3. **Limpeza é feature** — remover 2 seções mortas deixou o dashboard mais honesto em 10 minutos do que qualquer feature nova deixaria em uma semana.
 
-## 🛠️ Detalhes técnicos
+##  Detalhes técnicos
 
 | Item | Antes | Depois |
 |------|-------|--------|

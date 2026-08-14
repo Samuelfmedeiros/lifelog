@@ -41,13 +41,13 @@ const availableProjects = [...new Set(posts.map(p => p.data.project).filter(Bool
 
 const t = (await import('../../lib/i18n')).getTranslations(locale);
 const subtitleHtml = 'The learning journey of <strong style="color: var(--color-accent)">Samuel Medeiros</strong>';
-const emptyMsg = locale === 'en' ? 'No posts found 😢' : 'Nenhum post encontrado 😢';
+const emptyMsg = locale === 'en' ? 'No posts found' : 'Nenhum post encontrado';
 const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os filtros';
 ---
 
 <BaseLayout title={t.home.title} description={t.home.description} locale={locale}>
   <section class="mb-12 text-center">
-    <h1 class="hero-title">📖 LifeLog</h1>
+    <h1 class="hero-title">LifeLog</h1>
     <p class="hero-subtitle" set:html={subtitleHtml}></p>
     <p class="text-sm mt-2" style="color: var(--color-text-muted)">{t.home.subtitle}</p>
   </section>

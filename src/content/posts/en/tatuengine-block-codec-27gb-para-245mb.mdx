@@ -5,32 +5,31 @@ date: 2026-08-12T16:00:00 -03:00
 pubDate: 2026-08-12 16:00:00 -03:00
 project: tatuengine
 tags: [tatuengine, compression, bvh, codec, ternary, cuda, performance]
-icon: "🧱"
 cover: /covers/tatuengine-block-codec-27gb-para-245mb.webp
 featured: false
 ---
 
 
-## ⚡ The 27GB model that needed to fit in 245MB
+##  The 27GB model that needed to fit in 245MB
 
 BitMamba-2 1B is a 1.58-bit SSM — weights are ternary: `{-1, 0, +1}`. On disk, the packed `.bin` is 614MB. But inside TatuEngine, the inference representation was a **1:1 BVH**: one lens per weight. Each weight became a triangle with position, phase and refraction — and a 1B-parameter model became **27.26 GB** of lenses.
 
 It didn't fit in VRAM (the RTX 3060 has 12GB). It barely fit in RAM. And it was absurd to load 27GB to represent information that fits in 614MB.
 
-## 🧠 Context
+##  Context
 
 TatuEngine's field theory treats inference as *optical traversal*: a `PhaseWave` travels through the lens BVH, and each weight contributes a phase shift. More lenses = more expensive traversal — in both memory and time.
 
 The 1:1 path was simple but suicidal:
 
 ```
-BVH 1:1:      18.66 GB  ❌  > 12GB VRAM
-BVH block:     ~28 MB    ✅  fits in L2 cache
+BVH 1:1:  18.66 GB  > 12GB VRAM
+BVH block:  ~28 MB  fits in L2 cache
 ```
 
 The idea: instead of one lens per weight, one compact lens per **block of ternary weights** — 2 bits per weight packing, plus scale and mean η. A small number of bytes in place of 1024 individual lenses.
 
-## 🔧 The struggle
+##  The struggle
 
 The conversion itself was mechanical: unpack the ternary tensor, group into blocks, store the position in the original tensor. The conversion code pre-computes the ternary values for the whole tensor, then creates the blocks — avoiding re-unpacking per block.
 
@@ -39,21 +38,21 @@ Traversal became a loop with register accumulation — the heart of the lens.
 Then came the part that hurt. The test compared the traversal output against the reference `bridge_matmul`, with `memcmp` + MSE per tensor:
 
 ```
-in_proj:  MSE 3.7e-09  ✅  (ULP differences from accumulation order)
-out_proj: MSE 0.36     ⚠️  (accumulation order between blocks)
-lm_head:  divergence  ❌  debug in progress
+in_proj:  MSE 3.7e-09  (ULP differences from accumulation order)
+out_proj: MSE 0.36  (accumulation order between blocks)
+lm_head:  divergence  debug in progress
 ```
 
 `in_proj` came out perfect — rounding differences at the last-place-unit level. `out_proj` reported `0.36` MSE, already suspicious: it smelled like accumulation order, not lost information. But `lm_head` **genuinely diverged** — and it was the most important tensor, the one mapping to the vocabulary (50,257 tokens).
 
-## 💡 Resolution
+##  Resolution
 
 Even partial, the codec delivered: **245.30 MB vs 27.26 GB = 114× compression**. And the save/load roundtrip with checksum proved the representation was stable.
 
 Validation didn't stop at the codec. The same day, Sprint 17 turned block traversal into a CUDA kernel with parallel reduction and optimized BVH loading. The Golden Test — CPU↔GPU coherence — closed with:
 
 ```
-Phase:      diff = 0.00e+00
+Phase:  diff = 0.00e+00
 Amplitude:  diff = 1.19e-07
 ```
 
@@ -61,7 +60,7 @@ And the batch kernel showed why it was worth it: **orders of magnitude of speedu
 
 The `out_proj` MSE 0.36 lesson confirmed itself in practice: the traversal sums blocks in `BlockBVH` order, while `bridge_matmul` sums in original tensor order — different accumulation order, slightly different result. Not lost information, just floating-point algebra. The `lm_head` stayed as a registered TODO — the GPU golden test ended up validating the structural coherence the codec had introduced.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -72,7 +71,7 @@ The `out_proj` MSE 0.36 lesson confirmed itself in practice: the traversal sums 
 | lm_head | diverged at initial commit (open TODO) |
 | CPU↔GPU coherence (Golden Test) | Phase 0.00e+00 · Amplitude 1.19e-07 |
 
-## 🎯 Takeaways
+##  Takeaways
 
 - **Model compression doesn't need to be lossy to be radical**: ternary weights are already 2 bits — the waste was structural (one lens per weight), not in the bits.
 - **Per-tensor validation separates the problems**: ULP-perfect `in_proj`, accumulation-error `out_proj` and divergent `lm_head` are three different diagnoses — merging them into one number would hide the story.

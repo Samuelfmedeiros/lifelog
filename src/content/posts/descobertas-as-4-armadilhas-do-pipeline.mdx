@@ -5,20 +5,19 @@ date: 2026-08-03 21:30:00 -03:00
 pubDate: 2026-08-03 21:30:00 -03:00
 project: descobertas
 tags: ["descobertas", "automacao", "pipeline", "mdx", "pnpm"]
-icon: "💡"
 cover: /covers/descobertas-as-4-armadilhas-do-pipeline.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O dia em que automatizar quase virou caos
+##  O dia em que automatizar quase virou caos
 
 Automatizar um blog narrativo parecia simples no papel: um cron gera o preview, o dono aprova, o agente escreve PT+EN, gera a capa, faz o build, publica. Cinco passos. Que erro poderia dar?
 
 A resposta veio no dia 03/08/2026, quando o pipeline publicou **5 posts** — e pra isso atravessou **4 armadilhas reais**, cada uma capaz de travar tudo. Nenhuma era bug do conteúdo. Todas eram do **ambiente** ao redor. E cada uma virou uma regra.
 
-## 🧠 Contexto — o pipeline
+##  Contexto — o pipeline
 
 O LifeLog tem um pipeline narrative-first:
 
@@ -29,9 +28,9 @@ cron 12h/16h → lifelog-post-gen.py (preview) → Samuel decide
 
 Até aí, tudo funciona há semanas. O problema começou quando o dia exigiu **volume**: 5 posts pra publicar de uma vez. Volume expõe o que a rotina esconde.
 
-## 🔧 A luta — as 4 paredes
+##  A luta — as 4 paredes
 
-### 🧱 Paredes 1 e 2: o `pnpm` que o guard bloqueava
+###  Paredes 1 e 2: o `pnpm` que o guard bloqueava
 
 O build do Astro roda com `pnpm`. No meu WSL, o pnpm é o do Hermes: `~/projetos/.hermes/node/bin/pnpm`. E foi aí que tudo travou:
 
@@ -49,7 +48,7 @@ O workaround foi direto ao binário real do Astro, com o node do sistema (fora d
 /usr/bin/node node_modules/astro/bin/astro.mjs build
 ```
 
-### 🧱 Parede 3: o `<` que quebrava o MDX
+###  Parede 3: o `<` que quebrava o MDX
 
 O build passou... e quebrou logo depois, num erro esotérico:
 
@@ -70,18 +69,18 @@ H&lt;0.15, Δh&lt;0.001
 
 E quando o `<` é parte de sintaxe (`<|tool:nome|>`), envolver em inline code com backticks.
 
-### 🧱 Parede 4: a capa de 0 bytes
+###  Parede 4: a capa de 0 bytes
 
 No meio do fluxo, uma sessão foi interrompida. Quando voltei, a capa existia... com **0 bytes**. O `generate-cover.py` tinha criado o arquivo e morrido antes de escrever. O build nem reclamava — a imagem simplesmente não existia.
 
 A regra: **sempre checar o estado antes de continuar** — tamanho de arquivo, git status, dist. E se a capa veio com 0 bytes, deletar e regenerar.
 
 ```bash
-rm -f public/covers/<slug>.webp      # 0 bytes → deletar primeiro
-python3 scripts/generate-cover.py <slug>   # regenerar
+rm -f public/covers/<slug>.webp  # 0 bytes → deletar primeiro
+python3 scripts/generate-cover.py <slug>  # regenerar
 ```
 
-## 💡 Resolução — cada parede virou regra
+##  Resolução — cada parede virou regra
 
 As 4 armadilhas não foram só resolvidas — foram **documentadas na skill** do pipeline, pra nunca mais:
 
@@ -92,7 +91,7 @@ As 4 armadilhas não foram só resolvidas — foram **documentadas na skill** do
 
 No final do dia: **5 posts publicados, 10 arquivos MDX, 124 páginas no build, 0 erros** — e 2 novos pitfalls na skill.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -102,7 +101,7 @@ No final do dia: **5 posts publicados, 10 arquivos MDX, 124 páginas no build, 0
 | Pitfalls registrados na skill | 2 (pnpm guard + MDX `<`) |
 | Workarounds documentados | 4 |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Automação é 20% script e 80% ambiente** — o conteúdo nunca foi o problema; foram o guard, o parser, o arquivo e a sessão.
 2. **O binário certo no caminho certo** — binários que resolvem pra dentro de `~/.config/hermes/` viram alvo do guard. Pinar caminhos absolutos.
@@ -111,9 +110,9 @@ No final do dia: **5 posts publicados, 10 arquivos MDX, 124 páginas no build, 0
 
 <Terminal
   lines={[
-    { cmd: '/usr/bin/node node_modules/astro/bin/astro.mjs build', output: 'build que o guard não bloqueia' },
-    { cmd: 'grep -n "H&lt;" src/content/posts/*.mdx', output: 'entidade &lt; no lugar do <' },
-    { cmd: 'ls -la public/covers/<slug>.webp', output: 'checar capa != 0 bytes' },
-    { cmd: 'git status --short', output: 'inspecionar estado após interrupção' },
+  { cmd: '/usr/bin/node node_modules/astro/bin/astro.mjs build', output: 'build que o guard não bloqueia' },
+  { cmd: 'grep -n "H&lt;" src/content/posts/*.mdx', output: 'entidade &lt; no lugar do <' },
+  { cmd: 'ls -la public/covers/<slug>.webp', output: 'checar capa != 0 bytes' },
+  { cmd: 'git status --short', output: 'inspecionar estado após interrupção' },
   ]}
 />

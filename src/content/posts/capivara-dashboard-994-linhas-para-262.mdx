@@ -5,14 +5,13 @@ date: 2026-08-06 12:00:00 -03:00
 pubDate: 2026-08-08 16:00:00 -03:00
 project: capivara
 tags: ["capivara", "refactoring", "react", "performance", "code-splitting"]
-icon: "🐹"
 cover: /covers/capivara-dashboard-994-linhas-para-262.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O componente monstro
+##  O componente monstro
 
 Tinha um arquivo no Capivara que todo mundo (eu, o agente, qualquer um que abrisse o repo) evitava: **`Dashboard.tsx` com 994 linhas**.
 
@@ -20,7 +19,7 @@ Não era um componente. Era um **condomínio** — stats de projetos, health che
 
 Cada feature nova adicionava mais um `useEffect`, mais um `useState`, mais um bloco de JSX. E o pior: **o bundle inicial pesava 668 kB** — o navegador baixava TUDO antes de mostrar QUALQUER coisa.
 
-## 🧠 O contexto: 668 kB pro primeiro pixel
+##  O contexto: 668 kB pro primeiro pixel
 
 O problema não era só legibilidade. Era performance:
 
@@ -32,7 +31,7 @@ A refatoração tinha 2 objetivos:
 1. **Dashboard 994 → ~260 linhas** (componentes extraídos)
 2. **Bundle 668 → ~240 kB** (só carrega o que precisa)
 
-## 🔧 A luta: extrair, dividir, lazy-load
+##  A luta: extrair, dividir, lazy-load
 
 **Passo 1 — Extrair componentes.** O Dashboard era um God Component. Cada seção virou um componente próprio: StatusPage, 7 componentes admin (Dogwalk, Umami, Overview, Notifications, Logs, Tracking, TwoFA), gráfico Recharts interativo, toast system, ThemeToggle, SearchBar.
 
@@ -55,7 +54,7 @@ const WSLPanel = lazy(() => import("./WSLPanel"));
 
 **Passo 3 — remover `window.location`.** A navegação manual (`window.location = ...`) recarregava a página inteira. React Router v7 faz SPA navigation — só troca o componente, sem reload.
 
-## 💡 A resolução: menos é mais
+##  A resolução: menos é mais
 
 Os números pós-refatoração:
 
@@ -69,7 +68,7 @@ Os números pós-refatoração:
 
 E o melhor: **nenhuma funcionalidade foi perdida**. O dashboard continuou com tudo — stats, health, Umami, Dogwalk, convites, 2FA — só que organizado e carregando sob demanda.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -80,7 +79,7 @@ E o melhor: **nenhuma funcionalidade foi perdida**. O dashboard continuou com tu
 | Testes backend | 131/131 passando |
 | TypeScript | 0 erros |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Componente gigante não é feature — é dívida** — 994 linhas num arquivo é um sinal de que as responsabilidades estão misturadas. Extrair por responsabilidade única torna o código manutenível.
 
@@ -92,9 +91,9 @@ E o melhor: **nenhuma funcionalidade foi perdida**. O dashboard continuou com tu
 
 <Terminal
   lines={[
-    { cmd: 'wc -l frontend/src/pages/Dashboard.tsx', output: 'Antes: 994 → Depois: 262 linhas' },
-    { cmd: 'grep -c "lazy(() => import" frontend/src/', output: 'N rotas com lazy loading — bundle dividido' },
-    { cmd: 'pnpm build', output: 'TypeScript 0 erros + code splitting' },
-    { cmd: 'ls frontend/src/pages/admin/', output: '7 componentes admin — cada um com responsabilidade única' },
+  { cmd: 'wc -l frontend/src/pages/Dashboard.tsx', output: 'Antes: 994 → Depois: 262 linhas' },
+  { cmd: 'grep -c "lazy(() => import" frontend/src/', output: 'N rotas com lazy loading — bundle dividido' },
+  { cmd: 'pnpm build', output: 'TypeScript 0 erros + code splitting' },
+  { cmd: 'ls frontend/src/pages/admin/', output: '7 componentes admin — cada um com responsabilidade única' },
   ]}
 />

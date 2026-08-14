@@ -5,12 +5,11 @@ date: 2026-08-03 20:30:00 -03:00
 pubDate: 2026-08-03 20:30:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "convergencia", "teacher-student", "sft", "raciocinio"]
-icon: "🦔"
 cover: /covers/tatuengine-operacao-convergencia-mestre-aprendiz.webp
 featured: false
 ---
 
-## ⚡ O motor que resolveu se ensinar
+##  O motor que resolveu se ensinar
 
 Primeiro o TatuEngine aprendeu a **inferir**: um modelo ternário de 1B parâmetros rodando em GPU com 252× de speedup, 114× de compressão, bit-a-bit idêntico ao CPU. Depois aprendeu a **agir**: agente autopoiético com 8 subsistemas, sandbox de segurança, MCP, memória.
 
@@ -18,7 +17,7 @@ Aí veio a pergunta que muda tudo: **e se o motor aprender a se ensinar?**
 
 A resposta foi a **Operação Convergência** — um dia intenso de R&D (04/07/2026) que empilhou seis versões (v0.17.0 → v0.22.2) pra montar o ciclo **Mestre-Aprendiz**: um modelo professor destilando raciocínio pra um modelo aluno. E como toda boa saga, quase não funcionou.
 
-## 🧠 Contexto — o professor e o aluno
+##  Contexto — o professor e o aluno
 
 O ciclo Mestre-Aprendiz é a porta pro auto-aprimoramento:
 
@@ -28,7 +27,7 @@ O ciclo Mestre-Aprendiz é a porta pro auto-aprimoramento:
 
 Antes da Operação Convergência, o motor já tinha a base: API compatível OpenAI (v0.13), TUI chat (v0.15), benchmark (v0.16), TatuViz com grafo cognitivo (v0.17). Faltava o **raciocínio estruturado** — e a ponte entre os dois modelos.
 
-## 🔧 A luta — seis versões num dia
+##  A luta — seis versões num dia
 
 ### v0.18: Densidade Cognitiva
 
@@ -53,7 +52,7 @@ O student não aprende só a resposta — aprende o **formato de pensar**.
 
 **Mineração semântica forçada + Mamba-2 R&D** — empurra o modelo a minerar conhecimento, não só reproduzir.
 
-### 💥 O momento crítico: a convergência que não vinha
+###  O momento crítico: a convergência que não vinha
 
 Aqui a saga quase morreu. O student **não convergia** — as respostas não seguiam o formato, o alinhamento quebrava. Dois commits resolveram: a Operação Convergência (mineração semântica forçada) e o fix do teacher system message.
 
@@ -63,7 +62,7 @@ O vilão era o **system message do teacher**: a instrução que o professor rece
 
 Só aceita o que tem tags fechadas, steps coerentes e o par thought/answer completo.
 
-## 💡 Resolução — o ciclo completo
+##  Resolução — o ciclo completo
 
 A Operação Convergência entregou a infraestrutura inteira do ciclo Mestre-Aprendiz:
 
@@ -74,7 +73,7 @@ A Operação Convergência entregou a infraestrutura inteira do ciclo Mestre-Apr
 
 O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 épocas, 381 exemplos, GPU) e comparar Student vs Teacher. O motor aprendeu a inferir, aprendeu a agir, e agora está aprendendo a **aprender**.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -85,7 +84,7 @@ O próximo marco: **Student SFT** — treinar o BitMamba-1B de verdade (3 época
 | Fix de convergência | teacher system message (v0.22.0) |
 | Validador | rigoroso: tags, steps, thought/answer (v0.22.1) |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Convergência não é automática — o professor importa** — o fix que destravou tudo foi o **system message do teacher**, não o student. O aluno só converge se o mestre ensinar do jeito certo.
 2. **Ensinar formato é ensinar raciocínio** — o protocolo `[THOUGHT]/[ANSWER]` faz o student aprender o processo, não só a resposta.

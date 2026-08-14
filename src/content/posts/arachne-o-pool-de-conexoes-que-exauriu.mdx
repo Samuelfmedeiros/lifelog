@@ -5,14 +5,13 @@ date: 2026-08-07 12:00:00 -03:00
 pubDate: 2026-08-08 12:00:00 -03:00
 project: arachne
 tags: ["arachne", "postgres", "sqlalchemy", "pool", "debugging"]
-icon: "🕷️"
 cover: /covers/arachne-o-pool-de-conexoes-que-exauriu.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O hub que respondia, mas estava vazio
+##  O hub que respondia, mas estava vazio
 
 Eram 12h de 07/08. O Bug Hunter (o auditor automático que renderiza as rotas e checa se o conteúdo montou) rodou como sempre. Resultado: `/hub`, `/playground`, `/knowledge`, `/tools/scrape` com `#app len=7` — ou seja, o HTML tinha só o `<div id="app"></div>` vazio, sem nada dentro.
 
@@ -20,7 +19,7 @@ O Arachne respondia **HTTP 200**. O deploy tava verde. Mas as rotas autenticadas
 
 E no journal: **1.239 erros** de `QueuePool limit ... timeout 30.00` acumulados desde as **02:57**.
 
-## 🧠 O contexto: pool de conexões é finito
+##  O contexto: pool de conexões é finito
 
 O Arachne usa SQLAlchemy com PostgreSQL. O pool padrão é `QueuePool` com **10 conexões ativas + 20 de overflow** = máximo 30 simultâneas.
 
@@ -28,13 +27,13 @@ Quando o pool enche, novas requisições **esperam** (`timeout 30.00`) e depois 
 
 O suspeito: o middleware de autenticação por X-API-Key.
 
-## 🔧 A luta: o generator que nunca era fechado
+##  A luta: o generator que nunca era fechado
 
 O `auth_middleware` fazia uma query pra validar a API key:
 
 ```python
-# ❌ Antes — o generator vaza a conexão
-_session = next(_get_session())   # abre a sessão... e NUNCA fecha
+#  Antes — o generator vaza a conexão
+_session = next(_get_session())  # abre a sessão... e NUNCA fecha
 # usa _session pra validar a key
 # ... request termina, generator fica aberto
 ```
@@ -54,16 +53,16 @@ WHERE datname = 'arachne' GROUP BY state;
 # 38 idle in transaction  ← as órfãs
 ```
 
-## 💡 A resolução: fechar o generator no finally
+##  A resolução: fechar o generator no finally
 
 ```python
-# ✅ Depois — guarda o generator e fecha no finally
+#  Depois — guarda o generator e fecha no finally
 _session_gen = _get_session()
 try:
-    _session = next(_session_gen)
-    # valida a key
+  _session = next(_session_gen)
+  # valida a key
 finally:
-    _session_gen.close()   # roda o __exit__ → session.close() → conexão volta ao pool
+  _session_gen.close()  # roda o __exit__ → session.close() → conexão volta ao pool
 ```
 
 Uma mudança de 22 linhas. O generator agora é **fechado no finally** — a conexão volta ao pool imediatamente, não importa o que aconteça no meio.
@@ -72,7 +71,7 @@ Mitigação imediata pro incidente: `pg_terminate_backend` nas 38 conexões órf
 
 Verificação: Bug Hunter re-rodado → **11/11 checks OK, 0 falhas**, `/api/auth/me` 200.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -83,7 +82,7 @@ Verificação: Bug Hunter re-rodado → **11/11 checks OK, 0 falhas**, `/api/aut
 | Fix | `_session_gen.close()` no finally (22 linhas) |
 | Verificação pós-fix | Bug Hunter 11/11, `/api/auth/me` 200 |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Generator SQLAlchemy sem close = leak de conexão** — `next(_get_session())` sem `finally` é uma armadilha. A sessão abre, mas a conexão só volta ao pool quando o generator fecha.
 
@@ -95,9 +94,9 @@ Verificação: Bug Hunter re-rodado → **11/11 checks OK, 0 falhas**, `/api/aut
 
 <Terminal
   lines={[
-    { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — as conexões órfãs' },
-    { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'O fix: _session_gen.close() no finally (22 linhas)' },
-    { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Linha 847: roda o __exit__ → conexão volta ao pool' },
-    { cmd: 'pg_terminate_backend(pid)', output: 'Mitigação imediata: matar as 38 órfãs + restart' },
+  { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — as conexões órfãs' },
+  { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'O fix: _session_gen.close() no finally (22 linhas)' },
+  { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Linha 847: roda o __exit__ → conexão volta ao pool' },
+  { cmd: 'pg_terminate_backend(pid)', output: 'Mitigação imediata: matar as 38 órfãs + restart' },
   ]}
 />

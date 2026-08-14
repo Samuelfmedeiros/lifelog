@@ -8,7 +8,7 @@ import en from './locales/en.json'
 
 const LOCALES = { pt, en }
 
-/** Detect locale from URL path — '/en/*' → 'en', else 'pt' */
+/** Detect locale from URL path — '/en/*' -> 'en', else 'pt' */
 export function detectLocale(url) {
   return url.pathname.startsWith('/en/') || url.pathname === '/en' ? 'en' : 'pt'
 }

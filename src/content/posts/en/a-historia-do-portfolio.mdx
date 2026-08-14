@@ -5,32 +5,31 @@ date: 2026-08-02 16:00:00 -03:00
 pubDate: 2026-08-02 16:00:00 -03:00
 project: portfolio
 tags: ["portfolio", "nextjs", "react", "games", "frontend"]
-icon: "🚀"
 cover: /covers/a-historia-do-portfolio.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The portfolio that became a spaceship
+##  The portfolio that became a spaceship
 
 There's an unwritten rule in the dev job market: **your portfolio must be as good as the code you ship**. But in May 2026, mine was just a generic "Mission Control Portfolio" with a grid of projects.
 
 Today it's an **interactive spaceship**: multi-layer parallax scene with SVG cockpit, 5 playable mini-games, a terminal with 15+ commands, full PT/EN i18n and 218 tests holding it all together. All with a cinematic cyan+black theme — no template.
 
-## 🧠 Context — from template to playground
+##  Context — from template to playground
 
 The initial commit (06/05/2026) was modest:
 
 ```
-607df2d 🚀 Initial commit: Mission Control Portfolio
+607df2d  Initial commit: Mission Control Portfolio
 ```
 
 Next.js + React + Tailwind, the basics of every portfolio. But the visual identity changed fast: the **Treasure Planet** theme was archived in June and the sci-fi cyan+black aesthetic with **parallax layers (L0-L3)** and animated SVG cockpit was born.
 
 The conceptual shift: instead of showing my projects in static cards, I wanted visitors to **interact with the portfolio as if they were inside a spaceship cockpit**. That's where the 5 mini-games came from.
 
-## 🔧 The struggle — games, animations, and the deploy that broke
+##  The struggle — games, animations, and the deploy that broke
 
 ### The 5 mini-games
 
@@ -57,7 +56,7 @@ npm install gsap --save-prod
 
 The Portfolio lives in **three environments**: Vercel (production), self-hosted on 3001, and staging on 3000 through Capivara's proxy. The Vercel deploy was manual for a long time — `vercel --token "$VERCEL_TOKEN" --prod` — until CI/CD automated it.
 
-## 💡 Resolution — the showcase that answers commands
+##  Resolution — the showcase that answers commands
 
 The coolest moment: the **interactive terminal**. Type `help` and see 15+ commands; `projects` lists the projects; `contact` opens the form. It's the portfolio talking to the visitor.
 
@@ -71,7 +70,7 @@ The final architecture:
 - **i18n PT/EN** — every component translated
 - **Umami Analytics** — events, pageviews, heatmaps (self-hosted on 3100)
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | 06/05 (birth) | Today |
 |--------|---------------|-------|
@@ -83,7 +82,7 @@ The final architecture:
 | Lint errors | — | 0 |
 | Parallax layers | 0 | 4 (L0-L3) |
 
-## 🎯 Lessons
+##  Lessons
 
 The Portfolio taught me that **brand experience is code**. A portfolio doesn't just show what you know — it demonstrates it. Every mini-game, every animation, every terminal command is a silent job interview happening in real time.
 
@@ -91,9 +90,9 @@ And the practical lesson: **always test the build in the deploy environment**. G
 
 <Terminal
   lines={[
-    { cmd: 'git rev-list --count HEAD', output: '529 commits since the start' },
-    { cmd: 'pnpm vitest run | tail -1', output: '218+ tests passing' },
-    { cmd: 'curl -s https://samuelmedeiros.vercel.app | grep -c "terminal"', output: 'terminal present in HTML' },
-    { cmd: 'vercel --prod', output: 'deploy to production' },
+  { cmd: 'git rev-list --count HEAD', output: '529 commits since the start' },
+  { cmd: 'pnpm vitest run | tail -1', output: '218+ tests passing' },
+  { cmd: 'curl -s https://samuelmedeiros.vercel.app | grep -c "terminal"', output: 'terminal present in HTML' },
+  { cmd: 'vercel --prod', output: 'deploy to production' },
   ]}
 />

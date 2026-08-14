@@ -5,32 +5,31 @@ date: 2026-08-12T16:00:00 -03:00
 pubDate: 2026-08-12 16:00:00 -03:00
 project: tatuengine
 tags: [tatuengine, compression, bvh, codec, ternary, cuda, performance]
-icon: "🧱"
 cover: /covers/tatuengine-block-codec-27gb-para-245mb.webp
 featured: false
 ---
 
 
-## ⚡ O modelo de 27GB que precisava caber em 245MB
+##  O modelo de 27GB que precisava caber em 245MB
 
 O BitMamba-2 1B é um modelo SSM de 1.58-bit — os pesos são ternários: `{-1, 0, +1}`. No disco, o `.bin` empacotado tem 614MB. Mas dentro do TatuEngine, a representação de inferência era um **BVH 1:1**: uma lente por peso. Cada peso virava um triângulo com posição, fase e refração — e um modelo de 1B de parâmetros virava **27.26 GB** de lentes.
 
 Não cabia em VRAM (a RTX 3060 tem 12GB). Não cabia em RAM com folga. E era absurdo carregar 27GB pra representar informação que cabe em 614MB.
 
-## 🧠 Contexto
+##  Contexto
 
 A teoria de campo do TatuEngine trata inferência como *traversal óptico*: uma `PhaseWave` atravessa a BVH de lentes, e cada peso contribui com um deslocamento de fase. Quanto mais lentes, mais cara a travessia — tanto em memória quanto em tempo.
 
 O caminho 1:1 era simples mas suicida:
 
 ```
-BVH 1:1:      18.66 GB  ❌  > 12GB VRAM
-BVH block:     ~28 MB    ✅  cabe em L2 cache
+BVH 1:1:  18.66 GB  > 12GB VRAM
+BVH block:  ~28 MB  cabe em L2 cache
 ```
 
 A ideia: em vez de uma lente por peso, uma lente compacta por **bloco de pesos ternários** — empacotamento de 2 bits por peso, mais escala e média de η. Um número pequeno de bytes no lugar de 1024 lentes individuais.
 
-## 🔧 A luta
+##  A luta
 
 A conversão em si era mecânica: desempacotar o tensor ternário, agrupar em blocos, guardar a posição no tensor original. O código de conversão pré-calcula os valores ternários do tensor inteiro e só depois cria os blocos — evitando re-desempacotar a cada bloco.
 
@@ -39,21 +38,21 @@ E a travessia virava um loop com acúmulo em registro — o coração da lente.
 Aí veio a parte que doeu. O teste comparava o resultado da travessia contra o `bridge_matmul` de referência, com `memcmp` + MSE por tensor:
 
 ```
-in_proj:  MSE 3.7e-09  ✅  (diferenças ULP de ordem de acumulação)
-out_proj: MSE 0.36     ⚠️  (ordem de acumulação entre blocos)
-lm_head:  divergência  ❌  debug em andamento
+in_proj:  MSE 3.7e-09  (diferenças ULP de ordem de acumulação)
+out_proj: MSE 0.36  (ordem de acumulação entre blocos)
+lm_head:  divergência  debug em andamento
 ```
 
 O `in_proj` saiu perfeito — diferenças de arredondamento no nível de unidades na última posição. O `out_proj` acusou `0.36` de MSE, que já era suspeito: cheirava a ordem de acumulação, não a perda de informação. Mas o `lm_head` **divergiu de verdade** — e era o tensor mais importante, o que mapeia pro vocabulário (50.257 tokens).
 
-## 💡 Resolução
+##  Resolução
 
 Mesmo parcial, o codec entregou o que prometia: **245.30 MB vs 27.26 GB = 114× de compressão**. E o save/load roundtrip com checksum provava que a representação era estável.
 
 A validação não parou no codec. No mesmo dia, o Sprint 17 transformou a travessia de bloco em kernel CUDA com redução paralela e carregamento otimizado da BVH. O Teste de Ouro — coerência CPU ↔ GPU — fechou com:
 
 ```
-Fase:       diff = 0.00e+00
+Fase:  diff = 0.00e+00
 Amplitude:  diff = 1.19e-07
 ```
 
@@ -61,7 +60,7 @@ E o batch kernel mostrou por que valia a pena: **ordens de grandeza de speedup**
 
 A lição do `out_proj` MSE 0.36 também se confirmou na prática: a travessia soma os blocos na ordem do `BlockBVH`, enquanto o `bridge_matmul` soma na ordem do tensor original — ordem de acumulação diferente, resultado levemente diferente. Não era perda de informação, era álgebra de ponto flutuante. O `lm_head` ficou como pendência registrada — o teste de ouro da GPU acabou validando a coerência estrutural que o codec tinha introduzido.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -72,7 +71,7 @@ A lição do `out_proj` MSE 0.36 também se confirmou na prática: a travessia s
 | lm_head | divergência no commit inicial (pendência) |
 | Coerência CPU↔GPU (Teste de Ouro) | Fase 0.00e+00 · Amplitude 1.19e-07 |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 - **Compressão de modelo não precisa ser lossy pra ser radical**: pesos ternários já são 2 bits — o desperdício estava na estrutura (1 lente por peso), não nos bits.
 - **Validação por tensor separa os problemas**: `in_proj` ULP-perfeito, `out_proj` com erro de acumulação e `lm_head` divergente são três diagnósticos diferentes — misturar tudo num número só esconderia a história.

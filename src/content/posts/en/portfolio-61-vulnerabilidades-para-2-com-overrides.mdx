@@ -5,14 +5,13 @@ date: 2026-08-11 12:00:00 -03:00
 pubDate: 2026-08-11 12:00:00 -03:00
 project: portfolio
 tags: ["security", "pnpm", "dependencies", "audit", "supply-chain"]
-icon: "🔒"
 cover: /covers/portfolio-61-vulnerabilidades-para-2-com-overrides.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ "61 vulnerabilities found"
+##  "61 vulnerabilities found"
 
 Not the headline you want to see on a Saturday morning. I ran `pnpm audit` on Portfólio out of pure habit — that security check you do between features — and the terminal fired back:
 
@@ -23,7 +22,7 @@ Severity: 25 moderate, 36 high
 
 61. Twenty-five moderate, thirty-six high. On a project that is literally my business card. The first instinct is always the same: *"I need to update EVERYTHING right now."* Except updating everything is exactly what can break what already works — and Portfólio had just gone through a full Vue 3.5 rebuild.
 
-## 🧠 The context: why the audit was screaming
+##  The context: why the audit was screaming
 
 Portfólio is a Vue 3.5 + Fastify app deployed on Vercel. `pnpm audit` doesn't only flag what you use **directly** — it scans the whole tree of transitive dependencies. And that's where the classic problem lives: packages you don't even know exist, pinned to old versions because *some* direct dependency resolved them that way.
 
@@ -38,7 +37,7 @@ The usual suspects showed up in the audit:
 
 None of them is a **direct** dependency of my package.json. They're all transitive — resolved to old versions because of loose ranges in intermediate libraries.
 
-## 🔧 The struggle: why it wasn't `pnpm audit fix`
+##  The struggle: why it wasn't `pnpm audit fix`
 
 The temptation is to run `pnpm audit fix` and let pnpm sort it out. I'd been down that road before, and it has a price: audit fix **updates dependencies and regenerates the whole lockfile**, sometimes with a different pnpm version than CI expects. I've seen deploys break with `ERR_PNPM_EEXIST` because of exactly that. Auto-fix can also pull **major versions** of libraries the project doesn't want — silent behavior changes.
 
@@ -48,20 +47,20 @@ The right path was the opposite: **surgical**. pnpm has a mechanism built for th
 // package.json — the diff that fixed it (+5/-1)
 {
   "pnpm": {
-    "overrides": {
-      "@fastify/static": "^10.1.1",
-      "ajv": "^8.18.0",
-      "smol-toml": "^1.6.1",
-      "@tootallnate/once": "^2.0.1",
-      "esbuild": "^0.28.1"
-    }
+  "overrides": {
+  "@fastify/static": "^10.1.1",
+  "ajv": "^8.18.0",
+  "smol-toml": "^1.6.1",
+  "@tootallnate/once": "^2.0.1",
+  "esbuild": "^0.28.1"
+  }
   }
 }
 ```
 
 Five lines. Four of them new — `@fastify/static` was already there, it just gained a comma. After that, `pnpm install` re-resolved the tree honoring the overrides, and the lockfile **shrank by 739 lines** (the whole commit: 48 insertions, 697 deletions). When the lockfile shrinks like that, it means duplicated versions and stale resolutions simply vanished.
 
-## 💡 The resolution: 61 → 2, and honesty about the rest
+##  The resolution: 61 → 2, and honesty about the rest
 
 `pnpm audit` after install:
 
@@ -83,7 +82,7 @@ That's when risk judgment kicks in, not panic:
 
 Overrides fix what can be fixed today; for what has no fix, the answer is **monitoring** — when the advisory publishes a patch, it's one line in `overrides` and done. Meanwhile the real exposure is minimal: a local dev tool, never in runtime.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Before | After |
 |--------|--------|-------|
@@ -92,7 +91,7 @@ Overrides fix what can be fixed today; for what has no fix, the answer is **moni
 | Lockfile | — | −739 lines |
 | Direct dependencies changed | — | 0 |
 
-## 🎯 Takeaways
+##  Takeaways
 
 - **`pnpm audit fix` is not the first answer** — it regenerates the lockfile and can pull unwanted majors. Overrides are the scalpel: touch only what needs fixing.
 - **Not every vuln is urgent** — the `netlify-cli → image-size` chain has no published patch and never reaches production. Risk needs context, not just a number.

@@ -5,20 +5,19 @@ date: 2026-08-13 21:00:00 -03:00
 pubDate: 2026-08-13 21:00:00 -03:00
 project: estudos
 tags: ["estudos", "ollama", "mamba", "ssm", "wave-field", "aprendizado"]
-icon: "📚"
 cover: /covers/a-historia-do-estudos.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ Um post em 78 — e a descoberta que ele esconde
+##  Um post em 78 — e a descoberta que ele esconde
 
 No dia em que o LifeLog tinha 78 posts, a seção **Estudos** tinha exatamente **1**: o loop de truncamento do Ollama (`ollama-truncation-loop-4096`). Um post, dois meses de jornada. Qualquer leitor olharia e pensaria: "estudos? esse blog não estuda".
 
 Nada mais longe da verdade. Foi nos estudos que nasceu o **TatuEngine** — a wave field theory, o Mamba SSM, o BitMamba-2 1B — e foi estudando que o Ollama revelou o bug que custou 2h de debug e virou lição permanente. A seção mais carente do blog é a que mais produz conteúdo... ela só não publicava.
 
-## 🧠 Contexto — por que estudos ficou pra trás
+##  Contexto — por que estudos ficou pra trás
 
 O LifeLog nasceu pra documentar a jornada. Cada projeto tinha sua voz: Arachne, Dogwalk, Capivara, Portifólio, LifeLog. Os estudos — leitura de papers, testes de conceito, experimentos descartados — ficaram órfãos:
 
@@ -28,7 +27,7 @@ O LifeLog nasceu pra documentar a jornada. Cada projeto tinha sua voz: Arachne, 
 
 O resultado: quando o pipeline de postagem olhava pra grade, Estudos era sempre o último da fila. Porque ninguém sabia o que publicar dele.
 
-## 🔧 A luta — o que os estudos realmente produziram
+##  A luta — o que os estudos realmente produziram
 
 ### O loop de truncamento (a primeira lição)
 
@@ -52,7 +51,7 @@ Nem tudo que os estudos produziram virou projeto. Teve arquitetura de atenção 
 
 O experimento descartado **documentado** vale mais que o experimento bem-sucedido esquecido. Ele evita que o próximo projeto repita o caminho morto.
 
-## 💡 Resolução — por que agora vale a pena publicar
+##  Resolução — por que agora vale a pena publicar
 
 A virada foi perceber que a seção Estudos não precisa de post "perfeito" — precisa de **registro honesto do processo**:
 
@@ -60,7 +59,7 @@ A virada foi perceber que a seção Estudos não precisa de post "perfeito" — 
 2. **O descartado também é conteúdo** — anotar o caminho morto evita que ele seja trilhado de novo.
 3. **Estudo alimenta tudo** — wave field theory → TatuEngine; Mamba → BitMamba-2; num_ctx → regra Docs First. Publicar o estudo é publicar a raiz dos projetos.
 
-## 📊 Métricas
+##  Métricas
 
 | Estudo | Resultado | Onde foi parar |
 |--------|-----------|----------------|
@@ -69,7 +68,7 @@ A virada foi perceber que a seção Estudos não precisa de post "perfeito" — 
 | Mamba SSM | BitMamba-2 1B (inferência GPU) | Modelo treinado |
 | Experimentos descartados | Nenhum virou post | ← o erro que este post corrige |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Seção carente ≠ área parada** — Estudos tinha 1 post e produziu o projeto mais ambicioso do ecossistema. O blog não refletia a realidade.
 2. **Estudo documentado vale o dobro** — o que foi aprendido estudando a documentação do Ollama virou regra que atravessa todos os projetos.
@@ -78,9 +77,9 @@ A virada foi perceber que a seção Estudos não precisa de post "perfeito" — 
 
 <Terminal
   lines={[
-    { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '1 — a seção mais carente do blog' },
-    { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'o fix do loop de truncamento (num_ctx 4096 → 32768)' },
-    { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — o estudo que virou modelo' },
-    { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'a anotação que deu origem ao TatuEngine' },
+  { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '1 — a seção mais carente do blog' },
+  { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'o fix do loop de truncamento (num_ctx 4096 → 32768)' },
+  { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — o estudo que virou modelo' },
+  { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'a anotação que deu origem ao TatuEngine' },
   ]}
 />

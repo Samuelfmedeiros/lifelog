@@ -6,14 +6,13 @@ pubDate: 2026-07-28 10:00:00 -03:00
 lang: 'en'
 project: portfolio
 tags: [javascript, debugging, pix, payments, encoding]
-icon: "💳"
 cover: /covers/pix-br-code-stringfromcharcode.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The QR Code Everyone Ignored
+##  The QR Code Everyone Ignored
 
 I added Pix support to my portfolio. Donation button, BR Code generation, pretty QR Code on screen. Only one problem: **no banking app recognized the code.**
 
@@ -21,7 +20,7 @@ Mercado Pago and Stripe worked fine. But the Pix BR Code — which was supposed 
 
 I started to suspect it wasn't the QR Code itself, but the bytes being generated.
 
-## 🧠 The EMV 2022 Format
+##  The EMV 2022 Format
 
 The BR Code (Pix) follows the **EMV® Merchant-Presented QR** standard — a binary specification defining how payment data is encoded. Each field has a structure:
 
@@ -40,7 +39,7 @@ The field length is a **zero-padded decimal number**. If the value is 12 charact
 
 And there's the first mistake.
 
-## 🔧 The Struggle — String.fromCharCode is Not toString()
+##  The Struggle — String.fromCharCode is Not toString()
 
 The original code used:
 
@@ -91,7 +90,7 @@ const crc = crc16(payload);
 return payload + crc;  // CORRECT — placeholder "6304" is already in the payload
 ```
 
-## 💡 Resolution
+##  Resolution
 
 Two lines that changed everything:
 
@@ -100,7 +99,7 @@ Two lines that changed everything:
 
 After the fix, the BR Code was recognized by **4 different banking apps** on the first try.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Before | After |
 |--------|--------|-------|
@@ -109,7 +108,7 @@ After the fix, the BR Code was recognized by **4 different banking apps** on the
 | Pix generator lines | 38 | 40 |
 | Debug time | ~2h | — |
 
-## 🎯 Lessons Learned
+##  Lessons Learned
 
 - **`String.fromCharCode` is not `Number.toString`** — one generates Unicode codepoints, the other generates decimal digits. Seems obvious, but when you're coding a binary payload, your mind goes to the wrong place.
 - **Always test with real data** — the QR Code rendered beautifully in the browser, but only a real banking app revealed the problem.

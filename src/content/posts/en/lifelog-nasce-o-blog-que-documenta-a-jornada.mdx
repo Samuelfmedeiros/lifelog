@@ -10,7 +10,6 @@ tags:
   - astro
   - documentation
   - mdx
-icon: "💡"
 cover: /covers/lifelog-nasce-o-blog-que-documenta-a-jornada.webp
 featured: true
 lang: 'en'
@@ -58,17 +57,17 @@ import { defineCollection, z } from 'astro:content'
 const posts = defineCollection({
   type: 'content',
   schema: z.object({
-    title: z.string(),
-    description: z.string(),
-    date: z.date(),
-    pubDate: z.date().optional(),
-    project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
-                      'tatuengine', 'estudos', 'descobertas']),
-    tags: z.array(z.string()),
-    icon: z.string().optional(),
-    cover: z.string().optional(),
-    featured: z.boolean().default(false),
-    draft: z.boolean().default(false),
+  title: z.string(),
+  description: z.string(),
+  date: z.date(),
+  pubDate: z.date().optional(),
+  project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+  'tatuengine', 'estudos', 'descobertas']),
+  tags: z.array(z.string()),
+  icon: z.string().optional(),
+  cover: z.string().optional(),
+  featured: z.boolean().default(false),
+  draft: z.boolean().default(false),
   }),
 })
 ```

@@ -7,7 +7,6 @@ pubDate: 2026-07-12 00:00:00 -03:00
 project: arachne
 tags: ["arachne", "pipeline", "cache", "multi-engine", "python"]
 
-icon: 🕷️
 cover: /covers/arachne-pipeline-multi-engine-cache.webp
 featured: false
 lang: 'en'
@@ -33,25 +32,25 @@ After a few hours of design, the final architecture looked like this:
 
 ```python
 class ExtractionPipeline:
-    """4 levels of automatic fallback."""
+  """4 levels of automatic fallback."""
 
-    ENGINES = [
-        ("crawl4ai_sidecar", crawl4ai_sidecar_extract),  # Level 1: most powerful
-        ("crawl4ai_sdk", crawl4ai_sdk_extract),          # Level 2: direct SDK
-        ("trafilatura", trafilatura_extract),              # Level 3: light and fast
-        ("requests_bs4", requests_bs4_extract),            # Level 4: last resort
-    ]
+  ENGINES = [
+  ("crawl4ai_sidecar", crawl4ai_sidecar_extract),  # Level 1: most powerful
+  ("crawl4ai_sdk", crawl4ai_sdk_extract),  # Level 2: direct SDK
+  ("trafilatura", trafilatura_extract),  # Level 3: light and fast
+  ("requests_bs4", requests_bs4_extract),  # Level 4: last resort
+  ]
 
-    async def extract(self, url: str) -> ExtractionResult:
-        for engine_name, engine_fn in self.ENGINES:
-            try:
-                result = await engine_fn(url)
-                if result and result.markdown:
-                    return result
-            except Exception as e:
-                logger.warning(f"{engine_name} failed for {url}: {e}")
-                continue
-        raise ExtractionError(f"All 4 engines failed for {url}")
+  async def extract(self, url: str) -> ExtractionResult:
+  for engine_name, engine_fn in self.ENGINES:
+  try:
+  result = await engine_fn(url)
+  if result and result.markdown:
+  return result
+  except Exception as e:
+  logger.warning(f"{engine_name} failed for {url}: {e}")
+  continue
+  raise ExtractionError(f"All 4 engines failed for {url}")
 ```
 
 Each engine has different strengths. Crawl4AI Sidecar is the Swiss army knife — renders JavaScript, handles Cloudflare. If it fails, the SDK tries without Docker. Trafilatura is the shortcut for simple pages. And requests + BeautifulSoup is the last resort, the "better than nothing" of the story.
@@ -64,8 +63,8 @@ SQLite with FTS5 — Full-Text Search version 5. One of the most underrated SQLi
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
-    url, title, content, markdown,
-    tokenize='porter unicode61'
+  url, title, content, markdown,
+  tokenize='porter unicode61'
 );
 ```
 

@@ -6,7 +6,6 @@ pubDate: 2026-07-25 00:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: [dogwalk, debugging, react, mapbox-gl, performance]
-icon: "🐶"
 cover: /covers/dogwalk-3-bugs-1-commit.webp
 featured: false
 ---
@@ -35,8 +34,8 @@ The fix was a simple `opts.public` flag:
 ```javascript
 async function request(url, opts = {}) {
   if (!opts.public) {
-    const token = await refreshIfNeeded()
-    headers.Authorization = `Bearer ${token}`
+  const token = await refreshIfNeeded()
+  headers.Authorization = `Bearer ${token}`
   }
   return fetch(url, { headers, ...opts })
 }
@@ -51,7 +50,7 @@ Marked the 4 consumers of `/profiles/walkers` with `{ public: true }`. **All 137
 ```jsx
 // Before (broken):
 function ClusterLayer({ map, ... }) {
-  map.addSource('clusters', { ... })  // ❌ intermittent crash
+  map.addSource('clusters', { ... })  //  intermittent crash
 }
 ```
 
@@ -63,9 +62,9 @@ function ClusterLayer({ mapRef, ... }) {
   const map = mapRef.current
   if (!map || !map.isStyleLoaded()) return null
   try {
-    map.addSource('clusters', { ... })
+  map.addSource('clusters', { ... })
   } catch (e) {
-    console.warn('ClusterLayer: source already exists', e)
+  console.warn('ClusterLayer: source already exists', e)
   }
 }
 ```
@@ -77,9 +76,9 @@ function ClusterLayer({ mapRef, ... }) {
 After fixing DW-036, I went after the remaining warnings. The DevTools console was flooded:
 
 ```
-❌ isLoaded is not a function (IsochroneLayer)
-❌ addSource is not a function (HeatmapLayer, ClusterLayer)
-⚠️ Style not loaded (Polyline, various layers)
+ isLoaded is not a function (IsochroneLayer)
+ addSource is not a function (HeatmapLayer, ClusterLayer)
+ Style not loaded (Polyline, various layers)
 ```
 
 Each was a variation of the same pattern: component accessing the map before it was ready. Applying the `isStyleLoaded` + `mapRef.current` pattern across **5 components** dropped errors from 42 to **absolute zero**.
@@ -96,9 +95,9 @@ Each was a variation of the same pattern: component accessing the map before it 
 
 | Bug | Files | Lines Changed | Tests |
 |:----|:------|:-------------:|------:|
-| DW-050 | api.js + 4 consumers | +3 lines | 1379 ✅ |
-| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refactored | 1379 ✅ |
-| DW-053 | IsochroneLayer + Polyline + layers | ~20 lines | 1379 ✅ |
+| DW-050 | api.js + 4 consumers | +3 lines | 1379  |
+| DW-036 | ClusterLayer + HeatmapLayer | 141/146 refactored | 1379  |
+| DW-053 | IsochroneLayer + Polyline + layers | ~20 lines | 1379  |
 
 Total: **5 files, 141 added, 146 removed. Zero broken tests.**
 
@@ -111,9 +110,9 @@ Total: **5 files, 141 added, 146 removed. Zero broken tests.**
 <Terminal
   title="~/dogwalk — bash"
   commands={[
-    { cmd: 'git show cd31f0dd --stat', description: 'See the 3-bug commit changes' },
-    { cmd: 'npx vitest run | tail -5', description: 'Run tests — 1379 passing' },
-    { cmd: 'grep -r "opts.public" src/services/api.js', description: 'See the public endpoint pattern' },
-    { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'See all map guards' },
+  { cmd: 'git show cd31f0dd --stat', description: 'See the 3-bug commit changes' },
+  { cmd: 'npx vitest run | tail -5', description: 'Run tests — 1379 passing' },
+  { cmd: 'grep -r "opts.public" src/services/api.js', description: 'See the public endpoint pattern' },
+  { cmd: 'grep -r "isStyleLoaded" src/components/UI/', description: 'See all map guards' },
   ]}
 />

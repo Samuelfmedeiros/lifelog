@@ -6,7 +6,6 @@ pubDate: 2026-07-13 23:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "playwright", "tests", "e2e", "vitest", "quality"]
-icon: "🐾"
 cover: /covers/dogwalk-amadurece-testes-playwright.webp
 featured: true
 ---
@@ -33,8 +32,8 @@ import App from './App';
 
 describe('App', () => {
   it('renders without crashing', () => {
-    render(<App />);
-    expect(screen.getByText(/dogwalk/i)).toBeDefined();
+  render(<App />);
+  expect(screen.getByText(/dogwalk/i)).toBeDefined();
   });
 });
 ```
@@ -49,21 +48,21 @@ I started with the core: authentication components, scheduling forms, price calc
 // Commission calculation test — money can't be wrong
 describe('CommissionCalculator', () => {
   it('calculates 15% platform fee correctly', () => {
-    const result = calculateCommission(100.00);
-    expect(result.platformFee).toBe(15.00);
-    expect(result.walkerEarns).toBe(85.00);
-    expect(result.total).toBe(100.00);
+  const result = calculateCommission(100.00);
+  expect(result.platformFee).toBe(15.00);
+  expect(result.walkerEarns).toBe(85.00);
+  expect(result.total).toBe(100.00);
   });
 
   it('handles Stripe Connect fee + platform fee stacking', () => {
-    const result = calculateWithStripe(85.00, 'connect');
-    // Stripe Connect: 2.9% + R$0.49
-    expect(result.stripeFee).toBeCloseTo(2.96, 1);
-    expect(result.walkerNet).toBeCloseTo(82.04, 1);
+  const result = calculateWithStripe(85.00, 'connect');
+  // Stripe Connect: 2.9% + R$0.49
+  expect(result.stripeFee).toBeCloseTo(2.96, 1);
+  expect(result.walkerNet).toBeCloseTo(82.04, 1);
   });
 
   it('throws on negative values', () => {
-    expect(() => calculateCommission(-50)).toThrow();
+  expect(() => calculateCommission(-50)).toThrow();
   });
 });
 ```
@@ -192,9 +191,9 @@ Playwright takes automatic screenshots on failure. But I also added `trace: 'on-
 // playwright.config.ts
 export default defineConfig({
   use: {
-    screenshot: 'only-on-failure',
-    trace: 'on-first-retry',
-    video: 'retain-on-failure',
+  screenshot: 'only-on-failure',
+  trace: 'on-first-retry',
+  video: 'retain-on-failure',
   },
 });
 ```
@@ -227,10 +226,10 @@ But for now, 853 tests, 0 critical bugs in the last 30 days. I'm satisfied.
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Dogwalk && npx vitest run', output: '342 tests — 12s — 100% pass' },
-    { cmd: 'npx playwright test --grep @smoke', output: 'Smoke tests — 42 tests — 1min 12s' },
-    { cmd: 'npx playwright test --reporter=html', output: 'Full suite — 511 tests — 4min 23s' },
-    { cmd: 'npx playwright show-report', output: 'Open interactive HTML report' },
-    { cmd: 'stripe listen --forward-to localhost:5173/api/stripe/webhook', output: 'Forward Stripe test webhooks → local' },
+  { cmd: 'cd ~/projetos/Dogwalk && npx vitest run', output: '342 tests — 12s — 100% pass' },
+  { cmd: 'npx playwright test --grep @smoke', output: 'Smoke tests — 42 tests — 1min 12s' },
+  { cmd: 'npx playwright test --reporter=html', output: 'Full suite — 511 tests — 4min 23s' },
+  { cmd: 'npx playwright show-report', output: 'Open interactive HTML report' },
+  { cmd: 'stripe listen --forward-to localhost:5173/api/stripe/webhook', output: 'Forward Stripe test webhooks → local' },
   ]}
 />

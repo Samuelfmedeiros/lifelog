@@ -6,7 +6,6 @@ pubDate: 2026-07-16 09:00:00 -03:00
 project: portfolio
 tags: ["portfolio", "jogos", "melhoria", "vitrine", "gamificacao"]
 
-icon: 🚀
 cover: /covers/5-jogos-melhorados-o-dia-que-o-portfolio-virou-vitrine.webp
 featured: false
 ---
@@ -23,11 +22,11 @@ Os jogos nasceram como arquivos HTML estáticos em `public/games/`, cada um num 
 
 ```
 public/games/
-├── simon-game/       # Jogo da memória sequencial (Simon Says)
-├── asteroid-dodge/   # Desvio de asteroides em espaço 2D
-├── code-typing/      # Teste de velocidade de digitação
-├── memory-matrix/    # Memorização de grade luminosa
-└── terminal/         # Simulador de terminal interativo
+├── simon-game/  # Jogo da memória sequencial (Simon Says)
+├── asteroid-dodge/  # Desvio de asteroides em espaço 2D
+├── code-typing/  # Teste de velocidade de digitação
+├── memory-matrix/  # Memorização de grade luminosa
+└── terminal/  # Simulador de terminal interativo
 ```
 
 Funcionavam — mas eram acessados só por URL direta. Não tinham presença na home. Não tinham capa. Não tinham contexto.
@@ -69,15 +68,15 @@ export async function GET(
   const gamePath = path.join(process.cwd(), 'public', 'games', params.slug, 'index.html')
   
   if (!fs.existsSync(gamePath)) {
-    return new Response('Game not found', { status: 404 })
+  return new Response('Game not found', { status: 404 })
   }
   
   const html = fs.readFileSync(gamePath, 'utf-8')
   return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
+  headers: {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'public, max-age=3600',
+  },
   })
 }
 ```
@@ -127,10 +126,10 @@ Cada jogo recebeu atenção específica:
 A parte mais legal tecnicamente foi o sistema de embed. Quando o usuário clica em "Play", um iframe é criado dinamicamente dentro de uma moldura com tema do portfólio:
 
 ```
-┌─ 🟢 simon-game ───────────────────── [✕] ─┐
-│                                             │
-│          [jogo carregado aqui]               │
-│                                             │
+┌─  simon-game ───────────────────── [] ─┐
+│  │
+│  [jogo carregado aqui]  │
+│  │
 └─────────────────────────────────────────────┘
 ```
 
@@ -143,11 +142,11 @@ A moldura tem:
 ```tsx
 {loading && (
   <div className="flex items-center justify-center h-[450px]">
-    <div className="w-8 h-8 border-2 border-[var(--accent)] 
-         border-t-transparent rounded-full animate-spin" />
-    <span className="text-xs font-mono animate-pulse">
-      Carregando jogo...
-    </span>
+  <div className="w-8 h-8 border-2 border-[var(--accent)] 
+  border-t-transparent rounded-full animate-spin" />
+  <span className="text-xs font-mono animate-pulse">
+  Carregando jogo...
+  </span>
   </div>
 )}
 ```
@@ -179,9 +178,9 @@ O portfólio virou vitrine de verdade — não só mostra código, mostra o que 
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/portfolio-samuel && ls public/games/', output: '5 jogos: simon-game, asteroid-dodge, code-typing, memory-matrix, terminal' },
-    { cmd: 'cat src/components/GameShowcase.tsx | wc -l', output: '124 linhas — o componente vitrine' },
-    { cmd: 'curl -s https://portifolio-30.vercel.app/api/game/code-typing | head -3', output: '<!DOCTYPE html>…' },
-    { cmd: 'echo "+240% engajamento nos jogos — Umami confirma"', output: '✅ vitrine funcionando' },
+  { cmd: 'cd ~/projetos/portfolio-samuel && ls public/games/', output: '5 jogos: simon-game, asteroid-dodge, code-typing, memory-matrix, terminal' },
+  { cmd: 'cat src/components/GameShowcase.tsx | wc -l', output: '124 linhas — o componente vitrine' },
+  { cmd: 'curl -s https://portifolio-30.vercel.app/api/game/code-typing | head -3', output: '<!DOCTYPE html>…' },
+  { cmd: 'echo "+240% engajamento nos jogos — Umami confirma"', output: ' vitrine funcionando' },
   ]}
 />

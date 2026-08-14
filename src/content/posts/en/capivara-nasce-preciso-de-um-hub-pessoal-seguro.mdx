@@ -5,7 +5,6 @@ date: 2026-05-28 00:00:00 -03:00
 pubDate: 2026-05-28 00:00:00 -03:00
 project: capivara
 tags: ["capivara", "hub", "security", "fastapi", "jwt"]
-icon: "🐷"
 cover: /covers/capivara-nasce-preciso-de-um-hub-pessoal-seguro.webp
 featured: false
 lang: 'en'
@@ -41,15 +40,15 @@ security = HTTPBearer()
 # Public routes (no auth)
 @app.post("/api/portifolio/public/messages")
 async def receive_contact(data: ContactForm):
-    return await db.insert_message(data)
+  return await db.insert_message(data)
 
 # Admin routes (with JWT auth)
 @app.get("/api/portifolio/messages")
 async def list_messages(auth: HTTPAuthorizationCredentials = Depends(security)):
-    payload = verify_jwt(auth.credentials)
-    if not payload or payload.get("role") != "admin":
-        raise HTTPException(status_code=403)
-    return await db.get_all_messages()
+  payload = verify_jwt(auth.credentials)
+  if not payload or payload.get("role") != "admin":
+  raise HTTPException(status_code=403)
+  return await db.get_all_messages()
 ```
 
 The route structure is simple: `/public/` for endpoints that the frontend calls without a token, and no prefix for admin endpoints that require JWT.
@@ -66,12 +65,12 @@ JWT_CONFIG = os.getenv("CAPIVARA_JWT_CONFIG")  # via Bitwarden SM
 JWT_ALGORITHM = "HS256"
 
 def create_access_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "role": "admin",
-        "exp": datetime.utcnow() + timedelta(hours=2),
-    }
-    return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
+  payload = {
+  "sub": user_id,
+  "role": "admin",
+  "exp": datetime.utcnow() + timedelta(hours=2),
+  }
+  return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
 ```
 
 The JWT secret lives in Bitwarden Secrets Manager, never in code. Hermes injects it via env var in the systemd service.
@@ -83,19 +82,19 @@ Capivara uses PostgreSQL 18 locally, with a separate database for each project:
 ```sql
 -- Database: capivara
 CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    message TEXT NOT NULL,
-    source TEXT DEFAULT 'portfolio',
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  message TEXT NOT NULL,
+  source TEXT DEFAULT 'portfolio',
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE cv_downloads (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ip_hash TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_hash TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
@@ -113,7 +112,7 @@ The Tunnel solves DNS, SSL, and firewall issues in one go. The domain `capivara.
 
 | Component | Local | Public |
 |-----------|-------|---------|
-| PostgreSQL | `localhost:5432` | ❌ (local only) |
+| PostgreSQL | `localhost:5432` |  (local only) |
 | Capivara API | `localhost:8001` | `capivara.seu.pet` |
 | Dashboard | Dev `:5173` | Under construction |
 
@@ -129,8 +128,8 @@ Just like the rodent, the Capivara hub is discreet but essential. Every project 
 
 <Terminal
   lines={[
-    { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
-    { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Test","email":"test@test.com","message":"Hello"}\'', output: '{"id":"uuid-123","status":"created"}' },
-    { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding for the dashboard' },
+  { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
+  { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Test","email":"test@test.com","message":"Hello"}\'', output: '{"id":"uuid-123","status":"created"}' },
+  { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding for the dashboard' },
   ]}
 />

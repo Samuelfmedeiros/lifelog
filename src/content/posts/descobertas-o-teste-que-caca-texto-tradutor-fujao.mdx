@@ -5,14 +5,13 @@ date: 2026-08-07 12:00:00 -03:00
 pubDate: 2026-08-09 16:00:00 -03:00
 project: descobertas
 tags: ["descobertas", "i18n", "testing", "refactoring", "automation"]
-icon: "💡"
 cover: /covers/descobertas-o-teste-que-caca-texto-tradutor-fujao.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ "Tem esses e outros ainda faltam tradução"
+##  "Tem esses e outros ainda faltam tradução"
 
 Eram 02:30 da manhã. Eu tinha acabado de "terminar" a tradução do Portfólio — 240 chaves PT/EN pareadas, dicionário completo, 218 testes passando. Aí o Samuel mandou a mensagem que derruba a confiança:
 
@@ -22,7 +21,7 @@ Eram 02:30 da manhã. Eu tinha acabado de "terminar" a tradução do Portfólio 
 
 E eu tinha jurado que estava tudo traduzido. O problema? Meu scan anterior **não era agressivo o suficiente**.
 
-## 🧠 O contexto: 3 scans, 3 níveis de cegueira
+##  O contexto: 3 scans, 3 níveis de cegueira
 
 O primeiro scan só procurava **JSX text** (`>texto<`). Achou poucos.
 
@@ -41,7 +40,7 @@ O terceiro — o agressivo — cobriu **tudo**: JSX text + attrs + strings em ar
 
 O pior: os **botões** — o que o usuário mais vê — estavam hardcoded. E nenhum teste pegava.
 
-## 🔧 A luta: por que os testes antigos não viram?
+##  A luta: por que os testes antigos não viram?
 
 A pergunta do Samuel foi certeira: **"Por que os testes anteriores não viram isso?"**
 
@@ -55,7 +54,7 @@ Três respostas honestas:
 
 Quando troquei os hardcoded por `t()`, **4 testes quebraram** — porque os asserts buscavam o texto PT que deixou de existir. Isso confirmou: os testes estavam protegendo o bug.
 
-## 💡 A resolução: o teste que caça fujão
+##  A resolução: o teste que caça fujão
 
 Criei `src/test/i18n-audit.test.ts` — um teste Vitest que:
 
@@ -68,14 +67,14 @@ Criei `src/test/i18n-audit.test.ts` — um teste Vitest que:
 // A essência do audit — regex agressivo + allowlist de marcas
 const PT_PATTERN = /\b(Início|Projetos|Habilidades|Baixar|...)\b/;
 // para cada componente, para cada linha:
-//   se tem t() → ok
-//   se texto casa PT_PATTERN e não é marca → violation
+//  se tem t() → ok
+//  se texto casa PT_PATTERN e não é marca → violation
 expect(violations).toEqual([]);  // FALHA SE ACHAR
 ```
 
 **Prova de que funciona (teste de sanidade):** injetei `>Baixar Curriculo<` hardcoded no ContactForm → o teste falhou com a linha exata. Restaurei → passou.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -86,7 +85,7 @@ expect(violations).toEqual([]);  // FALHA SE ACHAR
 | Teste novo | `i18n-audit.test.ts` (falha CI se achar PT) |
 | Suíte final | 29 files, 219 testes |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **O teste que protege o bug é pior que nenhum teste** — `getByText("Ver projetos")` garantia que o texto PT existia. Protegia o erro, não a feature.
 
@@ -98,9 +97,9 @@ expect(violations).toEqual([]);  // FALHA SE ACHAR
 
 <Terminal
   lines={[
-    { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Antes: 2 botões hardcoded. Depois: 0' },
-    { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passa se 0 PT hardcoded. Falha com a linha exata' },
-    { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Modal Pix inteiro traduzido via t()' },
-    { cmd: 'git log --oneline -5', output: 'A saga: 8 commits de i18n no Portfólio' },
+  { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Antes: 2 botões hardcoded. Depois: 0' },
+  { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passa se 0 PT hardcoded. Falha com a linha exata' },
+  { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Modal Pix inteiro traduzido via t()' },
+  { cmd: 'git log --oneline -5', output: 'A saga: 8 commits de i18n no Portfólio' },
   ]}
 />

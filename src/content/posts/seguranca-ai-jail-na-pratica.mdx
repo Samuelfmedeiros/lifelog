@@ -5,14 +5,13 @@ date: 2026-08-09 12:00:00 -03:00
 pubDate: 2026-08-10 00:30:00 -03:00
 project: seguranca
 tags: [seguranca, ai-jail, sandbox, hermes, bwrap, aprendizado]
-icon: "🔒"
 cover: /covers/seguranca-ai-jail-na-pratica.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ A primeira vez que o sandbox salvou
+##  A primeira vez que o sandbox salvou
 
 O post anterior contou como o ai-jail entrou no Hermes — o sandbox em Rust que isola cada execução do terminal com bubblewrap, Landlock e Seccomp. Aquela foi a história da **instalação**.
 
@@ -22,7 +21,7 @@ A primeira vez que ele me salvou de verdade foi num `pip install` de um pacote d
 
 > A sensação é estranha no começo: você percebe que toda execução do Hermes **poderia** vazar sua vida — e que agora existe uma rede de proteção.
 
-## 🧠 O contexto: de instalar a conviver
+##  O contexto: de instalar a conviver
 
 A configuração inicial (`~/.ai-jail`) define as regras:
 
@@ -36,7 +35,7 @@ A configuração inicial (`~/.ai-jail`) define as regras:
 
 O uso real revelou 3 lições que a documentação não conta:
 
-## ⚡ Lição 1: Landlock é caro — e a gente desligou
+##  Lição 1: Landlock é caro — e a gente desligou
 
 O primeiro benchmark: com Landlock ativo, o jail levava **5.2s**; sem ele, **3.8s**. Quase 40% mais lento em operações rápidas.
 
@@ -44,12 +43,12 @@ No WSL (onde o Hermes roda), o kernel moderno suporta Landlock — mas a latênc
 
 ```bash
 # ~/.ai-jail — decisão pragmática
-no_landlock = true   # 5.2s → 3.8s no WSL
+no_landlock = true  # 5.2s → 3.8s no WSL
 ```
 
 A lição: **segurança é trade-off**. Um sandbox que ninguém usa por causa da latência protege menos que um rápido que vira rotina.
 
-## ⚡ Lição 2: cada comando tem necessidades próprias
+##  Lição 2: cada comando tem necessidades próprias
 
 No começo, `jail npm install` falhava porque o npm não achava o cache. A solução: **mounts específicos por comando**:
 
@@ -63,19 +62,19 @@ No começo, `jail npm install` falhava porque o npm não achava o cache. A solu�
 
 Cada um monta só o que precisa — **princípio do menor privilégio aplicado a cache**. O processo roda isolado, mas com acesso ao que é legítimo dele.
 
-## ⚡ Lição 3: worker mode é o modo padrão do Hermes
+##  Lição 3: worker mode é o modo padrão do Hermes
 
 Quando o Hermes spawna um worker (delegate_task / Kanban), ele detecta automaticamente `HERMES_KANBAN_TASK` e entra em **worker mode**: GPU, Docker e Display desligados.
 
 Por quê? Porque um worker descartável não precisa de GPU (Ollama), Docker ou display — e cada um desses é uma **superfície de ataque a menos**.
 
 ```bash
-jail --worker python3 analyze.py   # sem GPU, sem Docker, sem display
+jail --worker python3 analyze.py  # sem GPU, sem Docker, sem display
 ```
 
 O resultado prático: **todo comando que o Hermes roda em produção está isolado** — normal para tarefas comuns, lockdown para operações críticas (deploy, DB restore), worker para processos descartáveis.
 
-## 🛠️ A integração no Arachne
+##  A integração no Arachne
 
 O Arachne levou o conceito além: `app/sandbox.py` usa ai-jail como backend para isolar:
 - **Browser** (Playwright) — Chrome com sandbox do SO (sem `--no-sandbox`)
@@ -85,22 +84,22 @@ O Arachne levou o conceito além: `app/sandbox.py` usa ai-jail como backend para
 ```python
 # app/sandbox.py — a essência
 def run_sandboxed(cmd, ro_maps=[], rw_maps=[], no_net=False, timeout=60):
-    # monta paths, roda dentro do jail, retorna stdout/stderr
+  # monta paths, roda dentro do jail, retorna stdout/stderr
 ```
 
 E a MCP tool `arachne_sandbox_status` mostra as proteções ativas em tempo real — transparência sobre o que está protegido.
 
-## 📊 Métricas do uso real
+##  Métricas do uso real
 
 | Item | Valor |
 |------|-------|
-| Landlock ativo | ❌ (5.2s vs 3.8s — desligado no WSL) |
+| Landlock ativo |  (5.2s vs 3.8s — desligado no WSL) |
 | Comandos com mounts custom | 5 (python, npm, pip, uv, cargo) |
 | Modos de execução | 3 (normal, lockdown, worker) |
 | Worker mode | Auto via `HERMES_KANBAN_TASK` |
 | Arachne sandboxável | Browser + eval + code stage |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Segurança é trade-off** — sandbox lento = ninguém usa; rápido = vira rotina
 2. **Menor privilégio aplicado a cache** — cada comando monta só o que precisa

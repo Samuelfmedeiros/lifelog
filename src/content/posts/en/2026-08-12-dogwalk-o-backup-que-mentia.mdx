@@ -1,35 +1,34 @@
 ---
 title: "Dogwalk: the backup that lied — a 786KB truncated tar hidden by 2>/dev/null"
-description: "The script logged ✅ Docs backup, but the tar held only 53 of 218 files — an overnight OOM swallowed by 2>/dev/null."
+description: "The script logged  Docs backup, but the tar held only 53 of 218 files — an overnight OOM swallowed by 2>/dev/null."
 date: 2026-08-12T12:00:00 -03:00
 pubDate: 2026-08-12 12:00:00 -03:00
 project: dogwalk
 tags: [backup, bash, reliability, observability, integrity]
-icon: "💾"
 cover: /covers/dogwalk-o-backup-que-mentia.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ The backup that said "✅" while failing
+##  The backup that said "" while failing
 
-It had everything it needed to go unnoticed. At 03:00 on Aug 12, the Dogwalk backup cron ran exactly as it always runs — and the log recorded `✅ Docs backup`, exactly as it always records. The problem? The tar had been truncated to 786KB with only 53 of the 218 files in `docs/`. The `2>/dev/null` had swallowed the real error: `Cannot allocate memory` — an OOM during gzip in the middle of the night.
+It had everything it needed to go unnoticed. At 03:00 on Aug 12, the Dogwalk backup cron ran exactly as it always runs — and the log recorded ` Docs backup`, exactly as it always records. The problem? The tar had been truncated to 786KB with only 53 of the 218 files in `docs/`. The `2>/dev/null` had swallowed the real error: `Cannot allocate memory` — an OOM during gzip in the middle of the night.
 
 I only found out because I looked at file sizes. A docs backup that was 5.4–6.6MB on previous nights was suddenly 786KB. The script swore everything was fine.
 
-## 🧠 Context
+##  Context
 
 The Dogwalk `scripts/backup.sh` runs four backups in sequence: `db` (pg_dump), `kanban`, `env`, and `docs` (a tar.gz of the whole `docs/` dir). It runs via cron overnight and writes to a timestamped log. The `backup_docs` function used to be simple:
 
 ```bash
 tar czf "$BACKUP_DIR/full/docs_$DATE.tar.gz" -C "$PROJECT_DIR" docs/ 2>/dev/null
-log "✅ Docs backup: $(du -h "$BACKUP_DIR/full/docs_$DATE.tar.gz" | cut -f1)"
+log " Docs backup: $(du -h "$BACKUP_DIR/full/docs_$DATE.tar.gz" | cut -f1)"
 ```
 
-Notice the trap: the `2>/dev/null` isn't there to hide errors — it's there to silence the annoying "file changed as we read it" warning. But it hides the gzip OOM too. And the ✅ log only prints the size — 786KB passes as success. A corrupted backup becomes a "completed backup" in the log, and nobody would suspect until they needed to restore.
+Notice the trap: the `2>/dev/null` isn't there to hide errors — it's there to silence the annoying "file changed as we read it" warning. But it hides the gzip OOM too. And the  log only prints the size — 786KB passes as success. A corrupted backup becomes a "completed backup" in the log, and nobody would suspect until they needed to restore.
 
-## 🔧 The fight
+##  The fight
 
 The first step was confirming the corruption. `gzip -t` (integrity test) failed immediately — the stream was truncated mid-way. And the worst part: `tar` sometimes "accepts" a truncated file if the header is still intact, so even tar's exit code wasn't trustworthy.
 
@@ -44,35 +43,35 @@ OUT="$BACKUP_DIR/full/docs_$DATE.tar.gz"
 tar czf "$OUT" -C "$PROJECT_DIR" docs/
 # Integrity check — catches truncated tars that tar sometimes "accepts"
 if ! gzip -t "$OUT" >/dev/null 2>&1; then
-    log "⚠️ Docs backup corrupted (gzip -t failed), retrying..."
-    sleep 10
-    tar czf "$OUT" -C "$PROJECT_DIR" docs/
-    if ! gzip -t "$OUT" >/dev/null 2>&1; then
-        log "❌ Docs backup FAILED after retry — tar/gzip corrupted"
-        return 1
-    fi
+  log " Docs backup corrupted (gzip -t failed), retrying..."
+  sleep 10
+  tar czf "$OUT" -C "$PROJECT_DIR" docs/
+  if ! gzip -t "$OUT" >/dev/null 2>&1; then
+  log " Docs backup FAILED after retry — tar/gzip corrupted"
+  return 1
+  fi
 fi
-log "✅ Docs backup: $(du -h "$OUT" | cut -f1)"
+log " Docs backup: $(du -h "$OUT" | cut -f1)"
 ```
 
-Note: the `>/dev/null 2>&1` on `gzip -t` is intentional — the check uses the exit code, and gzip's own error output doesn't matter. The difference is that ✅ only appears AFTER passing verification. The script can't lie anymore.
+Note: the `>/dev/null 2>&1` on `gzip -t` is intentional — the check uses the exit code, and gzip's own error output doesn't matter. The difference is that  only appears AFTER passing verification. The script can't lie anymore.
 
-## 💡 Resolution
+##  Resolution
 
-Commit `3d4b9dca` (Aug 12, +15/−2) fixed it at the root. Running it by hand after the fix, the backup came out intact: **8.3MB**, verified with `gzip -t` before the ✅. And tomorrow night's log will scream if something fails — it won't smile with a dead file anymore.
+Commit `3d4b9dca` (Aug 12, +15/−2) fixed it at the root. Running it by hand after the fix, the backup came out intact: **8.3MB**, verified with `gzip -t` before the . And tomorrow night's log will scream if something fails — it won't smile with a dead file anymore.
 
-The bigger lesson isn't about backups, it's about observability: **every success message needs to be earned**. If ✅ is printed before the real check, you don't have a success log — you have a hope log.
+The bigger lesson isn't about backups, it's about observability: **every success message needs to be earned**. If  is printed before the real check, you don't have a success log — you have a hope log.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Before | After |
 |--------|--------|-------|
 | Backup size (03:00 Aug 12) | 786KB truncated (53/218 files) | 8.3MB intact |
 | Integrity check | none (`2>/dev/null` + `du -h`) | `gzip -t` post-tar + 10s retry |
-| Error visible in log on failure | ❌ silenced | ✅ logged |
+| Error visible in log on failure |  silenced |  logged |
 | Fix diff | — | +15 −2 in `scripts/backup.sh` |
 
-## 🎯 Takeaways
+##  Takeaways
 
 - `2>/dev/null` in a backup is like covering the fire alarm because the sound is annoying — it doesn't hide only what you want.
 - `tar` can "accept" a truncated file; exit code isn't proof of integrity. Test the artifact, not the process.

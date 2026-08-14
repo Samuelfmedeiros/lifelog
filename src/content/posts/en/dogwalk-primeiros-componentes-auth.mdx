@@ -6,7 +6,6 @@ pubDate: 2026-07-13 23:00:00 -03:00
 lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "auth", "jwt", "supabase", "react", "typescript"]
-icon: "🐾"
 cover: /covers/dogwalk-primeiros-componentes-auth.webp
 featured: true
 ---
@@ -28,19 +27,19 @@ This post covers how I built each piece.
 ## The authentication flow
 
 ```
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  Login   │ ──▶ │ Supabase │ ──▶ │   JWT    │ ──▶ │  Role    │
-│  Form    │     │  Auth    │     │ + Refresh│     │  Router  │
-└──────────┘     └──────────┘     └──────────┘     └──────────┘
-     │                                               │
-     │ email/password                                │ tutor → /tutor/dashboard
-     │ OAuth Google                                  │ walker → /walker/dashboard
-     │ OAuth GitHub                                  │ admin → /admin
-     ▼                                               ▼
-  ┌──────────┐                              ┌──────────────┐
-  │ 2FA (future)│                            │ Conditional  │
-  └──────────┘                              │   Layout     │
-                                             └──────────────┘
+┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│  Login  │ ──▶ │ Supabase │ ──▶ │  JWT  │ ──▶ │  Role  │
+│  Form  │  │  Auth  │  │ + Refresh│  │  Router  │
+└──────────┘  └──────────┘  └──────────┘  └──────────┘
+  │  │
+  │ email/password  │ tutor → /tutor/dashboard
+  │ OAuth Google  │ walker → /walker/dashboard
+  │ OAuth GitHub  │ admin → /admin
+  ▼  ▼
+  ┌──────────┐  ┌──────────────┐
+  │ 2FA (future)│  │ Conditional  │
+  └──────────┘  │  Layout  │
+  └──────────────┘
 ```
 
 ## AuthContext — the heart
@@ -58,38 +57,38 @@ interface AuthState {
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
-    user: null,
-    session: null,
-    role: null,
-    isLoading: true,
+  user: null,
+  session: null,
+  role: null,
+  isLoading: true,
   });
 
   useEffect(() => {
-    // Restores session when page loads
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const role = await fetchUserRole(session.user.id);
-        setState({ user: session.user, session, role, isLoading: false });
-      } else {
-        setState(prev => ({ ...prev, isLoading: false }));
-      }
-    };
-    init();
+  // Restores session when page loads
+  const init = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+  const role = await fetchUserRole(session.user.id);
+  setState({ user: session.user, session, role, isLoading: false });
+  } else {
+  setState(prev => ({ ...prev, isLoading: false }));
+  }
+  };
+  init();
 
-    // Listens for auth changes (login/logout/automatic refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (session) {
-          const role = await fetchUserRole(session.user.id);
-          setState({ user: session.user, session, role, isLoading: false });
-        } else {
-          setState({ user: null, session: null, role: null, isLoading: false });
-        }
-      }
-    );
+  // Listens for auth changes (login/logout/automatic refresh)
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+  async (event, session) => {
+  if (session) {
+  const role = await fetchUserRole(session.user.id);
+  setState({ user: session.user, session, role, isLoading: false });
+  } else {
+  setState({ user: null, session: null, role: null, isLoading: false });
+  }
+  }
+  );
 
-    return () => subscription.unsubscribe();
+  return () => subscription.unsubscribe();
   }, []);
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
@@ -112,17 +111,17 @@ function ProtectedRoute({ allowedRoles, children, fallback }: Props) {
   const { user, role, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingSkeleton />;
+  return <LoadingSkeleton />;
   }
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (!allowedRoles.includes(role!)) {
-    // Redirects to the correct dashboard if wrong role
-    const correctPath = role === 'walker' ? '/walker/dashboard' : '/tutor/dashboard';
-    return fallback || <Navigate to={correctPath} replace />;
+  // Redirects to the correct dashboard if wrong role
+  const correctPath = role === 'walker' ? '/walker/dashboard' : '/tutor/dashboard';
+  return fallback || <Navigate to={correctPath} replace />;
   }
 
   return <>{children}</>;
@@ -131,19 +130,19 @@ function ProtectedRoute({ allowedRoles, children, fallback }: Props) {
 // Usage in routes:
 <Routes>
   <Route path="/tutor/dashboard" element={
-    <ProtectedRoute allowedRoles={['tutor']}>
-      <TutorDashboard />
-    </ProtectedRoute>
+  <ProtectedRoute allowedRoles={['tutor']}>
+  <TutorDashboard />
+  </ProtectedRoute>
   } />
   <Route path="/walker/dashboard" element={
-    <ProtectedRoute allowedRoles={['walker']}>
-      <WalkerDashboard />
-    </ProtectedRoute>
+  <ProtectedRoute allowedRoles={['walker']}>
+  <WalkerDashboard />
+  </ProtectedRoute>
   } />
   <Route path="/admin" element={
-    <ProtectedRoute allowedRoles={['admin']}>
-      <AdminPanel />
-    </ProtectedRoute>
+  <ProtectedRoute allowedRoles={['admin']}>
+  <AdminPanel />
+  </ProtectedRoute>
   } />
 </Routes>
 ```
@@ -160,15 +159,15 @@ function RootLayout() {
   const navigation = role === 'walker' ? WALKER_NAV : TUTOR_NAV;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header 
-        actions={role === 'walker' ? walkerActions : tutorActions} 
-      />
-      <main className="flex-1 pb-16 md:pb-0">
-        <Outlet />
-      </main>
-      <BottomNav items={navigation} />
-    </div>
+  <div className="flex flex-col min-h-screen">
+  <Header 
+  actions={role === 'walker' ? walkerActions : tutorActions} 
+  />
+  <main className="flex-1 pb-16 md:pb-0">
+  <Outlet />
+  </main>
+  <BottomNav items={navigation} />
+  </div>
   );
 }
 ```
@@ -183,13 +182,13 @@ The `BottomNav` changes completely between tutor and walker:
 // src/services/auth.ts
 export async function signInWithProvider(provider: 'google' | 'github') {
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-      queryParams: provider === 'google' 
-        ? { access_type: 'offline', prompt: 'consent' }
-        : undefined,
-    },
+  provider,
+  options: {
+  redirectTo: `${window.location.origin}/auth/callback`,
+  queryParams: provider === 'google' 
+  ? { access_type: 'offline', prompt: 'consent' }
+  : undefined,
+  },
   });
   
   if (error) throw error;
@@ -220,7 +219,7 @@ const AUTH_ERROR_MAP: Record<string, string> = {
 
 export function useAuthError() {
   const translateError = (error: { message: string }) => {
-    return AUTH_ERROR_MAP[error.message] || 'Unexpected error. Please try again';
+  return AUTH_ERROR_MAP[error.message] || 'Unexpected error. Please try again';
   };
   return { translateError };
 }
@@ -264,10 +263,10 @@ The `isLoading` from AuthContext is critical. If not handled, the user sees a fl
 
 <Terminal
   lines={[
-    { cmd: 'curl -s https://seu.pet/api/auth/session | python3 -m json.tool', output: 'Check current session' },
-    { cmd: 'curl -s -X POST https://seu.pet/api/auth/login -d \'{"email":"test@test.com","password":"***"}\'', output: 'Login via direct API' },
-    { cmd: "grep -r 'ProtectedRoute' src/ | wc -l", output: 'Total protected routes in the app' },
-    { cmd: 'cd ~/projetos/Dogwalk && npx vitest run src/**/auth*', output: 'Run auth tests (61 tests)' },
-    { cmd: "supabase projects list", output: 'List active Supabase projects' },
+  { cmd: 'curl -s https://seu.pet/api/auth/session | python3 -m json.tool', output: 'Check current session' },
+  { cmd: 'curl -s -X POST https://seu.pet/api/auth/login -d \'{"email":"test@test.com","password":"***"}\'', output: 'Login via direct API' },
+  { cmd: "grep -r 'ProtectedRoute' src/ | wc -l", output: 'Total protected routes in the app' },
+  { cmd: 'cd ~/projetos/Dogwalk && npx vitest run src/**/auth*', output: 'Run auth tests (61 tests)' },
+  { cmd: "supabase projects list", output: 'List active Supabase projects' },
   ]}
 />

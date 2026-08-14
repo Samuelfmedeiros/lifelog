@@ -5,14 +5,13 @@ date: 2026-07-28 10:00:00 -03:00
 pubDate: 2026-07-28 10:00:00 -03:00
 project: portfolio
 tags: [javascript, debugging, pix, payments, encoding]
-icon: "💳"
 cover: /covers/pix-br-code-stringfromcharcode.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O QR Code que todo mundo ignorava
+##  O QR Code que todo mundo ignorava
 
 Coloquei suporte a Pix no portfólio. Botão de doação, geração de BR Code, QR Code bonitinho na tela. Só tinha um problema: **nenhum leitor de QR Code de banco reconhecia o código.**
 
@@ -20,7 +19,7 @@ O mercadopago e o stripe funcionavam. Mas o Pix BR Code — que era pra ser o ma
 
 Comecei a suspeitar que não era o QR Code em si, mas os bytes que estavam sendo gerados.
 
-## 🧠 O formato EMV 2022
+##  O formato EMV 2022
 
 O BR Code (Pix) segue o padrão **EMV® Merchant-Presented QR** — uma especificação binária que define como codificar os dados de pagamento. Cada campo tem uma estrutura:
 
@@ -39,7 +38,7 @@ O tamanho do campo é um **número decimal com padding zero**. Se o valor tem 12
 
 E aí está o primeiro erro.
 
-## 🔧 A luta — String.fromCharCode não é toString()
+##  A luta — String.fromCharCode não é toString()
 
 O código original usava:
 
@@ -90,7 +89,7 @@ const crc = crc16(payload);
 return payload + crc;  // CORRETO — placeholder "6304" já está no payload
 ```
 
-## 💡 Resolução
+##  Resolução
 
 Duas linhas que mudaram tudo:
 
@@ -99,7 +98,7 @@ Duas linhas que mudaram tudo:
 
 Depois do fix, o BR Code foi reconhecido por **4 apps de banco diferentes** na primeira tentativa.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
@@ -108,7 +107,7 @@ Depois do fix, o BR Code foi reconhecido por **4 apps de banco diferentes** na p
 | Linhas do gerador Pix | 38 | 40 |
 | Tempo de debug | ~2h | — |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 - **`String.fromCharCode` não é `Number.toString`** — uma gera codepoints Unicode, a outra gera dígitos decimais. Parece óbvio, mas quando você tá codando um payload binário, a mente vai pro lugar errado.
 - **Sempre teste com dados reais** — o QR Code renderizava lindo no browser, mas só um app de banco de verdade revelou o problema.

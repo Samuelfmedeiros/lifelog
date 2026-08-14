@@ -5,20 +5,19 @@ date: 2026-08-05 12:00:00 -03:00
 pubDate: 2026-08-05 17:45:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "seguranca", "watchdog", "sandbox", "processo-continuo"]
-icon: "🦔"
 cover: /covers/tatuengine-seguranca-como-processo.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O motor que sabia agir, mas não sabia se proteger
+##  O motor que sabia agir, mas não sabia se proteger
 
 O TatuEngine já tinha feito muita coisa até aqui: aprendeu a **inferir** (BitMamba-2 1B em GPU com speedup massivo), aprendeu a **agir** (agente autopoiético com 8 subsistemas, ToolUse, GoalStack, LTM), e estava aprendendo a **aprender** (ciclo Mestre-Aprendiz). Por baixo de tudo isso, um **sandbox híbrido** com 51/51 testes de path validation.
 
 Parecia seguro. Mas segurança não é uma feature — é um **processo**. E processo é exatamente o que o TatuEngine não tinha documentado.
 
-## 🧠 O contexto: o agente mais autônomo do ecossistema
+##  O contexto: o agente mais autônomo do ecossistema
 
 Aqui vai o problema que me incomodava: o TatuEngine é o projeto com **maior autonomia** de todo o meu ecossistema. Ele tem um agente que:
 
@@ -31,19 +30,19 @@ Enquanto isso, o resto do ecossistema já tinha adotado uma política de seguran
 
 O TatuEngine era a **lacuna**. O motor mais poderoso do ecossistema era o único sem um plano formal de defesa.
 
-## 🔧 A luta: inventariar o que já existe antes de construir
+##  A luta: inventariar o que já existe antes de construir
 
 A regra do ecossistema manda auditar antes de melhorar. Então o primeiro passo não foi escrever firewall — foi **inventariar** o que o TatuEngine já tinha de proteção. O resultado surpreendeu: o projeto estava mais blindado do que eu pensava.
 
 ```python
 # O sandbox — a fronteira
 # Três pilares:
-#   1. Path traversal prevention (resolve + prefix check)
-#   2. File size & type enforcement
-#   3. Read vs write scope control
+#  1. Path traversal prevention (resolve + prefix check)
+#  2. File size & type enforcement
+#  3. Read vs write scope control
 result = sandbox.check_read("~/projetos/meu-arquivo.txt")
 if result.ok:
-    path = result.path  # Path resolvido com prefix check
+  path = result.path  # Path resolvido com prefix check
 ```
 
 O sandbox existia. O Tool Registry existia. O MCP server existia. O `.brain` tinha CRC32. O que faltava era **consolidar tudo num documento único** com princípios, inventário, lacunas e roadmap — e, principalmente, **automatizar a vigilância**.
@@ -55,12 +54,12 @@ O sandbox existia. O Tool Registry existia. O MCP server existia. O `.brain` tin
 # 3. Hardcoded secrets em src/ (padrões sk_live_, AKIA, ghp_, chaves privadas)
 # 4. Git history do .env (nunca deve ter sido commitado)
 # 5. Dockerfile USER directive
-# Summary: ✅ Pass / ⚠️ Warnings / 🔴 Critical / ❌ Fail
+# Summary:  Pass /  Warnings /  Critical /  Fail
 ```
 
 O scan é honesto: ele **falha** se achar crítico (`exit 1`), avisa se achar warning, e fica quieto quando tudo está certo. A primeira execução depois do documento: **3 pass, 0 warnings, 0 críticos**.
 
-## 💡 A resolução: SEGURANCA.md v1.0 + watchdog que nunca dorme
+##  A resolução: SEGURANCA.md v1.0 + watchdog que nunca dorme
 
 O documento nasceu com 5 princípios que viraram a identidade de segurança do projeto:
 
@@ -76,12 +75,12 @@ O roadmap ficou em 4 fases — e a Fase 1 (base) fechou no mesmo dia:
 
 | Fase | Entrega | Status |
 |------|---------|--------|
-| **1. Base** | SEGURANCA.md + watchdog 24h + regra AGENTS.md | ✅ 05/08/2026 |
+| **1. Base** | SEGURANCA.md + watchdog 24h + regra AGENTS.md |  05/08/2026 |
 | **2. Sandbox** | Auditoria de bypass (symlink, TOCTOU) | Próximo bloco |
 | **3. MCP** | Restringir `tool_execute` a allowlist + auth se SSE exposto | Quando MCP for usado externamente |
 | **4. Supply chain** | sha256 checksums dos modelos + pip-audit | Contínuo |
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -90,9 +89,9 @@ O roadmap ficou em 4 fases — e a Fase 1 (base) fechou no mesmo dia:
 | Watchdog | Diário 24h, silent unless issues |
 | Scan automático | 07:30 todo dia (`security-scan-tatuengine.sh`) |
 | Documento | `docs/SEGURANCA.md` v1.0 (05/08/2026) |
-| Roadmap | Fase 1 ✅ · Fase 2-4 mapeadas |
+| Roadmap | Fase 1  · Fase 2-4 mapeadas |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Segurança é acompanhamento, não um documento parado** — o SEGURANCA.md não protege nada sozinho; quem protege é o scan diário + o watchdog 24h + a regra no AGENTS.md.
 2. **Inventariar antes de blindar** — o TatuEngine já tinha 80% da proteção; faltava consolidar, documentar lacunas e automatizar a vigilância. Auditar primeiro evita construir o que já existe.
@@ -101,8 +100,8 @@ O roadmap ficou em 4 fases — e a Fase 1 (base) fechou no mesmo dia:
 
 <Terminal
   lines={[
-    { cmd: 'pytest tests/test_sandbox.py -q', output: '51 passed in 0.22s' },
-    { cmd: 'bash scripts/security-scan-tatuengine.sh', output: '✅ 3 pass · 0 warnings · 0 critical' },
-    { cmd: 'grep watchdog AGENTS.md', output: 'TatuEngine Security Watchdog — diário, 24h, silent unless issues' },
+  { cmd: 'pytest tests/test_sandbox.py -q', output: '51 passed in 0.22s' },
+  { cmd: 'bash scripts/security-scan-tatuengine.sh', output: ' 3 pass · 0 warnings · 0 critical' },
+  { cmd: 'grep watchdog AGENTS.md', output: 'TatuEngine Security Watchdog — diário, 24h, silent unless issues' },
   ]}
 />

@@ -5,14 +5,13 @@ date: 2026-08-07 12:00:00 -03:00
 pubDate: 2026-08-09 16:00:00 -03:00
 project: descobertas
 tags: ["descobertas", "i18n", "testing", "refactoring", "automation"]
-icon: "💡"
 cover: /covers/descobertas-o-teste-que-caca-texto-tradutor-fujao.webp
 featured: false
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## ⚡ "There are these and others still missing translation"
+##  "There are these and others still missing translation"
 
 It was 2:30 AM. I had just "finished" the Portfolio translation — 240 paired PT/EN keys, complete dictionary, 218 tests passing. Then Samuel sent the message that crushes confidence:
 
@@ -22,7 +21,7 @@ It was 2:30 AM. I had just "finished" the Portfolio translation — 240 paired P
 
 And I had sworn everything was translated. The problem? My previous scan **wasn't aggressive enough**.
 
-## 🧠 The context: 3 scans, 3 levels of blindness
+##  The context: 3 scans, 3 levels of blindness
 
 The first scan only looked for **JSX text** (`>text<`). Found a few.
 
@@ -41,7 +40,7 @@ The third — the aggressive one — covered **everything**: JSX text + attrs + 
 
 The worst: the **buttons** — what users see most — were hardcoded. And no test caught it.
 
-## 🔧 The struggle: why didn't the old tests see it?
+##  The struggle: why didn't the old tests see it?
 
 Samuel's question was spot-on: **"Why didn't the previous tests see this?"**
 
@@ -55,7 +54,7 @@ Three honest answers:
 
 When I replaced the hardcoded texts with `t()`, **4 tests broke** — because the asserts searched for the PT text that no longer existed. That confirmed it: the tests were protecting the bug.
 
-## 💡 The resolution: the runaway-hunting test
+##  The resolution: the runaway-hunting test
 
 I created `src/test/i18n-audit.test.ts` — a Vitest test that:
 
@@ -68,14 +67,14 @@ I created `src/test/i18n-audit.test.ts` — a Vitest test that:
 // The audit essence — aggressive regex + brand allowlist
 const PT_PATTERN = /\b(Home|Projects|Skills|Download|...)\b/;
 // for each component, for each line:
-//   if it has t() → ok
-//   if text matches PT_PATTERN and isn't a brand → violation
+//  if it has t() → ok
+//  if text matches PT_PATTERN and isn't a brand → violation
 expect(violations).toEqual([]);  // FAILS IF FOUND
 ```
 
 **Proof it works (sanity test):** I injected `>Baixar Curriculo<` hardcoded into ContactForm → the test failed with the exact line. Restored → passed.
 
-## 📊 Metrics
+##  Metrics
 
 | Metric | Value |
 |--------|-------|
@@ -86,7 +85,7 @@ expect(violations).toEqual([]);  // FAILS IF FOUND
 | New test | `i18n-audit.test.ts` (fails CI if PT found) |
 | Final suite | 29 files, 219 tests |
 
-## 🎯 Lessons learned
+##  Lessons learned
 
 1. **The test that protects the bug is worse than no test** — `getByText("Ver projetos")` guaranteed the PT text existed. It protected the error, not the feature.
 
@@ -98,9 +97,9 @@ expect(violations).toEqual([]);  // FAILS IF FOUND
 
 <Terminal
   lines={[
-    { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Before: 2 hardcoded buttons. After: 0' },
-    { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passes if 0 hardcoded PT. Fails with exact line' },
-    { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Entire Pix modal translated via t()' },
-    { cmd: 'git log --oneline -5', output: 'The saga: 8 i18n commits in the Portfolio' },
+  { cmd: 'grep -rn "Baixar Curriculo" src/components/ | head', output: 'Before: 2 hardcoded buttons. After: 0' },
+  { cmd: 'npx vitest run src/test/i18n-audit.test.ts', output: 'Passes if 0 hardcoded PT. Fails with exact line' },
+  { cmd: 'grep -c "t(" src/components/SupportButton.tsx', output: 'Entire Pix modal translated via t()' },
+  { cmd: 'git log --oneline -5', output: 'The saga: 8 i18n commits in the Portfolio' },
   ]}
 />

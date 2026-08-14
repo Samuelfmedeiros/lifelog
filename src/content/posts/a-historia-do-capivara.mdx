@@ -5,14 +5,13 @@ date: 2026-08-02 12:00:00 -03:00
 pubDate: 2026-08-02 12:00:00 -03:00
 project: capivara
 tags: ["capivara", "fastapi", "react", "seguranca", "rag"]
-icon: "🐹"
 cover: /covers/a-historia-do-capivara.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O hub que começou como bagunça financeira
+##  O hub que começou como bagunça financeira
 
 A necessidade original não tinha nada de glamouroso: eu precisava **entender pra onde meu dinheiro ia**. O Capivara nasceu como um hub pessoal pra organizar minhas finanças — mas quem acompanha este blog sabe que ele virou muito mais que isso.
 
@@ -20,7 +19,7 @@ Hoje, o Capivara é o **painel central do meu ecossistema**: monitora Arachne, T
 
 E o mais impressionante: **396 testes** (131 backend + 248 frontend + 17 browser/E2E) garantindo que nada disso quebra.
 
-## 🧠 Contexto — um painel que virou infraestrutura
+##  Contexto — um painel que virou infraestrutura
 
 O commit inicial veio com um nome honesto:
 
@@ -32,7 +31,7 @@ FastAPI no backend, React no frontend, SQLite de banco, e um Cloudflare Tunnel p
 
 O Capivara cresceu em ondas. Primeiro os **convites temporários** (1h-7d com permissões), depois o **dashboard analytics com Umami**, os **proxies** pras outras aplicações (Portifólio staging, Umami, Dogwalk), e a autenticação endurecida com **JWT + refresh token rotation + blacklist**.
 
-## 🔧 A luta — segurança, RAG local e o backup que não existia
+##  A luta — segurança, RAG local e o backup que não existia
 
 ### A autenticação que precisava crescer
 
@@ -41,12 +40,12 @@ No começo era um login simples. Mas um painel que controla infraestrutura não 
 ```python
 # backend/auth.py — JWT + bcrypt + 2FA TOTP
 def create_access_token(user_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(hours=24)
-    return jwt.encode(
-        {"sub": str(user_id), "exp": expire},
-        settings.SECRET,
-        algorithm="HS256",
-    )
+  expire = datetime.utcnow() + timedelta(hours=24)
+  return jwt.encode(
+  {"sub": str(user_id), "exp": expire},
+  settings.SECRET,
+  algorithm="HS256",
+  )
 ```
 
 E o **2FA TOTP** — o mesmo algoritmo do Google Authenticator. Cada login exige o código de 6 dígitos gerado no app. Já teve dia que eu tentei logar sem o celular por perto e fiquei travado na porta — sinal de que a segurança estava funcionando.
@@ -58,12 +57,12 @@ Aí veio a parte divertida: um **chat RAG local** no admin. ChromaDB como vector
 ```python
 # backend/routers/chat.py — busca no ChromaDB
 def search_memories(query: str, top_k: int = 5):
-    results = collection.query(
-        query_texts=[query],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"],
-    )
-    return results
+  results = collection.query(
+  query_texts=[query],
+  n_results=top_k,
+  include=["documents", "metadatas", "distances"],
+  )
+  return results
 ```
 
 O diferencial: um **bot no Telegram** conectado ao mesmo cérebro. Mando pergunta no chat, o webhook consulta o RAG e responde com as fontes. Meus projetos respondem perguntas sobre si mesmos 24/7.
@@ -84,7 +83,7 @@ rclone copy backend/capivara.db r2:capivara-backups/$(date +%F)/ --progress
 
 Tokens rotacionados, creds no Bitwarden SM, e o dump validado manualmente antes de dormir tranquilo de novo.
 
-## 💡 Resolução — o painel que virou operação
+##  Resolução — o painel que virou operação
 
 O Capivara deixou de ser "meu painel" e virou **parte da operação**. Hoje ele:
 
@@ -95,7 +94,7 @@ O Capivara deixou de ser "meu painel" e virou **parte da operação**. Hoje ele:
 
 A refatoração do frontend foi brutal: Dashboard de 994→262 linhas (-74%), AdminPage de 1091→97 linhas (-91%), initial bundle de 668→238 kB (-64%) com code splitting.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Nascimento | Hoje |
 |---------|-----------|------|
@@ -107,7 +106,7 @@ A refatoração do frontend foi brutal: Dashboard de 994→262 linhas (-74%), Ad
 | Backups offsite | 0 | 2 (R2 + D1) |
 | Rate limit | ausente | IP + API key dual window |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 O Capivara me ensinou que **painel pessoal também é produção**. O dia que o backup "silencioso" falhou sem eu saber foi um alerta: se uma automação é crítica, ela precisa de **validação**, não só de execução. Foi isso que levou ao snapshot validado do R2 e ao sync no_agent — sistemas que se corrigem sozinhos.
 
@@ -115,9 +114,9 @@ E a segunda lição: **RAG local com dados pessoais funciona muito bem**. Ter me
 
 <Terminal
   lines={[
-    { cmd: 'git rev-list --count HEAD', output: '107 commits desde o início' },
-    { cmd: 'pytest backend/tests/ -q | tail -1', output: '131 passed' },
-    { cmd: 'pnpm test --run | tail -1', output: '248 passed' },
-    { cmd: 'rclone ls r2:capivara-backups/ | tail -3', output: 'backups diários no R2' },
+  { cmd: 'git rev-list --count HEAD', output: '107 commits desde o início' },
+  { cmd: 'pytest backend/tests/ -q | tail -1', output: '131 passed' },
+  { cmd: 'pnpm test --run | tail -1', output: '248 passed' },
+  { cmd: 'rclone ls r2:capivara-backups/ | tail -3', output: 'backups diários no R2' },
   ]}
 />

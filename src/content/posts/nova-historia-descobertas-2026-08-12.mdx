@@ -5,14 +5,13 @@ date: 2026-08-12 12:00:00 -03:00
 pubDate: 2026-08-12 16:00:00 -03:00
 project: descobertas
 tags: ["descobertas", "git", "github", "lfs", "tatuengine", "debug"]
-icon: "💡"
 cover: /covers/nova-historia-descobertas-2026-08-12.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O push que nunca passava
+##  O push que nunca passava
 
 Todo repositório tem um pecado original. No TatuEngine, o pecado era uma pasta chamada `models/` — e ela estava lá desde o primeiro commit.
 
@@ -28,7 +27,7 @@ remote: error: File models/bitmamba_cpp/... is 2147.48 MB; this exceeds GitHub's
 
 O GitHub não rejeita só arquivos acima de 100MB (limite de blobs). Ele rejeita **objetos acima de 2GB** — e o erro 422 é categórico: `LFS objects too large`. Aquele push **nunca** passaria, não importava quantas vezes eu tentasse.
 
-## 🧠 O problema real: histórico pesado é dívida que cobra juros
+##  O problema real: histórico pesado é dívida que cobra juros
 
 O detalhe que muita gente esquece: não adianta apagar o arquivo no commit seguinte. **O git guarda o histórico inteiro** — o blob de 2GB continua no `.git` para sempre, em cada clone, em cada push.
 
@@ -36,7 +35,7 @@ Eu verifiquei:
 
 ```bash
 # O .git local pesava mais que o código inteiro
-du -sh .git        # 23G — 4x o tamanho de tudo que valia a pena
+du -sh .git  # 23G — 4x o tamanho de tudo que valia a pena
 
 # Onde estavam os monstros
 git rev-list --objects --all | \
@@ -49,7 +48,7 @@ git rev-list --objects --all | \
 
 23 gigabytes de repositório para entregar alguns megabytes de código útil. E cada clone novo baixaria tudo aquilo. Insustentável.
 
-## 🔧 Por que não era tão simples quanto parece
+##  Por que não era tão simples quanto parece
 
 A tentação imediata: `git rm -r --cached models/` + `.gitignore` + commit. Só que **não resolve** — o histórico continuava lá, e o push continuaria mandando os blobs gigantes.
 
@@ -81,20 +80,20 @@ git push github fresh:main
 # * [new branch] fresh -> main
 ```
 
-## 🧠 As lições que ficaram
+##  As lições que ficaram
 
 1. **Nunca commitar binários grandes** — `.gitignore` para `models/`, `*.bin`, `*.pt`, `*.safetensors` desde o dia zero. Arquivos de modelo baixam de HF Hub, não vivem no repo.
 2. **GitHub tem limites duros** — arquivo >100MB é rejeitado; objeto >2GB é rejeitado com 422. Não existe workaround: ou LFS, ou não commitar.
 3. **Apagar no futuro não apaga o passado** — o histórico é imutável; a única forma de remover blob gigante do repositório é reescrever o histórico.
 4. **Orphan branch é cirurgia limpa** — quando o código atual é o que importa, ela preserva exatamente isso e corta o resto.
 
-## 🛠️ Detalhes técnicos
+##  Detalhes técnicos
 
 | Item | Antes | Depois |
 |------|-------|--------|
 | `models/` no histórico | 5.7GB commitados | Fora do git (`.gitignore` linha 52) |
 | Tamanho do `.git` local | 23G | (local mantém lixo, remoto limpo) |
-| Push `github main` | Falha 422 (objetos >2GB) | ✅ `fresh -> main` |
+| Push `github main` | Falha 422 (objetos >2GB) |  `fresh -> main` |
 | Branch `fresh` | — | Existente local + remoto |
 | Código/testes/docs/workflows | Preservados | Idênticos no primeiro commit da história nova |
 

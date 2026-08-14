@@ -11,7 +11,6 @@ tags:
   - gamedev
   - react
   - ux
-icon: 🚀
 cover: /covers/5-jogos-melhorados-o-dia-que-o-portfolio-virou-vitrine.webp
 featured: false
 ---
@@ -28,11 +27,11 @@ The games started as static HTML files in `public/games/`, each in its own subdi
 
 ```
 public/games/
-├── simon-game/       # Sequential memory game (Simon Says)
-├── asteroid-dodge/   # Asteroid dodging in 2D space
-├── code-typing/      # Typing speed test
-├── memory-matrix/    # Light grid memorization
-└── terminal/         # Interactive terminal simulator
+├── simon-game/  # Sequential memory game (Simon Says)
+├── asteroid-dodge/  # Asteroid dodging in 2D space
+├── code-typing/  # Typing speed test
+├── memory-matrix/  # Light grid memorization
+└── terminal/  # Interactive terminal simulator
 ```
 
 They worked — but they were only accessible via direct URL. No presence on the home page. No cover image. No context.
@@ -74,15 +73,15 @@ export async function GET(
   const gamePath = path.join(process.cwd(), 'public', 'games', params.slug, 'index.html')
   
   if (!fs.existsSync(gamePath)) {
-    return new Response('Game not found', { status: 404 })
+  return new Response('Game not found', { status: 404 })
   }
   
   const html = fs.readFileSync(gamePath, 'utf-8')
   return new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
+  headers: {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'public, max-age=3600',
+  },
   })
 }
 ```
@@ -132,10 +131,10 @@ Each game received specific attention:
 The coolest technical part was the embed system. When the user clicks "Play", an iframe is dynamically created within a themed frame:
 
 ```
-┌─ 🟢 simon-game ───────────────────── [✕] ─┐
-│                                             │
-│          [game loaded here]                  │
-│                                             │
+┌─  simon-game ───────────────────── [] ─┐
+│  │
+│  [game loaded here]  │
+│  │
 └─────────────────────────────────────────────┘
 ```
 
@@ -148,11 +147,11 @@ The frame has:
 ```tsx
 {loading && (
   <div className="flex items-center justify-center h-[450px]">
-    <div className="w-8 h-8 border-2 border-[var(--accent)] 
-         border-t-transparent rounded-full animate-spin" />
-    <span className="text-xs font-mono animate-pulse">
-      Loading game...
-    </span>
+  <div className="w-8 h-8 border-2 border-[var(--accent)] 
+  border-t-transparent rounded-full animate-spin" />
+  <span className="text-xs font-mono animate-pulse">
+  Loading game...
+  </span>
   </div>
 )}
 ```
@@ -184,9 +183,9 @@ The portfolio became a real showcase — not only displaying code, but showing w
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/portfolio-samuel && ls public/games/', output: '5 games: simon-game, asteroid-dodge, code-typing, memory-matrix, terminal' },
-    { cmd: 'cat src/components/GameShowcase.tsx | wc -l', output: '124 lines — the showcase component' },
-    { cmd: 'curl -s https://portifolio-30.vercel.app/api/game/code-typing | head -3', output: '<!DOCTYPE html>…' },
-    { cmd: 'echo "+240% engagement on games — Umami confirms"', output: '✅ showcase working' },
+  { cmd: 'cd ~/projetos/portfolio-samuel && ls public/games/', output: '5 games: simon-game, asteroid-dodge, code-typing, memory-matrix, terminal' },
+  { cmd: 'cat src/components/GameShowcase.tsx | wc -l', output: '124 lines — the showcase component' },
+  { cmd: 'curl -s https://portifolio-30.vercel.app/api/game/code-typing | head -3', output: '<!DOCTYPE html>…' },
+  { cmd: 'echo "+240% engagement on games — Umami confirms"', output: ' showcase working' },
   ]}
 />

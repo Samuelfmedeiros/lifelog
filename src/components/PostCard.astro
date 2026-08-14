@@ -1,5 +1,6 @@
 ---
 import { getProject } from '../lib/projects';
+import ProjectIcon from './ProjectIcon.astro';
 
 export interface Props {
   title: string;
@@ -24,7 +25,6 @@ const formattedDate = date.toLocaleDateString(dateLocale, {
 });
 const proj = getProject(project);
 const projectLabel = proj?.label || project;
-const projectIcon = proj?.icon || icon || '📝';
 const readMore = isEn ? 'Continue reading' : 'Continuar lendo';
 const postSlug = isEn ? slug.replace(/^en\//, '') : slug;
 const postHref = isEn ? `/en/post/${postSlug}/` : `/post/${slug}/`;
@@ -43,12 +43,12 @@ const postHref = isEn ? `/en/post/${postSlug}/` : `/post/${slug}/`;
         />
       ) : (
         <div class="cover-placeholder">
-          <span class="placeholder-icon">{projectIcon}</span>
+          <span class="placeholder-icon"><ProjectIcon project={project} /></span>
         </div>
       )}
       <!-- Project badge overlaid -->
       <div class="cover-badge">
-        {projectIcon} {projectLabel}
+        <span class="inline-flex items-center gap-1.5"><ProjectIcon project={project} /> {projectLabel}</span>
       </div>
     </div>
 
@@ -101,7 +101,7 @@ const postHref = isEn ? `/en/post/${postSlug}/` : `/post/${slug}/`;
   .cover-img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
   .post-card:hover .cover-img { transform: scale(1.05); }
   .cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--bg-gradient); }
-  .placeholder-icon { font-size: 2.5rem; opacity: 0.3; filter: drop-shadow(0 0 20px var(--color-accent)); }
+  .placeholder-icon { display: flex; align-items: center; justify-content: center; font-size: 2.5rem; opacity: 0.3; filter: drop-shadow(0 0 20px var(--color-accent)); }
   .cover-badge { position: absolute; bottom: 8px; left: 8px; padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); color: #fff; border: 1px solid rgba(255,255,255,0.1); }
   .card-body { padding: 1rem 1.25rem 1.25rem; }
   .card-title { font-size: 1.1rem; font-weight: 700; line-height: 1.4; margin-bottom: 0.4rem; color: var(--color-heading); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

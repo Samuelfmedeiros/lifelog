@@ -7,7 +7,6 @@ lang: 'en'
 project: dogwalk
 tags: ["dogwalk", "infrastructure", "beginning", "devops", "code"]
 
-icon: 🐶
 cover: /covers/primeiros-passos-infra-dogwalk.webp
 featured: false
 ---
@@ -37,25 +36,25 @@ Before committing, I made a comparison spreadsheet:
 
 | Criterion | React 19 | Vue 3.5 | Next.js | Svelte |
 |-----------|----------|---------|---------|--------|
-| Build tool | Vite 8 ⚡ | Vite 8 ⚡ | Webpack 🐢 | Vite 8 ⚡ |
-| SSR/SSG | ❌ Pure SPA | ❌ Pure SPA | ✅ Native SSR | ❌ Pure SPA |
-| TypeScript | ✅ Native | ✅ Native | ✅ Native | ✅ Native |
-| Learning curve | 🟢 Know it well | 🟡 Reasonable | 🟢 Know it well | 🟠 Would learn |
-| Ecosystem maturity | 🟢 Giant | 🟢 Large | 🟢 Large | 🟡 Growing |
+| Build tool | Vite 8  | Vite 8  | Webpack  | Vite 8  |
+| SSR/SSG |  Pure SPA |  Pure SPA |  Native SSR |  Pure SPA |
+| TypeScript |  Native |  Native |  Native |  Native |
+| Learning curve |  Know it well |  Reasonable |  Know it well |  Would learn |
+| Ecosystem maturity |  Giant |  Large |  Large |  Growing |
 | Bundle size (base) | ~40 KB | ~33 KB | ~70 KB | ~5 KB |
-| **Verdict** | **✅ Chosen** | ⬅️ 2nd option | ❌ Overkill for SPA | ❌ Risk |
+| **Verdict** | ** Chosen** |  2nd option |  Overkill for SPA |  Risk |
 
 **Backend:**
 
 | Criterion | FastAPI | Flask | Express | Django |
 |-----------|---------|-------|---------|--------|
-| Performance | 🟢 Async | 🟡 Sync | 🟢 Async | 🟡 Sync |
-| Typing | ✅ Pydantic | ❌ | ❌ (JS) | ✅ (medium) |
-| Auto docs | ✅ Swagger | ❌ | ❌ | ❌ |
-| Async DB | ✅ asyncpg | 🟡 gevent | ✅ Prisma | 🟡 |
-| ORM | ✅ SQLAlchemy | ✅ SQLAlchemy | ✅ Prisma | ✅ Own ORM |
-| Weight | 🟢 Light | 🟢 Light | 🟢 Light | 🔴 Heavy |
-| **Verdict** | **✅ Chosen** | ❌ No async | ❌ No typing | ❌ Too heavy |
+| Performance |  Async |  Sync |  Async |  Sync |
+| Typing |  Pydantic |  |  (JS) |  (medium) |
+| Auto docs |  Swagger |  |  |  |
+| Async DB |  asyncpg |  gevent |  Prisma |  |
+| ORM |  SQLAlchemy |  SQLAlchemy |  Prisma |  Own ORM |
+| Weight |  Light |  Light |  Light |  Heavy |
+| **Verdict** | ** Chosen** |  No async |  No typing |  Too heavy |
 
 ## The first route: user registration
 
@@ -71,56 +70,56 @@ from app.database import get_db
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 class RegisterRequest(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    role: str  # 'tutor' | 'passeador'
+  name: str
+  email: EmailStr
+  password: str
+  role: str  # 'tutor' | 'passeador'
 
 class UserResponse(BaseModel):
-    id: str
-    name: str
-    email: str
-    role: str
-    created_at: str
+  id: str
+  name: str
+  email: str
+  role: str
+  created_at: str
 
 @router.post("/register", response_model=UserResponse)
 async def register(req: RegisterRequest):
-    if req.role not in ("tutor", "passeador"):
-        raise HTTPException(400, "Invalid role")
+  if req.role not in ("tutor", "passeador"):
+  raise HTTPException(400, "Invalid role")
 
-    hashed = bcrypt.hashpw(
-        req.password.encode(), bcrypt.gensalt()
-    ).decode()
+  hashed = bcrypt.hashpw(
+  req.password.encode(), bcrypt.gensalt()
+  ).decode()
 
-    async with get_db() as db:
-        # Check if email already exists
-        existing = await db.fetchrow(
-            "SELECT id FROM users WHERE email = $1", req.email
-        )
-        if existing:
-            raise HTTPException(409, "Email already registered")
+  async with get_db() as db:
+  # Check if email already exists
+  existing = await db.fetchrow(
+  "SELECT id FROM users WHERE email = $1", req.email
+  )
+  if existing:
+  raise HTTPException(409, "Email already registered")
 
-        # Create user + profile in transaction
-        user = await db.fetchrow(
-            """INSERT INTO users (name, email, password_hash)
-               VALUES ($1, $2, $3)
-               RETURNING id, name, email, created_at""",
-            req.name, req.email, hashed
-        )
+  # Create user + profile in transaction
+  user = await db.fetchrow(
+  """INSERT INTO users (name, email, password_hash)
+  VALUES ($1, $2, $3)
+  RETURNING id, name, email, created_at""",
+  req.name, req.email, hashed
+  )
 
-        await db.execute(
-            """INSERT INTO profiles (user_id, name, role)
-               VALUES ($1, $2, $3)""",
-            user["id"], req.name, req.role
-        )
+  await db.execute(
+  """INSERT INTO profiles (user_id, name, role)
+  VALUES ($1, $2, $3)""",
+  user["id"], req.name, req.role
+  )
 
-        return {
-            "id": str(user["id"]),
-            "name": user["name"],
-            "email": user["email"],
-            "role": req.role,
-            "created_at": user["created_at"].isoformat(),
-        }
+  return {
+  "id": str(user["id"]),
+  "name": user["name"],
+  "email": user["email"],
+  "role": req.role,
+  "created_at": user["created_at"].isoformat(),
+  }
 ```
 
 Using `asyncpg` directly (without ORM) was intentional — I wanted to feel the database before abstracting it. Only later did I add SQLAlchemy for more complex queries.
@@ -135,17 +134,17 @@ version: "3.9"
 
 services:
   db:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_DB: dogwalk
-      POSTGRES_USER: dogwalk
-      # optional: access configured via external env
-      POSTGRES_ACCESS: local_dev
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d
+  image: postgres:18-alpine
+  environment:
+  POSTGRES_DB: dogwalk
+  POSTGRES_USER: dogwalk
+  # optional: access configured via external env
+  POSTGRES_ACCESS: local_dev
+  ports:
+  - "5432:5432"
+  volumes:
+  - pgdata:/var/lib/postgresql/data
+  - ./backend/migrations:/docker-entrypoint-initdb.d
 
 volumes:
   pgdata:
@@ -158,25 +157,25 @@ The migrations volume mounted at `docker-entrypoint-initdb.d` made PostgreSQL ru
 ```sql
 -- backend/migrations/001_users_profiles.sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('tutor', 'passeador')),
-    phone TEXT,
-    avatar_url TEXT,
-    city TEXT,
-    rating DECIMAL(2,1) DEFAULT 0.0,
-    is_verified BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('tutor', 'passeador')),
+  phone TEXT,
+  avatar_url TEXT,
+  city TEXT,
+  rating DECIMAL(2,1) DEFAULT 0.0,
+  is_verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX idx_profiles_user_id ON profiles(user_id);
@@ -193,8 +192,8 @@ Looking at the `deploy-workflow.sh` today, it seems like a decent script. But it
 ```bash
 #!/bin/bash
 # deploy-workflow.sh — version 0.1, 28/05/2026
-echo "🐶 Building Dogwalk..."
-npm run build && echo "✅ Build OK" || echo "❌ Build failed"
+echo " Building Dogwalk..."
+npm run build && echo " Build OK" || echo " Build failed"
 ```
 
 Yes, it was literally this at the beginning. It grew with conditionals, health checks, logs, and today it's about 80 lines. But every big script starts small.
@@ -220,11 +219,11 @@ The database choice was PostgreSQL running in Docker. No complex ORM at the star
 
 ```sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    role TEXT CHECK (role IN ('tutor', 'passeador')) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  role TEXT CHECK (role IN ('tutor', 'passeador')) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
@@ -250,10 +249,10 @@ Project setup is treacherous — it feels like you're making progress when you'r
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/Dogwalk/backend && source .venv/bin/activate && uvicorn app.main:app --reload --host 127.0.0.1 --port 8080', output: 'Start dev server' },
-    { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -m json.tool | head -20', output: 'Inspect automatic API documentation' },
-    { cmd: 'psql -d dogwalk -c "\\dt+"', output: 'List all tables with size' },
-    { cmd: 'docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"', output: 'Start database + count users' },
-    { cmd: "grep -r 'asyncpg' backend/app/ | wc -l", output: 'How many lines use asyncpg in the backend' },
+  { cmd: 'cd ~/projetos/Dogwalk/backend && source .venv/bin/activate && uvicorn app.main:app --reload --host 127.0.0.1 --port 8080', output: 'Start dev server' },
+  { cmd: 'curl -s http://localhost:8080/openapi.json | python3 -m json.tool | head -20', output: 'Inspect automatic API documentation' },
+  { cmd: 'psql -d dogwalk -c "\\dt+"', output: 'List all tables with size' },
+  { cmd: 'docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"', output: 'Start database + count users' },
+  { cmd: "grep -r 'asyncpg' backend/app/ | wc -l", output: 'How many lines use asyncpg in the backend' },
   ]}
 />

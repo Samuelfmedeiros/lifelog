@@ -5,14 +5,13 @@ date: 2026-08-05 12:00:00 -03:00
 pubDate: 2026-08-06 17:15:00 -03:00
 project: descobertas
 tags: ["descobertas", "node", "npm", "debug", "wsl"]
-icon: "💡"
 cover: /covers/descobertas-o-node-modules-fantasma-que-sequestrava-builds.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O erro que não fazia sentido
+##  O erro que não fazia sentido
 
 Era 20:10 de 05/08/2026. Eu estava fazendo um fix na animação de tema do LifeLog — nada demais, só ajustar umas regras CSS de View Transition. Build local, push, CI. Rotina.
 
@@ -25,13 +24,13 @@ The requested module 'cookie' is a CommonJS module...
 
 Estranho. O pacote `cookie` no lockfile era `2.0.1` (ESM, com `parseCookie`). O CI do último commit tinha passado. Ninguém mexeu em dependência. Por que local quebrava?
 
-## 🧠 O contexto: CI passa, local quebra
+##  O contexto: CI passa, local quebra
 
 Esse é o tipo de erro mais irritante que existe. O CI (GitHub Actions) builda num ambiente limpo — tudo funciona. Local, o mesmo código, mesmas dependências, mesmo Node — quebra.
 
 ```bash
 # Verificação 1: o lockfile está igual ao do CI?
-git show HEAD:pnpm-lock.yaml | grep -c "cookie@2.0.1"    # 2 — igual
+git show HEAD:pnpm-lock.yaml | grep -c "cookie@2.0.1"  # 2 — igual
 
 # Verificação 2: o pacote existe no node_modules?
 ls node_modules/.pnpm/cookie@2.0.1/node_modules/cookie/dist/index.js
@@ -39,19 +38,19 @@ ls node_modules/.pnpm/cookie@2.0.1/node_modules/cookie/dist/index.js
 
 # Verificação 3: o que o Node resolve?
 node --input-type=module -e "import('cookie').then(m => console.log(Object.keys(m)))"
-# [ 'default', 'parse', 'serialize' ]  — ⚠️ faltando parseCookie!
+# [ 'default', 'parse', 'serialize' ]  —  faltando parseCookie!
 ```
 
 O Node resolvia um `cookie` **diferente** do que estava no `node_modules` do projeto. Alguma coisa na árvore de diretórios estava sequestrando a resolução.
 
-## 🔧 A luta: seguindo o rastro do Node Module Resolution
+##  A luta: seguindo o rastro do Node Module Resolution
 
 O Node resolve módulos subindo a árvore de diretórios: primeiro o `node_modules` local, depois o do pai, até a raiz. Se em algum nível acima houver um pacote com o mesmo nome, ele ganha.
 
 ```bash
 # Onde o Node está resolvendo 'cookie'?
 node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
-# file://~/projetos/node_modules/cookie/index.js   ← O QUÊ?
+# file://~/projetos/node_modules/cookie/index.js  ← O QUÊ?
 ```
 
 `~/projetos/node_modules/`. Isso não devia existir.
@@ -69,18 +68,18 @@ A pergunta que ficou: **quem instalou isso na home?**
 ```bash
 cat ~/projetos/package.json
 # {
-#   "dependencies": {
-#     "better-sqlite3": "^12.11.1",
-#     "camofox-browser": "^2.4.6",
-#     "puppeteer": "^25.1.0",
-#     "vercel": "^34.0.0"
-#   }
+#  "dependencies": {
+#  "better-sqlite3": "^12.11.1",
+#  "camofox-browser": "^2.4.6",
+#  "puppeteer": "^25.1.0",
+#  "vercel": "^34.0.0"
+#  }
 # }
 ```
 
 Alguém (provavelmente um script de setup ou outro agente) rodou `npm install` na home em 04/08/2026 18:33 — e ninguém percebeu. O `better-sqlite3` puxou 453 pacotes, incluindo `cookie@0.7.2` como dependência transitiva. Um node_modules global de 253MB, silencioso, sequestrando todos os builds Node do WSL.
 
-## 💡 A resolução: rm + backup
+##  A resolução: rm + backup
 
 ```bash
 # 1. Mover pra backup (nunca rm -rf direto em 253MB)
@@ -93,12 +92,12 @@ node --input-type=module -e "console.log(import.meta.resolve('cookie'))"
 
 # 3. Build
 pnpm run build
-# ✓ 130 page(s) built in 25.62s
+#  130 page(s) built in 25.62s
 ```
 
 Build passou. O erro simplesmente sumiu.
 
-## 📊 Métricas
+##  Métricas
 
 | Métrica | Valor |
 |---------|-------|
@@ -109,7 +108,7 @@ Build passou. O erro simplesmente sumiu.
 | Projetos afetados | Todos no WSL (LifeLog, LEVE LAVANDA, etc.) |
 | Tempo perdido debugando | ~5 min (achei rápido porque segui o rastro do resolve) |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **`import.meta.resolve()` é a ferramenta mais subestimada do Node** — quando um import quebra e o pacote existe no `node_modules`, a primeira coisa é perguntar **onde** o Node está resolvendo. `import.meta.resolve('pacote')` mostra o caminho REAL. Leva 2 segundos e evita horas de debug.
 
@@ -121,9 +120,9 @@ Build passou. O erro simplesmente sumiu.
 
 <Terminal
   lines={[
-    { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'Mostra onde o Node RESOLVE um pacote — não onde ele DEVERIA estar' },
-    { cmd: 'find ~ -maxdepth 2 -name "node_modules" -type d', output: 'Caça node_modules perdidos na home' },
-    { cmd: 'ls ~/.npm-home-backup-20260805/', output: 'Backup do node_modules fantasma (253MB de lição)' },
-    { cmd: 'pnpm run build 2>&1 | tail -3', output: '✓ 130 page(s) built — após matar o fantasma' },
+  { cmd: 'node --input-type=module -e "console.log(import.meta.resolve(process.argv[1]))" cookie', output: 'Mostra onde o Node RESOLVE um pacote — não onde ele DEVERIA estar' },
+  { cmd: 'find ~ -maxdepth 2 -name "node_modules" -type d', output: 'Caça node_modules perdidos na home' },
+  { cmd: 'ls ~/.npm-home-backup-20260805/', output: 'Backup do node_modules fantasma (253MB de lição)' },
+  { cmd: 'pnpm run build 2>&1 | tail -3', output: ' 130 page(s) built — após matar o fantasma' },
   ]}
 />

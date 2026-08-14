@@ -5,7 +5,6 @@ date: 2026-05-28 00:00:00 -03:00
 pubDate: 2026-05-28 00:00:00 -03:00
 project: capivara
 tags: ["capivara", "hub", "segurança", "fastapi", "jwt"]
-icon: "🐷"
 cover: /covers/capivara-nasce-preciso-de-um-hub-pessoal-seguro.webp
 featured: false
 ---
@@ -40,15 +39,15 @@ security = HTTPBearer()
 # Rotas públicas (sem auth)
 @app.post("/api/portifolio/public/messages")
 async def receive_contact(data: ContactForm):
-    return await db.insert_message(data)
+  return await db.insert_message(data)
 
 # Rotas admin (com auth JWT)
 @app.get("/api/portifolio/messages")
 async def list_messages(auth: HTTPAuthorizationCredentials = Depends(security)):
-    payload = verify_jwt(auth.credentials)
-    if not payload or payload.get("role") != "admin":
-        raise HTTPException(status_code=403)
-    return await db.get_all_messages()
+  payload = verify_jwt(auth.credentials)
+  if not payload or payload.get("role") != "admin":
+  raise HTTPException(status_code=403)
+  return await db.get_all_messages()
 ```
 
 A estrutura de rotas é simples: `/public/` pra endpoints que o frontend chama sem token, e sem prefixo pros endpoints admin que exigem JWT.
@@ -65,12 +64,12 @@ JWT_CONFIG = os.getenv("CAPIVARA_JWT_CONFIG")  # via Bitwarden SM
 JWT_ALGORITHM = "HS256"
 
 def create_access_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "role": "admin",
-        "exp": datetime.utcnow() + timedelta(hours=2),
-    }
-    return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
+  payload = {
+  "sub": user_id,
+  "role": "admin",
+  "exp": datetime.utcnow() + timedelta(hours=2),
+  }
+  return jwt.encode(payload, JWT_CONFIG, algorithm=JWT_ALGORITHM)
 ```
 
 O segredo JWT vive no Bitwarden Secrets Manager, nunca no código. O Hermes injeta via env var no systemd service.
@@ -82,19 +81,19 @@ O Capivara usa PostgreSQL 18 local, com uma database separada pra cada projeto:
 ```sql
 -- Database: capivara
 CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    message TEXT NOT NULL,
-    source TEXT DEFAULT 'portifolio',
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  message TEXT NOT NULL,
+  source TEXT DEFAULT 'portifolio',
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE cv_downloads (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ip_hash TEXT,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_hash TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
@@ -112,7 +111,7 @@ O Tunnel resolve o problema de DNS, SSL, e firewall de uma vez. O domínio `capi
 
 | Componente | Local | Público |
 |-----------|-------|---------|
-| PostgreSQL | `localhost:5432` | ❌ (só local) |
+| PostgreSQL | `localhost:5432` |  (só local) |
 | Capivara API | `localhost:8001` | `capivara.seu.pet` |
 | Dashboard | Dev `:5173` | Em construção |
 
@@ -128,8 +127,8 @@ Assim como o roedor, o Capivara hub é discreto mas essencial. Todo projeto do e
 
 <Terminal
   lines={[
-    { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
-    { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Teste","email":"teste@teste.com","message":"Olá"}\'', output: '{"id":"uuid-123","status":"created"}' },
-    { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding pro dashboard' },
+  { cmd: 'curl -s https://capivara.seu.pet/api/health', output: '{"status":"ok","db":"connected"}' },
+  { cmd: 'curl -s -X POST https://capivara.seu.pet/api/portifolio/public/messages -H "Content-Type: application/json" -d \'{"name":"Teste","email":"teste@teste.com","message":"Olá"}\'', output: '{"id":"uuid-123","status":"created"}' },
+  { cmd: 'ssh -L 8001:localhost:8001 user@host', output: 'Port forwarding pro dashboard' },
   ]}
 />

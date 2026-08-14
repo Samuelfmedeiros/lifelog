@@ -3,12 +3,12 @@
     "home": "Home",
     "homeIcon": "",
     "archive": "Archive",
-    "archiveIcon": "📚",
+    "archiveIcon": "",
     "about": "About",
-    "aboutIcon": "ℹ️",
+    "aboutIcon": "",
     "portfolio": "Portfolio",
-    "portfolioIcon": "🚀",
-    "logo": "📖 LifeLog"
+    "portfolioIcon": "",
+    "logo": "LifeLog"
   },
   "home": {
     "title": "Home",
@@ -17,18 +17,18 @@
     "loading": "Loading..."
   },
   "archive": {
-    "title": "📚 Archive",
+    "title": "Archive",
     "description": "All LifeLog posts",
     "pageTitle": "Archive"
   },
   "about": {
-    "title": "📖 About LifeLog",
+    "title": "About LifeLog",
     "description": "About LifeLog",
-    "p1": "LifeLog is my technical captain's log. A living record of my journey as a developer — projects, discoveries, epic bugs, and everything I learn along the way.",
+    "p1": "LifeLog is my technical logbook. A living record of my journey as a developer — projects, discoveries, epic bugs, and everything I learn along the way.",
     "p2": "Each post has a unique visual theme depending on the project. If I'm talking about Arachne, you see the purple web. If it's about Dogwalk, the palette shifts to orange. The project defines the post's look.",
     "projects": "Projects",
-    "projectsList": "🕷️ Arachne · 🐶 Dogwalk · 🐷 Capivara · 🚀 Portfolio · 📚 Studies",
-    "portfolio": "🚀 Portfolio",
+    "projectsList": "Arachne · Dogwalk · Capivara · Portfolio · Studies",
+    "portfolio": "Portfolio",
     "portfolioUrl": "https://samuelmedeiros.vercel.app"
   },
   "post": {
@@ -46,7 +46,7 @@
     "title": "404 — Not Found",
     "description": "Page not found",
     "heading": "Page not found",
-    "message": "This page doesn't exist or was moved.",
+    "message": "This page doesn't exist or has been moved.",
     "backHome": "← Back to timeline"
   },
   "search": {
@@ -67,8 +67,8 @@
     "projects": "→ Project details",
     "catAbout": "→ About me",
     "notFound": "Command not found. Type \"help\" to see available commands.",
-    "projectsList": "📁 projects/",
-    "featured": "📦 FEATURED PROJECTS"
+    "projectsList": "projects/",
+    "featured": "FEATURED PROJECTS"
   },
   "theme": {
     "toggleLabel": "Toggle theme",
@@ -83,6 +83,9 @@
     "dogwalk": "Dogwalk",
     "portfolio": "Portfolio",
     "capivara": "Capivara",
+    "tatuengine": "TatuEngine",
+    "seguranca": "Security",
+    "lifelog": "LifeLog",
     "estudos": "Studies",
     "descobertas": "Discoveries"
   }

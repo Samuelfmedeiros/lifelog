@@ -5,20 +5,19 @@ date: 2026-08-13 21:30:00 -03:00
 pubDate: 2026-08-13 21:30:00 -03:00
 project: seguranca
 tags: ["seguranca", "ai-jail", "watchdog", "hardening", "agentes"]
-icon: "🔒"
 cover: /covers/a-historia-do-seguranca.webp
 featured: false
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## ⚡ O dia em que os secrets quase vazaram
+##  O dia em que os secrets quase vazaram
 
 No fim de julho, o Hermes rodava com acesso total ao shell. Um prompt injection bem-feito e os tokens do agente iam embora — junto com `.env`, chaves SSH, credenciais do Cloudflare. A segurança era uma esperança, não uma camada.
 
 Dois meses depois, a história é outra: o agente roda sandboxado (**ai-jail** com bwrap + landlock), os 4 projetos passam por **scan agentico automático** (ZAP, gitleaks, bandit, opengrep), e um **watchdog** monitora vazamento de secrets sem ninguém olhar. E o ecossistema tem 2 posts de segurança — que contam pedaços, mas não a história inteira. Até agora.
 
-## 🧠 Contexto — o problema de um ecossistema com 7 projetos
+##  Contexto — o problema de um ecossistema com 7 projetos
 
 Segurança em ecossistema pessoal é traiçoeira: não tem CISO, não tem auditoria, não tem "time de segurança". São 7 projetos (Arachne, Dogwalk, Capivara, Portifólio, TatuEngine, LifeLog, Ajudante), cada um com banco, deploy e segredos — e um único agente com poder de shell.
 
@@ -28,7 +27,7 @@ Três frentes de problema:
 - **O código** — banco sem tranca, rota entregando dado demais, chave exposta no repo, input sem tratamento.
 - **A vigilância** — o que ninguém olha, ninguém corrige. Vulnerabilidade descoberta e não documentada é vulnerabilidade que volta.
 
-## 🔧 A luta — três fases de hardening
+##  A luta — três fases de hardening
 
 ### Fase 1: o ai-jail (28/07) — o sandbox do agente
 
@@ -37,7 +36,7 @@ A primeira resposta foi isolar o agente. **ai-jail** usa bwrap (bubblewrap) + la
 ```yaml
 # ~/.ai-jail — a parte mais importante:
 mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
-hide_dotdirs = [".hermes"]        # tokens do Hermes protegidos
+hide_dotdirs = [".hermes"]  # tokens do Hermes protegidos
 deny_paths = ["secrets/", "*.key", ".gnupg/"]
 ```
 
@@ -65,14 +64,14 @@ A terceira fase foi a mais importante: transformar a vigilância em **processo c
 
 A regra de ouro: **cron só notifica quando tem problema** — sistema silencioso é sistema saudável. O watchdog não enche o grupo de mensagem; ele espera o problema acontecer pra gritar.
 
-## 💡 Resolução — as regras que nasceram da luta
+##  Resolução — as regras que nasceram da luta
 
 1. **Segurança de agente é camada, não feature** — sandbox, mask e hide_dotdirs protegem contra o pior caso (prompt injection), não contra o usuário. Projete pro adversário.
 2. **Scan antes do deploy, sempre** — ZAP + gitleaks + bandit + opengrep rodam em CI antes de qualquer entrega. Check falhou = não entrega.
 3. **Vigilância é processo, não campanha** — watchdog ativo 24/7 vale mais que uma auditoria de fim de semana.
 4. **Fixes valem pra TODAS as contas** — correção de segurança encontrada no meu projeto vale pro Douglas, pra Juliana, pra qualquer usuário do ecossistema.
 
-## 📊 Métricas
+##  Métricas
 
 | Fase | Ferramenta | Resultado |
 |------|-----------|-----------|
@@ -82,7 +81,7 @@ A regra de ouro: **cron só notifica quando tem problema** — sistema silencios
 | Scan web | ZAP | Apps escaneadas contra OWASP |
 | Vigilância | security-watchdog.py | Monitoramento 24/7 com alerta no Notificações |
 
-## 🎯 Aprendizados
+##  Aprendizados
 
 1. **Segurança não é feature, é camada** — não dá pra "adicionar depois"; ela tem que estar na fundação do agente e do deploy.
 2. **O agente é o alvo** — quem tem poder de shell precisa do pior caso na cabeça: prompt injection, não erro de usuário.
@@ -91,9 +90,9 @@ A regra de ouro: **cron só notifica quando tem problema** — sistema silencios
 
 <Terminal
   lines={[
-    { cmd: 'ai-jail run -- "cat ~/.hermes/secrets.env"', output: 'permission denied — mask aplicado no sandbox' },
-    { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan no histórico do git' },
-    { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — análise estática' },
-    { cmd: 'python3 security-watchdog.py', output: 'monitorando 24/7 — alerta só em problema' },
+  { cmd: 'ai-jail run -- "cat ~/.hermes/secrets.env"', output: 'permission denied — mask aplicado no sandbox' },
+  { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan no histórico do git' },
+  { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — análise estática' },
+  { cmd: 'python3 security-watchdog.py', output: 'monitorando 24/7 — alerta só em problema' },
   ]}
 />

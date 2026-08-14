@@ -5,7 +5,6 @@ date: 2026-07-28 10:00:00 -03:00
 pubDate: 2026-07-28 22:00:00 -03:00
 project: portfolio
 tags: [auditoria, pix, focus-trap, cicd, vercel, quality]
-icon: "🚀"
 cover: /covers/portfolio-auditoria-faxina-julho-2026.webp
 featured: false
 lang: 'pt'
@@ -22,11 +21,11 @@ Tudo começou com um bug silencioso. O botão de doação Pix gerava um código 
 Depois de horas debugando, encontrei a causa: `String.fromCharCode`. Eu estava usando esse método para converter o *comprimento* dos campos em caracteres — exatamente o que o spec EMV pede, certo? Errado. `String.fromCharCode` produz **codepoints Unicode**, não dígitos decimais. Um campo de length 14 virava `\x0E` (shift out), não `"14"`.
 
 ```typescript
-// ❌ ANTES — String.fromCharCode produz codepoints de controle
+//  ANTES — String.fromCharCode produz codepoints de controle
 const keyField = `01${String.fromCharCode(key.length)}${key}`;
 const maiLen = String.fromCharCode(mai.length);
 
-// ✅ DEPOIS — dígitos decimais com padding, como o spec EMV realmente espera
+//  DEPOIS — dígitos decimais com padding, como o spec EMV realmente espera
 const keyLen = String(key.length).padStart(2, "0");
 const keyField = `01${keyLen}${key}`;
 const maiLen = String(mai.length).padStart(2, "0");
@@ -43,22 +42,22 @@ O modal de currículo tinha um problema sutil: ao digitar qualquer campo, o foco
 A root cause estava no `useFocusTrap`. O `onClose` era passado como dependência do `useEffect`, e como ele era uma arrow function recriada a cada render, o efeito executava cleanup (que roubava o foco) e setup (que focava o primeiro elemento) a **cada caractere digitado**.
 
 ```typescript
-// ❌ ANTES — onClose na dep array recria o efeito a cada render
+//  ANTES — onClose na dep array recria o efeito a cada render
 useEffect(() => {
   // setup: foca primeiro elemento
   // cleanup: rouba foco de volta pro trigger
   return () => { triggerRef.current?.focus(); };
 }, [active, onClose, containerRef]);
 
-// ✅ DEPOIS — ref evita stale closure sem recriar o efeito
+//  DEPOIS — ref evita stale closure sem recriar o efeito
 const onCloseRef = useRef(onClose);
 onCloseRef.current = onClose;
 
 useEffect(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onCloseRef.current();
-    }
+  if (e.key === "Escape") {
+  onCloseRef.current();
+  }
   };
   // ...
 }, [active, containerRef]); // onClose removida intencionalmente
@@ -77,7 +76,7 @@ No dia 21 de julho, sentei pra fazer uma auditoria de qualidade. O resultado foi
 5. **ContactForm**: clipboard com fallback `execCommand` pra HTTPS. Rate limit com contagem regressiva visível.
 6. **AppWrapper**: dead code — só renderizava `children`. Removido.
 7. **Layout**: verification tags placeholder removidas.
-8. **Navbar**: ícone games vazio → 🎮.
+8. **Navbar**: ícone games vazio → .
 9. **Loading skeleton**: visual consistency melhorada.
 10. **Pix**: o bug que começou tudo.
 
@@ -106,9 +105,9 @@ Julho foi o mês do "feito é melhor que perfeito, mas feito exige manutenção"
 
 <Terminal
   lines={[
-    { cmd: 'cd ~/projetos/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
-    { cmd: 'npm test', output: 'Testes: 218 PASS, 0 FAIL' },
-    { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'O hook que virou lição de useRef + useEffect' },
-    { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'Julho em 10 commits — faxina pura' },
+  { cmd: 'cd ~/projetos/portifolio && npm run build', output: 'Build: 0 errors, 0 warnings' },
+  { cmd: 'npm test', output: 'Testes: 218 PASS, 0 FAIL' },
+  { cmd: 'cat src/hooks/useFocusTrap.ts | head -25', output: 'O hook que virou lição de useRef + useEffect' },
+  { cmd: 'git log --oneline --since="2026-07-01" --format="%h %s" | head -10', output: 'Julho em 10 commits — faxina pura' },
   ]}
 />

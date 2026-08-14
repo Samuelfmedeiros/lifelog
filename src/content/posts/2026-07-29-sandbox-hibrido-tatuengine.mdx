@@ -5,7 +5,6 @@ date: 2026-07-29 19:00:00 -03:00
 pubDate: 2026-07-29 21:00:00 -03:00
 project: tatuengine
 tags: ["tatuengine", "sandbox", "seguranca", "ia", "tooluse", "python"]
-icon: "🌊"
 cover: /covers/2026-07-29-sandbox-hibrido-tatuengine.webp
 featured: false
 ---
@@ -29,9 +28,9 @@ O sandbox define 3 zonas de segurança:
 
 | Zona | Leitura | Escrita | Tamanho máx |
 |------|---------|---------|-------------|
-| **SAFE** | diretórios de projeto | ✅ | 500 MB |
-| **RESTRICTED** | home + drives de dados | ❌ | 100 MB |
-| **DENIED** | `.ssh/*`, `.git/*`, `*.key`, `*.pem`, `.env*`, `/etc`, `/sys` | ❌ | — |
+| **SAFE** | diretórios de projeto |  | 500 MB |
+| **RESTRICTED** | home + drives de dados |  | 100 MB |
+| **DENIED** | `.ssh/*`, `.git/*`, `*.key`, `*.pem`, `.env*`, `/etc`, `/sys` |  | — |
 
 A inteligência tá no **match hierárquico**: um path no diretório de projetos cai em SAFE (leitura + escrita), mas uma chave SSH cai em DENIED mesmo estando dentro da home.
 
@@ -42,27 +41,27 @@ O sandbox detecta 3 formas de ataque:
 ```python
 # Path traversal clássico
 if ".." in path.split(os.sep):
-    return SandboxResult.err(f"Path traversal detectado: {path}")
+  return SandboxResult.err(f"Path traversal detectado: {path}")
 
 # URL-encoded traversal
 if "%2e" in path.lower():
-    return SandboxResult.err(f"Path traversal codificado: {path}")
+  return SandboxResult.err(f"Path traversal codificado: {path}")
 
 # Byte nulo
 if "\x00" in path:
-    return SandboxResult.err("Caminho contém byte nulo")
+  return SandboxResult.err("Caminho contém byte nulo")
 ```
 
 O resolvedor usa `Path.resolve()` (que segue symlinks e resolve `..`), depois verifica se o path absoluto começa com um prefixo permitido:
 
 ```python
 def _is_safe_prefix(self, resolved: Path) -> bool:
-    r_str = str(resolved)
-    for raw in self._safe_prefixes:
-        expanded = str(Path(raw).expanduser())
-        if r_str == expanded or r_str.startswith(expanded + "/"):
-            return True
-    return False
+  r_str = str(resolved)
+  for raw in self._safe_prefixes:
+  expanded = str(Path(raw).expanduser())
+  if r_str == expanded or r_str.startswith(expanded + "/"):
+  return True
+  return False
 ```
 
 Isso impede o truque de criar um symlink apontando pra fora da zona permitida e acessar via ele — o `resolve()` segue o symlink e revela o path real.
@@ -77,11 +76,11 @@ O `check_write()` só permite escrita em prefixos SAFE:
 
 ```python
 if allow_write:
-    if self.level == "restricted":
-        return SandboxResult.err(
-            f"Escrita em sandbox RESTRICTED não permitida: {resolved}")
-    if not in_safe and not in_restricted:
-        return SandboxResult.err(f"Escrita fora de SAFE: {resolved}")
+  if self.level == "restricted":
+  return SandboxResult.err(
+  f"Escrita em sandbox RESTRICTED não permitida: {resolved}")
+  if not in_safe and not in_restricted:
+  return SandboxResult.err(f"Escrita fora de SAFE: {resolved}")
 ```
 
 Isso significa que o agente pode **criar arquivos** nos diretórios de projeto (SAFE), mas **não pode modificar** credenciais (DENIED) nem escrever nos drives de dados (RESTRICTED).
@@ -90,17 +89,17 @@ Isso significa que o agente pode **criar arquivos** nos diretórios de projeto (
 
 O sandbox tem **439 linhas de testes**. Testa:
 
-- ✅ Leitura em SAFE
-- ✅ Escrita em SAFE
-- ❌ Path traversal (`../etc/passwd`)
-- ❌ Path traversal URL-encoded (`%2e%2e`)
-- ❌ Byte nulo no path
-- ❌ Leitura de DENIED (`.git/config`, chaves SSH)
-- ❌ Escrita em RESTRICTED
-- ❌ Symlink apontando pra fora
-- ❌ Path muito longo (>4096)
-- ✅ Busca em diretório
-- ✅ Arquivos aninhados em subdiretórios
+-  Leitura em SAFE
+-  Escrita em SAFE
+-  Path traversal (`../etc/passwd`)
+-  Path traversal URL-encoded (`%2e%2e`)
+-  Byte nulo no path
+-  Leitura de DENIED (`.git/config`, chaves SSH)
+-  Escrita em RESTRICTED
+-  Symlink apontando pra fora
+-  Path muito longo (>4096)
+-  Busca em diretório
+-  Arquivos aninhados em subdiretórios
 
 ## O que aprendi
 
