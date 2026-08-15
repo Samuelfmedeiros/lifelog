@@ -200,6 +200,9 @@ import { PALETTES } from '../lib/palettes'
     // CTA (botão Portfólio) sempre usa a versão ESCURA do accent + letra branca
     root.style.setProperty('--navbar-cta-bg', p.aL)
     root.style.setProperty('--navbar-cta-color', '#ffffff')
+    // CTA hover: versão 12% mais escura do accent light
+    const ctaHoverBg = tinycolor(p.aL).darken(12).toHexString()
+    root.style.setProperty('--navbar-cta-hover-bg', ctaHoverBg)
     root.style.setProperty('--color-accent-soft', p.tB)
     root.style.setProperty('--color-glow', dark ? p.gD : p.gL)
     root.style.setProperty('--color-border', dark ? p.bD : p.bL)
