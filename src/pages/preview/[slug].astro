@@ -1,0 +1,90 @@
+---
+// Preview de post em draft — rota on-demand com senha.
+// Acessível SOMENTE com ?p=<senha> (env LIFELOG_PREVIEW_PASSWORD).
+// Renderiza drafts com o mesmo PostLayout da página pública.
+import PostLayout from '../../components/PostLayout.astro';
+import { getCollection } from 'astro:content';
+
+export const prerender = false;
+
+const PREVIEW_PASSWORD = import.meta.env.LIFELOG_PREVIEW_PASSWORD || '';
+
+const { slug } = Astro.params;
+const pass = Astro.url.searchParams.get('p') || '';
+
+// Sem senha configurada ou senha errada → 404 (não revela existência)
+if (!PREVIEW_PASSWORD || pass !== PREVIEW_PASSWORD) {
+  return new Response('Not Found', { status: 404 });
+}
+
+const allPosts = await getCollection('posts');
+// Aceita slug com ou sem prefixo en/; inclui drafts e hidden (só preview)
+const candidates = allPosts.filter(p =>
+  p.id === slug || p.id.replace('en/', '') === slug
+);
+if (candidates.length === 0) {
+  return new Response('Not Found', { status: 404 });
+}
+const post = candidates[0];
+const locale = post.id.startsWith('en/') ? 'en' : 'pt';
+
+const projectLabels = {
+  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfolio',
+  capivara: 'Capivara', tatuengine: 'TatuEngine', seguranca: 'Seguranca',
+  lifelog: 'LifeLog', estudos: 'Estudos', descobertas: 'Descobertas',
+};
+
+const isEn = locale === 'en';
+const backText = isEn ? 'Back to blog' : 'Voltar ao blog';
+const prevLabel = isEn ? 'Previous' : 'Anterior';
+const nextLabel = isEn ? 'Next' : 'Próximo';
+const readLabel = isEn ? 'min read' : 'min de leitura';
+const dateLocale = isEn ? 'en-US' : 'pt-BR';
+const backHref = isEn ? '/en/' : '/';
+const postHref = isEn ? `/en/post/${post.id.replace('en/', '')}/` : `/post/${post.id}/`;
+
+// Próximo/anterior apenas entre posts do MESMO locale (públicos, para navegação normal)
+const localePosts = allPosts
+  .filter(p => !p.data.draft && (p.data.lang || (p.id.startsWith('en/') ? 'en' : 'pt')) === locale)
+  .sort((a, b) => new Date(b.data.pubDate || b.data.date) - new Date(a.data.pubDate || a.data.date));
+const currentIdx = localePosts.findIndex(p => p.id === post.id);
+const prevPost = currentIdx < localePosts.length - 1 ? localePosts[currentIdx + 1] : null;
+const nextPost = currentIdx > 0 ? localePosts[currentIdx - 1] : null;
+
+const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
+const isDraft = post.data.draft === true;
+---
+
+<PostLayout
+  {post}
+  {locale}
+  {prevPost}
+  {nextPost}
+  {projectLabels}
+  {readLabel}
+  {backText}
+  {prevLabel}
+  {nextLabel}
+  {dateLocale}
+  {backHref}
+  {postHref}
+>
+  <div class="preview-banner">
+    <strong>PREVIEW {isEn ? '(draft)' : '(rascunho)'}</strong>
+    {isDraft ? (isEn ? 'This post is NOT published yet.' : 'Este post ainda NAO esta publicado.') : ''}
+  </div>
+</PostLayout>
+
+<style>
+  .preview-banner {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: #b45309;
+    color: #fff;
+    text-align: center;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+  }
+</style>

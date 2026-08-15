@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-08-14T03:00:46.633Z",
+  "timestamp": "2026-08-14T15:00:23.119Z",
   "url": "https://lifelog-sepia.vercel.app",
-  "duration": "41.0",
+  "duration": "55.3",
   "routes": {
     "/": {
       "url": "https://lifelog-sepia.vercel.app/",
       "title": "Início — LifeLog",
-      "contentSize": 271018,
+      "contentSize": 272414,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -16,20 +16,20 @@
           "id": "root-mounted",
           "desc": "Astro renderizou",
           "ok": true,
-          "detail": "main len=251054"
+          "detail": "main len=251859"
         },
         {
           "id": "has-cards",
           "desc": "Cards de post na timeline",
           "ok": true,
-          "detail": "body 26543 chars"
+          "detail": "body 25878 chars"
         }
       ]
     },
     "/en/": {
       "url": "https://lifelog-sepia.vercel.app/en/",
       "title": "Home — LifeLog",
-      "contentSize": 271247,
+      "contentSize": 271838,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -46,7 +46,7 @@
     "/arquivo": {
       "url": "https://lifelog-sepia.vercel.app/arquivo",
       "title": "Arquivo — LifeLog",
-      "contentSize": 139644,
+      "contentSize": 140235,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -69,7 +69,7 @@
     "/en/archive": {
       "url": "https://lifelog-sepia.vercel.app/en/archive",
       "title": "Archive — LifeLog",
-      "contentSize": 139784,
+      "contentSize": 140375,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -92,7 +92,7 @@
     "/sobre": {
       "url": "https://lifelog-sepia.vercel.app/sobre",
       "title": "Sobre o LifeLog — LifeLog",
-      "contentSize": 28987,
+      "contentSize": 29578,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
@@ -115,7 +115,7 @@
     "/en/about": {
       "url": "https://lifelog-sepia.vercel.app/en/about",
       "title": "About LifeLog — LifeLog",
-      "contentSize": 29065,
+      "contentSize": 29656,
       "servesHtml": {
         "ok": true,
         "detail": "content-type=text/html; charset=utf-8 status=200"
