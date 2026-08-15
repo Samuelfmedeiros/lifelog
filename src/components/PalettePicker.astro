@@ -296,7 +296,7 @@ import { PALETTES } from '../lib/palettes'
       const easing = 'cubic-bezier(0.45, 0, 0.55, 1)' // ease-in-out suave: sem trava no final
 
       // Clip-path circular — único caminho (mobile E desktop), origem = toque
-      // 🔴 PITFALL CRÍTICO (skill view-transitions-theme-animations): NUNCA
+      // PITFALL CRITICO (skill view-transitions-theme-animations): NUNCA
       // sincronizar a limpeza com t.finished — como o global.css seta
       // animation:none nos pseudo-elementos do VT, o t.finished resolve ~0ms,
       // ANTES da animação WAAPI (400/800ms) terminar. Se limpar por ele,
