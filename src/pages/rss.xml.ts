@@ -4,7 +4,7 @@ import { getProject } from '../lib/projects';
 
 export async function GET(context: { site: string }) {
   const allPosts = await getCollection('posts');
-  const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden);
+  const posts = allPosts.filter(p => !p.data.hidden);
   const sorted = posts.sort((a, b) => {
     const aSort = (a.data.pubDate || a.data.date).getTime();
     const bSort = (b.data.pubDate || b.data.date).getTime();
