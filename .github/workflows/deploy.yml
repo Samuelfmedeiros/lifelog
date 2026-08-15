@@ -199,9 +199,9 @@ jobs:
         for mdx in src/content/posts/*.mdx; do
           SLUG=$(basename "$mdx" .mdx)
 
-          # Pula drafts
-          if head -30 "$mdx" | grep -qE '^draft:\s*true'; then
-            echo "  ⏭️  /post/$SLUG/ — draft, pulando"
+          # Pula drafts e ocultos (hidden: true nao gera pagina -> 404)
+          if head -30 "$mdx" | grep -qE '^draft:\s*true|^hidden:\s*true'; then
+            echo "  ⏭️  /post/$SLUG/ — draft/oculto, pulando"
             continue
           fi
 
@@ -213,8 +213,8 @@ jobs:
         echo "── EN post routes ──"
         for mdx_en in src/content/posts/en/*.mdx; do
           SLUG_EN=$(basename "$mdx_en" .mdx)
-          if head -30 "$mdx_en" | grep -qE '^draft:\s*true'; then
-            echo "  ⏭️  /en/post/$SLUG_EN/ — draft, pulando"
+          if head -30 "$mdx_en" | grep -qE '^draft:\s*true|^hidden:\s*true'; then
+            echo "  ⏭️  /en/post/$SLUG_EN/ — draft/oculto, pulando"
             continue
           fi
           check_url "/en/post/$SLUG_EN/" "/en/post/$SLUG_EN/"
