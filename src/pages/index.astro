@@ -7,12 +7,12 @@ import { getCollection } from 'astro:content';
 
 const locale = 'pt';
 const allPosts = await getCollection('posts');
-const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden && !p.id.startsWith('en/'));
+const posts = allPosts.filter(p => !p.data.hidden && !p.id.startsWith('en/'));
 const sortDate = (p) => p.data.pubDate?.getTime() || p.data.date.getTime();
 posts.sort((a, b) => sortDate(b) - sortDate(a));
 
 // Search index: build at compile time
-const searchIndex = posts.filter(p => !p.data.draft && !p.data.hidden).map(p => ({
+const searchIndex = posts.filter(p => !p.data.hidden).map(p => ({
   id: p.id, slug: p.id.replace(/^(en\/)?/, ''),
   title: p.data.title, description: p.data.description,
   tags: p.data.tags, project: p.data.project,

@@ -13,7 +13,6 @@ const posts = defineCollection({
     icon: z.string().optional(),
     cover: z.string().optional(),
     featured: z.boolean().optional().default(false),
-    draft: z.boolean().optional().default(false),
     hidden: z.boolean().optional().default(false),
   }),
 });

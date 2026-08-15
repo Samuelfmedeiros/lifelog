@@ -6,7 +6,7 @@ import { getCollection } from 'astro:content';
 
 const locale = 'pt';
 const allPosts = await getCollection('posts');
-const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden && !p.id.startsWith('en/'));
+const posts = allPosts.filter(p => !p.data.hidden && !p.id.startsWith('en/'));
 posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
 
 // Group by year

@@ -6,7 +6,7 @@ const locale = 'en';
 
 export async function getStaticPaths() {
   const allPosts = await getCollection('posts');
-  const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden && p.id.startsWith('en/'));
+  const posts = allPosts.filter(p => !p.data.hidden && p.id.startsWith('en/'));
   return posts.map((post) => ({
     params: { slug: post.id.replace('en/', '') },
     props: { post },
@@ -22,7 +22,7 @@ const projectLabels = {
 };
 
 const allPosts = await getCollection('posts');
-const localePosts = allPosts.filter(p => !p.data.draft && !p.data.hidden && (p.data.lang || 'pt') === locale);
+const localePosts = allPosts.filter(p => !p.data.hidden && (p.data.lang || 'pt') === locale);
 localePosts.sort((a, b) => {
   const aSort = (a.data.pubDate || a.data.date).getTime();
   const bSort = (b.data.pubDate || b.data.date).getTime();

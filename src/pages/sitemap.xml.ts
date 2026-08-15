@@ -4,7 +4,7 @@ const SITE_URL = 'https://lifelog-sepia.vercel.app';
 
 export async function GET() {
   const allPosts = await getCollection('posts');
-  const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden);
+  const posts = allPosts.filter(p => !p.data.hidden);
 
   const urls = [
     { loc: '/', changefreq: 'weekly', priority: '1.0' },
