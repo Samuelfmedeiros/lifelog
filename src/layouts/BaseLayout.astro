@@ -162,6 +162,16 @@ const footerText = dataLocale === 'en'
           <a href={aboutHref} class="navbar-link" data-i18n="nav.about"><span class="nav-link-icon" aria-hidden="true">{t.nav.aboutIcon}</span>{t.nav.about}</a>
           <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio"><span class="nav-link-icon" aria-hidden="true">{t.nav.portfolioIcon}</span>{t.nav.portfolio}</a>
           <PalettePicker />
+          {/* Toggle de idioma: mostra a OUTRA língua (destino). O idioma atual
+              já é evidente pelo texto da página — Samuel 15/08/2026. */}
+          <a
+            href={dataLocale === 'en' ? '/' : '/en/'}
+            class="navbar-link navbar-lang"
+            aria-label={dataLocale === 'en' ? 'Ver em português' : 'View in English'}
+            title={dataLocale === 'en' ? 'PT — Português' : 'EN — English'}
+          >
+            {dataLocale === 'en' ? 'PT' : 'EN'}
+          </a>
         </div>
       </nav>
     </header>
