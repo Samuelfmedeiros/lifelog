@@ -28,7 +28,7 @@ The territory's rules were settled early, with no ceremony:
 In code, the grid is almost poetic in its shortness:
 
 ```tsx
-{/* Cards grid — 2 colunas desktop, 1 mobile (cards maiores) */}
+{/* Cards grid — 2 columns desktop, 1 mobile (bigger cards) */}
 <motion.div
   className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6"
   layout
@@ -55,7 +55,7 @@ Instead of categories, each card got a click that opens a details modal (the sam
 
 ```tsx
 const handleClick = () => {
-  // Todos os cards abrem o modal de detalhes (padrão Arachne)
+  // All cards open the details modal (Arachne pattern)
   if (onSelect) {
     onSelect(repo);
   }
