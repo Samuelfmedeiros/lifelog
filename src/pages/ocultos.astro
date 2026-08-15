@@ -1,0 +1,181 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<!-- Página secreta de liberação de posts ocultos.
+     NAO linkada em lugar nenhum. Requer ADMIN_SECRET (env na Vercel).
+     Conteúdo é buscado via API no cliente — nada vaza no build estático. -->
+
+<BaseLayout title="Posts ocultos" description="Gestão de posts ocultos" locale="pt">
+  <main class="max-w-3xl mx-auto px-4 py-12">
+    <h1 class="text-2xl font-extrabold mb-2" style="color: var(--color-heading)">Posts ocultos</h1>
+    <p class="text-sm mb-8" style="color: var(--color-text-muted)">
+      Posts que foram para o ar mas continuam invisíveis no site até liberação.
+      Use o segredo de administração para ver e liberar.
+    </p>
+
+    <!-- Passo 1: segredo -->
+    <section id="login-step" class="p-6 rounded-xl" style="background: var(--color-bg-card); border: 1px solid var(--color-border)">
+      <label for="secret-input" class="block text-sm mb-2" style="color: var(--color-text)">Segredo de administração</label>
+      <div class="flex gap-2">
+        <input
+          id="secret-input"
+          type="password"
+          class="flex-1 px-4 py-2 rounded-lg border"
+          style="background: var(--color-bg); color: var(--color-text); border-color: var(--color-border)"
+          placeholder="Digite o segredo"
+          autocomplete="off"
+        />
+        <button id="login-btn" class="px-5 py-2 rounded-lg font-semibold" style="background: var(--color-accent); color: #000">
+          Entrar
+        </button>
+      </div>
+      <p id="login-error" class="text-sm mt-3 hidden" style="color: #ff6b6b"></p>
+    </section>
+
+    <!-- Passo 2: lista -->
+    <section id="list-step" class="hidden mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold" style="color: var(--color-heading)">Aguardando liberação</h2>
+        <button id="refresh-btn" class="px-3 py-1 rounded-lg text-sm" style="border: 1px solid var(--color-border); color: var(--color-text)">
+          Atualizar
+        </button>
+      </div>
+      <p id="list-empty" class="text-sm hidden" style="color: var(--color-text-muted)">Nenhum post oculto no momento.</p>
+      <div id="list" class="space-y-4"></div>
+    </section>
+
+    <!-- Feedback global -->
+    <p id="global-msg" class="text-sm mt-4 hidden"></p>
+  </main>
+</BaseLayout>
+
+<script is:inline>
+(function () {
+  var SKEY = 'lifelog-ocultos-secret';
+  var secret = sessionStorage.getItem(SKEY) || '';
+  var loginError = document.getElementById('login-error');
+  var globalMsg = document.getElementById('global-msg');
+
+  function show(id) {
+    document.getElementById('login-step').classList.toggle('hidden', id !== 'login');
+    document.getElementById('list-step').classList.toggle('hidden', id !== 'list');
+  }
+
+  function msg(el, text, ok) {
+    el.textContent = text;
+    el.style.color = ok ? '#4ade80' : '#ff6b6b';
+    el.classList.remove('hidden');
+  }
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  async function api(path, body) {
+    var headers = { 'Authorization': 'Bearer ' + secret };
+    var opts = { headers: headers };
+    if (body) {
+      opts.method = 'POST';
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    var res = await fetch(path, opts);
+    var data = null;
+    try { data = await res.json(); } catch (e) {}
+    return { status: res.status, data: data };
+  }
+
+  function renderPost(entry) {
+    var langLabel = entry.lang === 'en' ? 'EN' : 'PT';
+    var preview = entry.content.replace(/^---[\s\S]*?---/, '').slice(0, 600);
+    var el = document.createElement('div');
+    el.className = 'p-5 rounded-xl';
+    el.style.cssText = 'background: var(--color-bg-card); border: 1px solid var(--color-border)';
+    el.innerHTML =
+      '<div class="flex items-start justify-between gap-3">' +
+        '<div>' +
+          '<span class="text-xs px-2 py-0.5 rounded-full mr-2" style="background: var(--color-accent-soft, rgba(0,212,255,.15)); color: var(--color-accent)">' + langLabel + '</span>' +
+          '<span class="text-xs" style="color: var(--color-text-muted)">' + esc(entry.date || '') + '</span>' +
+          '<h3 class="font-bold mt-1" style="color: var(--color-heading)">' + esc(entry.title) + '</h3>' +
+        '</div>' +
+        '<button class="release-btn px-4 py-1.5 rounded-lg text-sm font-semibold shrink-0" data-path="' + esc(entry.path) + '" style="background: var(--color-accent); color: #000">Liberar</button>' +
+      '</div>' +
+      '<details class="mt-3">' +
+        '<summary class="text-sm cursor-pointer" style="color: var(--color-text-muted)">Ver conteúdo</summary>' +
+        '<pre class="mt-2 p-3 rounded-lg text-xs overflow-auto max-h-64 whitespace-pre-wrap" style="background: var(--color-bg); color: var(--color-text); border: 1px solid var(--color-border)">' + esc(preview) + '</pre>' +
+      '</details>' +
+      '<p class="release-status text-xs mt-2 hidden"></p>';
+
+    el.querySelector('.release-btn').addEventListener('click', async function (e) {
+      var btn = e.currentTarget;
+      var statusEl = el.querySelector('.release-status');
+      btn.disabled = true;
+      statusEl.textContent = 'Liberando...';
+      statusEl.style.color = 'var(--color-text-muted)';
+      statusEl.classList.remove('hidden');
+      var r = await api('/api/liberar', { path: btn.dataset.path });
+      if (r.status === 200) {
+        statusEl.textContent = 'Liberado. O deploy automatico publica o post em ~1-2 min.';
+        statusEl.style.color = '#4ade80';
+        btn.style.opacity = '0.5';
+        btn.textContent = 'Liberado';
+      } else {
+        statusEl.textContent = 'Erro: ' + (r.data && r.data.error ? r.data.error : r.status);
+        statusEl.style.color = '#ff6b6b';
+        btn.disabled = false;
+      }
+    });
+    return el;
+  }
+
+  async function loadList() {
+    var list = document.getElementById('list');
+    var empty = document.getElementById('list-empty');
+    list.innerHTML = '';
+    empty.classList.add('hidden');
+    globalMsg.classList.add('hidden');
+    var r = await api('/api/ocultos');
+    if (r.status === 401) {
+      secret = '';
+      sessionStorage.removeItem(SKEY);
+      msg(loginError, 'Segredo invalido.');
+      show('login');
+      return;
+    }
+    if (r.status !== 200) {
+      msg(globalMsg, 'Erro ao carregar: ' + (r.data && r.data.error ? r.data.error : r.status), false);
+      globalMsg.classList.remove('hidden');
+      return;
+    }
+    var posts = r.data.posts || [];
+    if (posts.length === 0) {
+      empty.classList.remove('hidden');
+    } else {
+      posts.forEach(function (p) { list.appendChild(renderPost(p)); });
+    }
+  }
+
+  document.getElementById('login-btn').addEventListener('click', function () {
+    var val = document.getElementById('secret-input').value.trim();
+    if (!val) return;
+    secret = val;
+    sessionStorage.setItem(SKEY, secret);
+    loginError.classList.add('hidden');
+    show('list');
+    loadList();
+  });
+
+  document.getElementById('refresh-btn').addEventListener('click', loadList);
+
+  document.getElementById('secret-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('login-btn').click();
+  });
+
+  if (secret) {
+    document.getElementById('secret-input').value = secret;
+    show('list');
+    loadList();
+  }
+})();
+</script>

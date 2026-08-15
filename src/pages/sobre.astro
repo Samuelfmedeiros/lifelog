@@ -5,7 +5,7 @@ import { getCollection } from 'astro:content';
 
 const locale = 'pt';
 const allPosts = await getCollection('posts');
-const posts = allPosts.filter(p => !p.data.draft && !p.id.startsWith('en/'));
+const posts = allPosts.filter(p => !p.data.draft && !p.data.hidden && !p.id.startsWith('en/'));
 const totalPosts = posts.length;
 const projects = [...new Set(posts.map(p => p.data.project))].length;
 const firstDate = posts.reduce((earliest, p) => p.data.date < earliest ? p.data.date : earliest, new Date());

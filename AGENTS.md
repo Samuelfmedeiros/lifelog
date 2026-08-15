@@ -193,6 +193,37 @@ lifelog/
 
 ---
 
+## Sistema de Postagem Oculta (15/08/2026)
+
+Posts com `hidden: true` no frontmatter vão para o ar (deploy) mas ficam **invisíveis no site** até liberação manual pelo dono.
+
+### Como funciona
+
+1. **Frontmatter**: `hidden: true` (schema em `src/content.config.ts`).
+2. **Filtro global**: TODAS as páginas filtram `!p.data.draft && !p.data.hidden` — home, arquivo, sobre, RSS, sitemap, busca, prev/next e `getStaticPaths` (rota direta vira 404).
+3. **Admin**: `/ocultos` (não linkada) lista posts ocultos, mostra o conteúdo e tem botão "Liberar".
+4. **Liberação**: `api/liberar.mjs` (Vercel Function) flipa `hidden: true` → `false` no MDX via GitHub API e commita → CI roda → post aparece.
+5. **Listagem**: `api/ocultos.mjs` lê o filesystem do deploy e retorna os ocultos (protegido por segredo).
+
+### Env vars obrigatórias (Vercel)
+
+- `ADMIN_SECRET` — segredo do /ocultos (Bearer no Authorization header).
+- `GH_TOKEN` — token GitHub com permissão de escrita no repo (Contents API).
+
+Sem `GH_TOKEN` a liberação responde 500 com mensagem clara; sem `ADMIN_SECRET` a listagem responde 401.
+
+### Fluxo de uso
+
+1. Pipeline cria post PT+EN com `hidden: true` → push → deploy (invisível).
+2. Samuel abre `/ocultos`, entra com o segredo, lê o post.
+3. Clica "Liberar" → commit com `hidden: false` → CI deploya → post público.
+
+### Regras
+
+- NUNCA linkar `/ocultos` na navbar ou em posts.
+- CI health check pula posts com `draft: true` OU `hidden: true` (senão 404 derruba o deploy).
+- Anti-emoji vale para a página admin também (0 emojis em `src/pages/ocultos.astro`).
+
 ## 📖 Narrative-First Pipeline (desde 24/07/2026)
 
 **Auto-post diário (cron `6d90ce`) foi DESATIVADO.** Posts de changelog agregado não existem mais.
