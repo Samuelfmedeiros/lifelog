@@ -29,7 +29,7 @@
     "@playwright/test": "^1.62.1",
     "@tailwindcss/typography": "^0.5.20",
     "astro-eslint-parser": "^3.0.0",
-    "eslint": "^10.8.0",
+    "eslint": "^10.8.1",
     "eslint-plugin-astro": "^3.0.1",
     "eslint-plugin-security": "^4.0.1",
     "playwright": "^1.62.1",
