@@ -29,11 +29,16 @@ export async function GET(context: { site: string }) {
         ...(coverUrl ? [`<enclosure url="${coverUrl}" type="image/webp" />`] : []),
         ...(proj ? [`<project>${proj.id}</project>`, `<accent>${proj.accentDark}</accent>`] : []),
       ].join('');
+      // Rota real: PT = /post/{slug}/ ; EN = /en/post/{slug}/ (NÃO /post/en/ — 404).
+      // O id de posts EN é "en/{slug}" (padrão usado em PostCard/sitemap/archive).
+      const postPath = post.id.startsWith('en/')
+        ? `/en/post/${post.id.slice(3)}/`
+        : `/post/${post.id}/`;
       return {
         title: post.data.title,
         description: post.data.description,
         pubDate,
-        link: `/post/${post.id}/`,
+        link: postPath,
         ...(customData && { customData }),
       };
     }),
