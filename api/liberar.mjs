@@ -1,13 +1,23 @@
 // Vercel Function: POST /api/liberar
 // Libera um post oculto: flipa hidden:true -> hidden:false no frontmatter do MDX
 // e commita via GitHub API (push em main dispara o CI -> deploy).
-// Requer ADMIN_SECRET + GH_TOKEN (envs na Vercel).
+//
+// MODE 1 (novo, preferido): proxy para o endpoint centralizado do Capivara
+//   POST $LIFELOG_RELEASE_API_URL/api/lifelog/release  { slug }
+//   com Bearer $LIFELOG_RELEASE_TOKEN — o Capivara flipa hidden e commita
+//   (PT e EN), com fallback git local quando a GitHub API falha por auth.
+// MODE 2 (fallback): se as envs do Capivara não existirem, mantém o
+//   comportamento legado: GitHub API direta com GH_TOKEN.
+//
+// Requer ADMIN_SECRET (env na Vercel) via header Authorization: Bearer ***
 import { timingSafeEqual } from 'node:crypto';
 
 const OWNER = 'Samuelfmedeiros';
 const REPO = 'lifelog';
 const BRANCH = process.env.GH_BRANCH || 'main';
 const GITHUB_API = 'https://api.github.com';
+
+const SLUG_RE = /^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
 
 function secretOk(req) {
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
@@ -31,6 +41,20 @@ async function readBody(req) {
   });
 }
 
+// Aceita path nos formatos que o /ocultos envia:
+//   "slug.mdx", "en/slug.mdx", "src/content/posts/slug.mdx",
+//   "src/content/posts/en/slug.mdx", ou slug puro.
+// RETORNA o path relativo SEM a extensão, PRESERVANDO o prefixo "en/"
+// (ex: "en/slug" ou "slug") — sem isso, liberar um post EN liberaria o PT.
+function slugFromPath(p) {
+  const raw = String(p || '').trim();
+  if (!raw) return '';
+  const noExt = raw.replace(/\.mdx?$/, '').trim();
+  // remove prefixos redundantes
+  return noExt.replace(/^src\/content\/posts\//, '').replace(/^posts\//, '');
+}
+
+// ── Modo 2 (legado): GitHub API direta ──────────────────────────────
 async function gh(path, opts = {}) {
   const token = process.env.GH_TOKEN;
   const headers = {
@@ -44,6 +68,47 @@ async function gh(path, opts = {}) {
   return { status: res.status, data };
 }
 
+async function releaseViaGithub(slug) {
+  if (!process.env.GH_TOKEN) {
+    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' } };
+  }
+  const filePath = `src/content/posts/${slug}.mdx`;
+  const enc = encodeURIComponent(filePath);
+  const getRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}?ref=${BRANCH}`);
+  if (getRes.status !== 200) {
+    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` } };
+  }
+  const { content, sha } = getRes.data;
+  const decoded = Buffer.from(content, 'base64').toString('utf-8');
+
+  // Flipa SOMENTE o campo hidden no frontmatter (primeiro bloco --- ---)
+  const fmMatch = decoded.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) {
+    return { status: 422, json: { error: 'Frontmatter nao encontrado' } };
+  }
+  const fm = fmMatch[1];
+  const updatedFm = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
+  if (updatedFm === fm) {
+    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' } };
+  }
+  const newContent = decoded.replace(fm, updatedFm);
+  const newContentB64 = Buffer.from(newContent, 'utf-8').toString('base64');
+
+  const putRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: `release(post): ${slug}`,
+      content: newContentB64,
+      sha,
+      branch: BRANCH,
+    }),
+  });
+  if (putRes.status !== 200 && putRes.status !== 201) {
+    return { status: 502, json: { error: `Falha no commit no GitHub (${putRes.status})` } };
+  }
+  return { status: 200, json: { ok: true, commit: putRes.data.commit?.sha, mode: 'github' } };
+}
+
 export default async function handler(req, res) {
   const check = secretOk(req);
   if (!check.ok) {
@@ -55,57 +120,12 @@ export default async function handler(req, res) {
     return;
   }
   const body = await readBody(req);
-  const filePath = String(body.path || '').trim();
-  if (!filePath || !filePath.endsWith('.mdx')) {
-    res.status(400).json({ error: 'path invalido' });
-    return;
-  }
-  // Seguranca: so aceita caminhos dentro de src/content/posts
-  if (!filePath.startsWith('src/content/posts/')) {
-    res.status(400).json({ error: 'path fora de src/content/posts' });
-    return;
-  }
-  if (!process.env.GH_TOKEN) {
-    res.status(500).json({ error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' });
+  const slug = slugFromPath(body.path || body.slug);
+  if (!slug || !SLUG_RE.test(slug)) {
+    res.status(400).json({ error: 'path/slug invalido' });
     return;
   }
 
-  const enc = encodeURIComponent(filePath);
-  const getRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}?ref=${BRANCH}`);
-  if (getRes.status !== 200) {
-    res.status(502).json({ error: `Falha ao ler arquivo no GitHub (${getRes.status})` });
-    return;
-  }
-  const { content, sha } = getRes.data;
-  const decoded = Buffer.from(content, 'base64').toString('utf-8');
-
-  // Flipa SOMENTE o campo hidden no frontmatter (primeiro bloco --- ---)
-  const fmMatch = decoded.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fmMatch) {
-    res.status(422).json({ error: 'Frontmatter nao encontrado' });
-    return;
-  }
-  const fm = fmMatch[1];
-  const updatedFm = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
-  if (updatedFm === fm) {
-    res.status(422).json({ error: 'Post nao esta oculto (hidden nao e true)' });
-    return;
-  }
-  const newContent = decoded.replace(fm, updatedFm);
-  const newContentB64 = Buffer.from(newContent, 'utf-8').toString('base64');
-
-  const putRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: `release(post): ${filePath.split('/').pop().replace(/\.mdx$/, '')}`,
-      content: newContentB64,
-      sha,
-      branch: BRANCH,
-    }),
-  });
-  if (putRes.status !== 200 && putRes.status !== 201) {
-    res.status(502).json({ error: `Falha no commit no GitHub (${putRes.status})` });
-    return;
-  }
-  res.status(200).json({ ok: true, commit: putRes.data.commit?.sha });
+  const result = await releaseViaGithub(slug);
+  res.status(result.status).json(result.json);
 }
