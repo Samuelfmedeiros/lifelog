@@ -1,6 +1,6 @@
 ---
 // ThemeRail — Controls: tema, cor (dropdown), idioma
-// Layout: [Tema] [Cor ▼] [PT]
+// Layout: [Tema] [Cor ▼]
 // Paleta abre dropdown pra baixo com 6 dots
 import { PALETTES } from '../lib/palettes'
 ---
@@ -30,10 +30,6 @@ import { PALETTES } from '../lib/palettes'
     </div>
   </div>
 
-  <!-- PT/EN Language Toggle -->
-  <button id="rail-lang" class="rail-btn rail-btn-lang" aria-label="Alternar idioma" title="Alternar idioma">
-    <span id="rail-lang-text" class="rail-lang-text">PT</span>
-  </button>
 </div>
 
 <style>
@@ -151,29 +147,12 @@ import { PALETTES } from '../lib/palettes'
     transform: scale(1.2);
   }
 
-  /* ─── Language ─── */
-  .rail-btn-lang {
-    min-width: 32px;
-    padding: 0 6px;
-  }
-  .rail-lang-text {
-    font-size: 0.72rem;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    letter-spacing: 0.04em;
-    color: var(--color-accent);
-    line-height: 1;
-    pointer-events: none;
-  }
-
   /* ─── Mobile ─── */
   @media (max-width: 768px) {
     .rail-btn { width: 30px; height: 30px; }
     .rail-icon { font-size: 1rem; }
     .rail-palette-indicator { width: 16px; height: 16px; }
     .rail-dot { width: 16px; height: 16px; }
-    .rail-btn-lang { min-width: 28px; padding: 0 5px; }
-    .rail-lang-text { font-size: 0.65rem; }
     .rail-dropdown { padding: 7px 9px; gap: 5px; }
   }
   @media (max-width: 480px) {
@@ -181,8 +160,6 @@ import { PALETTES } from '../lib/palettes'
     .rail-icon { font-size: 0.95rem; }
     .rail-palette-indicator { width: 16px; height: 16px; }
     .rail-dot { width: 18px; height: 18px; }
-    .rail-btn-lang { min-width: 28px; padding: 0 5px; }
-    .rail-lang-text { font-size: 0.65rem; }
     .rail-dropdown {
       padding: 8px 10px; gap: 6px;
     }
@@ -191,7 +168,6 @@ import { PALETTES } from '../lib/palettes'
 
 <script is:inline>
 (function() {
-  const LOCALE_KEY = 'lifelog-locale'
   const PALETTE_KEY = 'lifelog-palette'
   const THEME_KEY = 'lifelog-theme'
   let animating = false
@@ -375,17 +351,6 @@ import { PALETTES } from '../lib/palettes'
     }
   }
 
-  /* ─── Language ─── */
-  let currentLang = 'pt'
-  function setLocale(locale, persist) {
-    currentLang = locale
-    document.documentElement.setAttribute('lang', locale === 'en' ? 'en' : 'pt-BR')
-    const t = document.getElementById('rail-lang-text')
-    if (t) t.textContent = locale === 'en' ? 'EN' : 'PT'
-    if (persist !== false) save(LOCALE_KEY, locale)
-    document.dispatchEvent(new CustomEvent('lifelog-locale-change', { detail: { locale } }))
-  }
-
   /* ─── Dropdown toggle ─── */
   function toggleDropdown(e) {
     e.stopPropagation()
@@ -438,9 +403,6 @@ import { PALETTES } from '../lib/palettes'
   setTheme(savedTheme, false)
   const savedPalette = getSaved(PALETTE_KEY, 'purple')
   applyPalette(savedPalette, false)
-  const savedLocale = getSaved(LOCALE_KEY, 'pt')
-  setLocale(savedLocale, false)
-
   /* ─── Events ─── */
   document.addEventListener('touchstart', function(e) {
     const btn = document.getElementById('rail-theme')
@@ -455,7 +417,6 @@ import { PALETTES } from '../lib/palettes'
     const themeBtn = document.getElementById('rail-theme')
     const colorBtn = document.getElementById('rail-color')
     const colorWrap = document.getElementById('rail-color-wrap')
-    const langBtn = document.getElementById('rail-lang')
 
     // Theme
     if (themeBtn && (t === themeBtn || themeBtn.contains(t))) { toggleTheme(e); return }
@@ -470,23 +431,6 @@ import { PALETTES } from '../lib/palettes'
         el.style.top = ''
         el.style.left = ''
       })
-      return
-    }
-    // Language
-    if (langBtn && (t === langBtn || langBtn.contains(t))) {
-      const next = currentLang === 'pt' ? 'en' : 'pt'
-      setLocale(next)
-      const path = window.location.pathname
-      const search = window.location.search  // preserva ?q=&project=
-      const newPath = next === 'en'
-        ? (path === '/' ? '/en/' : '/en' + path) + search
-        : (path.replace(/^\/en/, '') || '/') + search
-
-      // Salva scroll pra restaurar na página nova
-      try { sessionStorage.setItem('lifelog-scroll', window.scrollY) } catch (e) {}
-
-      // Navegação direta — sem VT/fade pra evitar layout shift na navbar
-      window.location.href = newPath
       return
     }
     // Click outside → close dropdown
