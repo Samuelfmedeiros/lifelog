@@ -1,0 +1,196 @@
+---
+title: "Arachne grew eyes — VLM, job queue and vision cache"
+description: "Arachne's vision pipeline evolved: qwen2.5vl:7b on Ollama WSL, arachne-vlm-jobs queue with arachne-vlm-w1 worker, SQLite vlm_cache.db cache (sha256), polling GET /api/extract/image-jobs/{id}. Vision requires JWT, PYTHONPATH api/ and PostgreSQL not SQLite."
+date: 2026-08-16 16:00:00 -03:00
+pubDate: 2026-08-16 16:00:00 -03:00
+project: arachne
+tags: ["arachne", "vlm", "vision", "ollama", "queue", "cache", "qwen2.5vl"]
+icon: "🕷️"
+cover: /covers/o-arachne-ganhou-olhos-vlm-fila-jobs-cache-visao.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day the scraper learned to see
+
+When I launched Arachne's vision pipeline in July, it had 8 stages: 7 pure OpenCV/Tesseract/NumPy and the last one optional with **gemma4:12b** on local Ollama. It worked, but there was a problem — the VLM ran inline in the request, blocking the worker for 10-30s. On a platform serving scraping + RAG + vision, that doesn't scale.
+
+The solution wasn't "optimize the model". It was **architect for asynchronicity**.
+
+## The new architecture: queue + worker + cache
+
+### 1. The model: qwen2.5vl:7b on Ollama (WSL)
+
+Swapped gemma4:12b for **qwen2.5vl:7b** — smaller, faster, and surprisingly better at OCR and technical description. Runs on Ollama inside WSL (Ubuntu) with GPU passthrough via CUDA.
+
+```bash
+# Ollama on WSL — GPU visible
+ollama pull qwen2.5vl:7b
+ollama run qwen2.5vl:7b "Describe this technical image"  # ~3-5s on RTX 3080
+```
+
+The trick: **WSL2 + Windows NVIDIA drivers** = CUDA works native. No Docker, no Kubernetes needed. Ollama on WSL sees the GPU directly.
+
+### 2. Job queue: arachne-vlm-jobs (Redis + BullMQ)
+
+Vision became an **async job**. Client does `POST /api/extract/image` with image (upload or URL), gets `job_id` immediately, and polls `GET /api/extract/image-jobs/{id}`.
+
+```python
+# app/queue/vlm_queue.py
+from bullmq import Queue, Worker
+
+vlm_queue = Queue("arachne-vlm-jobs", connection=redis)
+
+async def enqueue_vlm_job(image_data: bytes, options: dict) -> str:
+    job = await vlm_queue.add("process-vision", {
+        "image_sha256": hashlib.sha256(image_data).hexdigest(),
+        "image_data": base64.b64encode(image_data).decode(),
+        "options": options,  # stages, detail_level, etc.
+    })
+    return job.id
+```
+
+**Dedicated worker:** `arachne-vlm-w1` — separate process consuming the queue, running the 8-stage pipeline (including VLM), saving result to cache and updating job status. One worker, one GPU, zero contention with scraping workers.
+
+### 3. Vision cache: vlm_cache.db (SQLite + sha256)
+
+Same image shouldn't be processed twice. Cache is simple and brutal:
+
+```sql
+-- vlm_cache.db
+CREATE TABLE vision_cache (
+    sha256 TEXT PRIMARY KEY,           -- hash of original image
+    result_json TEXT NOT NULL,         -- full pipeline result (JSON)
+    model_version TEXT NOT NULL,       -- "qwen2.5vl:7b" — invalidates if model changes
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    hits INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_vision_cache_model ON vision_cache(model_version);
+```
+
+**Current hit rate:** ~34% (many repeated images in technical documentation scrapes). Each hit saves 3-5s of GPU + queue.
+
+```python
+# app/vision/cache.py
+def get_cached_result(sha256: str, model_version: str) -> dict | None:
+    row = db.execute(
+        "SELECT result_json, hits FROM vision_cache WHERE sha256=? AND model_version=?",
+        (sha256, model_version)
+    ).fetchone()
+    if row:
+        db.execute("UPDATE vision_cache SET hits=hits+1 WHERE sha256=?", (sha256,))
+        return json.loads(row[0])
+    return None
+
+def save_to_cache(sha256: str, model_version: str, result: dict):
+    db.execute(
+        "INSERT OR REPLACE INTO vision_cache (sha256, model_version, result_json) VALUES (?, ?, ?)",
+        (sha256, model_version, json.dumps(result))
+    )
+    db.commit()
+```
+
+### 4. API: JWT required, simple polling
+
+```python
+# app/api/vision.py
+@router.post("/extract/image")
+async def extract_image(
+    file: UploadFile = File(...),
+    options: VisionOptions = Depends(),
+    user: User = Depends(get_current_user)  # JWT required
+):
+    image_data = await file.read()
+    sha256 = hashlib.sha256(image_data).hexdigest()
+    
+    # Cache hit?
+    cached = get_cached_result(sha256, MODEL_VERSION)
+    if cached:
+        return {"status": "completed", "result": cached, "cached": True}
+    
+    # Enqueue
+    job_id = await enqueue_vlm_job(image_data, options.dict())
+    return {"status": "queued", "job_id": job_id}
+
+@router.get("/extract/image-jobs/{job_id}")
+async def get_job_status(job_id: str, user: User = Depends(get_current_user)):
+    job = await vlm_queue.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    
+    if job.finished:
+        result = job.returnvalue
+        return {"status": "completed", "result": result}
+    elif job.failed:
+        return {"status": "failed", "error": job.failed_reason}
+    else:
+        return {"status": "processing", "progress": job.progress}
+```
+
+**Client polls every 2s** until `status: "completed"`. Simple, works, no WebSocket.
+
+## What changed in practice
+
+| Before (July) | Now (August) |
+|---------------|--------------|
+| VLM inline in request (blocking) | Async queue + dedicated worker |
+| gemma4:12b (~10-30s) | qwen2.5vl:7b (~3-5s) |
+| No cache | SQLite cache by sha256 + model_version |
+| 1 worker did everything | Scraping workers + vision worker separated |
+| No auth on vision | JWT required on all endpoints |
+
+## The details that bite
+
+### PYTHONPATH and PostgreSQL
+
+The `arachne-vlm-w1` worker runs with `PYTHONPATH=/home/samuel/projetos/Arachne/api` — API code lives separate from core. And **PostgreSQL is mandatory** (not SQLite) because BullMQ queue uses Redis, but job metadata, users, billing and `ApiUsageLog` live in Postgres. Trying to run with SQLite breaks migrations and concurrent transactions.
+
+```bash
+# Worker .env
+PYTHONPATH=/home/samuel/projetos/Arachne/api
+DATABASE_URL=postgresql://arachne:xxx@localhost:5432/arachne
+REDIS_URL=redis://localhost:6379/1
+OLLAMA_HOST=http://localhost:11434
+MODEL_VERSION=qwen2.5vl:7b
+```
+
+### Cache invalidation by model version
+
+If I swap `qwen2.5vl:7b` for `qwen2.5vl:32b` or update Ollama, `model_version` changes and cache **auto-invalidates** (composite key `sha256 + model_version`). No manual `CACHE_BUST=1` needed.
+
+### Rate limiting on vision
+
+Vision endpoints have dedicated limiter: **20 req/min per user** (stricter than scraping). GPU is scarce resource.
+
+## Current metrics
+
+| Metric | Value |
+|--------|-------|
+| VLM Model | qwen2.5vl:7b (Ollama WSL + CUDA) |
+| Avg VLM time | 3.2s (P50) / 5.8s (P95) |
+| Cache hit rate | 34% |
+| Queue avg | 0.3 jobs (almost always empty) |
+| Vision worker | 1 (arachne-vlm-w1, dedicated GPU) |
+| Cache size | 1.2K entries, 180 MB |
+| Auth | JWT required (Bearer token) |
+
+## What's next
+
+- **Batch vision** — send multiple images in single job (useful for docs with many screenshots)
+- **Vision webhooks** — callback when job completes (avoids polling)
+- **Multi-model routing** — qwen2.5vl:7b for OCR/fast, qwen2.5vl:32b for detailed description (on demand)
+- **Export cache** — dump/import `vlm_cache.db` for migrations
+
+<Terminal
+  lines={[
+  { cmd: 'curl -s -X POST https://arachne.seu.pet/api/extract/image -H "Authorization: Bearer $TOKEN" -F "file=@diagram.png" | jq .job_id', output: '"job_abc123"' },
+  { cmd: 'curl -s https://arachne.seu.pet/api/extract/image-jobs/job_abc123 -H "Authorization: Bearer $TOKEN" | jq .status', output: '"completed"' },
+  { cmd: 'sqlite3 vlm_cache.db "SELECT COUNT(*), SUM(hits) FROM vision_cache"', output: '1247|423' },
+  { cmd: 'ollama ps | grep qwen', output: 'qwen2.5vl:7b  4.7 GB  3 min ago' },
+  ]}
+/>
+
+> *Arachne doesn't just scrape — now it sees. And with queue, cache and dedicated worker, it sees at scale.*
