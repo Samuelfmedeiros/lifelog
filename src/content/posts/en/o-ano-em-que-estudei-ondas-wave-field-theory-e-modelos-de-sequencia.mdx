@@ -1,0 +1,103 @@
+---
+title: "The year I studied waves — wave field theory and sequence models"
+description: "From the wave field theory paper to BitMamba-2 1B: how a study on wave propagation became the TatuEngine inference engine, and why the Ollama truncation loop (num_ctx 4096 vs 262K) became the Docs First rule that runs across the entire ecosystem."
+date: 2026-08-15 12:00:00 -03:00
+pubDate: 2026-08-15 12:00:00 -03:00
+project: estudos
+tags: ["studies", "wave-field-theory", "mamba", "ssm", "bitmamba", "ollama", "num-ctx"]
+icon: "📚"
+cover: /covers/o-ano-em-que-estudei-ondas-wave-field-theory-e-modelos-de-sequencia.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+##  The study nobody saw become a project
+
+When LifeLog turned one, the **Studies** section had 2 posts: the Ollama truncation loop (`ollama-truncation-loop-4096`) and the history of studies (`a-historia-do-estudos`). Two posts. But if you looked at what was running underneath — TatuEngine, BitMamba-2 1B, the Mamba SSM trained on GPU — the origin of it all was right there.
+
+The paradox: the blog's most "idle" section was the one generating the most ambitious project. Not because I planned it — but because **study doesn't announce when it becomes code**. You read a paper, take a note in the vault, test a notebook, and six months later that becomes the traversal kernel running at 41.9 µs per token.
+
+##  Context — the paper that changed direction
+
+It started with a silly question in June 2025: **"Do RT Cores process neural networks?"** Sounds like a joke, but the idea had grounding: a neural network transforms an input vector into an output vector. If you encode weights as 3D geometry (triangles with refractive index), each token becomes a ray traversing that geometry, and the output emerges from constructive interference of waves on the other side.
+
+Beautiful in theory. In practice: **WSL has no RT Cores**. And 1 billion parameters in float32 = 36 GB of "lenses". Each weight would become 3 vertices × 3 floats + optical properties — 36 bytes per weight. No chance on consumer VRAM.
+
+But the right question wasn't "how to use RT Cores in WSL". The right question was: **"What if I treat inference as wave propagation in a phase field?"**
+
+That question started the experiments that became TatuEngine.
+
+##  The struggle — from paper to running code
+
+### Wave field theory: information as wave, not vector
+
+Wave-based phase field theory models information as waves in a field, not discrete vectors. Each neuron isn't a number — it's a wave source with phase and amplitude. The connection between neurons isn't a scalar weight — it's a phase coupling.
+
+In practice, this means: instead of `y = x @ W`, you have wave propagation where constructive/destructive interference **is** the computation. The field "decides" the output through physics, not matrix multiplication.
+
+I read the paper, noted it in the vault, tested in a notebook. The first experiment: **simulate 1000 coupled oscillators on a 2D grid**. It converged, but was slow — pure CPU, step by step. I saw the structure was **parallelizable by construction**: each grid point only depends on immediate neighbors. GPU would love this.
+
+### The pivot: Mamba SSM as practical approximation
+
+Pure wave field theory was beautiful but far from generating text. I needed something that **ran now**. Mamba (State Space Model) had the right property: **linear recurrence with data-dependent input selection**. The hidden state `h(t) = A·h(t-1) + B·x(t)` — but `A` and `B` are functions of `x(t)`. This is "wave with selective memory".
+
+I decided: **Mamba as computational proxy for wave field theory**. Not the same thing, but they share the core idea — state that carries history, non-linear update, parallelizable in training (scan), sequential in inference.
+
+### BitMamba-2 1B: the model born from study
+
+BitMamba-2 1B is a Mamba-2 with 48 layers, d_model=2048, d_state=128, ~1.4B parameters. Trained from scratch on an RTX 3060 (12GB VRAM).
+
+The training pipeline went through 4 phases (documented in the post `bitmamba-1b-training-the-first-ssm-model`):
+1. **Full warmup** — 200 steps pure pretrain, loss ~4.5, perplexity ~90
+2. **SFT cold start** — 1000 reasoning examples, loss exploded to 100+, OOM
+3. **Continued SFT** — perplexity 444M (worse than random!)
+4. **Hybrid Phase 4** — 300 steps pretrain + 1700 steps co-training 70/30 → 50/50
+
+The secret of Phase 4: **4 parameter groups with separate learning rates**. Embeddings 0.3×, state parameters (A_log, D, dt_bias) **10×**, residuals 0.5×, base 1.0×. The `state` group at 10× is the "hippocampal shock" — without it, the SSM memory never learns to propagate information between tokens.
+
+### The Ollama loop that became a global rule
+
+Meanwhile, Hermes (my agent) used local Ollama as fallback. Model `qwen3.5:4b` — supports **262,144 tokens** of context. But Hermes entered a loop: 4 continuation attempts, each response 1 token.
+
+The cause: **model `num_ctx` ≠ slot `num_ctx`**. Ollama allocates **4096 tokens by default** in the inference slot, regardless of what the GGUF supports. Hermes' prompt (~49K tokens) was silently truncated. The model received garbage, generated 1 token, looped.
+
+Fix: `OLLAMA_CONTEXT_LENGTH=32768` in environment (or create custom variant with `PARAMETER num_ctx 65536`).
+
+This discovery became the **Docs First** rule that crosses Arachne, Capivara, Dogwalk, Portifólio, TatuEngine, LifeLog — the entire ecosystem. A 30-minute study of Ollama's docs saved hours of debugging across all projects.
+
+##  Resolution — why publish this now
+
+The Studies section doesn't need a "perfect" post. It needs an **honest record of the process**:
+
+1. **Study is process, not result** — the Ollama post isn't about the bug, it's about how you study documentation when everything seems to work
+2. **The discarded is also content** — attention architecture that didn't converge, shelved FTS5, embedding rejected by Arachne's RAG. Documenting the dead path prevents repetition
+3. **Study feeds everything** — wave field theory → TatuEngine → BitMamba-2; Mamba SSM → trained model; num_ctx → Docs First rule. Publishing the study is publishing the root
+
+##  Metrics
+
+| Study | Result | Where it went |
+|-------|--------|---------------|
+| Ollama num_ctx (4096 → 32768) | Global Docs First rule | All 7 projects |
+| Wave field theory (paper + notebooks) | TatuEngine + BitMamba-2 1B | Active research project |
+| Mamba SSM (study + implementation) | 1.4B model, 41.9 µs/tok inference | Functional GPU pipeline |
+| Discarded experiments (attention, FTS5, embedding) | Zero posts until now | ← the error the blog fixes |
+
+##  Learnings
+
+1. **Neglected section ≠ idle area** — Studies had 2 posts and produced the ecosystem's most ambitious project. The blog didn't reflect reality
+2. **Documented study is worth double** — what I learned reading Ollama docs became a rule crossing every project
+3. **The process is the content** — you don't need the final result to publish; the path to it is already the story
+4. **Every project has roots in studies** — publishing the root gives depth to feature posts
+5. **Mamba is more sensitive to hyperparameters than Transformer** — 3 coupled subsystems (conv1d + SSM + projections) need balance. Long warmup, low LR, grad clip mandatory
+6. **Parameter groups with separate LR isn't optional** — without `state` at 10×, SSM memory doesn't learn. Without `embed` at 0.3×, vocabulary corrupts. This separation cost 3 weeks of failed trainings
+
+<terminal
+  lines={[
+  { cmd: 'grep -c "^project: estudos" src/content/posts/*.mdx', output: '2 — the section that produces most, publishes least' },
+  { cmd: 'OLLAMA_CONTEXT_LENGTH=32768', output: 'truncation loop fix (num_ctx 4096 → 32768)' },
+  { cmd: 'python3 -m tatuengine.train', output: 'BitMamba-2 1B — the study that became a model' },
+  { cmd: 'cat ~/vault/Decisoes/wave-field-theory.md', output: 'the note that gave birth to TatuEngine' },
+  ]}
+/>
