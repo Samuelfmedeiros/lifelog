@@ -1,0 +1,83 @@
+---
+title: "308 skills and the reuse hub — the day I studied my own brain"
+description: "A full inventory of the ecosystem's skills revealed 308 skills across 39 categories, 4 reuse gaps, and the padroes-reuso-ecossistema hub that organized everything into 7 domains. A study that turned into an audit of my own knowledge."
+date: 2026-08-17 12:15:00 -03:00
+pubDate: 2026-08-17 12:15:00 -03:00
+project: estudos
+tags: ["studies", "skills", "reuse", "documentation", "workflow", "learning"]
+cover: /covers/estudos-308-skills-e-o-hub-de-reuso.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The study that started with an awkward question
+
+Sometime in August I stopped and asked the question every self-taught developer avoids: **what do I actually know how to do?**
+
+Not in a philosophical sense. In a literal sense: which procedures, workflows and patterns have I actually documented? Hermes (my agent) had accumulated dozens of skills over the months — deploy, security, WSL, testing, memory. But nobody knew how many there were. Not even me. Not even him.
+
+So I turned the curiosity into a study: **inventory everything.** Every skill, every category, every reuse domain. The result surprised me — and the holes the audit found changed how the ecosystem's knowledge is organized.
+
+## The context — knowledge piling up without a map
+
+When the skill catalog was created, back in June, it listed "150+ skills in 25+ categories". It worked as a reference, but nobody updated it — it was a frozen snapshot of a system that grew every week.
+
+Meanwhile the ecosystem kept producing knowledge at an industrial pace: every solved problem became a skill, every repeated pattern became a skill, every discovered pitfall became a skill. The problem wasn't lack of documentation. It was the **absence of a trustworthy index** for that documentation.
+
+Skills existed that nobody knew existed. Workflows each group reinvented from scratch because they couldn't find the skill that already solved it. Knowledge duplicated across three different categories. And a `.archive` with 14 orphaned skills nobody knew whether still made sense.
+
+## The struggle — the inventory that became a mirror
+
+On August 15, I ran the full survey. The final number: **308 skills across 39 categories**. In two months, knowledge had more than doubled — and no index had kept up.
+
+The inventory revealed four structural gaps:
+
+**1. There was no cross-cutting reuse hub.** Skills were organized by technical domain (infra, hermes, github, security), but there was no entry point answering "which skill do I use to deploy?" or "how do I solve a WSL problem?". Each project consulted its own set and missed what other areas had already learned.
+
+**2. The code knowledge catalog was outdated.** `code-knowledge-system` said code skills for projects were "pending" — when in fact all 10 code skills had existed for weeks. The map was lying about the territory.
+
+**3. Recent learnings weren't documented.** The multi-board Kanban dispatch (which solved how each board delivers tasks to the right worker) was learned on 08/15 — and it still hadn't become documentation. If nobody wrote it down, the next debug would start from zero.
+
+**4. The archive had no criteria.** 14 skills in `.archive` were there for legitimate historical reasons, but with no rule saying when something should be archived.
+
+## The resolution — the hub and the reuse rules
+
+Instead of creating another static catalog (the original mistake), I created a **workflow skill**: `padroes-reuso-ecossistema`. It works as a hub — an entry point that organizes reuse into **7 domains**: deploy, CI, security, WSL, Telegram, memory and kanban. Each domain has its table of child skills and the cross-cutting pitfalls that apply to all of them.
+
+The other gaps were fixed right after:
+
+1. **`code-knowledge-system` updated** — the table now lists the 10 active code skills (portfolio-code, capivara-code, patapass-code, lifelog and the rest) and points to the hub as the central reference.
+2. **`kanban-triage` gained the dispatch-wrapper lesson** — every dispatch call now requires an explicit `--board`, and `kanban-notify.py` handles notifying the right group when a task is completed. The 08/15 learning became a procedure.
+3. **`.archive` kept as historical reference** — the 14 orphaned skills stay where they are, with the implicit rule that archiving isn't deleting: it's preserving with context.
+
+What used to be an amorphous knowledge repository became a system with an entry point, a map and maintenance rules.
+
+## Metrics
+
+| Metric | Before (06/14) | After (08/15) |
+|--------|----------------|---------------|
+| Documented skills | ~150 | 308 |
+| Categories | 25+ | 39 |
+| Reuse domains | no hub | 7 (deploy, CI, security, WSL, Telegram, memory, kanban) |
+| Code skills on the map | "pending" (outdated) | 10 active, listed |
+| Orphaned skills in .archive | undefined | 14 (preserved with context) |
+
+## Learnings
+
+1. **Documenting without indexing is accumulating, not learning.** Knowledge grew 2x in two months — and the cost of having no index was paid weekly, as silent rework.
+2. **The hub is worth more than the catalog.** A catalog says what exists. A hub says how to reach what exists. They're different things, and the second is the one that actually changes day-to-day work.
+3. **Audits find lies in the map.** `code-knowledge-system` said skills were pending when they already existed. The source of truth was the inventory, not the catalog.
+4. **Learning only exists when it's reusable.** The multi-board dispatch solved on 08/15 only became real knowledge when the skill was updated the same day. Rule: learn and document in the same cycle, not later.
+
+The study started with an awkward question and ended with a more honest knowledge system: 308 skills, 39 categories, 7 reuse domains and an entry point nobody needs to search for in the dark anymore.
+
+<Terminal
+  lines={[
+  { cmd: 'hermes skill list | wc -l', output: '308 — skills documented on 08/15/2026' },
+  { cmd: 'grep -rh "^### " inventory.md | wc -l', output: '39 — knowledge categories mapped' },
+  { cmd: 'hermes skill view padroes-reuso-ecossistema', output: '7 domains: deploy, CI, security, WSL, Telegram, memory, kanban' },
+  { cmd: 'hermes kanban dispatch --board lifelog', output: 'dispatch requires explicit board — the 08/15 lesson alive in the skill' },
+  ]}
+/>
