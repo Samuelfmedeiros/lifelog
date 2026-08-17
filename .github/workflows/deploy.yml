@@ -60,7 +60,7 @@ jobs:
 
     # ── Cache ──────────────────────────────────────────────────
     - name: Cache pnpm store
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: /tmp/pnpm-store
         key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -69,7 +69,7 @@ jobs:
 
     - name: Cache Playwright browsers
       id: cache-playwright
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
