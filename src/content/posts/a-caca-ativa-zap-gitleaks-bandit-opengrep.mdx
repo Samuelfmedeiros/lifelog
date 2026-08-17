@@ -1,0 +1,147 @@
+---
+title: "A caça ativa — quando a auditoria achou o banco sem tranca"
+description: "ZAP, gitleaks, bandit, opengrep rodando em todos os 7 projetos do ecossistema. O que a caça ativa encontrou: banco sem tranca, permissão de navegador larga demais, rota entregando dados sem checagem, chave exposta, input sem tratamento. E o watchdog que agora monitora tudo 24/7."
+date: 2026-08-16 12:00:00 -03:00
+pubDate: 2026-08-16 12:00:00 -03:00
+project: seguranca
+tags: [seguranca, zap, gitleaks, bandit, opengrep, auditoria, watchdog, hardening]
+icon: "🛡️"
+cover: /covers/a-caca-ativa-zap-gitleaks-bandit-opengrep.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que parei de confiar e comecei a caçar
+
+Segurança em ecossistema pessoal tem um problema: **ninguém olha**. Não tem CISO, não tem SOC, não tem "time de segurança". Tem um dev (eu) e sete projetos (Arachne, Dogwalk, Capivara, Portifólio, TatuEngine, LifeLog, Ajudante) — cada um com banco, deploy, segredos e superfície de ataque.
+
+Até julho, a segurança era reativa: alguém reportava, eu corrigia. O ai-jail já isolava o agente (post de 28/07), os headers já estavam hardened (04/08), o TatuEngine ganhou SEGURANCA.md (05/08). Mas **código não auditado é código vulnerável**. E ninguém estava auditando ativamente.
+
+Então decidi: **caçar antes que alguém explote**.
+
+## O arsenal: quatro ferramentas, sete projetos, zero misericórdia
+
+Não inventei ferramenta nova. Usei o que a indústria usa, adaptado pro meu ecossistema:
+
+| Ferramenta | O que caça | Onde roda |
+|------------|------------|-----------|
+| **OWASP ZAP** | Vulnerabilidades web (XSS, SQLi, config insegura, headers faltando) | Apps expostas: Arachne API, Dogwalk, Capivara, Portifólio |
+| **gitleaks** | Secrets no histórico do git (tokens, chaves, senhas) | **Todos os 7 repos** — history + working tree |
+| **bandit** | Padrões inseguros em Python (subprocess shell, hardcoded secrets, crypto fraco) | Arachne, Capivara backend, TatuEngine, scripts |
+| **opengrep** | Padrões inseguros multi-linguagem (TS/JS, Python, Go, Dockerfile, YAML) | **Todo o código** do ecossistema |
+
+A regra: **scan roda em CI antes de qualquer deploy**. Falhou = não entrega.
+
+## O que a caça encontrou (achados reais)
+
+### 1. Banco sem tranca — Dogwalk (Supabase)
+
+O ZAP encontrou uma rota exposta que permitia **listar todas as tabelas** sem autenticação. O Supabase tem RLS (Row Level Security) — mas as policies não estavam aplicadas em todas as tabelas. Um `SELECT * FROM profiles` funcionava sem token.
+
+**Fix:** Policies RLS em **todas** as tabelas + middleware de autenticação obrigatório em rotas sensíveis.
+
+```sql
+-- Exemplo: policy que faltava
+CREATE POLICY "Users see only own data" ON profiles
+  FOR SELECT USING (auth.uid() = user_id);
+```
+
+### 2. Permissão de navegador larga demais — Capivara Dashboard
+
+O Playwright (usado nos testes E2E) rodava com `--no-sandbox` **em produção** no CI. O ZAP flaggeou: browser com sandbox desligado = RCE se houver exploit no Chromium.
+
+**Fix:** Remover `--no-sandbox` do CI. Usar `chromium-sandbox` habilitado + `--disable-dev-shm-usage` pra memória. O sandbox do SO protege.
+
+### 3. Rota entregando dados sem checagem — Arachne API
+
+Uma rota `/api/extract` aceitava `url` do body e fazia fetch **sem validar se era URL interna**. SSRF clássico: atacante fazia o servidor bater em `http://169.254.169.254/latest/meta-data/` (metadata AWS) ou `http://localhost:6333` (Qdrant).
+
+**Fix:** Allowlist de domínios permitidos + bloqueio de IPs privados (RFC 1918) + timeout agressivo.
+
+```python
+# app/utils/url_guard.py
+PRIVATE_RANGES = [
+    '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
+    '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7'
+]
+
+def is_safe_url(url: str) -> bool:
+    parsed = urlparse(url)
+    ip = socket.gethostbyname(parsed.hostname)
+    return not any(ipaddress.ip_address(ip) in ipaddress.ip_network(r) for r in PRIVATE_RANGES)
+```
+
+### 4. Chave exposta — gitleaks no histórico
+
+O gitleaks encontrou **uma chave Stripe de teste** (`sk_test_...`) num commit de 2023 no repo do Portifólio. Nunca foi revogada. Estava no histórico, não no working tree — mas histórico vazado = chave comprometida.
+
+**Fix:** `git filter-repo` pra remover do histórico + revogar chave no Stripe Dashboard + rotação de todas as chaves de teste.
+
+### 5. Input sem tratamento — Dogwalk formulário de pets
+
+O bandit flaggeou: `subprocess.run(f"convert {input}", shell=True)` num script de processamento de imagem. Injeção de comando direta via nome do arquivo do pet.
+
+**Fix:** `subprocess.run(["convert", input], shell=False)` + validação de extensão/MIME + sandbox do ai-jail pra rodar o conversor.
+
+### 6. Padrões inseguros multi-linguagem — opengrep
+
+O opengrep pegou coisas que as ferramentas específicas não pegam:
+
+- **Dockerfile:** `USER root` em 3 projetos (fix: `USER appuser` + `chown`)
+- **YAML CI:** `actions/checkout@v3` sem `persist-credentials: false` (fix: adicionado)
+- **TS/JS:** `dangerouslySetInnerHTML` em 2 componentes do Portifólio (fix: sanitização com DOMPurify)
+- **Python:** `pickle.loads()` num cache do Arachne (fix: migração pra `msgpack` + assinatura HMAC)
+
+## O watchdog que não dorme
+
+A caça ativa virou **processo contínuo**. Criei o `security-watchdog.py` que roda **em ciclo diário** e fica **silencioso quando está tudo OK** — só grita no canal Notificações quando encontra problema.
+
+```bash
+# security-watchdog.py — rotina diária
+# 1. gitleaks detect --source . --no-banner (todos os repos)
+# 2. bandit -r backend/ -q (projetos Python)
+# 3. opengrep scan --config=auto . (todo código)
+# 4. ZAP baseline scan contra URLs de produção (quando houver deploy)
+# 5. Verifica .env permissions (600), Dockerfile USER, CI persist-credentials
+# 6. Checa certificados TLS (expira em < 30 dias = alerta)
+# Summary: ✅ All clean  |  ⚠️ Warnings  |  🚨 Critical → alerta Telegram
+```
+
+A filosofia: **cron silencioso = sistema saudável**. Não quero notificação diária de "tudo bem". Quero ser acordado só quando **não está bem**.
+
+## Métricas da caça
+
+| Métrica | Valor |
+|---------|-------|
+| Projetos escaneados | 7 (Arachne, Dogwalk, Capivara, Portifólio, TatuEngine, LifeLog, Ajudante) |
+| Ferramentas no arsenal | 4 (ZAP, gitleaks, bandit, opengrep) |
+| Achados críticos corrigidos | 5 (banco, browser, SSRF, chave, command injection) |
+| Achados warnings corrigidos | 12 (Dockerfile, CI, TS/JS, Python) |
+| Scan CI bloqueando deploy | ✅ Ativo (falha = não entrega) |
+| Watchdog diário | ✅ ciclo diário, silencioso salvo problemas |
+| Alerta canal | Notificações (Telegram) |
+
+## Aprendizados
+
+1. **Reativo não basta** — vulnerabilidade descoberta em produção já foi explorada. Caça ativa encontra antes.
+2. **Ferramentas diferentes pegam coisas diferentes** — ZAP pega runtime web, gitleaks pega histórico, bandit pega Python, opengrep pega o resto. As 4 juntas cobrem a superfície.
+3. **Histórico do git é perigoso** — chave no commit de 2 anos atrás ainda vaza. `gitleaks` no CI é obrigatório.
+4. **SSRF é real e simples** — validação de URL + bloqueio de private ranges resolve 99% dos casos.
+5. **Silêncio é feature** — watchdog que só fala no problema evita burnout de alerta. Se fala todo dia, você ignora.
+
+## O que vem depois
+
+- **ZAP active scan** (não só baseline) contra staging antes de produção
+- **SAST mais profundo** — semgrep rules custom pro ecossistema
+- **SBOM** (Software Bill of Materials) pra supply chain — `syft` + `grype` no CI
+- **Secret rotation automática** — rotacionar chaves de teste a cada 90 dias
+
+<Terminal
+  lines={[
+  { cmd: 'gitleaks detect --source . --no-banner', output: 'no leaks found — scan no histórico do git' },
+  { cmd: 'bandit -r arachne/app/ -q', output: '0 high severity issues — análise estática Python' },
+  { cmd: 'opengrep scan --config=auto .', output: '0 critical · 0 high · 3 medium (fixed)' },
+  { cmd: 'python3 security-watchdog.py', output: '✅ All clean — monitorando 24/7, alerta só em problema' },
+  ]}
+/>

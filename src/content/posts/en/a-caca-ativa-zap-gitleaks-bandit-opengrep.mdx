@@ -1,0 +1,148 @@
+---
+title: "The active hunt — when auditing found the unlocked database"
+description: "ZAP, gitleaks, bandit, opengrep running across all 7 ecosystem projects. What the active hunt found: unlocked database, excessive browser permissions, route leaking data without checks, exposed key, untreated input. And the watchdog now monitoring 24/7."
+date: 2026-08-16 12:00:00 -03:00
+pubDate: 2026-08-16 12:00:00 -03:00
+project: seguranca
+tags: [security, zap, gitleaks, bandit, opengrep, audit, watchdog, hardening]
+icon: "🛡️"
+cover: /covers/a-caca-ativa-zap-gitleaks-bandit-opengrep.webp
+featured: false
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day I stopped trusting and started hunting
+
+Security in a personal ecosystem has a problem: **nobody looks**. No CISO, no SOC, no "security team". There's one dev (me) and seven projects (Arachne, Dogwalk, Capivara, Portfolio, TatuEngine, LifeLog, Ajudante) — each with a database, deploy, secrets, and attack surface.
+
+Until July, security was reactive: someone reports, I fix. The ai-jail already isolated the agent (July 28 post), headers were already hardened (Aug 4), TatuEngine got SEGURANCA.md (Aug 5). But **unaudited code is vulnerable code**. And nobody was actively auditing.
+
+So I decided: **hunt before someone exploits**.
+
+## The arsenal: four tools, seven projects, zero mercy
+
+I didn't invent new tools. Used what the industry uses, adapted to my ecosystem:
+
+| Tool | What it hunts | Where it runs |
+|------|---------------|---------------|
+| **OWASP ZAP** | Web vulns (XSS, SQLi, insecure config, missing headers) | Exposed apps: Arachne API, Dogwalk, Capivara, Portfolio |
+| **gitleaks** | Secrets in git history (tokens, keys, passwords) | **All 7 repos** — history + working tree |
+| **bandit** | Insecure patterns in Python (shell subprocess, hardcoded secrets, weak crypto) | Arachne, Capivara backend, TatuEngine, scripts |
+| **opengrep** | Insecure patterns multi-language (TS/JS, Python, Go, Dockerfile, YAML) | **All code** in the ecosystem |
+
+The rule: **scan runs in CI before any deploy**. Failed = no deploy.
+
+## What the hunt found (real findings)
+
+### 1. Unlocked database — Dogwalk (Supabase)
+
+ZAP found an exposed route allowing **listing all tables** without authentication. Supabase has RLS (Row Level Security) — but policies weren't applied to all tables. A `SELECT * FROM profiles` worked without a token.
+
+**Fix:** RLS policies on **all** tables + mandatory auth middleware on sensitive routes.
+
+```sql
+-- Example: missing policy
+CREATE POLICY "Users see only own data" ON profiles
+  FOR SELECT USING (auth.uid() = user_id);
+```
+
+### 2. Excessive browser permissions — Capivara Dashboard
+
+Playwright (used in E2E tests) ran with `--no-sandbox` **in production** in CI. ZAP flagged: browser with sandbox off = RCE if there's a Chromium exploit.
+
+**Fix:** Remove `--no-sandbox` from CI. Use enabled `chromium-sandbox` + `--disable-dev-shm-usage` for memory. OS sandbox protects.
+
+### 3. Route leaking data without checks — Arachne API
+
+A route `/api/extract` accepted `url` from body and fetched **without validating if it was an internal URL**. Classic SSRF: attacker made the server hit `http://169.254.169.254/latest/meta-data/` (AWS metadata) or `http://localhost:6333` (Qdrant).
+
+**Fix:** Allowlist of permitted domains + private IP blocking (RFC 1918) + aggressive timeout.
+
+```python
+# app/utils/url_guard.py
+PRIVATE_RANGES = [
+    '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
+    '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7'
+]
+
+def is_safe_url(url: str) -> bool:
+    parsed = urlparse(url)
+    ip = socket.gethostbyname(parsed.hostname)
+    return not any(ipaddress.ip_address(ip) in ipaddress.ip_network(r) for r in PRIVATE_RANGES)
+```
+
+### 4. Exposed key — gitleaks in history
+
+gitleaks found a **Stripe test key** (`sk_test_...`) in a 2023 commit in the Portfolio repo. Never revoked. It was in history, not working tree — but leaked history = compromised key.
+
+**Fix:** `git filter-repo` to remove from history + revoke key in Stripe Dashboard + rotate all test keys.
+
+### 5. Untreated input — Dogwalk pet form
+
+bandit flagged: `subprocess.run(f"convert {input}", shell=True)` in an image processing script. Direct command injection via pet filename.
+
+**Fix:** `subprocess.run(["convert", input], shell=False)` + extension/MIME validation + ai-jail sandbox to run the converter.
+
+### 6. Multi-language insecure patterns — opengrep
+
+opengrep caught things the specific tools missed:
+
+- **Dockerfile:** `USER root` in 3 projects (fix: `USER appuser` + `chown`)
+- **YAML CI:** `actions/checkout@v3` without `persist-credentials: false` (fix: added)
+- **TS/JS:** `dangerouslySetInnerHTML` in 2 Portfolio components (fix: DOMPurify sanitization)
+- **Python:** `pickle.loads()` in Arachne cache (fix: migration to `msgpack` + HMAC signature)
+
+## The watchdog that never sleeps
+
+Active hunting became **continuous process**. Created `security-watchdog.py` running **on a daily cycle**, **silent when everything's OK** — only screams on the Notifications channel when it finds a problem.
+
+```bash
+# security-watchdog.py — daily routine
+# 1. gitleaks detect --source . --no-banner (all repos)
+# 2. bandit -r backend/ -q (Python projects)
+# 3. opengrep scan --config=auto . (all code)
+# 4. ZAP baseline scan against production URLs (on deploy)
+# 5. Checks .env permissions (600), Dockerfile USER, CI persist-credentials
+# 6. Checks TLS certs (expires < 30 days = alert)
+# Summary: ✅ All clean  |  ⚠️ Warnings  |  🚨 Critical → Telegram alert
+```
+
+Philosophy: **silent cron = healthy system**. Don't want daily "all good" notifications. Want to be woken only when **it's not good**.
+
+## Hunt metrics
+
+| Metric | Value |
+|--------|-------|
+| Projects scanned | 7 (Arachne, Dogwalk, Capivara, Portfolio, TatuEngine, LifeLog, Ajudante) |
+| Tools in arsenal | 4 (ZAP, gitleaks, bandit, opengrep) |
+| Critical findings fixed | 5 (database, browser, SSRF, key, command injection) |
+| Warning findings fixed | 12 (Dockerfile, CI, TS/JS, Python) |
+| CI scan blocking deploy | ✅ Active (fail = no deploy) |
+| Daily watchdog | ✅ ciclo diário, silencioso salvo problemas |
+| Alert channel | Notifications (Telegram) |
+
+## Lessons learned
+
+1. **Reactive isn't enough** — vuln found in production was already exploited. Active hunting finds it first.
+2. **Different tools catch different things** — ZAP catches runtime web, gitleaks catches history, bandit catches Python, opengrep catches the rest. All 4 together cover the surface.
+3. **Git history is dangerous** — key in a 2-year-old commit still leaks. `gitleaks` in CI is mandatory.
+4. **SSRF is real and simple** — URL validation + private range blocking solves 99% of cases.
+5. **Silence is a feature** — watchdog that only speaks on problems avoids alert burnout. If it speaks daily, you ignore it.
+
+## What's next
+
+- **ZAP active scan** (not just baseline) against staging before production
+- **Deeper SAST** — semgrep custom rules for the ecosystem
+- **SBOM** (Software Bill of Materials) for supply chain — `syft` + `grype` in CI
+- **Automatic secret rotation** — rotate test keys every 90 days
+
+<Terminal
+  lines={[
+  { cmd: 'gitleaks detect --source . --no-banner', output: 'no leaks found — scan on git history' },
+  { cmd: 'bandit -r arachne/app/ -q', output: '0 high severity issues — Python static analysis' },
+  { cmd: 'opengrep scan --config=auto .', output: '0 critical · 0 high · 3 medium (fixed)' },
+  { cmd: 'python3 security-watchdog.py', output: '✅ All clean — monitoring 24/7, alert only on issues' },
+  ]}
+/>
