@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-17] — Posts maratona (Estudos/Segurança) + hidden hub de reuso
+
+- **feat(posts)**: maratona — Estudos (ondas) e Segurança (caça ativa) completos PT+EN + capas AI (`b87963c`)
+- **feat(post)**: estudos 308 skills e o hub de reuso (PT+EN, hidden) + capa AI (`1dd8b1d`)
+- 2 commits · HEAD: `1dd8b1d`
+
 ## [2026-08-13] — Posts Estudos/Segurança + saga animação + ProjectIcon sem emojis
 
 ### 📝 Posts
