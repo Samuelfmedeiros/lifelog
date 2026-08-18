@@ -64,6 +64,19 @@ import { PALETTES } from '../lib/palettes'
     transform: scale(1.08);
   }
   .rail-btn:active { transform: scale(0.92); }
+
+  /* Theme toggle — morph calculado (lua↔sol). O conteúdo SVG já troca via
+     setTheme(); aqui só suavizamos o círculo do globo quando o ícone gira. */
+  #rail-theme-svg {
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    will-change: transform;
+  }
+  .rail-btn:hover #rail-theme-svg {
+    transform: rotate(180deg) scale(1.12);
+  }
+  .rail-btn:active #rail-theme-svg {
+    transform: rotate(180deg) scale(0.98);
+  }
   .rail-icon {
     font-size: 1.15rem;
     line-height: 1;
@@ -90,6 +103,19 @@ import { PALETTES } from '../lib/palettes'
     box-sizing: border-box;
     flex-shrink: 0;
     box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  /* Ring pulsante da cor ativa — dá feedback visual imediato da paleta */
+  .rail-btn-color::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    transition: border-color 0.3s ease;
+    pointer-events: none;
+  }
+  .rail-btn-color:hover::before {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
   }
 
   /* ─── Dropdown (abre pra baixo, posicionado por JS fixed) ─── */
@@ -121,6 +147,25 @@ import { PALETTES } from '../lib/palettes'
     transform: translateY(0);
     pointer-events: auto;
   }
+
+  /* Stagger — dots surgem em cascata ao abrir o dropdown */
+  .rail-dropdown .rail-dot {
+    opacity: 0;
+    transform: scale(0.4);
+    transition: opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .rail-dropdown.open .rail-dot {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  .rail-dropdown.open .rail-dot:nth-child(1) { transition-delay: 0ms; }
+  .rail-dropdown.open .rail-dot:nth-child(2) { transition-delay: 30ms; }
+  .rail-dropdown.open .rail-dot:nth-child(3) { transition-delay: 60ms; }
+  .rail-dropdown.open .rail-dot:nth-child(4) { transition-delay: 90ms; }
+  .rail-dropdown.open .rail-dot:nth-child(5) { transition-delay: 120ms; }
+  .rail-dropdown.open .rail-dot:nth-child(6) { transition-delay: 150ms; }
+  .rail-dropdown.open .rail-dot:hover { opacity: 0.9; transform: scale(1.25); }
+  .rail-dropdown.open .rail-dot.active { opacity: 1; }
 
   /* ─── Palette dots ─── */
   .rail-dot {
@@ -200,9 +245,6 @@ import { PALETTES } from '../lib/palettes'
     // CTA (botão Portfólio) sempre usa a versão ESCURA do accent + letra branca
     root.style.setProperty('--navbar-cta-bg', p.aL)
     root.style.setProperty('--navbar-cta-color', '#ffffff')
-    // CTA hover: versão 12% mais escura do accent light
-    const ctaHoverBg = tinycolor(p.aL).darken(12).toHexString()
-    root.style.setProperty('--navbar-cta-hover-bg', ctaHoverBg)
     root.style.setProperty('--color-accent-soft', p.tB)
     root.style.setProperty('--color-glow', dark ? p.gD : p.gL)
     root.style.setProperty('--color-border', dark ? p.bD : p.bL)

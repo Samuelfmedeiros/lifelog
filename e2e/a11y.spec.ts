@@ -69,6 +69,12 @@ test.describe('Acessibilidade (axe-core)', () => {
     await goto('/');
     await expect(page.getByLabel('Alternar tema')).toBeVisible();
     await expect(page.getByLabel('Paleta de cores')).toBeVisible();
-    await expect(page.getByLabel('Alternar idioma')).toBeVisible();
+    // Lang virou LINK (Bloco 1 — não mais botão): verifica o link por sua
+    // aria-label localizada (PT mostra "View in English", EN mostra "Ver em português")
+    const langLink = page.locator('.navbar-link.navbar-lang');
+    await expect(langLink).toBeVisible();
+    const label = await langLink.getAttribute('aria-label');
+    expect(label).toBeTruthy();
+    await expect(langLink).toBeVisible();
   });
 });
