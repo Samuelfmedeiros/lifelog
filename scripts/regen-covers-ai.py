@@ -24,10 +24,10 @@ import urllib.error
 import urllib.request
 
 # Repo físico: trocar para \\\\wsl$\\kali-linux\\home\\samuel\\projetos\\lifelog no Windows nativo
-LIFELOG_DIR = "/home/samuel/projetos/lifelog"
+LIFELOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 COVERS_DIR = os.path.join(LIFELOG_DIR, "public/covers")
 POSTS_DIR = os.path.join(LIFELOG_DIR, "src/content/posts")
-WORKER_URL = "https://lifelog-capa.samuelandrademedeiros.workers.dev"
+WORKER_URL = os.environ.get("LIFELOG_COVER_WORKER_URL", "")
 
 
 def load_api_key():

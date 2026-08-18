@@ -19,7 +19,16 @@ from pathlib import Path
 LIFELOG_DIR = os.path.expanduser("~/projetos/lifelog")
 POSTS_DIR = os.path.join(LIFELOG_DIR, "src/content/posts")
 COVERS_DIR = os.path.join(LIFELOG_DIR, "public/covers")
-WORKER_URL = "https://lifelog-capa.samuelandrademedeiros.workers.dev"
+WORKER_URL = os.environ.get("LIFELOG_COVER_WORKER_URL", "")
+if not WORKER_URL:
+    try:
+        for line in open(os.path.join(os.path.dirname(__file__), "..", ".env"), encoding="utf-8"):
+            line = line.strip()
+            if line.startswith("LIFELOG_COVER_WORKER_URL="):
+                WORKER_URL = line.split("=", 1)[1].strip().strip('"')
+                break
+    except FileNotFoundError:
+        pass
 API_KEY = os.environ.get("LIFELOG_COVER_API_KEY")
 if not API_KEY:
     # Fallback: load from .env file

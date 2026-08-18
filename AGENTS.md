@@ -24,7 +24,7 @@
 
 ## Sessão 2026-08-12 — 🔒 Scrub posts (caminhos internos + codec TatuEngine) + círculo expansivo mobile
 - **fix(theme)**: círculo expansivo no mobile — revert crossfade 08a3d2d (pedido Samuel 12/08) (`37ed927`)
-- **security(blog)**: remove caminhos internos (~/.hermes, /home/samuel) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
+- **security(blog)**: remove caminhos internos (caminhos internos) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
 - **security(blog)**: remove receita técnica do codec TatuEngine de 10 posts PT+EN — BlockLens, kernels CUDA, thresholds, commits; regra permanente na skill lifelog (`ab1d776`)
 - **feat(posts)**: 3 posts 12/08 — Descobertas (GitHub 2GB/LFS + orphan branch), TatuEngine block-codec, Dogwalk backup mentiroso [pipeline] (`7f207f0`)
 - **sec**: gitleaksignore — .astro/data-store.json e cache interno Astro (FP, P2) (`f402f79`)

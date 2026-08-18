@@ -22,4 +22,4 @@ Open a [GitHub Issue](https://github.com/Samuelfmedeiros/REPO/issues/new/choose)
 
 ## Questions?
 
-Reach out via [samuelandrademedeiros@gmail.com](mailto:samuelandrademedeiros@gmail.com)
+Reach out via [dev@example.com](mailto:dev@example.com)
