@@ -8,17 +8,17 @@ test.describe('Theme Rail', () => {
   test('inline controls are visible inside navbar-links', async ({ page }) => {
     const themeBtn = page.getByLabel('Alternar tema');
     const colorBtn = page.getByLabel('Paleta de cores');
-    const langBtn = page.getByLabel('Alternar idioma');
+    const langLink = page.locator('.navbar-lang');
 
     await expect(themeBtn).toBeVisible();
     await expect(colorBtn).toBeVisible();
-    await expect(langBtn).toBeVisible();
+    await expect(langLink).toBeVisible();
 
     // Os controles estão dentro da navbar-links
     const navLinks = page.locator('.navbar-links');
     await expect(navLinks.getByLabel('Alternar tema')).toBeVisible();
     await expect(navLinks.getByLabel('Paleta de cores')).toBeVisible();
-    await expect(navLinks.getByLabel('Alternar idioma')).toBeVisible();
+    await expect(navLinks.locator('.navbar-lang')).toBeVisible();
   });
 
   test('color button opens dropdown downward', async ({ page }) => {
@@ -59,36 +59,39 @@ test.describe('Theme Rail', () => {
     await expect(html).toHaveAttribute('data-theme', initial, { timeout: 3000 });
   });
 
-  test('lang button toggles PT/EN', async ({ page }) => {
-    const langBtn = page.getByLabel('Alternar idioma');
-    const html = page.locator('html');
+  test('lang link points to the other locale', async ({ page }) => {
+    const langLink = page.locator('.navbar-lang');
+    await expect(langLink).toHaveAttribute('href', '/en/');
+    await expect(langLink).toHaveText('EN');
 
-    await expect(html).toHaveAttribute('lang', /^pt/);
-
-    await langBtn.click();
-    await expect(langBtn).toContainText('EN');
-    await expect(html).toHaveAttribute('lang', 'en');
-
-    await langBtn.click();
-    await expect(langBtn).toContainText('PT');
-    await expect(html).toHaveAttribute('lang', /^pt/);
+    // Versão EN aponta de volta pra PT
+    await page.goto('/en/');
+    const enLang = page.locator('.navbar-lang');
+    await expect(enLang).toHaveAttribute('href', '/');
+    await expect(enLang).toHaveText('PT');
   });
 
-  test('controls are after CTA in navbar-links', async ({ page }) => {
-    const links = page.locator('.navbar-links > *');
+  test('navbar order: CTA Portfólio primeiro, depois links, rail e lang', async ({ page }) => {
+    // .navbar-links > * incluiria o <script> inline que o PalettePicker injeta
+    // como filho direto — :not(script) mantém os índices 0-5 abaixo
+    const links = page.locator('.navbar-links > :not(script)');
     const count = await links.count();
 
-    // Ordem dentro de navbar-links:
-    // [0] Início, [1] Arquivo, [2] Sobre,
-    // [3] 🚀 Portfólio CTA,
-    // [4] #theme-rail (controls)
-    const sobre = links.nth(2);
-    const cta = links.nth(3);
-    const rail = links.nth(4);
+    // Ordem dentro de navbar-links (navbar sem logo — 15/08/2026):
+    // [0] 🚀 Portfólio CTA (primeiro),
+    // [1] Início, [2] Arquivo, [3] Sobre,
+    // [4] #theme-rail (controls), [5] lang
+    expect(count).toBeGreaterThanOrEqual(6);
 
-    await expect(sobre).toHaveAttribute('href', '/sobre');
+    const cta = links.nth(0);
     await expect(cta).toHaveClass(/cta/);
-    await expect(rail).toHaveId('theme-rail');
+    await expect(cta).toHaveAttribute('href', 'https://samuelmedeiros.vercel.app');
+
+    await expect(links.nth(1)).toHaveAttribute('href', '/');
+    await expect(links.nth(2)).toHaveAttribute('href', '/arquivo');
+    await expect(links.nth(3)).toHaveAttribute('href', '/sobre');
+    await expect(links.nth(4)).toHaveId('theme-rail');
+    await expect(links.nth(5)).toHaveClass(/navbar-lang/);
   });
 
   test('localStorage persists palette after reload', async ({ page }) => {
