@@ -21,7 +21,11 @@ interface PostData {
 }
 
 function parseFrontmatter(content: string): Record<string, any> {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  // Normaliza CRLF (\r\n) -> LF (\n) — os .mdx do repo usam CRLF e a
+  // regex /^---\n.../ só casa com LF. Sem isso frontmatter inteiro vira
+  // match:null e campos (project/title) leem vazios.
+  const norm = content.replace(/\r\n/g, '\n');
+  const match = norm.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return {};
   const fm: Record<string, any> = {};
   for (const line of match[1].split('\n')) {
@@ -45,6 +49,7 @@ function loadPosts(): PostData[] {
     const content = readFileSync(join(POSTS_DIR, file), 'utf-8');
     const fm = parseFrontmatter(content);
     if (fm.draft) continue; // Pula rascunhos automaticamente
+    if (fm.hidden) continue; // Pula posts hidden — espelha src/pages/post/[slug].astro (filtro !p.data.hidden)
     posts.push({
       slug: file.replace(/\.mdx$/, ''),
       title: fm.title || '',
