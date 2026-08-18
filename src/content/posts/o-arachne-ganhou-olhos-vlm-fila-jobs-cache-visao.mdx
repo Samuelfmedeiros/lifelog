@@ -146,11 +146,11 @@ async def get_job_status(job_id: str, user: User = Depends(get_current_user)):
 
 ### PYTHONPATH e PostgreSQL
 
-O worker `arachne-vlm-w1` roda com `PYTHONPATH=/home/samuel/projetos/Arachne/api` — o código da API vive separado do core. E **PostgreSQL é obrigatório** (não SQLite) porque a fila BullMQ usa Redis, mas metadados de job, usuários, billing e `ApiUsageLog` vivem no Postgres. Tentar rodar com SQLite quebra migrations e transações concorrentes.
+O worker `arachne-vlm-w1` roda com `PYTHONPATH=/opt/arachne/api` — o código da API vive separado do core. E **PostgreSQL é obrigatório** (não SQLite) porque a fila BullMQ usa Redis, mas metadados de job, usuários, billing e `ApiUsageLog` vivem no Postgres. Tentar rodar com SQLite quebra migrations e transações concorrentes.
 
 ```bash
 # Worker .env
-PYTHONPATH=/home/samuel/projetos/Arachne/api
+PYTHONPATH=/opt/arachne/api
 DATABASE_URL=postgresql://arachne:***@localhost:5432/arachne
 REDIS_URL=redis://localhost:6379/1
 OLLAMA_HOST=http://localhost:11434

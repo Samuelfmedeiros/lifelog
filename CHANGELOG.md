@@ -31,7 +31,7 @@
 - círculo expansivo no mobile — revert crossfade 08a3d2d (pedido Samuel 12/08) (`37ed927`)
 
 ### 🔒 Segurança
-- remove caminhos internos (~/.hermes, /home/samuel) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
+- remove caminhos internos (caminhos internos) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes (`4a65623`)
 - remove receita técnica do codec TatuEngine de 10 posts PT+EN — BlockLens, kernels CUDA, thresholds, commits (`ab1d776`)
 - gitleaksignore: .astro/data-store.json + cache interno Astro (FP, P2) (`f402f79`)
 
@@ -40,7 +40,7 @@
 ## [2026-08-12] - 3 posts + security sweep blog + theme fix
 
 - **feat(posts)**: 3 posts 12/08 — Descobertas (GitHub 2GB/LFS + orphan branch), TatuEngine block-codec, Dogwalk backup mentiroso [pipeline]
-- **security(blog)**: remove caminhos internos (~/.hermes, /home/samuel) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes
+- **security(blog)**: remove caminhos internos (caminhos internos) de 12 posts PT+EN — Capivara, Portifolio, Descobertas, Lifelog, Hermes
 - **security(blog)**: remove receita tecnica do codec TatuEngine de 10 posts (PT+EN) — BlockLens, kernels CUDA, thresholds, commits, caminhos internos
 - **fix(theme)**: animacao crossfade mobile sem clip-path + guarda de regressao E2E (`08a3d2d`), depois revert para circulo expansivo no mobile (pedido Samuel 12/08, `37ed927`)
 - **sec**: gitleaksignore — .astro/data-store.json e cache interno Astro (FP, P2)

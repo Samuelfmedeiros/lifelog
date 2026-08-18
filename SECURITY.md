@@ -3,7 +3,7 @@
 ## Reporting a Vulnerability
 
 Contact Samuel Medeiros directly:
-- **Email:** samuelandrademedeiros@gmail.com
+- **Email:** dev@example.com
 - **GitHub Security Advisory:** https://github.com/Samuelfmedeiros/Portifolio/security/advisories/new
 
 ## Security Practices

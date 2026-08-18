@@ -16,7 +16,7 @@ const context = await browser.newContext({
   deviceScaleFactor: 2,
   reducedMotion: 'no-preference',
   recordVideo: {
-    dir: '/home/samuel/projetos/lifelog/e2e/videos/',
+    dir: new URL('./videos/', import.meta.url).pathname,
     size: { width: 1280, height: 720 },
   },
 });

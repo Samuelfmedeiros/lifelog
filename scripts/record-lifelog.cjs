@@ -1,4 +1,4 @@
-const { chromium } = require('/home/samuel/projetos/lifelog/node_modules/playwright');
+const { chromium } = require('playwright');
 
 (async () => {
   const browser = await chromium.launch({ headless: true });

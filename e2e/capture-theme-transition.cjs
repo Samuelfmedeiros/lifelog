@@ -17,7 +17,7 @@ const { chromium } = require('@playwright/test');
     deviceScaleFactor: 2,
     reducedMotion: 'no-preference',
     recordVideo: {
-      dir: '/home/samuel/projetos/lifelog/e2e/videos/',
+      dir: require('path').join(__dirname, 'videos'),
       size: { width: 1280, height: 720 },
     },
   });

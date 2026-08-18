@@ -214,7 +214,7 @@ Auto-deploy:   Push no main → Vercel CI
 ### 🤖 Cloudflare Worker (Capas AI) — Funcionando
 ```
 Worker:        lifelog-capa
-URL:           https://lifelog-capa.samuelandrademedeiros.workers.dev
+URL:           {configurado via LIFELOG_COVER_WORKER_URL no .env}
 Modelo:        @cf/black-forest-labs/flux-1-schnell
 API Key:       {configurada no worker}
 Estilo:        Sem texto, tema por projeto
