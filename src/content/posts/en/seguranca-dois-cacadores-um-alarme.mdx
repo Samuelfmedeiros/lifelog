@@ -1,0 +1,133 @@
+---
+title: "Two hunters, one alarm — how the Security Agent learned to silence the false positive"
+description: "The Security Agent cross-references findings from two hunters — the Dogwalk Bug Hunter and the Security Hunter watchdog — and outputs a single deduplicated alarm. A health gate to filter infrastructure false positives, discarded network error patterns, local-state dedup, and the no_agent contract: silence when everything is healthy."
+date: 2026-08-18 12:00:00 -03:00
+pubDate: 2026-08-18 12:00:00 -03:00
+project: seguranca
+tags: [security, security-agent, false-positive, dedup, bug-hunter, watchdog, automation, no-agent]
+cover: /covers/seguranca-dois-cacadores-um-alarme.webp
+featured: false
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The problem of having too many watchmen
+
+In the previous post I described how I started hunting actively: four tools, seven projects, zero mercy. That arsenal solved the **finding** side of it. But soon a second, subtler problem surfaced: I had **two independent hunters** producing reports — and no brain to cross-reference what they were saying.
+
+One was the **Bug Hunter** (actually a Dogwalk agent) that navigates the frontend in production and logs routes that break, redirect to login, or render incorrectly. The other was the **Security Hunter**, the security watchdog running gitleaks against the history, auditing hardening, and inventorying ports.
+
+On their own, each already yelled in its own direction. The Bug Hunter saw "route X errored". The Security Hunter saw "new port up". But **together they tell a story**: if the Bug Hunter saw a 404 route and the Security Hunter saw a port that did not exist before, that could be an **attack in progress**, not a random bug.
+
+The catch is that to cross-reference that, I needed an agent that reads both reports, filters the noise, and only speaks when there is something **new and real**.
+
+## The Security Agent is born
+
+Instead of another isolated script, I wrote an orchestrator: `security-agent.py`. Its responsibility is short and clear — pull the latest report from each hunter, cross-reference the findings, and emit **a single consolidated alarm**.
+
+```python
+def cross_reference(sh, bh):
+    cards = []
+    # Bug Hunter — render/navigation findings
+    if bh:
+        for f in bh.get("navigationFailures", []):
+            err = f.get("error", "")
+            if any(pat in err for pat in FALSE_POSITIVE_PATTERNS):
+                continue  # auditor network noise
+            cards.append({"title": f"{f['route']} — {err[:80]}", ...})
+    # Security Hunter — undocumented ports
+    if sh:
+        for issue in sh.get("hardening", {}).get("issues", []):
+            if "não documentada" in issue.lower():
+                cards.append({"title": "Undocumented port — check bind", ...})
+    return cards
+```
+
+The underlying idea is simple: **no single hunter decides alone**. The agent joins the clues from both and only reports what survives the filter. It was the first time the security system had a "brain" between detection and alert.
+
+## The war against the false positive
+
+The immediate problem became clear in the first days of operation: **it alerted too much**. And alerting too much destroys the value of an alert — you stop looking. I attacked the noise on three fronts.
+
+### Front 1 — network error patterns
+
+Much of what the Bug Hunter reported was not an app bug, it was the **auditor's environment**: a DNS flurry, `ERR_CONNECTION_REFUSED`, `ERR_NAME_NOT_RESOLVED`, `Timeout`. If the machine running the test loses network, every render fails at the same time — and that is not a product failure.
+
+```python
+FALSE_POSITIVE_PATTERNS = (
+    "ERR_NAME_NOT_RESOLVED",
+    "ERR_CONNECTION_REFUSED",
+    "ERR_CONNECTION_RESET",
+    "ERR_INTERNET_DISCONNECTED",
+    "Timeout 15000ms exceeded",
+)
+```
+
+These patterns are now **silently discarded**. Uptime is the health monitor's job, not the bug hunter's.
+
+### Front 2 — the health gate
+
+The most interesting one. If the API or tunnel is down, the Bug Hunter tests **without a backend**: login fails silently and **every protected route becomes "redirected to login"**. During one night (13/08), **8 of 9 cards were false positives of this kind**.
+
+The fix was a sanity gate: before accepting an auth/render finding, the agent checks whether the API is up. If it is not, the finding is an **infrastructure false positive**, not an auth bug.
+
+```python
+health_down = None  # lazy: only check if needed
+if is_auth_render:
+    if health_down is None:
+        health_down = not api_health_ok()
+    if health_down:
+        continue  # API down — infrastructure false positive
+```
+
+This alone cut most of the noise.
+
+### Front 3 — local-state dedup
+
+Previously, each run re-reported the same findings — dedup was handled by a kanban board I retired on 17/08. I replaced it with a local state file: the agent keeps the titles already reported and only emits what it has **not seen yet**.
+
+```python
+seen = _load_state()
+new_cards = [c for c in cards if c["title"] not in seen]
+if not new_cards:
+    return  # EMPTY stdout = silence (no_agent contract)
+```
+
+## The silence contract
+
+The golden rule: **a silent cron is a healthy system**. The agent does not send a notification saying "all good" — it only speaks when there is something **new and real**. In code this is literal: the script returns early with empty `stdout` when there is no new finding, and the alert mechanism is exactly printing to `stdout` (which gets delivered to the group).
+
+The audit trail goes to a log file, never to an alert. If one day I want to know what it saw, the history is there — but nobody is woken up for it.
+
+## Metrics that matter
+
+| Metric | Value |
+|--------|-------|
+| Cross-referenced sources | 2 (Bug Hunter + Security Hunter) |
+| Noise-filtering fronts | 3 (network, health gate, dedup) |
+| Avoidable false positives from the 13/08 case | 8 of 9 cards |
+| Kanban for dedup | Retired 17/08 (local state) |
+| no_agent contract | Silence when healthy |
+
+## Lessons learned
+
+1. **Two guards without a brain = two alarms** — cross-referencing independent sources turns noise into signal.
+2. **The false positive is the alert's biggest enemy** — if it yells every day, you learn to ignore it. Filtering is as important as detecting.
+3. **The "who runs it" context matters** — a network error on the auditor's machine is not a product bug. Separating environment from application is half the work.
+4. **Silence is a design decision** — empty stdout on success is the contract that prevents notification burnout.
+
+## What's next
+
+- **Smarter correlation** — not just "new port + 404 route", but event timelines to detect reconnaissance patterns.
+- **Auto-correction** — when the agent confirms a known issue, fire the automated fix instead of just alerting.
+- **Consolidated dashboard** — merge the security-agent history into a readable panel instead of scattered logs.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 ~/.hermes/scripts/security-agent.py', output: '(empty stdout) — nothing new, silence is health' },
+  { cmd: 'cat ~/.hermes/security-agent-state.json', output: '{ "seen_titles": ["...", "..."] } — what has already been reported' },
+  { cmd: 'tail -20 ~/.hermes/logs/security-agent.log', output: '[ISO] Security Agent — cross-referencing... (SH: ok, BH: ok)' },
+  ]}
+/>
