@@ -9,6 +9,11 @@
 
 ---
 
+## Sessão 2026-08-17 (fim de dia) — Posts maratona: Estudos (ondas) + Segurança (caça ativa) + hidden 308 skills
+- **feat(posts)**: maratona — Estudos (ondas) e Segurança (caça ativa) completos PT+EN + capas AI (`b87963c`)
+- **feat(post)**: estudos 308 skills e o hub de reuso (PT+EN, hidden) + capa AI (`1dd8b1d`)
+- 2 commits · HEAD: `1dd8b1d`
+
 ## Sessão 2026-08-13 (fim de dia) — 📝 Posts Estudos/Segurança + saga animação + ProjectIcon sem emojis
 - **feat(posts)**: Estudos e Segurança (PT+EN) — os 2 projetos mais carentes da grade (`dfe5d3a`) + timeline (`6a8378b`)
 - **feat(post)**: desfecho da saga da animação — círculo expansivo no mobile (PT+EN, `1f8e8d9`) + timeline (`15f7b14`)
