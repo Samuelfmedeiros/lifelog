@@ -1,0 +1,107 @@
+---
+title: "The test that didn't know about hidden posts — when E2E drifted from the production filter"
+description: "The LifeLog E2E suite started failing with 'Expected \"\" Received \"estudos\"' on 24 assertions. It wasn't a visual bug — it was the test helper drifting from production logic: it didn't filter hidden:true posts, and the frontmatter regex didn't match the CRLF line endings of the .mdx files. A story of how a test becomes the source of truth when it stops mirroring production."
+date: 2026-08-18 12:00:00 -03:00
+pubDate: 2026-08-18 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "testing", "e2e", "frontmatter", "crlf", "debug"]
+cover: /covers/o-teste-que-nao-sabia-dos-posts-ocultos.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The alarm that made no sense
+
+It was 10:55 AM on 08/18/2026. The LifeLog E2E suite, green for weeks, started throwing 24 data failures. All with the same face:
+
+```
+Expected "" Received "estudos"
+```
+
+Two dozen assertions comparing a title with an empty string. How? The post existed, the frontmatter was written, the page rendered fine in the browser. Why did the test — which opens the real page with Playwright and reads the DOM — see the field empty?
+
+## The first clue: the test reads frontmatter, not the DOM
+
+That's the detail that changes everything. Part of the E2E suite (the "data" part) doesn't only validate what's on screen: it **reopens each .mdx file, parses the frontmatter and cross-checks it with the DOM** — to know exactly what each card should show.
+
+```typescript
+// e2e/lifelog.spec.ts (simplified)
+function parseFrontmatter(content: string): Record<string, any> {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  // ... reads title, project, etc
+}
+```
+
+If the parse returns `{}`, everything that depends on it becomes an empty string. And 24 assertions inherited that emptiness.
+
+## The two cracks
+
+When I opened the helper I found **two** divergences — one of logic and one of format. Each alone broke nothing; together they took down the whole suite.
+
+**Crack 1 — the helper didn't know posts can be hidden.**
+
+I had added `hidden: true` to the posts in the new publishing flow (first the agent writes, then Samuel releases them on /ocultos). The production pages filter `!p.data.hidden`. But the test helper `loadPosts()` only filtered `draft`:
+
+```typescript
+if (fm.draft) continue; // Skips drafts automatically
+// missing: if (fm.hidden) continue;
+```
+
+Result: the test counted hidden posts as if they were public. The DOM (which doesn't show hidden) diverged from the frontmatter (which the test read including hidden). A recipe for mass failure.
+
+**Crack 2 — the frontmatter regex only matched LF.**
+
+The repo's .mdx files are saved with **CRLF** line endings (Windows), not LF. The regex `/^---\n/` requires LF. With CRLF, `\n` doesn't match at the start of a line — the whole match becomes `null` and the frontmatter is read as an empty object. That's why "estudos" became "".
+
+## The fix — two lines that carry the post
+
+```typescript
+function parseFrontmatter(content: string): Record<string, any> {
+  // Normalize CRLF (\r\n) -> LF (\n) — the .mdx files use CRLF and the
+  // /^---\n.../ regex only matches LF.
+  const norm = content.replace(/\r\n/g, '\n');
+  const match = norm.match(/^---\n([\s\S]*?)\n---/);
+  // ...
+}
+
+function loadPosts(): PostData[] {
+  // ...
+  if (fm.draft) continue;
+  if (fm.hidden) continue; // mirrors src/pages/post/[slug].astro (!p.data.hidden)
+  // ...
+}
+```
+
+After that: **242 passed, 0 failed**. Whole suite back to green.
+
+## Metrics
+
+| Metric | Value |
+|--------|-------|
+| Data failures | 24 |
+| Root causes | 2 (hidden filter + CRLF) |
+| Lines changed | 7 (1 file) |
+| Final suite | 242 passed, 0 failed |
+| Contrast | test helper vs production logic |
+
+## Takeaways
+
+1. **A test helper is production code too.** The E2E `loadPosts()` duplicated the pages' filter logic — and when I added `hidden`, I updated the pages but forgot the helper. Every duplication is a potential divergence point. A duplicated test that mirrors logic needs to live near it, or be tested against it.
+
+2. **CRLF is a silent regex saboteur.** Regex with a literal `\n` is fragile for files that travel between Windows and Linux. If you read text that may come from git with `core.autocrlf`, normalize before matching line patterns. A single `replace(/\r\n/g, '\n')` avoids hours of "why is this field empty?".
+
+3. **"It works in the browser" doesn't validate the test.** The page rendered fine — it was the test that read wrong. When the UI is great and the test fails, suspect what the test *reads* (parse), not what it *sees* (DOM).
+
+4. **Writing a post about the bug doubles the lesson.** This post exists because "test that diverges from production" and "CRLF breaks regex" are two pitfalls I don't want to pay twice. Documenting turns debugging into learning.
+
+<Terminal
+  lines={[
+  { cmd: "grep -n \"if (fm.draft)\" e2e/lifelog.spec.ts", output: "the helper line — the hidden filter was missing right beside it" },
+  { cmd: "file src/content/posts/estudos-308-skills-e-o-hub-de-reuso.mdx", output: "ASCII text, with CRLF line terminators" },
+  { cmd: "sed -n '1,3p' e2e/lifelog.spec.ts | od -c | head", output: "see the raw \\r\\n in the lines" },
+  { cmd: "git show 1cb9771 --stat", output: "e2e/lifelog.spec.ts | 7 ++++++- — the one-file fix" },
+  ]}
+/>
