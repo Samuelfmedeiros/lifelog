@@ -9,6 +9,28 @@
 
 ---
 
+## 🔴 TEST-LOOP OBRIGATÓRIO ANTES DE QUALQUER ENTREGA (18/08/2026 — Samuel)
+
+Regra permanente em TODOS os projetos. Antes de declarar pronta/fazer deploy de QUALQUER
+entrega (código, UI, pipeline, feature, fix), rodar SEMPRE o loop de testes com IA
+(skill `ai-test-loop`):
+
+1. **Testes** — unit + e2e + VRT reais do projeto (`test-loop-runner.py` ou o comando nativo)
+2. **Evidência visual** — screenshots DESKTOP + MOBILE (Playwright/VLM), regra obrigatória
+   para mudanças de visual
+3. **Critic separado** — agente com contexto fresco dá nota 0-100
+4. **Vídeo de aprovação** = entregue ao FINAL (mensagem única no grupo), nunca no meio
+5. **Gate:** nota >= threshold; nota < 100 → reavaliar e corrigir (máx 8 rodadas);
+   nota documentada no relatório
+
+**ADICIONAR TESTES DE COMPLEMENTO:** se for preciso adicionar mais testes para melhorar
+o projeto ou cobrir outras áreas (novas features, áreas não cobertas, regressões),
+ISSO DEVE SER FEITO ANTES da entrega — nunca entregar deixando áreas sem cobertura quando
+dá pra cobrir.
+
+Sem evidência real (testes + screenshot + nota) NÃO é entrega completa.
+
+
 ## Sessão 2026-08-17 (fim de dia) — Posts maratona: Estudos (ondas) + Segurança (caça ativa) + hidden 308 skills
 - **feat(posts)**: maratona — Estudos (ondas) e Segurança (caça ativa) completos PT+EN + capas AI (`b87963c`)
 - **feat(post)**: estudos 308 skills e o hub de reuso (PT+EN, hidden) + capa AI (`1dd8b1d`)

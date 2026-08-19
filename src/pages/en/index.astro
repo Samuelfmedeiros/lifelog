@@ -64,7 +64,7 @@ const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os
     {grouped.map((group) => (
       <>
         <DateSeparator date={group.date} />
-        <div class="flex flex-wrap justify-center gap-4">
+        <div class="flex flex-wrap justify-center gap-6">
           {group.posts.map((post, i) => (
             <PostCard
               title={post.data.title}

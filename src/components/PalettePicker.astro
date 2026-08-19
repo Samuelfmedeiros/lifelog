@@ -55,7 +55,6 @@ import { PALETTES } from '../lib/palettes'
     border-radius: 8px;
     transition: all 0.2s ease;
     flex-shrink: 0;
-    opacity: 0.7;
     position: relative;
   }
   .rail-btn:hover {
@@ -97,7 +96,8 @@ import { PALETTES } from '../lib/palettes'
     height: 18px;
     border-radius: 50%;
     background: var(--color-accent);
-    border: 2px solid color-mix(in srgb, var(--color-accent) 50%, transparent);
+    border: 0;
+    box-shadow: var(--color-glow);
     transition: all 0.3s ease;
     pointer-events: none;
     box-sizing: border-box;

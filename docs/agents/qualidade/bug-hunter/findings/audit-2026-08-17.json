@@ -1,0 +1,145 @@
+{
+  "timestamp": "2026-08-17T21:04:49.259Z",
+  "url": "https://lifelog-sepia.vercel.app",
+  "duration": "26.8",
+  "routes": {
+    "/": {
+      "url": "https://lifelog-sepia.vercel.app/",
+      "title": "Início — LifeLog",
+      "contentSize": 292703,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=273512"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 28584 chars"
+        }
+      ]
+    },
+    "/en/": {
+      "url": "https://lifelog-sepia.vercel.app/en/",
+      "title": "Home — LifeLog",
+      "contentSize": 288819,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "i18n-en",
+          "desc": "Timeline em inglês",
+          "ok": true,
+          "detail": "body 27550 chars (EN)"
+        }
+      ]
+    },
+    "/arquivo": {
+      "url": "https://lifelog-sepia.vercel.app/arquivo",
+      "title": "Arquivo — LifeLog",
+      "contentSize": 147726,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=128535"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 8127 chars"
+        }
+      ]
+    },
+    "/en/archive": {
+      "url": "https://lifelog-sepia.vercel.app/en/archive",
+      "title": "Archive — LifeLog",
+      "contentSize": 146572,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=127388"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 7791 chars"
+        }
+      ]
+    },
+    "/sobre": {
+      "url": "https://lifelog-sepia.vercel.app/sobre",
+      "title": "Sobre o LifeLog — LifeLog",
+      "contentSize": 28214,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=9023"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 870 chars"
+        }
+      ]
+    },
+    "/en/about": {
+      "url": "https://lifelog-sepia.vercel.app/en/about",
+      "title": "About LifeLog — LifeLog",
+      "contentSize": 28289,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=9105"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 862 chars"
+        }
+      ]
+    }
+  },
+  "consoleErrors": [],
+  "networkErrors": [],
+  "navigationFailures": [],
+  "passed": 6,
+  "failed": 0,
+  "loginOk": true
+}
