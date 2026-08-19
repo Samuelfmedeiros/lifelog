@@ -1,0 +1,55 @@
+---
+// Preview de post oculto (PT) — igual a post/[slug].astro, mas INCLUI hidden:true
+// para Samuel revisar a postagem renderizada (capa, formatação, Terminal, shiki)
+// ANTES de liberar. NÃO linkada em lugar nenhum (obscuridade, como o /ocultos).
+import PostLayout from '../../../../components/PostLayout.astro';
+import { getCollection } from 'astro:content';
+
+const locale = 'pt';
+
+export async function getStaticPaths() {
+  const allPosts = await getCollection('posts');
+  const posts = allPosts.filter(p => !p.id.startsWith('en/'));
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+
+const projectLabels = {
+  arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio',
+  capivara: 'Capivara', tatuengine: 'TatuEngine', seguranca: 'Segurança',
+  lifelog: 'LifeLog', estudos: 'Estudos', descobertas: 'Descobertas',
+};
+
+// Get prev/next posts (same locale, published only)
+const allPosts = await getCollection('posts');
+const localePosts = allPosts.filter(p => !p.data.hidden && (p.data.lang || 'pt') === locale);
+localePosts.sort((a, b) => {
+  const aSort = (a.data.pubDate || a.data.date).getTime();
+  const bSort = (b.data.pubDate || b.data.date).getTime();
+  return bSort - aSort;
+});
+const currentIndex = localePosts.findIndex(p => p.id === post.id);
+const prevPost = currentIndex < localePosts.length - 1 ? localePosts[currentIndex + 1] : null;
+const nextPost = currentIndex > 0 ? localePosts[currentIndex - 1] : null;
+
+const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
+---
+
+<PostLayout
+  {post}
+  {locale}
+  {prevPost}
+  {nextPost}
+  {projectLabels}
+  readLabel={`${readingTime} min de leitura`}
+  backText="← Voltar para timeline"
+  prevLabel="← Post anterior"
+  nextLabel="Próximo post →"
+  dateLocale="pt-BR"
+  backHref="/"
+  postHref="post"
+/>
