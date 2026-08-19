@@ -1,0 +1,72 @@
+---
+title: "Studies — when the field theory became a module that runs"
+description: "After the wave field theory and Mamba post, the theory gained something it was missing: a didactic, portable, testable artifact. How to turn a study into code that runs — and why that changed how I learn."
+date: 2026-08-19 12:00:00 -03:00
+pubDate: 2026-08-19 12:00:00 -03:00
+project: estudos
+tags: ["studies", "wave-field-theory", "learning", "artifact", "documentation"]
+cover: /covers/estudos-quando-a-teoria-vira-modulo-didatico.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The question that came after the post
+
+When I wrote the post about wave field theory and Mamba, I had already spent months studying the idea of treating inference as wave propagation in a phase field. Experiments, vault notes, and an understanding that grew with every read. But something was nagging in the subtext: **the theory lived in my head and in a README — it had no place where it actually ran.**
+
+A study that doesn't become an artifact disappears. I had watched it happen dozens of times: a paper read, an idea jotted down, a proof of concept forgotten in the footer of a notebook. Two months later, the "amazing idea" becomes "wait, how did that work again?".
+
+So one late afternoon, I decided to test a hypothesis about my own study method: **if I force every theory into a small, portable, testable module, it survives better.**
+
+## The context — theory without a home
+
+Wave field theory, at the conceptual level, is simple to summarize: information travels as waves in a field, and the interference between waves *is* the computation. Each "neuron" isn't a static number — it's a wave source with phase and amplitude. The connection between two points isn't a scalar weight — it's a phase coupling.
+
+It's beautiful on paper. The problem is that ideas like this die in two ways: either they stay locked in a notebook nobody opens, or they get so coupled to heavy infrastructure (GPU, kernels, tooling) that nobody can play with them.
+
+What I wanted was the middle path: a **didactic clone** — small, pure, and portable — that keeps the core mathematical idea without carrying the weight of the production implementation.
+
+## The struggle — fitting an idea into a couple hundred lines
+
+The challenge became a discipline: **express the entire theory in a small module, no GPU, no kernels, just the math of the idea.** Cut it down to the bone, leaving only what is essential to understand how the thing thinks.
+
+What survived the cut:
+
+- **Ternary lens:** each element carries a discrete weight of three values (the "ternary" part of the idea) plus a continuous adjustment. It's the core of the concept: representing a connection with minimal granularity but with fine-tuning capacity.
+- **Phasor interference:** the system's resonance is the amplitude of the sum of waves. High constructive interference = the system is "satisfied". That becomes an objective measure of how well the field is configured.
+- **Adjacent method:** instead of a gradient over continuous space, the adjustment tests the possible discrete values of each element and picks the one that minimizes the error. Cheap, simple, stable.
+- **Hysteresis:** only change an element if the change genuinely improves things. That avoids the infinite oscillation of naive methods — a deliberate pause against the "flip-flop" behavior every unstable iteration has.
+- **Autopoiesis:** the field grows by itself. Elements that stack up too much adjustment split, ones that no longer contribute get pruned, and occasionally a random new element appears (the "novelty" that keeps the system from getting stuck in a local minimum).
+
+The hardest part wasn't the math — it was **restraint**. Every time I wanted to add another feature, I remembered the goal: to be an artifact that anyone (or the me of three months from now) can read in an afternoon and understand the idea. Every line had to justify its existence.
+
+## The resolution — an artifact that runs
+
+The result was a module a few hundred lines long, pure numpy, with no dependency heavier than the math. It runs anywhere. And most importantly: **it gives feedback.** You can assemble a field, propagate the waves, measure resonance, and watch the system evolve (or not) — which turns passive reading into an experiment.
+
+What this small piece taught me about studying changed more than the theory itself did:
+
+1. **A theory is only understood when it's rewritten.** Reading and taking notes is reception. Rewriting the idea into a running module is reconstruction — and it's in reconstruction that the gaps in understanding show up.
+2. **Restraint is part of the method.** The size constraint wasn't a limitation, it was a tool. It forced me to separate the essential from the accidental in the theory.
+3. **Portable is didactic.** If an idea only runs on heavy infrastructure, nobody plays with it — not even me. Portability is what makes a study re-examinable.
+4. **Feedback closes the loop.** A study without feedback is a noted fact. A module that runs returns a signal: the system converges, oscillates, or stays still — and each answer is a new question.
+
+## Lessons
+
+This week's study wasn't about a formula. It was about the **method for making study last**: turning an idea into a small, portable, testable artifact. The field theory was the vehicle; the lesson applies to any topic.
+
+Since then I've started asking every new study the same question: **"what's the smallest running artifact that proves I understood this?"** If I can't answer, I haven't understood yet — I've only read.
+
+## What's next
+
+The next step is to turn this habit into a documented rule in the ecosystem, the same way the skills inventory (308 skills, 39 categories) became a reuse hub. If the lesson survives, it becomes a skill too: **"a finished study leaves an artifact that runs."** It's the natural continuation of an approach that's already working — documenting while you build.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 -c "import phase_field; print(phase_field.__doc__)"', output: 'conceptual core of wave-based theory — didactic, portable, testable module' },
+  { cmd: 'grep -c "def " phase_field.py', output: 'each function owns one concept — the idea expressed in a few lines' },
+  { cmd: 'python3 -c "from phase_field import PhaseField; print(PhaseField().resonance())"', output: '0.0 — empty field, zero resonance; with lenses, the number changes' },
+  ]}
+/>
