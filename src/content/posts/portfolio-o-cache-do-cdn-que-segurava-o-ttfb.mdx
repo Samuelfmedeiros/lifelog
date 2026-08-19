@@ -1,0 +1,112 @@
+---
+title: "O cache do CDN que brigava com o ISR — e segurava o TTFB em 3.6s"
+description: "Um header Cache-Control errado no vercel.json sobrescrevia o revalidate=1800 do ISR e transformava a expiração do cache em duas chamadas síncronas ao GitHub dentro do TTFB. A história de como o cache frio virou quente: 3.6s pra 140ms."
+date: 2026-08-19 16:00:00 -03:00
+pubDate: 2026-08-19 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "nextjs", "isr", "cache", "performance", "vercel", "ttfb"]
+icon: "🚀"
+cover: /covers/portfolio-o-cache-do-cdn-que-segurava-o-ttfb.webp
+featured: true
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma silencioso
+
+O portfólio vive no Next.js 16 com ISR (Incremental Static Regeneration) em `revalidate=1800` — trinta minutos de cache. A maioria dos visitantes caía numa versão quente e nem percebia. Mas eu tenho o hábito de abrir a home com cache frio depois de uma mudança, e toda vez tinha a mesma sensação: a página demorava pra responder, o primeiro byte chegava morosamente.
+
+Um dia resolvi medir em vez de reclamar. O resultado era consistente e feio:
+
+| Cenário | TTFB | LCP |
+|---------|------|-----|
+| Cache frio (após expiração do ISR) | 3617ms | 4873ms |
+| Cache quente | 140ms | 568ms |
+
+Mais de 3.4 segundos de TTFB a cada expiração do cache. Para um site que é, essencialmente, marketing pessoal, isso é um tiro no próprio pé: o primeiro visitante depois de cada invalidação levava a pior experiência, exatamente quando alguém resolveria me avaliar.
+
+## A busca pela causa raiz
+
+O Next ISR deveria servir a página do cache e revalidar em background. Por que a expiração bloqueava o render? A resposta estava num lugar que eu raramente olhava: o `vercel.json` do site.
+
+```json
+{
+  "headers": [
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
+  ]
+}
+```
+
+Ah. Enquanto o ISR fazia o seu trabalho no *edge*, o header `Cache-Control` que eu tinha configurado na raiz mandava o inverso: **no-store**. O `s-maxage` do ISR era sobrescrito pelo `no-store` do meu próprio arquivo de config. Resultado: a cada expiração do cache, em vez de revalidar em background, a request *bloqueava* no render — e o portfólio faz dois fetches síncronos ao GitHub API para montar a seção de projetos. Dois round-trips de rede esticando o TTFB antes de o primeiro byte sair.
+
+Eu tinha configurado um cache pra "não deixar nada cacheado" — e, sem perceber, estava sabotando exatamente o cache que o framework tinha montado pra me proteger.
+
+## A correção honesta
+
+A intenção original do `no-store` na raiz era respeitar o bfcache mobile (um fix anterior). Deu pra manter as duas coisas:
+
+```json
+{
+  "headers": [
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "s-maxage=1800, stale-while-revalidate=1800" }
+      ]
+    }
+  ]
+}
+```
+
+`stale-while-revalidate=1800` é a chave: o edge entrega a versão velha (stale) na hora e revalida em background. Sem `max-age` no browser, não gera cache local — preservando o fix de bfcache mobile. Em resumo: o CDN volta a servir do cache e *atualiza por baixo*, exatamente o contrato que o ISR sempre quis.
+
+Na ponta do GitHub, o mesmo commit adicionou um timeout generoso para o fetch da API:
+
+```ts
+const FETCH_TIMEOUT_MS = 5000;
+const controller = new AbortController();
+const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+const res = await fetch(`${GITHUB_API}?per_page=20&sort=updated`, {
+  headers: { Accept: "application/vnd.github+json" },
+  cache: "force-cache",
+  signal: controller.signal,
+});
+clearTimeout(timer);
+```
+
+Mesmo com o cache correto, se a rede do GitHub estiver lenta ou com rate-limit, um `AbortController` de 5s impede que o fetch segure o primeiro byte do site. O cache resolve o normal; o timeout resolve o anormal.
+
+## O que mudou
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| TTFB (cache frio) | 3617ms | 140ms |
+| LCP (cache frio) | 4873ms | 568ms |
+| Cache-Control (raiz) | no-store | `s-maxage=1800, stale-while-revalidate=1800` |
+| Fetch GitHub | sem timeout | `AbortController` 5s |
+| bfcache mobile | preservado | preservado (sem `max-age`) |
+
+## O que aprendi
+
+1. **Config de cache também é código que briga com framework.** O `Cache-Control` que eu pus "à mão" no `vercel.json` tinha precedência sobre o `s-maxage` que o ISR gera. Eu não tinha um bug no código do Next — tinha um conflito entre configs.
+2. **Medir antes de culpar.** O site "funcionava". Só o cronômetro mostrou que, pra uma fatia constante dos visitantes, ele era 25x mais lento. Performance que ninguém mede é uma bomba-relógio invisível.
+3. **`stale-while-revalidate` é o herói silencioso.** Tirar o usuário do caminho da revalidação é o que faz a web "parecer mágica". O edge serve o que tem e atualiza por baixo.
+4. **Um timeout no fetch é uma apólice de seguro barata.** A rede não é confiável; o cache resolve o caso comum, o timeout resolve o caso raro — os dois juntos custam cinco linhas.
+
+## Comandos úteis
+
+<Terminal
+  lines={[
+    { cmd: 'cat vercel.json | grep Cache-Control', output: 's-maxage=1800, stale-while-revalidate=1800 — a raiz agora revalida em background' },
+    { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -i cache-control', output: 'Confere o header que o CDN entrega de verdade' },
+    { cmd: 'grep -n "AbortController" src/lib/github.ts', output: 'O timeout de 5s que impede o GitHub de segurar o primeiro byte' },
+    { cmd: 'grep -n "revalidate" src/app/page.tsx | head -1', output: '1800 — a janela de ISR que o no-store costumava sobrescrever' },
+  ]}
+/>
