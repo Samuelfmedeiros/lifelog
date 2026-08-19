@@ -276,10 +276,13 @@ const allLabel = isEn ? 'All' : 'Todos';
       let next = sep.nextElementSibling;
       let hasVisible = false;
       while (next && !next.classList.contains('date-separator')) {
-        if (next.classList.contains('post-card') && next.style.display !== 'none') {
-          hasVisible = true;
-          break;
+        const cards = next.classList.contains('post-card')
+          ? [next]
+          : next.querySelectorAll('.post-card');
+        for (const c of cards) {
+          if (c.style.display !== 'none') { hasVisible = true; break; }
         }
+        if (hasVisible) break;
         next = next.nextElementSibling;
       }
       sep.style.display = hasVisible ? '' : 'none';

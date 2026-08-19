@@ -7,7 +7,7 @@
 .navbar { background: var(--navbar-bg); border-bottom-color: var(--navbar-border-color); }
 .navbar-logo { color: var(--navbar-logo-color); }
 .navbar-brand-name { color: var(--navbar-brand-color); }
-.navbar-link { color: var(--navbar-link-color); }
+.navbar-link { color: var(--color-accent); }
 .navbar-link:hover { background: var(--navbar-link-hover-bg); color: var(--color-accent); }
 .navbar-link.cta { background: var(--navbar-cta-bg); color: var(--navbar-cta-color); }
 .navbar-logo-icon { background: var(--navbar-icon-bg); border-color: var(--navbar-icon-border); }
