@@ -21,7 +21,7 @@ def extract_fields(filepath: Path):
                 in_frontmatter = not in_frontmatter
                 continue
             if in_frontmatter:
-                for key in ['title', 'project', 'date', 'lang']:
+                for key in ['title', 'project', 'date', 'lang', 'hidden']:
                     if line.strip().startswith(f'{key}:'):
                         val = line.split(':', 1)[1].strip().strip("'\" ")
                         fields[key] = val
@@ -51,8 +51,10 @@ def check_sync():
     errors = []
     warnings = []
     
-    # PT without EN match
+    # PT without EN match (hidden posts sao fixtures de release, nao exigem EN)
     for key, (name, fields) in sorted(pt_by_key.items()):
+        if fields.get('hidden', '').lower() == 'true':
+            continue
         if key not in en_by_key:
             errors.append(f"❌ PT sem EN: {name} ({fields.get('title','?')})")
     
