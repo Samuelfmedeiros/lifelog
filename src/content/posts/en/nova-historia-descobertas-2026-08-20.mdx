@@ -1,0 +1,82 @@
+---
+title: "The navbar horror movie: when trimming left too much"
+description: "Four commits in a row touching the LifeLog navbar, each one undoing the effect of the one before it. Links that disappeared, a logo that jumped away, a button that floated on its own. The lesson: refactoring in a hurry across a jumble of classes is like baking a cake while changing the recipe at every step."
+date: 2026-08-19 12:00:00 -03:00
+pubDate: 2026-08-20 16:00:00 -03:00
+project: descobertas
+tags: ["discoveries", "lifelog", "navbar", "css", "refactor"]
+cover: /covers/nova-historia-descobertas-2026-08-20.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The navbar that would not let me be
+
+Every refactor should start with the same question: "what am I actually making *simpler*?" In the run of changes I made to the LifeLog navbar, I forgot to ask it — and the result was a week of commits where each one fixed something the previous one had broken.
+
+It was not a lack of code. It was the wrong order of touching something that already worked.
+
+## Step one: the logo had to go
+
+The LifeLog navbar always started with the `[Book · Samuel]` logo. It was the first thing to be removed. The commit `6e9b303` summed up the intent:
+
+```text
+fix(nav): remove rail-lang duplicado e logo — navbar começa com botão Portfólio
+```
+
+The idea was sound: drop the logo, free up space for links; and the duplicated language toggle needed to be gone for good. The problem showed up the moment I looked at the result on a phone.
+
+## The phone told the truth
+
+Desktop looked flawless. It was on the narrow viewport — the real world for my visitors — that the navbar showed its crooked teeth: the link bar **wrapped to a new line**, the color button in the palette picker *slid toward the edge*, and the Portfolio CTA floated alone. All of it from the same habit: `flex-wrap` and overly fixed sizes.
+
+The fix was to center the bar and turn the buttons into *ghost buttons*:
+
+```text
+feat(nav): navbar centralizada, botoes ghost, CTA Portfólio maior com letra branca
+```
+
+`flex-wrap: nowrap` on every breakpoint, `overflow-x: auto` on the link row, and every control in the theme rail marked `flex-shrink: 0` so it would never shrink. The navbar stopped breaking. But the story was not over.
+
+## The vicious cycle: every fix, a new bug
+
+The next commit brought *polish* — darker CTA hover, `focus-visible` for accessibility, refined transitions:
+
+```text
+feat(nav): polish A-F — cta hover darker, focus-visible a11y, refined transitions
+```
+
+And I walked into the classic trap: to make the transition smooth, I slapped `transition: all` onto a bigger block. Result: the card *scroll reveal* and the button hovers gained a noticeable delay and micro-stutter. What was meant to be polish turned into friction.
+
+The fourth and final commit — `5fb9f21` — finally sorted out the palette picker structure:
+
+```text
+feat(navbar): Bloco 1 tema/cores — PalettePicker e tema global
+```
+
+## The table of lessons the code handed me
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| Removing the logo without re-evaluating layout | Navbar wrapped on mobile | `flex-wrap: nowrap` + `overflow-x: auto` |
+| Controls with default `flex-shrink` | Color button slid to the edge | `flex-shrink: 0` on every theme-rail child |
+| Global `transition: all` | Scroll reveal and hovers micro-stutter | Selective `transition` (navbar, filters, buttons, links, footer) |
+| Touching 4 points without reviewing them together | Each fix broke what the previous one did | Refactor in small, checkable passes |
+
+## What I would do differently
+
+1. **One change at a time with a checkpoint** — instead of 4 chained commits, validating each one in isolation before moving on.
+2. **Test on mobile from the first commit** — when the whole point is mobile-first, there is no sense in checking only on desktop and discovering the flaw later.
+3. **`transition: all` is almost always a mistake** — applying a transition to a small, predictable subset costs less and does not scrape the rest of the page.
+4. **Accessibility is not a polish step** — `focus-visible`, contrast, and hit targets should not enter in the last commit; they should be in the structure from day one.
+
+In the end, the navbar landed exactly where I had kept it by blunder across four commits: inline links, an intact theme rail on mobile, and transitions restricted to the elements that benefit from them. The answer to the question I should have asked at the start turned out to be: "simpler meant touching less, in more steps, and checking the phone before moving on."
+
+<Terminal commands={[
+  { cmd: 'git log --oneline -- src/components/navbar' },
+  { cmd: 'git show 6e9b303 --stat   # remove rail-lang e logo' },
+  { cmd: 'git show a9b0d2e --stat   # polish: hover, focus-visible, transitions' },
+  { cmd: 'git show 5fb9f21 --stat   # PalettePicker e tema global' }
+]}/>
