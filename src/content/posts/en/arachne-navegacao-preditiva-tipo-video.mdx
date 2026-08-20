@@ -1,0 +1,67 @@
+---
+title: "Arachne learned to predict the click — video-style predictive navigation"
+description: "Predictive navigation in Arachne: the agent receives a page image, predicts the whole next chain of steps, and executes end-to-end. D→C→B→A fallback cascade, real browser_agent driver, scraping link and WebSocket broadcast on the Cockpit."
+date: 2026-08-20 12:16:00 -03:00
+pubDate: 2026-08-20 12:16:00 -03:00
+project: arachne
+tags: ["arachne", "predictive-navigation", "browser-agent", "automation", "cascade", "cockpit"]
+icon: "🕷️"
+cover: /covers/arachne-navegacao-preditiva-tipo-video.webp
+featured: false
+lang: en
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day the crawler became an F1 driver
+
+Single-page apps are an automation nightmare: every click opens a promise, the response arrives async, and a naive scraper tries to guess the next step while the screen is still loading. For a long time Arachne solved this the dumb way — step by step, waiting for each response, one at a time.
+
+That's when I stopped and thought: **why not let the model predict the whole move in advance, instead of reacting to each frame?**
+
+## The idea: video-style, but for navigation
+
+The way you watch video, you see the current frame and already know in your head the next 10 seconds. Arachne's predictive navigation applies the same idea to the browser:
+
+1. **Input:** an image of the current page
+2. **Prediction chain:** the agent predicts ALL the next steps at once (a compact action sequence)
+3. **Chained execution:** each step is validated and executed one by one
+4. **Discovery:** if the real frame diverges from the prediction, the chain adapts on the fly
+
+The result: automation moves "one step ahead", instead of waiting for each answer to decide the next move.
+
+## The D→C→B→A cascade — four fallback layers
+
+The trickiest part was deciding **where** the navigation runs. Not every site accepts the same driver, so Arachne gained a fallback cascade:
+
+- **A — real driver:** the `browser_agent` engine actually runs the navigation plan
+- **B — live UI:** a floating bar on the page + a BentoBox panel following the prediction in real time
+- **C — scraping link:** the extraction step turns the frame into structured data
+- **D — live mode:** `nav_*` events streamed over the Cockpit WebSocket
+
+When a layer fails, the next one takes over. The regression test also fixed the cascade expectation (it was wrong: B→C, should be B→D).
+
+## What went into the repo
+
+This front evolved in three phases, with 22 + 12 tests:
+
+- **Phase 1** — unified schema + chain planner + chain executor (`13eeb817`)
+- **Phase 2** — scraping link (extract → structured data) + broadcast of `nav_*` events (`f3dcbb14`)
+- **Phase 3** — real driver running the `NavigationPlan` on the `browser_agent` + live UI (floating bar A + panel B) (`212c9f9e`, `541ff304`, `de5aea5c`)
+
+The correct cascade expectation was also adjusted (`72408ea8`): the path is **B→D**, not B→C — a subtle bug that only appears when you measure exactly where each fallback comes from.
+
+## A fresh interface in the cockpit
+
+Predictive navigation isn't just backend. In the Cockpit it got three ways to observe:
+
+- **Floating bar (A)** — tracks the prediction in real time, stuck to the page
+- **BentoBox panel (B)** — the map of predicted actions, side by side
+- **Modal (C)** — the breakdown when you want to see the whole chain
+
+All with WebSocket broadcast (`de5aea5c`): the "live real" link between the engine that predicts and the interfaces that display.
+
+## Lesson
+
+Reacting to each step is linear. **Predicting the whole chain is O(1) in what you see, and O(n) in what you validated.** Predictive navigation trades waiting for confidence — and when the real world diverges, the cascade guarantees someone takes over before it stalls.

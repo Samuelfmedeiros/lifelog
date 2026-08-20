@@ -1,0 +1,67 @@
+---
+title: "O Arachne aprendeu a prever o clique — navegação preditiva tipo vídeo"
+description: "Navegação preditiva no Arachne: o agente recebe uma imagem da página, prevê em cadeia os próximos passos e executa de ponta a ponta. Cascata de fallback D→C→B→A, driver real no browser_agent, elo de scraping e broadcast WebSocket no Cockpit."
+date: 2026-08-20 12:16:00 -03:00
+pubDate: 2026-08-20 12:16:00 -03:00
+project: arachne
+tags: ["arachne", "navegacao-preditiva", "browser-agent", "automation", "cascata", "cockpit"]
+icon: "🕷️"
+cover: /covers/arachne-navegacao-preditiva-tipo-video.webp
+featured: false
+lang: pt
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que o crawler virou piloto de F1
+
+Sites _single-page_ são um pesadelo pra automação: cada clique abre uma promise, a resposta chega async, e um scraper ingênuo tenta adivinhar o próximo passo quando a tela ainda tá carregando. Durante muito tempo o Arachne resolveu isso do jeito burro — passo a passo, esperando cada resposta, um de cada vez.
+
+Foi aí que eu parei pra pensar: **por que não deixar o modelo prever a partida inteira, em vez de reagir a cada frame?**
+
+## A ideia: tipo vídeo, mas pra navegação
+
+O padrão de quem assiste vídeo é: você vê o frame atual, e já sabe mentalmente os próximos 10 segundos. A navegação preditiva do Arachne é a mesma coisa aplicada ao browser:
+
+1. **Entrada:** uma imagem da página atual
+2. **Cadeia de previsão:** o agente prevê TODOS os próximos passos de uma vez (uma sequência compacta de ações)
+3. **Execução em cadeia:** cada passo é validado e executado um a um
+4. **Descoberta:** se o frame real divergir do previsto, a cadeia se adapta na hora
+
+O resultado é que a automação anda "com o pé na frente", em vez de esperar cada resposta para decidir o próximo movimento.
+
+## A cascata D→C→B→A — quatro camadas de fallback
+
+A parte mais delicada foi decidir **onde** a navegação roda. Nem todo site aceita o mesmo driver. Então o Arachne ganhou uma cascata de fallback:
+
+- **A — driver real:** o motor `browser_agent` executa o plano de navegação de verdade (edge do browser real)
+- **B — UI ao vivo:** barra flutuante na página + painel BentoBox acompanhando a previsão em tempo real
+- **C — elo de scraping:** o passo de extração transforma o frame em dados estruturados
+- **D — modo ao vivo:** eventos `nav_*` transmitidos pelo WebSocket do Cockpit
+
+Quando uma camada falha, a próxima assume. O teste de regressão do fallback corrigiu inclusive a expectativa da cascata (vinha errado: B→C, na verdade é B→D).
+
+## O que entrou no repo
+
+Essa frente evoluiu em três fases, com 22 + 12 testes:
+
+- **Fase 1** — schema unificado + planner da cadeia + executor em cadeia (`13eeb817`)
+- **Fase 2** — elo de scraping (extract → dados estruturados) + broadcast dos eventos `nav_*` (`f3dcbb14`)
+- **Fase 3** — driver real rodando o `NavigationPlan` no `browser_agent` + UI ao vivo (barra A + painel B) (`212c9f9e`, `541ff304`, `de5aea5c`)
+
+A expectativa correta da cascata no fallback também foi ajustada (`72408ea8`): o caminho é **B→D**, não B→C — um erro fino que só aparece quando você mede a origem exata de cada fallback.
+
+## Uma interface Nova no cockpit
+
+A navegação preditiva não é só backend. No Cockpit ela ganhou três formas de observar:
+
+- **Barra flutuante (A)** — segue a previsão em tempo real, colada na página
+- **Painel BentoBox (B)** — o mapa das ações previstas, lado a lado
+- **Modal (C)** — o detalhamento quando você quer ver a cadeia inteira
+
+E tudo com broadcast no WebSocket (`de5aea5c`): o elo "live real" entre o motor que prevê e as interfaces que mostram.
+
+## Lição
+
+Reagir a cada passo é linear. **Prever a cadeia inteira é O(1) no que você vê, e O(n) no que você validou.** A navegação preditiva troca espera por confiança — e quando o mundo real diverge, a cascata garante que alguém assuma antes de travar.
