@@ -1,0 +1,82 @@
+---
+title: "A navbar que virou filme de terror: quando reduzir sobrou demais"
+description: "Quatro commits seguidos mexendo na navbar do LifeLog, cada um desfazendo o efeito do anterior. Links que somiam, logo que pulava, botão que flutuava. A lição: refatorar com pressa num asthma de classes é como assar um bolo mudando a receita a cada passo."
+date: 2026-08-19 12:00:00 -03:00
+pubDate: 2026-08-20 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "lifelog", "navbar", "css", "refactor"]
+cover: /covers/nova-historia-descobertas-2026-08-20.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A navbar que não me deixava em paz
+
+Toda refatoração devia começar com a mesma pergunta: "o que eu estou tornando *mais simples*?" Na sequência de mudanças que fiz na navbar do LifeLog, eu esqueci de fazê-la — e o resultado foi uma semana de commits onde cada um consertava uma coisa que o anterior tinha quebrado.
+
+Não era falta de código. Era a ordem errada de mexer no que já funcionava.
+
+## O primeiro passo: a logo precisava sair
+
+O LifeLog sempre teve a navbar começando pelo logo `[LifeLog · Samuel]`. Foi o primeiro a ser removido. O commit `6e9b303` resumia a intenção:
+
+```text
+fix(nav): remove rail-lang duplicado e logo — navbar começa com botão Portfólio
+```
+
+A ideia era boa: sem logo, mais espaço pra links; e o toggle de idioma que estava duplicado precisava sumir de vez. O problema veio logo em seguida, quando eu olhei pro resultado no celular.
+
+## O telefone trouxe a verdade
+
+Desktop parecia impecável. Foi no viewport estreito — o mundo real dos meus visitantes — que a navbar mostrou o nariz torto: a barra de links **quebrava linha**, o botão de cor do seletor de paletas *escorregava pra borda*, e o CTA do Portfólio flutuava sozinho. Tudo relacionado ao mesmo vício: `flex-wrap` e tamanhos fixos demais.
+
+A correção foi centralizar e virar os botões em *ghost buttons*:
+
+```text
+feat(nav): navbar centralizada, botoes ghost, CTA Portfólio maior com letra branca
+```
+
+`flex-wrap: nowrap` em todo breakpoint, `overflow-x: auto` na linha de links, e cada controle do trilho de tema marcado com `flex-shrink: 0` pra nunca encolher. A navbar parou de quebrar. Mas a história não acabava ali.
+
+## O ciclo vicioso: cada fix, um novo bug
+
+O commit seguinte trouxe *polish* — hover mais escuro no CTA, `focus-visible` pra acessibilidade, transições refinadas:
+
+```text
+feat(nav): polish A-F — cta hover darker, focus-visible a11y, refined transitions
+```
+
+E eu caí na armadilha clássica: pra deixar a transição suave, botei `transition: all` num bloco maior. Resultado: o efeito de *scroll reveal* dos cards e os hovers dos botões ficaram com atraso perceptível e micro-stutter. O que era pra ser brilho virou atrito.
+
+O quarto e último commit — `5fb9f21` — foi o que finalmente resolveu a estrutura do selecionador de paleta:
+
+```text
+feat(navbar): Bloco 1 tema/cores — PalettePicker e tema global
+```
+
+## A tabela de lições que o código me deu
+
+| Erro | Sintoma | Correção |
+|------|---------|----------|
+| Remover logo sem reavaliar o layout | Navbar quebrava linha no mobile | `flex-wrap: nowrap` + `overflow-x: auto` |
+| Controles com `flex-shrink` padrão | Botão de cor escorregava pra borda | `flex-shrink: 0` em todos os filhos do trilho |
+| `transition: all` global | Scroll reveal e hovers com micro-stutter | `transition` seletiva (navbar, filtros, botões, links, footer) |
+| Mexer em 4 pontos sem rever junto | Cada fix quebrava o que o anterior fazia | Refatorar em pequenos passes *validáveis* |
+
+## O que eu faria diferente
+
+1. **Uma mudança por vez com checkpoint** — em vez de 4 commits encadeados, ter validado cada um isolado antes de partir pro próximo.
+2. **Testar em mobile desde o primeiro commit** — quando o motivo da mudança é o mobile-first, não faz sentido conferir só no desktop e descobrir a falha depois.
+3. **`transition: all` é quase sempre um erro** — aplicar transição a um subconjunto pequeno e previsível custa menos e não arranha o resto da página.
+4. **Acessibilidade não é um passo de polimento** — `focus-visible`, contraste e hit targets não deveriam entrar no último commit; deveriam estar na estrutura desde o dia um.
+
+No fim, a navbar ficou exatamente onde a mantive por erro durante quatro commits: com os links inline, o trilho de tema intacto no mobile, e as transições restritas pro que adicionam. A resposta da pergunta que eu deveria ter feito no começo acabou sendo: "mais simples era ter mexido menos, em mais etapas, e checado o telefone antes de avançar."
+
+<Terminal commands={[
+  { cmd: 'git log --oneline -- src/components/navbar' },
+  { cmd: 'git show 6e9b303 --stat   # remove rail-lang e logo' },
+  { cmd: 'git show a9b0d2e --stat   # polish: hover, focus-visible, transitions' },
+  { cmd: 'git show 5fb9f21 --stat   # PalettePicker e tema global' }
+]}/>
