@@ -1,0 +1,57 @@
+---
+title: "A segurança deixou o quadro — findings direto na memória e no evento"
+description: "O watchdog de segurança parou de alimentar um kanban que ninguém lia e passou a publicar findings no lugar certo: direto na memória persistente e no canal do grupo. Menos cerimônia, mais caça ativa, zero cards."
+date: 2026-08-20 16:00:00 -03:00
+pubDate: 2026-08-20 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "watchdog", "yurumi", "findings", "assistant", "automação"]
+cover: /covers/a-seguranca-deixou-o-quadro.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que o quadro ficou mudo
+
+O kanban de segurança existia pra organizar, mas virou um depósito: o agente encontrava um vazamento, criava um card, e o card ficava lá — invisível na correria dos grupos, competindo com conversas de outros projetos. Quando eu olhava, o board tinha findings órfãos que ninguém tinha visto. Ordem aparente, desperdício real.
+
+Foi aí que eu cortei a intermediária.
+
+## O problema
+
+O `security-watchdog` rodava, achava findings, e _estacionava_ tudo num board. A latência era total:
+
+1. **Descoberta** — scan acha um secret exposto
+2. **Card** — o finding vira um item de kanban
+3. **...e ninguém vê** — o card mora num board que não dialoga com o canal onde a decisão acontece
+
+O resultado prático: o trabalho de segurança acontecia, mas a visibilidade era zero porque o artefato intermediário (o board) silenciosamente engolia os achados.
+
+## A virada: findings no lugar onde a memória mora
+
+A troca foi simples no conceito e profunda no efeito:
+
+1. **`security-watchdog.py` reescrito sem board** — nada de criar cards de kanban pra cada finding.
+2. **Encontro primeiro** — todo finding vai pra memória persistente (Yurumi), onde fica _grounded_ e recuperável.
+3. **Publica no canal certo** — a notificação vai direto pro grupo de segurança, pro agente que age, sem passar por um quadro morto.
+
+O motor disso é o **Security Engineer Agent** (6c3d7ffd3eed): ele já nasce com o pipeline de findings → memoria → report direto no grupo. E o **Security Auto-Response** não menciona mais nenhum card — reage ao evento, não ao quadro.
+
+## Por que importa
+
+Quando a automação publica no board, ela alimenta um sistema de _inbox_ que ninguém lê. Quando publica na memória + no canal de ação, ela entra na mesma trilha onde a decisão realmente acontece. A diferença entre "achou" e "resolveram" é exatamente essa ponte.
+
+As skills também mudaram de postura: `security-watchdog-maintenance`, `incident-response` e `agentic-scanning` ganharam um banner claro no topo — **"Kanban aposentado"**. Nada de futuro agente voltar a criar card por reflexo.
+
+## Aprendizado
+
+Fluxo de segurança não é sobre onde você _guarda_ o finding, é sobre onde ele _chega_. Quadros são ótimos pra planejar trabalho humano; péssimos pra alertas que precisam de ação imediata. No ecossistema pessoal, a memória persistente + o canal certo ganham do board — toda vez.
+
+<Terminal
+  commands={[
+    { label: 'antes', cmd: 'security-watchdog.py --emit-board && sleep 0' },
+    { label: 'depois', cmd: 'security-watchdog.py --findings -> yurumi + notificar grupo' },
+    { label: 'skills', cmd: 'grep -rl "Kanban aposentado" ~/.hermes/skills/security-*' },
+  ]}
+/>

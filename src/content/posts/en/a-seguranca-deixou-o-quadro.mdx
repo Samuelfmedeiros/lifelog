@@ -1,0 +1,57 @@
+---
+title: "Security left the board — findings straight into memory and the feed"
+description: "The security watchdog stopped feeding a kanban nobody read and started publishing findings where they matter: into persistent memory and the right channel. Less ceremony, more active hunting, zero cards."
+date: 2026-08-20 16:00:00 -03:00
+pubDate: 2026-08-20 16:00:00 -03:00
+project: seguranca
+tags: ["security", "watchdog", "yurumi", "findings", "assistant", "automation"]
+cover: /covers/a-seguranca-deixou-o-quadro.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day the board went silent
+
+The security kanban was meant to organize things, but it turned into a dumping ground: the agent found a leak, created a card, and the card just sat there — invisible in the group chatter, competing with conversations about other projects. When I actually looked, the board was full of orphaned findings nobody had seen. Apparent order, real waste.
+
+That's when I cut out the middleman.
+
+## The problem
+
+The `security-watchdog` ran, found findings, and _parked_ them all on a board. The latency was total:
+
+1. **Discovery** — a scan finds an exposed secret
+2. **Card** — the finding becomes a kanban item
+3. **...and nobody sees it** — the card lives on a board that doesn't talk to the channel where decisions happen
+
+The practical result: the security work happened, but visibility was zero because the intermediary artifact (the board) silently swallowed the findings.
+
+## The shift: findings where memory lives
+
+The change was simple in concept and profound in effect:
+
+1. **`security-watchdog.py` rewritten without a board** — no more kanban cards for every finding.
+2. **Memory first** — every finding goes into persistent memory (Yurumi), where it stays grounded and retrievable.
+3. **Publishes to the right channel** — the notification goes straight to the security group, to the agent that acts, without passing through a dead board.
+
+The engine behind this is the **Security Engineer Agent** (6c3d7ffd3eed): it already ships with the findings → memory → group-report pipeline. And **Security Auto-Response** no longer mentions any card — it reacts to the event, not to the board.
+
+## Why it matters
+
+When automation publishes to a board, it feeds an inbox system nobody reads. When it publishes to memory plus the action channel, it enters the same track where the decision actually happens. The gap between "it found it" and "it got fixed" is exactly that bridge.
+
+The skills changed posture too: `security-watchdog-maintenance`, `incident-response` and `agentic-scanning` all carry a clear banner up top — **"Kanban retired"**. No future agent creates a card out of reflex again.
+
+## Lesson
+
+Security flow isn't about where you _store_ the finding; it's about where it _lands_. Boards are great for planning human work; terrible for alerts that need immediate action. In a personal ecosystem, persistent memory plus the right channel beats the board — every time.
+
+<Terminal
+  commands={[
+    { label: 'before', cmd: 'security-watchdog.py --emit-board && sleep 0' },
+    { label: 'after', cmd: 'security-watchdog.py --findings -> yurumi + notify group' },
+    { label: 'skills', cmd: 'grep -rl "Kanban retired" ~/.hermes/skills/security-*' },
+  ]}
+/>
