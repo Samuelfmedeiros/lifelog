@@ -2,12 +2,15 @@
 // Libera um post oculto: flipa hidden:true -> hidden:false no frontmatter do MDX
 // e commita via GitHub API (push em main dispara o CI -> deploy).
 //
+// Libera o PAR PT+EN num unico clique: post do LifeLog e bilingue, e liberar
+// so o PT (ou so o EN) deixava a lingua irma presa em hidden:true para sempre.
+//
 // MODE 1 (novo, preferido): proxy para o endpoint centralizado do Capivara
 //   POST $LIFELOG_RELEASE_API_URL/api/lifelog/release  { slug }
 //   com Bearer $LIFELOG_RELEASE_TOKEN — o Capivara flipa hidden e commita
 //   (PT e EN), com fallback git local quando a GitHub API falha por auth.
 // MODE 2 (fallback): se as envs do Capivara não existirem, mantém o
-//   comportamento legado: GitHub API direta com GH_TOKEN.
+//   comportamento legado: GitHub API direta com GH_TOKEN (flipa PT+EN juntos).
 //
 // Requer ADMIN_SECRET (env na Vercel) via header Authorization: Bearer ***
 import { timingSafeEqual } from 'node:crypto';
@@ -68,15 +71,20 @@ async function gh(path, opts = {}) {
   return { status: res.status, data };
 }
 
-async function releaseViaGithub(slug) {
+async function flipFile(slug) {
+  // Flipa hidden:true -> false de UM arquivo. present=false = arquivo nao existe
+  // (post only-PT, por exemplo). Retorna { status, json, present }.
   if (!process.env.GH_TOKEN) {
-    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' } };
+    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' }, present: true };
   }
   const filePath = `src/content/posts/${slug}.mdx`;
   const enc = encodeURIComponent(filePath);
   const getRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}?ref=${BRANCH}`);
+  if (getRes.status === 404) {
+    return { status: 404, json: { error: `Arquivo nao encontrado: ${slug}` }, present: false };
+  }
   if (getRes.status !== 200) {
-    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` } };
+    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` }, present: true };
   }
   const { content, sha } = getRes.data;
   const decoded = Buffer.from(content, 'base64').toString('utf-8');
@@ -84,12 +92,12 @@ async function releaseViaGithub(slug) {
   // Flipa SOMENTE o campo hidden no frontmatter (primeiro bloco --- ---)
   const fmMatch = decoded.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!fmMatch) {
-    return { status: 422, json: { error: 'Frontmatter nao encontrado' } };
+    return { status: 422, json: { error: 'Frontmatter nao encontrado' }, present: true };
   }
   const fm = fmMatch[1];
   const updatedFm = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
   if (updatedFm === fm) {
-    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' } };
+    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' }, present: true };
   }
   const newContent = decoded.replace(fm, updatedFm);
   const newContentB64 = Buffer.from(newContent, 'utf-8').toString('base64');
@@ -104,9 +112,33 @@ async function releaseViaGithub(slug) {
     }),
   });
   if (putRes.status !== 200 && putRes.status !== 201) {
-    return { status: 502, json: { error: `Falha no commit no GitHub (${putRes.status})` } };
+    return { status: 502, json: { error: `Falha no commit no GitHub (${putRes.status})` }, present: true };
   }
-  return { status: 200, json: { ok: true, commit: putRes.data.commit?.sha, mode: 'github' } };
+  return { status: 200, json: { ok: true, slug, commit: putRes.data.commit?.sha, mode: 'github' }, present: true };
+}
+
+// Libera o PAR PT+EN num unico clique. Post do LifeLog e bilingue; liberar so o
+// PT (ou so o EN) deixava a lingua irma presa em hidden:true para sempre.
+async function releaseBoth(base) {
+  const twin = base.startsWith('en/') ? base.slice(3) : 'en/' + base;
+  const targets = [...new Set([base, twin])];
+  let released = [];
+  let missing = [];
+  let errors = [];
+  for (const t of targets) {
+    const r = await flipFile(t);
+    if (!r.present) missing.push(t);
+    else if (r.status === 200) released.push(t);
+    else errors.push({ slug: t, error: r.json?.error || ('HTTP ' + r.status) });
+  }
+  if (errors.length > 0) {
+    return { status: 502, json: { error: errors[0].error, errors, released } };
+  }
+  if (released.length > 0) {
+    // missing = lingua irma inexistente (post only-PT/only-EN) — nao e erro
+    return { status: 200, json: { ok: true, released, missing, mode: 'github' } };
+  }
+  return { status: 422, json: { error: 'Nada foi liberado (todos os arquivos ja estavam liberados ou nao existem)' } };
 }
 
 export default async function handler(req, res) {
@@ -120,12 +152,12 @@ export default async function handler(req, res) {
     return;
   }
   const body = await readBody(req);
-  const slug = slugFromPath(body.path || body.slug);
-  if (!slug || !SLUG_RE.test(slug)) {
+  const base = slugFromPath(body.path || body.slug);
+  if (!base || !SLUG_RE.test(base)) {
     res.status(400).json({ error: 'path/slug invalido' });
     return;
   }
 
-  const result = await releaseViaGithub(slug);
+  const result = await releaseBoth(base);
   res.status(result.status).json(result.json);
 }
