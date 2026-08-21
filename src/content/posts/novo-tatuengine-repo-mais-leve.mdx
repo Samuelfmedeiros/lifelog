@@ -1,0 +1,42 @@
+---
+title: "O TatuEngine fez as malas — e o repo ficou mais leve"
+description: "Um repo que acumula artefatos de build e sync não conta a história limpa que você quer mostrar. O TatuEngine passou por uma higienização de versionamento: artefatos de build fora do git, auto-sync rodando e um repositório preparado pra quem for olhar de fora sem entregar a receita interna."
+date: 2026-08-21 06:30:00 -03:00
+pubDate: 2026-08-21 06:30:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "git", "privacidade", "build", "repo"]
+cover: /covers/tatuengine-fez-as-malas-repo-mais-leve.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O que o git esconde (sem querer)
+
+Todo repo pessoal acumula lixo: `build/` com binários de uma execução, artefatos intermediários, pastas geradas por ferramenta que não deveriam estar versionadas. No TatuEngine, isso era o `build_py/` — resultado de builds locais que vazavam pro versionamento.
+
+Problema duplo: (1) incha o repo com bytes que não contam a história de verdade, e (2) para um projeto que carrega um código sensível por baixo, todo arquivo a mais é uma chance a menos de privacidade controlada.
+
+## A faxina
+
+Dois movimentos:
+
+1. **Remover `build_py/` do versionamento** — artefatos de build não pertencem ao histórico. O código-fonte e os scripts de build bastam; o produto do build se regenera.
+2. **Auto-sync rodando limpo** — o repo segue com o auto-sync de rotina (fim de dia + semanal), mas agora só empurra mudanças reais, sem pegar artefato gerado junto.
+
+## Por que importa (especialmente aqui)
+
+No TatuEngine, "build in public" é uma linha tênue: mostrar a jornada, sem dar a receita. Higienizar o versionamento é parte disso — garante que o que está versionado é o que faz sentido mostrar, e que dados de build e rascunhos internos não embaralham a narrativa nem a segurança.
+
+## Aprendizado
+
+Versão não é backup do seu disco — é a declaração pública do que aquele código é. Se a pasta de build não deve ser história, ela não fica. Mantenha o repo como uma vitrine limpa: código, scripts, decisões — e o resto gerado na hora de rodar.
+
+<Terminal
+  commands={[
+    { label: 'removido', cmd: 'git rm -r build_py/ --cached' },
+    { label: 'sync', cmd: 'auto-sync fim de dia + semanal (mudancas reais)' },
+    { label: 'receita', cmd: 'interna: NAO versionada' },
+  ]}
+/>

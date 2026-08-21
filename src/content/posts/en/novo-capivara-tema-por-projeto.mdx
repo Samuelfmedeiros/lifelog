@@ -1,0 +1,44 @@
+---
+title: "Capivara got a new skin — theme v2 with per-project design tokens"
+description: "The second brain got a brand-new theming system: a ThemeProvider with design tokens, CSP-compliant anti-flash, and per-project palettes. Along the way, the email service quietly broke because the Resend domain was wrong — and invites started arriving again."
+date: 2026-08-21 06:00:00 -03:00
+pubDate: 2026-08-21 06:00:00 -03:00
+project: capivara
+tags: ["capivara", "theme", "design-tokens", "resend", "email", "refactor"]
+cover: /covers/capivara-trocou-a-pele-theme-v2.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## A capybara that changed its skin
+
+The second brain lived for months with a hand-stitched theme: colors scattered across components, each screen with its own way of declaring background and text. It worked, but any identity change turned into a hunt through forgotten `<style>` blocks. Then came the **theme v2** redesign.
+
+## The idea: a theme that is a contract
+
+Instead of loose colors, v2 tied everything into a **ThemeProvider** with **design tokens** — the theme became a set of variables that components only _reference_. Changing the whole identity means changing the tokens, not chasing selectors.
+
+Two details made the difference:
+
+1. **CSP-compliant anti-flash** — the theme applies without flashing the wrong background on first paint (the infamous FOUC), and without relying on inline styles that Capivara's CSP would block.
+2. **Per-project tokens** — each project (Arachne, Dogwalk, Portfolio...) carries its own token palette, so the second brain's UI reflects the identity of every system it manages.
+
+## The email that disappeared and came back
+
+During the cycle, invitation emails stopped arriving. The cause wasn't the code — it was the **Resend domain**: it pointed to the wrong place, and the sender rejected silently. A single-line fix aligned the domain to `seu.pet` and invites started sending again.
+
+As a bonus, `email_service` gained real test coverage (Resend 200, HTTP error, fallback) and the `httpx` mock in the test was corrected.
+
+## Lesson
+
+Refactoring visuals isn't just CSS — it's changing discipline. When the theme becomes a contract via tokens, the design becomes versioned and consistent instead of improvised. And the classic lesson repeated itself: the most invisible email bug is **who is allowed to send from that domain**, not the message body.
+
+<Terminal
+  commands={[
+    { label: 'theme', cmd: 'ThemeProvider + per-project design tokens' },
+    { label: 'email', cmd: 'Resend -> domain seu.pet (1-line fix)' },
+    { label: 'test', cmd: 'email_service: 200 / error / fallback' },
+  ]}
+/>
