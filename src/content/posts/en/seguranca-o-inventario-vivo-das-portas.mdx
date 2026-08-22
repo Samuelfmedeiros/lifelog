@@ -1,0 +1,97 @@
+---
+title: "The living inventory — when the knowledge firewall is a file"
+description: "One of the most underestimated layers of security is knowing what is open. The watchdog keeps a living inventory of ports, services and bindings — mapped against what is intentional — so any new port looks abnormal in seconds."
+date: 2026-08-22 12:00:00 -03:00
+pubDate: 2026-08-22 12:00:00 -03:00
+project: seguranca
+tags: [seguranca, watchdog, ports, bindings, hardening, inventory, automation]
+cover: /covers/seguranca-o-inventario-vivo-das-portas.webp
+featured: false
+hidden: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The easiest door to miss
+
+Most people think of security as a vault: put a lock, a password, a firewall and forget about it. But in practice, in an ecosystem with dozens of running services, the most common problem is not a weak lock — it's **not knowing which ports are open**.
+
+A forgotten service, listening on an undocumented bind, is the easiest door to miss. It doesn't show up on your mental checklist because you never added it. The only way to hunt this kind of flaw is not to configure more permissions — it's to **keep a living inventory** of everything that listens, and compare it against what should be listening.
+
+## When `ss` became a censor
+
+The security watchdog has been running for weeks sweeping the projects with gitleaks, looking for exposed secrets. That part worked well. But I wanted the same discipline applied to the runtime: **who is listening where**.
+
+The command behind it is trivial:
+
+```bash
+ss -tlnp -4
+```
+
+One line per open port. But raw lines don't tell me whether that is expected. Listening to service A is normal; listening on port X, bound to Y, might be the thing that wakes me up at night. I needed a censor between `ss` and my inbox.
+
+## The censor: map before alarming
+
+The watchdog's `hardening_scan()` reads `ss`, then for each port decides whether it is **known, intentional or suspicious**. The decision has three layers:
+
+```python
+service = KNOWN_PORTS.get(port, f"Unknown (port {port})")
+bind_ok = host in SAFE_BINDS or host.startswith("172.") or port in INTENTIONAL_BINDS
+```
+
+1. **`KNOWN_PORTS`** — a dictionary that documents each port and the service it should be serving. If the port is not here, it gets flagged as "unknown".
+2. **`SAFE_BINDS`** — loopback (`127.0.0.1`, `::1`), the most conservative bind possible: only whoever is on the box itself reaches it.
+3. **`INTENTIONAL_BINDS`** — ports that listen outside loopback **on purpose**: remote access, LAN access, container-to-container communication. These are the documented exceptions to the rule.
+
+The crime is not binding outside loopback — it's binding outside loopback that **is not on the intentional list**. That is where the alarm fires:
+
+```python
+elif not bind_ok and port not in (53,):
+    result["issues"].append(f"Service listening on {bind} (not localhost)")
+```
+
+## The known-versus-intentional analogy
+
+That separation is the heart of the idea. There is no absolute "good port" or "bad port" — there is **a port I know why it is open** and **a port I don't know why it is open**.
+
+- A **known** port listening on loopback → healthy, quiet, bothering no one.
+- A **known** port with a documented intentional bind → acceptable, because it carries its justification in the code itself.
+- An **unknown** port, or a bind that is neither loopback nor intentional → this is what the watchdog bites.
+
+## Why this beats the firewall you forget
+
+A traditional firewall protects you from **what comes from outside**. It's great against an attacker scanning your network. But it doesn't protect you from **yourself**: the service you started to test, forgot running, listening on everything.
+
+The living inventory closes that gap. It doesn't stop the service from starting — but it makes sure that, on the first scan, it **does not go unnoticed**. A port that wasn't there yesterday is a new anomaly, and a new anomaly is the price of having context.
+
+And there's a detail I like: the mapping is **executable documentation**. Instead of a ports README that ages and lies, each documented port lives in the code that validates it. If I close a service, the line goes with it; if I open a new one, I find out because the inventory doesn't recognize it.
+
+## Metrics that matter
+
+| Metric | Value |
+|--------|-------|
+| Decision layers per port | 3 (known / loopback / intentional) |
+| Scanner contract | `ss -tlnp -4` + classification |
+| Alarm target | any non-loopback bind that is not intentional |
+| Port documentation | 50+ catalogued services |
+
+## Takeaways
+
+1. **Security is not just blocking, it's knowledge.** Knowing what listens is half the game — the other half is knowing why it listens.
+2. **Documentation that validates itself.** An inventory in code that compares against the real runtime never goes stale.
+3. **The alarm must carry context.** "Port 9000 open" is a scare; "port 9000 open, unknown, bind anywhere" is a call to action.
+4. **Loopback as baseline.** If it doesn't need to be visible on the network, the conservative bind is already the right answer.
+
+## What's next
+
+- **Time curve** — store the inventory by date and highlight the diff to see "what changed in the last 24h".
+- **Auto-hardening** — for new services, suggest the most conservative bind instead of leaving the default.
+- **Living dashboard** — turn the port table into a readable panel instead of log lines.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 security-watchdog.py', output: 'Port inventory (N ports) — all mapped against known inventory' },
+  { cmd: 'ss -tlnp -4 | head', output: 'LISTEN  127.0.0.1:9000 ... — what the scanner censors' },
+  { cmd: 'grep -A2 "INTENTIONAL_BINDS" security-watchdog.py', output: 'INTENTIONAL_BINDS = {...}  # documented exceptions' },
+  ]}
+/>
