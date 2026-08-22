@@ -1,0 +1,116 @@
+---
+title: "The watchdog that discovered the covers were fake — the saga continues"
+description: "The cover watchdog I built to guarantee good images on the blog found a problem I didn't expect: the AI-generated covers arrived in the wrong format. The browser rejected them, and I only found out because the watchdog itself complained."
+date: 2026-08-21 12:00:00 -03:00
+pubDate: 2026-08-22 19:00:00 -03:00
+project: lifelog
+tags: [lifelog, blog, devops, automation, ai, covers, watchdog, webp]
+cover: /covers/watchdog-descobriu-capas-falsas.webp
+featured: false
+lang: 'en'
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The watchdog turned detective
+
+In the previous post, I told the story of the cover watchdog — a script that checks the most recent posts twice a day and regenerates covers that are too small. It worked. It was silent. It saved the blog from posts with dark blobs instead of covers.
+
+But it discovered something I didn't expect.
+
+## The silent symptom
+
+The watchdog checked **file size** as a proxy: good AI covers are hundreds of kilobytes, dark PIL covers are tens of kilobytes. Only size didn't tell the whole story.
+
+On some covers, the watchdog reported "OK, 500KB good cover" — but the browser showed a white square. The file existed, HTTP returned 200, but the content wouldn't render.
+
+That's when I looked at the bytes closely.
+
+## The discovery: JPEG cover with .webp extension
+
+The Cloudflare Worker that generates covers (FLUX.1 Schnell) returns images in whatever format the provider sends. And the provider, in a hurry, sent **JPEG**. But the script saved it with a `.webp` extension — because the blog expects WebP for performance.
+
+The browser, upon receiving a `cover.webp` file with JPEG bytes, tried to decode it as WebP, failed, and showed a white square with no visible error.
+
+```
+$ head -c 16 cover.webp | xxd
+00000000: ffd8 ffe0 0010 4a46 4946 0001 0100 0048  ......JFIF.....H
+```
+
+The `ffd8` is the JPEG signature. A real WebP starts with `RIFF....WEBP`:
+
+```
+$ head -c 16 real-cover.webp | xxd
+00000000: 5249 4646 1e0b 0100 5745 4250            RIFF....WEBP
+```
+
+The watchdog knew the file was large, but it didn't know the format was wrong. It needed a lie detector.
+
+## The fix: magic byte detection
+
+I added a function that checks the first bytes of the file before accepting a cover as good:
+
+<Terminal
+  lines={[
+    { cmd: "def is_real_webp(data):", output: "True if bytes are real WebP, not disguised JPEG/PNG" },
+    { cmd: "    return data[:4] == b'RIFF' and b'WEBP' in data[8:16]" , output: '' },
+    { cmd: "def detect_format(path):", output: "Returns b'webp' | b'jpeg' | b'png' by magic bytes" },
+    { cmd: "    with open(path, 'rb') as f:", output: "" },
+    { cmd: "        h = f.read(16)" , output: '' },
+    { cmd: "    if h[:4] == b'RIFF' and b'WEBP' in h[8:16]:" , output: '' },
+    { cmd: "        return b'webp'      # Real WebP" , output: '' },
+    { cmd: "    if h[:3] == b'\\xff\\xd8\\xff':" , output: '' },
+    { cmd: "        return b'jpeg'     # JPEG disguised as webp" , output: '' },
+    { cmd: "    if h[:8] == b'\\x89PNG\\r\\n\\x1a\\n':" , output: '' },
+    { cmd: "        return b'png'      # PNG disguised as webp" , output: '' },
+    { cmd: "    return h[:4]           # unknown" , output: '' },
+  ]}
+/>
+
+## The re-encode: from JPEG to real WebP
+
+When the watchdog detects a fake cover, it doesn't regenerate from scratch (that would waste API credits). It re-encodes the existing file with `ffmpeg`:
+
+<Terminal
+  lines={[
+    { cmd: "def reencode_to_webp(img_bytes, slug):", output: "Guarantees real WebP bytes" },
+    { cmd: "    if is_real_webp(img_bytes):", output: "Already webp, return as-is" },
+    { cmd: "        return img_bytes" , output: '' },
+    { cmd: "    ext = '.jpg' if img_bytes[:3] == b'\\xff\\xd8\\xff' else '.png'" , output: '' },
+    { cmd: "    tmp_in = f'cov-in-{slug}{ext}'" , output: '' },
+    { cmd: "    tmp_webp = f'cov-out-{slug}.webp'" , output: '' },
+    { cmd: "    with open(tmp_in, 'wb') as f: f.write(img_bytes)" , output: '' },
+    { cmd: "    subprocess.run([" , output: '' },
+    { cmd: "        'ffmpeg', '-y', '-i', tmp_in," , output: '' },
+    { cmd: "        '-c:v', 'libwebp', '-q:v', '80', tmp_webp" , output: '' },
+    { cmd: "    ], capture_output=True, timeout=90)" , output: '' },
+    { cmd: "    with open(tmp_webp, 'rb') as f: return f.read()" , output: '' },
+  ]}
+/>
+
+`ffmpeg` with `-c:v libwebp -q:v 80` converts the JPEG to real WebP with no significant quality loss. The watchdog then overwrites the file, commits, and pushes — and the post starts displaying the cover correctly.
+
+## What changed in the watchdog
+
+| Before | After |
+|--------|-------|
+| Checked only size (KB) | Checks size + format (magic bytes) |
+| Accepted any file with .webp extension | Only accepts files starting with RIFF...WEBP |
+| Fake cover = white square in browser | Fake cover = automatic re-encode |
+| Silence = OK, but could be broken | Silence = really OK (format verified) |
+
+## The result
+
+On August 21, the watchdog detected and fixed 5 fake covers automatically — without me looking. The re-encode reduced average size (from 500KB JPEG to ~100KB real WebP) and the browser finally displayed the images.
+
+The circle closes: the watchdog I built to guarantee good covers discovered on its own that the concept of "good" was more subtle than I thought. And it fixed itself.
+
+## Lessons learned
+
+1. **File extension is not format.** The browser trusts content, not name. Saving with `.webp` doesn't make the file WebP.
+2. **Magic bytes are the only truth.** Four bytes at the start of a file are worth more than a thousand lines of validation code.
+3. **Good automation finds problems you don't even know exist.** The watchdog didn't just solve the problem I modeled — it found one I hadn't modeled.
+4. **Re-encode is cheaper than regenerate.** Reprocessing the existing JPEG with ffmpeg costs zero in API credits and seconds of CPU. Calling the Worker FLUX again costs credits and network seconds.
+
+The blog keeps publishing twice a day, and the covers are now real WebP — verified byte by byte.

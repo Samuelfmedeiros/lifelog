@@ -1,0 +1,116 @@
+---
+title: "O watchdog que descobriu que as capas eram falsas — a saga continua"
+description: "O watchdog de capas que eu construí para garantir imagens boas no blog descobriu um problema que eu não esperava: as capas geradas por IA vinham no formato errado. O browser rejeitava, e eu só descobri porque o próprio watchdog reclamou."
+date: 2026-08-21 12:00:00 -03:00
+pubDate: 2026-08-22 19:00:00 -03:00
+project: lifelog
+tags: [lifelog, blog, devops, automacao, ai, capas, watchdog, webp]
+cover: /covers/watchdog-descobriu-capas-falsas.webp
+featured: false
+lang: 'pt'
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O watchdog que virou detetive
+
+No post anterior, contei a história do watchdog de capas — um script que verifica duas vezes por dia os posts mais recentes e regenera capas que estão pequenas demais. Ele funcionava. Ele era silencioso. Ele salvou o blog de posts com mancha escura no lugar da capa.
+
+Mas ele descobriu algo que eu não esperava.
+
+## O sintoma silencioso
+
+O watchdog verificava **tamanho** do arquivo como proxy: capa boa de IA tem centenas de kilobytes, capa PIL escura tem dezenas. Só que o tamanho não contava a história completa.
+
+Em algumas capas, o watchdog reportava "OK, 500KB capa boa" — mas o navegador mostrava um quadrado branco. O arquivo existia, o HTTP respondia 200, mas o conteúdo não renderizava.
+
+Foi quando olhei os bytes de perto.
+
+## A descoberta: capa JPEG com extensão .webp
+
+O Worker Cloudflare que gera as capas (FLUX.1 Schnell) devolve imagens no formato que o provedor manda. E o provedor, na pressa, mandava **JPEG**. Mas o script salvava com extensão `.webp` — porque o blog espera WebP para performance.
+
+O navegador, ao receber um arquivo `capa.webp` mas com bytes de JPEG, tentava decodificar como WebP, falhava e mostrava um quadrado branco sem erro visível.
+
+```
+$ head -c 16 capa.webp | xxd
+00000000: ffd8 ffe0 0010 4a46 4946 0001 0100 0048  ......JFIF.....H
+```
+
+O `ffd8` é a assinatura de JPEG. Um WebP de verdade começa com `RIFF....WEBP`:
+
+```
+$ head -c 16 capa-real.webp | xxd
+00000000: 5249 4646 1e0b 0100 5745 4250            RIFF....WEBP
+```
+
+O watchdog sabia que o arquivo era grande, mas não sabia que o formato estava errado. Ele precisava de um detector de mentiras.
+
+## O fix: detecção por magic bytes
+
+Adicionei uma função que verifica os primeiros bytes do arquivo antes de aceitar a capa como boa:
+
+<Terminal
+  lines={[
+    { cmd: "def is_real_webp(data):", output: "True se os bytes sao WebP de verdade, nao JPEG/PNG disfarcado." },
+    { cmd: "    return data[:4] == b'RIFF' and b'WEBP' in data[8:16]" , output: '' },
+    { cmd: "def detect_format(path):", output: "Retorna b'webp' | b'jpeg' | b'png' por magic bytes" },
+    { cmd: "    with open(path, 'rb') as f:", output: "" },
+    { cmd: "        h = f.read(16)" , output: '' },
+    { cmd: "    if h[:4] == b'RIFF' and b'WEBP' in h[8:16]:" , output: '' },
+    { cmd: "        return b'webp'      # WebP de verdade" , output: '' },
+    { cmd: "    if h[:3] == b'\\xff\\xd8\\xff':" , output: '' },
+    { cmd: "        return b'jpeg'     # JPEG disfarcado de webp" , output: '' },
+    { cmd: "    if h[:8] == b'\\x89PNG\\r\\n\\x1a\\n':" , output: '' },
+    { cmd: "        return b'png'      # PNG disfarcado de webp" , output: '' },
+    { cmd: "    return h[:4]           # desconhecido" , output: '' },
+  ]}
+/>
+
+## O re-encode: de JPEG para WebP de verdade
+
+Quando o watchdog detecta uma capa falsa, ele não regenera do zero (gastaria crédito da API). Ele re-encodeia o arquivo existente com `ffmpeg`:
+
+<Terminal
+  lines={[
+    { cmd: "def reencode_to_webp(img_bytes, slug):", output: "Garante bytes WebP REAL" },
+    { cmd: "    if is_real_webp(img_bytes):", output: "Ja e webp, retorna como esta" },
+    { cmd: "        return img_bytes" , output: '' },
+    { cmd: "    ext = '.jpg' if img_bytes[:3] == b'\\xff\\xd8\\xff' else '.png'" , output: '' },
+    { cmd: "    tmp_in = f'cov-in-{slug}{ext}'" , output: '' },
+    { cmd: "    tmp_webp = f'cov-out-{slug}.webp'" , output: '' },
+    { cmd: "    with open(tmp_in, 'wb') as f: f.write(img_bytes)" , output: '' },
+    { cmd: "    subprocess.run([" , output: '' },
+    { cmd: "        'ffmpeg', '-y', '-i', tmp_in," , output: '' },
+    { cmd: "        '-c:v', 'libwebp', '-q:v', '80', tmp_webp" , output: '' },
+    { cmd: "    ], capture_output=True, timeout=90)" , output: '' },
+    { cmd: "    with open(tmp_webp, 'rb') as f: return f.read()" , output: '' },
+  ]}
+/>
+
+O `ffmpeg` com `-c:v libwebp -q:v 80` converte o JPEG para WebP real, sem perda significativa de qualidade. O watchdog então sobrescreve o arquivo, faz commit e push — e o post passa a exibir a capa corretamente.
+
+## O que mudou no watchdog
+
+| Antes | Depois |
+|-------|--------|
+| Verificava só tamanho (KB) | Verifica tamanho + formato (magic bytes) |
+| Aceitava qualquer arquivo com extensão .webp | Só aceita arquivo que começa com RIFF...WEBP |
+| Capa falsa = quadrado branco no browser | Capa falsa = re-encode automático |
+| Silêncio = OK, mas podia estar quebrado | Silêncio = realmente OK (formato verificado) |
+
+## O resultado
+
+Em 21 de agosto, o watchdog detectou e corrigiu 5 capas falsas automaticamente — sem eu precisar olhar. O re-encode reduziu o tamanho médio (de 500KB JPEG para ~100KB WebP real) e o navegador finalmente exibia as imagens.
+
+O ciclo fecha: o watchdog que eu construí para garantir capas boas descobriu sozinho que o conceito de "boa" era mais sutil do que eu pensava. E se corrigiu.
+
+## Aprendizados
+
+1. **Extensão de arquivo não é formato.** O navegador confia no conteúdo, não no nome. Salvar com `.webp` não faz o arquivo ser WebP.
+2. **Magic bytes são a única verdade.** Quatro bytes no início do arquivo valem mais que mil linhas de código de validação.
+3. **Automação boa descobre problemas que você nem sabe que existem.** O watchdog não resolveu só o problema que eu modelei — ele descobriu um que eu não tinha modelado.
+4. **Re-encode é mais barato que regerar.** Reprocessar o JPEG existente com ffmpeg custa zero em API e segundos de CPU. Chamar o Worker FLUX de novo custa crédito e segundos de rede.
+
+O blog segue publicando duas vezes por dia, e as capas agora são WebP de verdade — verificado por byte.
