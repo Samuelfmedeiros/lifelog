@@ -1,0 +1,107 @@
+---
+title: "Estudos — a semana em que medi minha memória artificial"
+description: "A pergunta simples 'o que meu agente lembra de verdade?' virou uma auditoria completa do Yurumi: 32 knowledge bases, 551 documentos, uma coleção Qdrant com mais de 8 mil vetores e um baseline LoCoMo que devolveu realidade em forma de porcentagem."
+date: 2026-08-23 12:00:00 -03:00
+pubDate: 2026-08-23 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "yurumi", "qdrant", "embeddings", "rag", "locomo", "aprendizado"]
+cover: /covers/estudos-a-semana-em-que-medi-minha-memoria-artificial.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A pergunta que ninguém faz sobre o próprio sistema
+
+Todo sistema de RAG acumula dados na mesma velocidade em que gera confiança falsa. Você indexa documento, faz uma pergunta, recebe resposta plausível e segue em frente. Ninguém pergunta a métrica constrangedora: **se eu testar essa memória de verdade, quanto dela ela acerta?**
+
+Eu passei meses tratando meu agente (o Yurumi, camada de memória local-first do ecossistema) como caixa-preta funcional. Ingestão entrava, respostas saíam. Até a semana em que decidi fazer o que faço com qualquer projeto meu: **medir.** O resultado foi uma auditoria em três camadas — o registro lógico, o índice vetorial e um benchmark público — e os números contaram uma história mais interessante do que eu esperava.
+
+## Camada 1 — o registro lógico
+
+Toda memória começa num cadastro. No caso, um SQLite simples que guarda cada knowledge base e seus documentos. A consulta é trivial, mas é o primeiro retrato honesto:
+
+```python
+import sqlite3
+
+c = sqlite3.connect("kb_registry.db")
+print(c.execute("SELECT COUNT(*) FROM kb").fetchone())   # (32,)
+print(c.execute("SELECT COUNT(*) FROM doc").fetchone())  # (551,)
+print(c.execute("SELECT SUM(char_count) FROM doc").fetchone())
+# (2242788,) — ~2.24 milhões de caracteres indexados
+```
+
+32 bases criadas, 551 documentos, pouco mais de 2 MB de texto bruto. Mas olhar só o registro é ler a capa do livro. O schema tem uma pegadinha clássica de sistemas de memória: **criar base não significa ter conteúdo.**
+
+## Camada 2 — o índice vetorial mente quando não é auditado
+
+O segundo número veio da coleção principal no Qdrant, o banco vetorial que sustenta as buscas semânticas:
+
+```
+coleção yurumi_memory
+pontos:      8.528
+dimensão:    768
+distância:   Cosine
+```
+
+Pare um segundo nessa comparação: **551 documentos no registro, 8.528 vetores no índice.** A relação só fecha quando você entende o pipeline: cada documento vira dezenas de chunks, cada chunk vira um vetor de 768 dimensões gerado pelo embedder local.
+
+E aqui mora o primeiro aprendizado de auditoria: a coleção tem **uma única configuração de vetor** (768, Cosine). Isso é bom e é armadilha ao mesmo tempo. Bom, porque tudo é consistente. Armadilha, porque trocar o modelo de embedding exige reindexar tudo — a dimensão é fixa na criação da coleção, e o embedder atual (um modelo de embeddings em português rodando localmente) produz exatamente essas 768 dimensões.
+
+```bash
+curl -s http://127.0.0.1:6333/collections/yurumi_memory \
+  | jq '.result.config.params.vectors'
+# {"size": 768, "distance": "Cosine"}
+
+curl -s -X POST http://127.0.0.1:7997/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"input": ["sanity check"], "model": "colibri"}' \
+  | jq '.data[0].embedding | length'
+# 768
+```
+
+O sanity check dos dois lados — coleção e embedder — precisa dar o mesmo número. Se der diferente, a próxima ingestão inteira vai falhar silenciosamente ou, pior, indexar lixo dimensional incompatível.
+
+## Camada 3 — o benchmark que devolveu humildade
+
+Com o inventário fechado, veio a parte desconfortável: medir qualidade. Escolhi o **LoCoMo**, benchmark público de conversas longas feito pra testar exatamente isso — se um sistema de memória recupera o fato certo no momento certo.
+
+Montei um baseline usando o embedder local padrão, sem reranker, sem ajustes. O resultado me lembrou por que benchmarks existem:
+
+| Métrica | Baseline (embedder PT-BR, sem rerank) |
+|---------|----------------------------------------|
+| Recall @1 | 6% |
+| Recall @5 | 13,2% |
+| Recall @10 | 17,8% |
+| MRR | 0,092 |
+
+Recall@1 de 6% significa: **em 94 das 100 perguntas, o primeiro resultado não é a evidência certa.** Um número desses, escondido, vira alucinação com aparência de confiança — o sistema recupera algo parecido, o LLM costura uma resposta coerente em cima do pedaço errado.
+
+A boa notícia veio junto: o mesmo script de avaliação expõe as alavancas. Trocar o embedder (`--embed-name BGE`) e ligar o reranker (`--rerank`) são flags prontas no pipeline. Ou seja, o baseline baixo não é sentença — é **linha de partida medida**, coisa que a maioria dos sistemas de memória pessoal nunca teve.
+
+## O que a auditoria mudou no dia a dia
+
+Três hábitos sobreviveram à semana:
+
+1. **Invariante dimensional nos dois lados.** Toda vez que mexo no embedder ou na coleção, o check de `768 == 768` roda antes de qualquer ingestão. Uma linha de curl que evita semanas de busca silenciosa.
+2. **Registro e índice são fontes diferentes de verdade.** O SQLite diz o que *deveria* existir; o Qdrant diz o que *consegue ser encontrado*. Auditoria = comparar os dois números e explicar a diferença (chunks).
+3. **Baseline antes de otimização.** Os 6% de recall@1 eram desconfortáveis de registrar — mas viraram o denominador que transforma "troquei o embedder e ficou melhor" em "subiu de X% pra Y%".
+
+## Aprendizados
+
+1. **Sistema de memória sem métrica é alucinação com delay.** O pipeline funcionava "perfeitamente" até o dia em que alguém mediu. Funcionar e acertar são propriedades diferentes.
+2. **Números agregados escondem a estrutura.** 551 documentos vs 8.528 vetores parece inconsistência até você entender o chunking — e vira red flag se você *não* entender.
+3. **Benchmarks públicos existem pra te humilhar barato.** Rodar LoCoMo custou uma tarde. Não rodar custaria decisões erradas empilhadas por meses.
+4. **A diferença entre projeto amador e sistema sério é o baseline.** Não é a tecnologia — é saber o número de partida e admitir ele em público.
+
+O próximo passo já está mapeado: reavaliar o mesmo benchmark com embedder alternativo e reranker ativo, e publicar a comparação. A meta não é bater recordes — é transformar "acho que melhorou" em "melhorou 4,3 pontos".
+
+<Terminal
+  lines={[
+  { cmd: 'sqlite3 kb_registry.db "SELECT COUNT(*) FROM doc"', output: '551 — documentos registrados em 32 KBs' },
+  { cmd: 'curl -s :6333/collections/yurumi_memory | jq .result.points_count', output: '8528 vetores (768d, cosine)' },
+  { cmd: 'locomo-eval --baseline colibri-ptbr', output: 'R@1 6% · R@5 13.2% · R@10 17.8% · MRR .092' },
+  { cmd: 'locomo-eval --embed-name BGE --rerank', output: 'alavancas prontas p/ proxima rodada' },
+  ]}
+/>
