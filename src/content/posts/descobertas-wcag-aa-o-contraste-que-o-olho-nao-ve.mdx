@@ -1,0 +1,107 @@
+---
+title: "WCAG AA: o contraste que o olho não vê — e o axe-core que viu por mim"
+description: "Uma auditoria de acessibilidade no LifeLog virou uma caçada a quatro armadilhas de contraste: comentários de código com 3.9:1, badges de projeto que falhavam em 4 das 6 paletas, um seletor de tema que o scoping do Astro quebrava em silêncio, e o alpha que o axe-core se recusa a compor. No fim: 14 rotas x temas sem violações serious/critical."
+date: 2026-08-23 12:00:00 -03:00
+pubDate: 2026-08-23 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "wcag", "a11y", "contraste", "axe-core", "css", "astro"]
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O texto que parecia legível — mas não era
+
+Eu costumava acreditar que, se eu conseguia ler um texto na tela, ele tinha contraste suficiente. Auditoria de acessibilidade era coisa de projeto grande, com orçamento pra consultoria. O LifeLog tinha 400 páginas, dois temas, seis paletas — e eu nunca tinha rodado um scanner de contraste de verdade.
+
+Até a madrugada de 23/08/2026. O `axe-core` do Playwright varreu as páginas principais nos dois temas e cuspiu uma lista de violações `serious` que eu não conseguia enxergar a olho nu. Cada uma contava uma história de como o olho humano é péssimo medidor de contraste.
+
+## A régua que ninguém decora
+
+A regra WCAG AA é simples de falar, difícil de decorar: texto normal precisa de **4.5:1** de contraste contra o fundo. Texto grande (18px+ ou 14px bold) pode ser 3:1. O que ninguém decora é que o cérebro compensa o baixo contraste quando o texto é familiar — a gente "completa" as letras que mal consegue ler. O axe-core não tem esse viés.
+
+```css
+/* Comentário de código no tema escuro — parecia ok, media 3.9:1 (FALHA) */
+--shiki-dark: #6A737D;   /* ❌ 3.9:1 sobre #0d1117 */
+--shiki-dark: #8b949e;   /* ✅ 4.77:1 — aprovado */
+```
+
+O Astro injeta a cor do token de comentário como `--shiki-dark` **inline** no span. A regra global `color: var(--shiki-dark) !important` resolvia pro valor inline do próprio span — ou seja, meu override no CSS nunca pegava. A correção foi mirar o valor exato:
+
+```css
+html.dark .astro-code .line span[style*="--shiki-dark:#6A737D"] {
+  --shiki-dark: #8b949e !important;
+  color: #8b949e !important;
+}
+```
+
+Um seletor de atributo por causa de uma cor de comentário. Foi quando eu percebi que acessibilidade é 90% caça a detalhes que ninguém olha.
+
+## A armadilha 2: o scoping do Astro que quebrava meu seletor
+
+O Tailwind me viciou em escrever `[data-theme="light"] .coisa` em qualquer lugar. No CSS scoped de um componente Astro, esse seletor vira `[data-astro-cid-X][data-theme="light"] .coisa[data-astro-cid-X]` — o que exige o `data-astro-cid` **no ancestral**. Mas o `data-theme` vive no `<html>`, que não tem `data-astro-cid`. Resultado: a regra **nunca** aplica, e eu nem sabia.
+
+```css
+/* ❌ Quebrado em silêncio pelo scoping do Astro */
+[data-theme="light"] .tag-cloud-pill { color: ... }
+
+/* ✅ Correto: escapa o scoping com :global() */
+:global(html.light) .tag-cloud-pill { color: ... }
+```
+
+Esse foi o pior tipo de bug: o CSS parecia certo, compilava sem erro, e simplesmente não fazia nada.
+
+## A armadilha 3: o axe-core não compõe alpha
+
+O badge de projeto em `/arquivo` usava `background: rgba(0,0,0,0.05)` translúcido sobre um card com gradiente. O contraste *real* era 5.9:1 — passava. Mas o axe-core calcula contra o que ele assume por baixo, e com alpha ele reporta violação mesmo com contraste real OK.
+
+```css
+/* ❌ axe-core não compõe alpha sobre gradientes */
+background: rgba(0, 0, 0, 0.05);
+
+/* ✅ Fundo opaco — o scanner calcula certo */
+background: #edebe5;
+```
+
+Lição dupla: fundo translúcido sobre gradiente é armadilha para quem audita E para quem é auditado.
+
+## A armadilha 4: 4 das 6 paletas falhavam como texto pequeno
+
+O badge de projeto usava `--color-accent` direto. No tema claro, o accent de 4 das 6 paletas falhava AA como texto de 12px: amber 2.85:1, cyan 3.29:1, green 3.37:1, rose 4.20:1. Cor de destaque bonita no dark não é cor de texto legível no light.
+
+```css
+/* Escurece o accent dinamicamente — funciona para TODAS as paletas */
+:global(html.light) .arquivo-badge {
+  color: color-mix(in srgb, var(--color-accent) 60%, #1a1a2e);
+}
+```
+
+`color-mix()` com near-black garante pior caso de 5.6:1, independente da paleta ativa. Uma linha que vale por seis correções manuais.
+
+## O que a régua fez pelo design
+
+Depois da auditoria: **14 rotas x temas sem violações serious/critical** (axe-core), **35/35 unit tests**, **6/6 testes de navbar-theme**, build de 401 páginas OK. Mais importante: adicionei os testes de acessibilidade à suíte E2E — a régua agora roda em todo deploy, não só quando eu lembro.
+
+```bash
+# A matriz que hoje impede regressão de contraste
+e2e/a11y.spec.ts  → home, arquivo, sobre, post × dark, light
+                   gate: zero violações critical/serious
+```
+
+## Aprendizados
+
+- **Olho humano não mede contraste.** Se o texto é familiar, o cérebro completa. Use uma régua (axe-core, ou a calculadora da WebAIM) e confie nela, não na sua visão.
+- **CSS que compila não é CSS que aplica.** Scoping de framework pode quebrar seu seletor em silêncio — confira o bundle final ou use `:global()` consciente.
+- **Alpha sobre gradiente é terra de ninguém.** Se o scanner reporta, simplifique: fundo opaco.
+- **Cor de destaque ≠ cor de texto.** O que funciona como accent no dark pode falhar como texto pequeno no light. `color-mix()` com near-black resolve dinamicamente.
+
+O post que eu achava que seria sobre design acabou sendo sobre medição. Acessibilidade não é gosto — é uma régua. E a régua, agora, roda sozinha a cada deploy.
+
+<Terminal
+  commands={[
+    { cmd: 'npx axe-core --help', out: 'Audite contraste e semantica em qualquer pagina' },
+    { cmd: 'e2e/a11y.spec.ts', out: '14 rotas x temas, gate zero serious/critical' },
+    { cmd: 'color-mix(in srgb, var(--accent) 60%, #1a1a2e)', out: 'badge legivel em qualquer paleta' },
+  ]}
+/>
