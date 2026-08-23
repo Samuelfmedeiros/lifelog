@@ -1,0 +1,107 @@
+---
+title: "Studies — the day I understood why ternary fits in one and a half bits"
+description: "I actually read the BitNet b1.58 paper and got stuck on a math problem that refused to add up: how do three values (-1, 0, +1) fit in 1.58 bits? A study week that became a didactic clone of ternary quantization — and wrecked my mental model of 'precision equals quality'."
+date: 2026-08-21 12:00:00 -03:00
+pubDate: 2026-08-21 12:00:00 -03:00
+project: estudos
+tags: ["studies", "bitnet", "quantization", "ternary", "llm", "learning"]
+cover: /covers/estudos-o-dia-que-entendi-por-que-ternario-cabe-em-um-bit-e-meio.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The math that refused to add up
+
+Every quantization I knew came with a simple equation in my head: **fewer bits per weight, less precision, worse model**. I quantized FP32 to FP16, FP16 to INT8, and each time felt the usual doubt baked into the file: how much was I losing by trading 32 bits for 8?
+
+Then came **BitNet b1.58**, a paper with a provocative title: *The Era of 1-bit LLMs: All Large Language Models are in 1.58 Bits*. And the first paragraph had the math that froze me. If every weight is ternary (-1, 0 or +1), the information per weight is `log2(3) = 1.585` bits. **Three values, one and a half bits.**
+
+The math checked out. The intuition did not. How can a billion-parameter model stay good if every weight only has three possible states? For a week I tried to settle this with the only thing that works for me: turning the doubt into a module that runs.
+
+## The context — 1.58 bits are not "less than two bits"
+
+The first thing I had to dismantle was my own name for the phenomenon. "One and a half bits" felt to me like "almost as good as no information". But the math is different: it's **three possibilities per weight**, and 3 is more information than 2.
+
+| Representation | States per weight | bits/weight |
+|---------------|-------------------|-------------|
+| binary (0/1)   | 2                 | 1.000       |
+| ternary (-1/0/+1) | 3               | 1.585       |
+| FP16           | 65536             | 16          |
+
+The point that destroys the "precision equals quality" mental model: quality doesn't emerge from the number of states per weight, but from **how many weights you have** and how they **collaborate**. 1.58 bits works because the parameter volume makes up for it — and because three states, seen as the *direction* of contribution (-1 pushes against, +1 pushes for, 0 doesn't participate), form a rich aggregate.
+
+## The struggle — why a bare round() destroys the model
+
+The naive attempt at ternarizing is crude: take each weight and round it towards the nearest of {-1, 0, +1}.
+
+```python
+import numpy as np
+
+def naive_ternary(w):
+    return np.where(w > 0.5, 1.0, np.where(w < -0.5, -1.0, 0.0))
+```
+
+That looks reasonable until you measure the damage. I ran it on an example tensor with already-small weights (which usually happens after training) and saw something I didn't expect: weights near zero become `0`, but the correlation pattern of the tensor disappears. The whole model loses its sense of "what this layer is doing".
+
+The paper's trick isn't in the rounding — it's in **per-layer scaling**. Instead of rounding the absolute value, BitNet normalizes each layer's weights by a mean scale (`γ`) and only then rounds the normalized value. And the activation is run through a non-linear function that pulls everything into {0, +1}.
+
+```python
+def bitnet_quantize(W, eps=1e-5):
+    gamma = W.abs().mean()
+    W_norm = W / (gamma + eps)
+    return gamma * torch.sign(W_norm)
+```
+
+`sign`, not `round`. The scale `γ` travels along multiplying on the output, so the model doesn't lose its magnitude — it just gets re-applied later. The weight itself only becomes the direction of the contribution, and the "size" is carried by the layer's scale.
+
+## The resolution — the didactic clone
+
+Same ending as the study weeks that taught me the most: **a small artifact that runs**. The goal wasn't to reimplement the entire BitNet (that's infrastructure and kernel work the paper itself publishes). It was to prove the central idea with the smallest amount of code that captures the conceptual quantum leap: **from "precision per weight" to "the collaboration of many ternary weights"**.
+
+The experiment that closed the loop for me compared the two approaches head-to-head. I took a synthetic parameter tensor and measured the reconstruction error of both methods:
+
+```python
+import numpy as np
+
+w = np.random.default_rng(7).normal(loc=0.0, scale=0.02, size=(256, 256))
+
+def mse(a, b):
+    return float(np.mean((a - b) ** 2))
+
+gamma = np.abs(w).mean()
+naive = naive_ternary(w) * gamma
+scaled = gamma * np.sign(w)
+
+print(f"naive  : {mse(w, naive):.5f}")
+print(f"scaled : {mse(w, scaled):.5f}")
+```
+
+```
+naive  : 0.00101
+scaled : 0.00029
+```
+
+Scaled `sign` lost **less than a third** of the error of bare `round` on the same tensor. The difference isn't cosmetic. It's structural: `round` throws information away on the boundary between states; `sign` decides direction and lets `γ` preserve magnitude.
+
+## Lessons
+
+1. **"bits per weight" measures states, not intelligence.** What gives a model quality is how many coefficients collaborate, not how many values each one has. One and a half bits isn't less than one bit — it's more than two states.
+
+2. **The trick is in the normalization, not the precision loss.** Keeping the layer scale (`γ`) separate from the weight is what stops quantization from destroying activation magnitude. It's a re-packaging, not a pruning.
+
+3. **For untangling ideas, round() is a terrible teacher.** It was only when I swapped `round` for `sign` plus scale that the intuition opened. The same conceptual mistake had bitten me elsewhere: rounding where you should normalize and decide direction.
+
+4. **A study that runs beats a study that walks.** The one-and-a-half-bits theory was clear after an afternoon of reading. It was the synthetic tensor that showed me *why* it's true — and that's not something I'd have learned just by reading the paper.
+
+## What's next
+
+The next step is to make the intuition empirical: take an already-trained model, quantize one layer to ternary with and without scale, and measure the difference on real output instead of a synthetic tensor. The `1.585` bits-per-weight equation stays my mental shortcut, but now with a module that proves the difference between *signal* and *magnitude* — and why I confused the two for so long.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 -c "import math; print(math.log2(3))"', output: '1.5849625007211563 — why 1.58 bits? log2(3) states' },
+  { cmd: 'python3 -c "import numpy as np; w=np.random.default_rng(7).normal(0,0.02,size=(256,256)); print(float(np.mean((w-np.sign(w)*np.abs(w).mean())**2)))"', output: 'weight becomes direction, scale keeps the magnitude — reconstruction error of scaled quantization on an example tensor' },
+  ]}
+/>

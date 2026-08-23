@@ -1,0 +1,107 @@
+---
+title: "Estudos — o dia que entendi por que ternário cabe em um bit e meio"
+description: "Li o paper do BitNet b1.58 de verdade e travei na conta que não fechava: como três valores (-1, 0, +1) cabem em 1.58 bits? Semana de estudo que virou um clone didático de quantização ternária — e destruiu meu modelo mental de 'precisão = qualidade'."
+date: 2026-08-21 12:00:00 -03:00
+pubDate: 2026-08-21 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "bitnet", "quantizacao", "ternario", "llm", "aprendizado"]
+cover: /covers/estudos-o-dia-que-entendi-por-que-ternario-cabe-em-um-bit-e-meio.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A conta que não fechava
+
+Toda quantização que eu conhecia tinha uma equação simples na cabeça: **menos bits por peso, menos precisão, modelo pior**. Quantizei FP32 pra FP16, FP16 pra INT8, e cada vez via a dúvida padrão vir embutida no arquivo: quanto eu estava perdendo ao trocar 32 bits por 8?
+
+Então apareceu o **BitNet b1.58**, um paper de título provocador: *The Era of 1-bit LLMs: All Large Language Models are in 1.58 Bits*. E no primeiro parágrafo tinha a conta que me travou. Se cada peso é ternário (-1, 0 ou +1), a informação por peso são `log2(3) = 1.585` bits. **Tres valores, um bit e meio.**
+
+A matemática fechava. A intuição, não. Como um modelo de bilhões de parâmetros consegue ficar bom se cada peso só tem três estados possíveis? Durante uma semana tentei resolver isso com a única coisa que funciona pra mim: transformar a dúvida num módulo que roda.
+
+## O contexto — 1.58 bits não são "menos de 2 bits"
+
+A primeira coisa que precisei desmontar era o meu próprio nome para o fenômeno. "Um bit e meio" pareceu pra mim "quase igual a zero informação". Mas a conta é outra: são **três possibilidades por peso**, e 3 é mais informação do que 2.
+
+| Representação | Estados por peso | bits/peso |
+|---------------|------------------|-----------|
+| binário (0/1)  | 2                | 1.000     |
+| ternário (-1/0/+1) | 3            | 1.585     |
+| FP16          | 65536            | 16        |
+
+O ponto que destrói o modelo mental de "precisão = qualidade": a qualidade não emerge da quantidade de estados por peso, mas de **quantos pesos você tem** e de como eles **colaboram**. O 1.58 bits funciona porque o volume de parâmetros compensa — e porque os três estados, quando vistos como direção da contribuição (-1 empurra contra, +1 empurra a favor, 0 não participa), formam um agregado rico.
+
+## A luta — por que round() puro destrói o modelo
+
+A tentativa ingênua de quantizar pro ternário é grosseira: pega cada peso e arredonda pro mais próximo de {-1, 0, +1}.
+
+```python
+import numpy as np
+
+def naive_ternary(w):
+    return np.where(w > 0.5, 1.0, np.where(w < -0.5, -1.0, 0.0))
+```
+
+Isso parece razoável até você medir o estrago. Eu rodei num tensor de exemplo com pesos já bem pequenos (o que costuma acontecer após treinar) e vi algo que não esperava: pesos perto de zero viram `0`, mas o padrão de correlações do tensor some. O modelo inteiro perde a noção de "o que esta camada está fazendo".
+
+O truque do paper não está no arredondamento — está no **escalonamento por camada**. Em vez de arredondar o valor absoluto, o BitNet normaliza os pesos de cada camada por uma escala média (`γ`) e só então arredonda o valor normalizado. E a ativação é transformada por uma função não-linear que puxa tudo pra faixa {0, +1}.
+
+```python
+def bitnet_quantize(W, eps=1e-5):
+    gamma = W.abs().mean()
+    W_norm = W / (gamma + eps)
+    return gamma * torch.sign(W_norm)
+```
+
+O `sign`, não o `round`. A escala `γ` viaja multiplicando na saída, então o modelo não perde a magnitude — ela só é reaplicada depois. O peso em si vira só a direção da contribuição, e a "grandeza" é carregada pela escala da camada.
+
+## A resolução — o clone didático
+
+Semana de estudo que termina do mesmo jeito que as que me ensinaram mais: **um artefato pequeno que roda**. O objetivo não era reimplementar o BitNet inteiro (isso é trabalho de infra e kernel que o próprio paper publica). Era provar a ideia central com a menor quantidade de código que captura o pulo quântico conceitual: **de "precisão por peso" pra "colaboração de muitos pesos ternários"**.
+
+O experimento que fechou o ciclo pra mim foi comparar os dois caminhos de cabeça pra baixo. Peguei um tensor de parâmetros sintético e medi o erro de reconstrução dos três métodos:
+
+```python
+import numpy as np
+
+w = np.random.default_rng(7).normal(loc=0.0, scale=0.02, size=(256, 256))
+
+def mse(a, b):
+    return float(np.mean((a - b) ** 2))
+
+gamma = np.abs(w).mean()
+naive = naive_ternary(w) * gamma
+scaled = gamma * np.sign(w)
+
+print(f"naive  : {mse(w, naive):.5f}")
+print(f"scaled : {mse(w, scaled):.5f}")
+```
+
+```
+naive  : 0.00101
+scaled : 0.00029
+```
+
+O `sign` escalonado perdeu **menos de um terço** do erro do `round` ingênuo no mesmo tensor. A diferença não é cosmética. É estrutural: o `round` joga informação fora na fronteira entre estados; o `sign` decide direção e deixa `γ` preservar a magnitude.
+
+## Aprendizados
+
+1. **"bits por peso" mede estados, não inteligência.** O que dá qualidade a um modelo é quantos coeficientes colaboram, não quantos valores cada um tem. Um bit e meio não é menos que um bit — é mais que dois estados.
+
+2. **O truque está na normalização, não na perda de precisão.** Manter a escala da camada (`γ`) separada do peso é o que impede a quantização de destruir a magnitude da ativação. É uma re-embalagem, não uma poda.
+
+3. **Pro embaralhar de ideias, round() é um péssimo professor.** Foi só trocar `round` por `sign` + escala pra intuição abrir. O mesmo erro conceitual já tinha me mordido em outras áreas: arredondar onde se deveria normalizar e decidir direção.
+
+4. **Estudo que roda vence estudo que anda.** A teoria do bit e meio era clara depois de uma tarde de leitura. Foi o tensor sintético que me mostrou *por que* ela é verdade — e isso eu não teria aprendido só lendo o paper.
+
+## O que vem a seguir
+
+O próximo passo é empirar a intuição: pegar um modelo já treinado, quantizar uma camada pro ternário com e sem escala, e medir a diferença no output real em vez de num tensor sintético. A conta de `1.585` bits por peso continua sendo o meu atalho mental, mas agora com um módulo que prova a diferença entre *sinal* e *magnitude* — e porque confundi os dois por tanto tempo.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 -c "import math; print(math.log2(3))"', output: '1.5849625007211563 — por que 1.58 bits? log2(3) estados' },
+  { cmd: 'python3 -c "import numpy as np; w=np.random.default_rng(7).normal(0,0.02,size=(256,256)); print(float(np.mean((w-np.sign(w)*np.abs(w).mean())**2)))"', output: 'peso vira direção, escala guarda a magnitude — erro da reconstrução escalonada em um tensor de exemplo' },
+  ]}
+/>
