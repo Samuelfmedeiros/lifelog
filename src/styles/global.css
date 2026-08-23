@@ -18,7 +18,8 @@
   --terminal-text: #c4b5fd;
 }
 [data-theme="light"] {
-  --terminal-text: #5b21b6;
+  /* TerminalWidget: fundo do terminal é fixo escuro (#0d1117) — texto permanece claro */
+  --terminal-text: #c4b5fd;
 }
 
 ::selection {
@@ -1006,3 +1007,13 @@ html.light .astro-code .line span { color: var(--shiki-light) !important; }
 html.dark .astro-code .line span { color: var(--shiki-dark) !important; }
 html.light .astro-code.github-light { background: var(--shiki-light-bg) !important; }
 html.dark .astro-code.github-dark { background: var(--shiki-dark-bg) !important; }
+
+/* Comentários Shiki no dark: a cor default #6A737D dá 3.05-3.9:1 sobre o bg do
+   code block (FALHA WCAG AA ≥4.5:1). O Astro injeta o valor via var(--shiki-dark)
+   inline no span do comentário, então a regra acima resolve pro valor inline.
+   Sobrescrevemos a variável do comentário pra #8b949e (4.77:1). */
+html.dark .astro-code .line span[style*="--shiki-dark:#6A737D"],
+html.dark .astro-code .line span[style*="--shiki-dark:#6a737d"] {
+  --shiki-dark: #8b949e !important;
+  color: #8b949e !important;
+}

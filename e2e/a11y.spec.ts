@@ -53,6 +53,49 @@ test.describe('Acessibilidade (axe-core)', () => {
     expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
   });
 
+  // Matriz completa rota x tema (fecha os gaps de cobertura da auditoria)
+  test('arquivo — tema light sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/arquivo', 'light');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('sobre — tema light sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/sobre', 'light');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('post — tema dark sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, POST_URL, 'dark');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('/en/ — tema dark sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/en/', 'dark');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('/en/ — tema light sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/en/', 'light');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('/en/about — tema dark sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/en/about', 'dark');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
+  test('/en/about — tema light sem violações críticas', async ({ page }) => {
+    const results = await scanPage(page, '/en/about', 'light');
+    const violations = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious');
+    expect(violations, JSON.stringify(violations.map(v => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })), null, 2)).toEqual([]);
+  });
+
   test('navbar tem links com nomes acessíveis', async ({ page, goto }) => {
     await goto('/');
     const nav = page.getByRole('navigation');

@@ -323,16 +323,14 @@ Atualmente focado em:
   }
 
   .terminal-output pre {
-    /* Cor via variável de tema (definida no global.css): dark = #c4b5fd, light = #5b21b6 */
-    color: var(--terminal-text, #c4b5fd);
+    /* Terminal SEMPRE escuro: anula .post-content pre do tema light (global.css + themes.css !important) */
+    background: transparent !important;
+    color: var(--terminal-text, #c4b5fd) !important;
     white-space: pre-wrap;
     font-family: inherit;
     font-size: inherit;
     margin: 0;
     line-height: 1.5;
-  }
-  [data-theme="light"] .terminal-output pre {
-    color: #5b21b6;
   }
 
   .terminal-output pre:has(> .error) { color: #f85149; }
