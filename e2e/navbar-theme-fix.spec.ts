@@ -108,12 +108,17 @@ test('animação tema: desktop mantém clip-path circular da origem do clique', 
   console.log(`click em (${tx}, ${ty})`);
 
   await page.mouse.click(tx, ty);
-  await page.waitForTimeout(150);
 
+  // Espera DETERMINÍSTICA pela captura da animação (não timing fixo):
+  // o handler do clique -> startViewTransition -> animate pode levar
+  // mais que um timeout curto sob carga; expect.poll evita o flake.
+  await expect.poll(async () => {
+    const c = await page.evaluate(() => window.__animClips || []);
+    return c.length;
+  }, { timeout: 5000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(150);
   const clips = await page.evaluate(() => window.__animClips || []);
   console.log('clipPaths desktop capturados:', JSON.stringify(clips));
-
-  expect(clips.length).toBeGreaterThan(0);
   const from = clips[0].from;
   const match = from.match(/circle\(0px at (\d+)px (\d+)px\)/);
   expect(match).toBeTruthy();

@@ -75,7 +75,7 @@ const totalLabel = locale === 'en' ? `${posts.length} posts total` : `${posts.le
                 {post.data.date.toLocaleDateString(locale === 'en' ? 'en-US' : 'pt-BR')}
               </span>
             </div>
-            <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--color-accent-soft); color: var(--color-accent);">
+            <span class="text-xs px-2 py-0.5 rounded-full arquivo-badge">
               {post.data.project}
             </span>
           </a>
@@ -84,3 +84,20 @@ const totalLabel = locale === 'en' ? `${posts.length} posts total` : `${posts.le
     </section>
   ))}
 </BaseLayout>
+
+<style>
+  /* Badge de projeto: accent como texto pequeno (12px) exige 4.5:1 (WCAG AA).
+     4 das 6 paletas têm accentLight que falha no fundo claro (amber 2.85:1,
+     cyan 3.29, green 3.37, rose 4.20). color-mix com near-black escurece o
+     accent dinamicamente — funciona para TODAS as paletas (pior caso 5.6:1).
+     Escopo: :global(html.light) porque o seletor ancestral [data-theme] seria
+     reescrito pelo scoping do Astro com data-astro-cid e nunca aplicaria
+     (data-theme vive no <html>, sem cid). */
+  .arquivo-badge {
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+  :global(html.light) .arquivo-badge {
+    color: color-mix(in srgb, var(--color-accent) 60%, #1a1a2e);
+  }
+</style>

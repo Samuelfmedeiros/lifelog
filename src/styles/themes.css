@@ -130,7 +130,7 @@ html[data-theme="light"] .filter-bar.filter-bar {  --bar-accent: #5850ec;  --bar
 /*========================================  Terminal Widget  ======================================== */
 [data-theme="light"] .terminal-widget {  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
-[data-theme="light"] .terminal-output pre { color: #a78bfa; }
+[data-theme="light"] .terminal-output pre { color: #c4b5fd; }
 
 /*========================================  ARACHNE — Hacker / Cyberpunk  ======================================== */
 [data-project="arachne"] {  --color-accent: #7c3aed;  --color-accent-soft: rgba(124, 58, 237, 0.1);  --color-glow: 0 0 30px rgba(124, 58, 237, 0.15);  --pattern-url: url('/patterns/webs.svg');  --pattern-opacity: 0.05;  --hover-scale: 1.02;  --card-border: 1px solid rgba(124, 58, 237, 0.3);  --bg-gradient: linear-gradient(135deg, #0f0a1a 0%, #1a0f2e 50%, #0f0a1a 100%);

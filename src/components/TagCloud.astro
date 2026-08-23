@@ -112,13 +112,23 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     opacity: 0.4;
   }
 
-  /* Light theme */
-  [data-theme="light"] .tag-cloud {
+  /* Light theme — escurece o accent e corrige o .tag-count */
+  :global(html.light) .tag-cloud {
     background: rgba(255, 255, 255, 0.65);
     border-color: rgba(0, 0, 0, 0.05);
   }
-  [data-theme="light"] .tag-cloud-pill:hover {
+  :global(html.light) .tag-cloud-pill {
+    color: color-mix(in srgb, var(--color-accent) 60%, #1a1a2e);
+  }
+  :global(html.light) .tag-cloud-pill:hover {
+    color: color-mix(in srgb, var(--color-accent) 55%, #1a1a2e);
     background: color-mix(in srgb, var(--color-accent) 22%, var(--color-bg));
+  }
+  :global(html.light) .tag-count {
+    /* bg OPACO: axe não compõe alpha translúcido sobre os gradientes/
+       color(srgb) do cartão e reportava falsa violação (contraste real 5.9:1) */
+    background: #edebe5;
+    color: #4a4a52;
   }
 
   /* Mobile */
