@@ -1,0 +1,107 @@
+---
+title: "WCAG AA: the contrast the eye can't see — and the axe-core that saw it for me"
+description: "An accessibility audit on LifeLog turned into a hunt for four contrast traps: code comments at 3.9:1, project badges failing in 4 of 6 palettes, a theme selector that Astro scoping silently broke, and the alpha that axe-core refuses to compose. The result: 14 routes x themes with zero serious/critical violations."
+date: 2026-08-23 12:00:00 -03:00
+pubDate: 2026-08-23 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "wcag", "a11y", "contrast", "axe-core", "css", "astro"]
+hidden: true
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The text that looked readable — but wasn't
+
+I used to believe that if I could read text on a screen, it had enough contrast. Accessibility audits were for big projects with budget for consultants. LifeLog had 400 pages, two themes, six palettes — and I had never run a real contrast scanner.
+
+Until the early hours of 08/23/2026. Playwright's `axe-core` swept the main pages in both themes and spat out a list of `serious` violations I couldn't see with my own eyes. Each one told a story about how bad the human eye is at measuring contrast.
+
+## The ruler nobody memorizes
+
+The WCAG AA rule is easy to say, hard to memorize: normal text needs **4.5:1** contrast against its background. Large text (18px+ or 14px bold) can get away with 3:1. What nobody memorizes is that the brain compensates for low contrast when the text is familiar — we "complete" letters we can barely read. axe-core has no such bias.
+
+```css
+/* Code comment in dark theme — looked fine, measured 3.9:1 (FAIL) */
+--shiki-dark: #6A737D;   /* ❌ 3.9:1 on #0d1117 */
+--shiki-dark: #8b949e;   /* ✅ 4.77:1 — passed */
+```
+
+Astro injects the comment token color as `--shiki-dark` **inline** on the span. The global rule `color: var(--shiki-dark) !important` resolved to the span's own inline value — so my CSS override never applied. The fix was targeting the exact value:
+
+```css
+html.dark .astro-code .line span[style*="--shiki-dark:#6A737D"] {
+  --shiki-dark: #8b949e !important;
+  color: #8b949e !important;
+}
+```
+
+An attribute selector because of a comment color. That's when I realized accessibility is 90% hunting details nobody looks at.
+
+## Trap 2: the Astro scoping that silently broke my selector
+
+Tailwind got me used to writing `[data-theme="light"] .thing` anywhere. In an Astro component's scoped CSS, that selector becomes `[data-astro-cid-X][data-theme="light"] .thing[data-astro-cid-X]` — which requires `data-astro-cid` on the **ancestor**. But `data-theme` lives on `<html>`, which has no `data-astro-cid`. Result: the rule **never** applies, and I didn't know.
+
+```css
+/* ❌ Silently broken by Astro scoping */
+[data-theme="light"] .tag-cloud-pill { color: ... }
+
+/* ✅ Correct: escape scoping with :global() */
+:global(html.light) .tag-cloud-pill { color: ... }
+```
+
+That was the worst kind of bug: the CSS looked right, compiled without error, and simply did nothing.
+
+## Trap 3: axe-core doesn't compose alpha
+
+The project badge on `/archive` used `background: rgba(0,0,0,0.05)` translucent over a card with a gradient. The *real* contrast was 5.9:1 — it passed. But axe-core computes against what it assumes underneath, and with alpha it reports a violation even when the real contrast is fine.
+
+```css
+/* ❌ axe-core won't compose alpha over gradients */
+background: rgba(0, 0, 0, 0.05);
+
+/* ✅ Opaque background — the scanner computes correctly */
+background: #edebe5;
+```
+
+Double lesson: translucent background over a gradient is a trap for both the auditor and the audited.
+
+## Trap 4: 4 of 6 palettes failed as small text
+
+The project badge used `--color-accent` directly. In light theme, the accent of 4 of 6 palettes failed AA as 12px text: amber 2.85:1, cyan 3.29:1, green 3.37:1, rose 4.20:1. A pretty accent color in dark mode is not a legible text color in light mode.
+
+```css
+/* Darkens the accent dynamically — works for ALL palettes */
+:global(html.light) .arquivo-badge {
+  color: color-mix(in srgb, var(--color-accent) 60%, #1a1a2e);
+}
+```
+
+`color-mix()` with near-black guarantees a worst case of 5.6:1, regardless of the active palette. One line worth six manual fixes.
+
+## What the ruler did for the design
+
+After the audit: **14 routes x themes with zero serious/critical violations** (axe-core), **35/35 unit tests**, **6/6 navbar-theme tests**, 401-page build OK. More importantly: I added the accessibility tests to the E2E suite — the ruler now runs on every deploy, not just when I remember.
+
+```bash
+# The matrix that now prevents contrast regression
+e2e/a11y.spec.ts  → home, archive, about, post × dark, light
+                   gate: zero critical/serious violations
+```
+
+## Takeaways
+
+- **The human eye doesn't measure contrast.** If text is familiar, the brain fills in the gaps. Use a ruler (axe-core, or the WebAIM calculator) and trust it over your vision.
+- **CSS that compiles is not CSS that applies.** Framework scoping can silently break your selector — check the final bundle or use `:global()` consciously.
+- **Alpha over gradient is no-man's-land.** If the scanner reports it, simplify: opaque background.
+- **Accent color is not text color.** What works as an accent in dark may fail as small text in light. `color-mix()` with near-black fixes it dynamically.
+
+The post I thought would be about design ended up being about measurement. Accessibility isn't taste — it's a ruler. And the ruler now runs on its own at every deploy.
+
+<Terminal
+  commands={[
+    { cmd: 'npx axe-core --help', out: 'Audit contrast and semantics on any page' },
+    { cmd: 'e2e/a11y.spec.ts', out: '14 routes x themes, zero serious/critical gate' },
+    { cmd: 'color-mix(in srgb, var(--accent) 60%, #1a1a2e)', out: 'readable badge on any palette' },
+  ]}
+/>
