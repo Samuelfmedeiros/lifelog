@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "node scripts/validate-covers.mjs && astro build",
     "preview": "astro preview",
     "astro": "astro",
     "cleanup": "bash scripts/cleanup-post.sh",
