@@ -30,6 +30,19 @@ POSTS_DIR = os.path.join(LIFELOG_DIR, "src/content/posts")
 WORKER_URL = os.environ.get("LIFELOG_COVER_WORKER_URL", "")
 
 
+def load_worker_url():
+    url = os.environ.get("LIFELOG_COVER_WORKER_URL", "")
+    if url:
+        return url
+    env_path = os.path.join(LIFELOG_DIR, ".env")
+    if os.path.exists(env_path):
+        for line in open(env_path, encoding="utf-8"):
+            line = line.strip()
+            if line.startswith("LIFELOG_COVER_WORKER_URL"):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+
 def load_api_key():
     key = os.environ.get("LIFELOG_COVER_API_KEY")
     if key:
@@ -127,6 +140,10 @@ def generate(slug, force=True):
     if not api_key:
         print(f"[{slug}] SEM LIFELOG_COVER_API_KEY")
         return False
+    worker_url = load_worker_url()
+    if not worker_url:
+        print(f"[{slug}] SEM LIFELOG_COVER_WORKER_URL")
+        return False
     os.makedirs(COVERS_DIR, exist_ok=True)
     output_path = os.path.join(COVERS_DIR, f"{slug}.webp")
     prompt = build_prompt(slug, project, title)
@@ -134,7 +151,7 @@ def generate(slug, force=True):
     print(f"PROMPT: {prompt[:200]}...")
     data = json.dumps({"prompt": prompt}).encode("utf-8")
     req = urllib.request.Request(
-        WORKER_URL, data=data,
+            worker_url, data=data,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}",
                  "User-Agent": "LifeLog-Cover-Generator/1.0"},
     )

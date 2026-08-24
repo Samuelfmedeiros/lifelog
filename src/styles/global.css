@@ -41,21 +41,32 @@ html {
   inset: 0;
   z-index: 10000;
 }
+
+/* View Transitions cross-document (navegação entre páginas PT↔EN e links
+   internos) — transição nativa do Chromium/Edge. O tema escopa o
+   animation:none pra html.vt-running, então o crossfade padrão da navegação
+   NÃO é desligado por ele. */
+@view-transition {
+  navigation: auto;
+}
 /* Isola o stacking context do par de imagens — sem isso o blend
    plus-lighter padrão do Chromium vaza entre old/new e o old snapshot
    some, fazendo o círculo parecer que não começa de onde clicou */
 ::view-transition-image-pair(root) {
   isolation: isolate;
 }
-::view-transition-old(root),
-::view-transition-new(root) {
+/* Durante a troca de TEMA (html.vt-running), desliga o crossfade nativo do
+   VT — o tema usa clip-path próprio (WAAPI). Fora disso (navegação PT↔EN),
+   o crossfade padrão de navigation:auto fica ATIVO. */
+html.vt-running::view-transition-old(root),
+html.vt-running::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
 }
-::view-transition-new(root) {
+html.vt-running::view-transition-new(root) {
   z-index: 9999;
 }
-::view-transition-old(root) {
+html.vt-running::view-transition-old(root) {
   z-index: 1;
 }
 

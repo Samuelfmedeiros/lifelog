@@ -246,5 +246,36 @@ const footerText = dataLocale === 'en'
         checkScroll()
       })()
     </script>
+    <!-- ═══ Transição suave PT↔EN ═══ -->
+    <script is:inline>
+    (function() {
+      var langLink = document.querySelector('.navbar-lang');
+      if (!langLink) return;
+
+      langLink.addEventListener('click', function(e) {
+        // Salva scroll antes de navegar (o init já restaura via lifelog-scroll)
+        try { sessionStorage.setItem('lifelog-scroll', String(window.scrollY)); } catch(e) {}
+        var href = langLink.getAttribute('href');
+        if (!href) return;
+
+        // Com @view-transition { navigation:auto } no CSS, o Chromium/Edge já
+        // anima a navegação sozinho — não interceptar aqui (evita dupla).
+        // Fallback só pra browsers SEM View Transitions (Firefox):
+        // overlay fade-out com a cor de fundo do tema atual.
+        if (!document.startViewTransition) {
+          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+          e.preventDefault();
+          var bg = getComputedStyle(document.body).backgroundColor ||
+            (document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f2eb' : '#0a0a0f');
+          var overlay = document.createElement('div');
+          overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:' + bg + ';opacity:0;transition:opacity 0.3s ease;pointer-events:none';
+          document.body.appendChild(overlay);
+          overlay.offsetHeight; // force layout para a transição começar
+          overlay.style.opacity = '1';
+          setTimeout(function() { window.location.href = href; }, 300);
+        }
+      });
+    })();
+    </script>
 </body>
 </html>
