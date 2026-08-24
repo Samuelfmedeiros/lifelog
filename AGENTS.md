@@ -31,6 +31,17 @@ dá pra cobrir.
 Sem evidência real (testes + screenshot + nota) NÃO é entrega completa.
 
 
+## Sessão 2026-08-23 (fim de dia) — Posts WCAG/Estudos liberados + gate de capas + fix ocultos
+
+- **feat(post)**: 4 posts hidden PT+EN com capa AI — WCAG AA contraste (`514a4f6`), ternário (`0e882ed`), teoria de campo virou módulo (`7644d61`), semana que medi minha memória (`484e05d`)
+- **release(post)**: liberados — descobertas-wcag-aa (`03bc614`/`9d95159`), ternário (`d061a6e`/`930748a`), semana memória (`ae3b6bf`/`fd1e862`), watchdog-descobriu-capas-falsas (`4b260f8`/`f464bdf`)
+- **feat**: gate de capas no build — auto-fix quando possível, bloqueia post sem capa (`51cdc46`)
+- **fix**: capa do post WCAG em WebP real (jpeg disfarçado não renderiza) (`f576283`); restaura capa original (`820240f`); linha cover no frontmatter (`b817195`, `3808f4e`); capa AI da semana-memória (`a0de538`)
+- **fix(ocultos)**: libera par PT+EN sem erro duplicado — cards agrupados por post e API idempotente (`66054af`)
+- **fix(a11y)**: contraste WCAG AA em todos os temas e paletas (`7fb83a8`)
+- **docs**: consolida plans 07/19 implementados no OLD_STUFF (`498a05f`)
+- 21 commits no dia · push origin OK · HEAD: `66054af`
+
 ## Sessão 2026-08-17 (fim de dia) — Posts maratona: Estudos (ondas) + Segurança (caça ativa) + hidden 308 skills
 - **feat(posts)**: maratona — Estudos (ondas) e Segurança (caça ativa) completos PT+EN + capas AI (`b87963c`)
 - **feat(post)**: estudos 308 skills e o hub de reuso (PT+EN, hidden) + capa AI (`1dd8b1d`)
@@ -134,7 +145,7 @@ Sem evidência real (testes + screenshot + nota) NÃO é entrega completa.
 
 ### CI/CD
 - **GitHub Actions** (`deploy.yml`) — Validate → Build → Test → Deploy → Health check → Notify
-- **Testes:** 200 passando (165 E2E + 35 Vitest)
+- **Testes:** ? passando
 - **Sync checker:** CI verifica sync PT/EN, health check inclui rotas EN
 - **Deploy:** Vercel (build remoto, sem --prebuilt)
 - **Ferramentas:** `pnpm` (Node 22+, corepack)

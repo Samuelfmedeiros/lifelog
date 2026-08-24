@@ -1,5 +1,14 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-08-23] — Posts WCAG/Estudos liberados + gate de capas + fix ocultos
+
+- **feat(post)**: 4 posts hidden PT+EN com capa AI (WCAG AA contraste, ternário, teoria de campo, semana-memória)
+- **release(post)**: liberados 4 posts PT+EN (descobertas-wcag-aa, ternário, semana-memória, watchdog-capas-falsas)
+- **feat**: gate de capas no build — auto-fix quando possível, bloqueia post sem capa
+- **fix**: capa WCAG em WebP real; restaura capa original; linha cover no frontmatter; fix(ocultos) libera par PT+EN idempotente
+- **fix(a11y)**: contraste WCAG AA em todos os temas e paletas
+- 21 commits · push origin OK · HEAD: `66054af`
+
 ## [2026-08-17] — Posts maratona (Estudos/Segurança) + hidden hub de reuso
 
 - **feat(posts)**: maratona — Estudos (ondas) e Segurança (caça ativa) completos PT+EN + capas AI (`b87963c`)
