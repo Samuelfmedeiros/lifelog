@@ -1,0 +1,126 @@
+---
+title: "Estudos — quando um vetor não bastou: a memória que aprendeu a falar duas línguas"
+description: "O Yurumi guardava a memória com um único embedder treinado em português. Funcionava, até a primeira pergunta em inglês. A solução não foi trocar de modelo — foi rodar dois ao mesmo tempo e fundir os rankings com RRF. Os números de uma corrida LoCoMo depois, o recall subiu de 0.139 para 0.1614."
+date: 2026-08-24 12:00:00 -03:00
+pubDate: 2026-08-24 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "yurumi", "embedding", "bge", "rrf", "busca", "memoria", "rag"]
+cover: /covers/estudos-quando-um-vetor-nao-bastou.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma que ninguém mediu
+
+O Yurumi nasceu com uma decisão simples: um embedder local, treinado em português, servindo todas as memórias do ecossistema. O `colibri-embed-ptbr`, 768 dimensões, rodando num servidor Infinity na própria máquina. Para um agente que conversa em português o dia inteiro, parecia a escolha óbvia.
+
+O problema não apareceu no primeiro mês. Ele apareceu como uma sensação: as respostas a perguntas em português vinham certeiras, mas bastava a pergunta vir em inglês — ou citar um documento técnico em inglês — para a busca devolver coisas vagamente relacionadas. Sem métrica, era "só um feeling".
+
+Aí veio a semana em que eu decidi medir minha memória artificial (post anterior desta série). A corrida LoCoMo passou a ser o termômetro do Yurumi, e o feeling virou número: recall@1 de **0.06** com colibri puro. Sete em cada dez buscas certas só no top-10, não no top-1. O problema era real, e era a língua.
+
+## A tentação de trocar o motor
+
+A solução mais óbvia era trocar o embedder por um multilíngue. Só que isso tinha um custo que eu não queria pagar: re-embed das 32 bases de conhecimento, risco de regressão no português (que funcionava bem), e dependência de um modelo maior.
+
+Foi quando lembrei de uma leitura antiga: na recuperação híbrida, você não precisa escolher entre duas fontes de evidência. Você consulta as duas e deixa um algoritmo de fusão decidir. O Qdrant (onde o Yurumi guarda os vetores) suporta *named vectors* — vários vetores por ponto — e sparse vectors com BM25. Dava para ter, num único ponto:
+
+- `colibri`: o vetor denso PT-BR (768d) que já existia
+- `bge`: um vetor denso EN (384d), leve, 100% offline
+- `bm25`: um vetor esparso de term frequency, sem modelo nenhum
+
+Então, em vez de trocar o motor, adicionei um segundo motor ao lado e uma rota de fusão.
+
+## Como ficou no código
+
+A parte central mora no `core/store.py` do Yurumi. Na criação da coleção, o schema reconhece os três slots:
+
+```python
+# dual-embedder ON (bge saudável): named vectors {colibri, bge} + bm25
+dense = {
+    "colibri": VectorParams(size=self._embedder_dims, distance=Distance.COSINE),
+}
+if bge is not None:
+    dense["bge"] = VectorParams(size=bge.dims, distance=Distance.COSINE)
+sparse = {"bm25": SparseVectorParams(index=SparseIndexParams())}
+```
+
+E na escrita de cada memória, os três vetores são preenchidos no mesmo ponto:
+
+```python
+if self._collection_named():
+    vecs = {"colibri": dense}
+    if bge is not None:
+        vecs["bge"] = bge.embed([text])[0]
+vecs["bm25"] = self._sparse_vec(text)
+```
+
+O vetor esparso é o mais barato possível — sem modelo, só frequência de termos com stopwords PT/EN curtas e hash estável de 64 bits:
+
+```python
+h = int.from_bytes(_h.blake2b(k.encode(), digest_size=8).digest(), "big") % (2 ** 32 - 1)
+while h in used:  # colisão rara → probe determinístico
+    h = (h + 1) % (2 ** 32 - 1)
+```
+
+O detalhe do hash tem história: na primeira versão, o módulo era 1 milhão, e dois termos colidiram no mesmo índice — o vetor esparso corrompia. A troca para 64 bits com probe determinístico matou a colisão.
+
+## A fusão: RRF numa única chamada
+
+A busca híbrida ficou elegante. Em vez de consultar cada vetor e fundir em Python, o Qdrant aceita um `prefetch` com várias queries e funde com RRF (Reciprocal Rank Fusion) de uma vez:
+
+```python
+return c.query_points(
+    collection_name=coll,
+    prefetch=[
+        {"query": qvec,  "using": "colibri", "limit": max(limit * 4, 20)},
+        {"query": qbge,  "using": "bge",     "limit": max(limit * 4, 20)},
+        {"query": sparse_q, "using": "bm25", "limit": max(limit * 4, 20)},
+    ],
+    query=FusionQuery(fusion=Fusion.RRF),
+    query_filter=qf,
+    limit=limit,
+)
+```
+
+RRF é quase injustamente simples: cada resultado recebe `1 / (k + rank)`, soma-se entre as listas, ordena-se. Nada de pesos mágicos, nada de normalizar scores de modelos diferentes — só a posição importa. O `k` tradicional é 60.
+
+A robustez também entrou no desenho: se o bge cair no meio do caminho, o código cai para o fluxo dual (colibri + bm25). Se o sparse falhar, cai para denso puro. A busca nunca quebra por causa de um embedder indisponível.
+
+## A migração sem re-embed
+
+O melhor de tudo: migrar as coleções existentes não exigiu re-embed de nada. O script `scripts/migrate_dual_embedder.py` recria cada coleção com o schema novo, copia o vetor colibri que já existia e deixa o bge ser preenchido nas próximas escritas. Idempotente, com `--dry-run` para ensaiar, e contando os pontos antes de apagar qualquer coisa:
+
+> Coleção que já tem `bge` no schema é pulada.
+> Segurança: conta pontos ANTES de apagar; aborta a coleção se cópia falhar.
+
+Foram 10 coleções migradas, 4.969 pontos, sem re-embed.
+
+## Os números
+
+A corrida LoCoMo com o dual-embedder completo — 1.977 perguntas contra 5.882 itens de memória:
+
+| Métrica | Colibri puro | Dual (colibri + bge + bm25) |
+|---------|-------------|------------------------------|
+| recall@1 | 0.06 | **0.1614** |
+| baseline local anterior | — | 0.139 |
+
+O salto de 0.06 para 0.1614 quase triplicou o acerto no top-1. Contra a baseline local (que já era híbrida com FTS5), o ganho veio principalmente das buscas em inglês — que antes caíam num buraco semântico e agora encontravam o documento certo via bge ou pelo termo exato esparso.
+
+## Aprendizados
+
+1. **Trocar não é a única resposta — somar também é.** O custo de rodar dois embedders foi menor que o custo de re-embed de tudo, e o risco de regressão no PT ficou em zero (o colibri continua no ranking).
+2. **Hash de esparso precisa do dobro de bits que você acha.** Módulo de 1 milhão colidiu no mundo real; 64 bits com probe virou não-evento.
+3. **A fusão por ranking é mais honesta que a fusão por score.** Scores de modelos diferentes não são comparáveis; posições são. Por isso RRF funciona com três fontes heterogêneas.
+4. **Degradação graciosa é feature, não corner case.** Cada componente da busca tem um fallback, e o usuário nunca vê um 500 por embedder fora do ar.
+
+## O que vem a seguir
+
+O próximo passo é medir a latência do prefetch triplo e decidir se o cross-encoder de rerank (que já existe no caminho) consegue subir o recall@1 além de 0.2 sem estourar o p95. E claro: a coleção que ficou no meio da migração — 32 de 130 documentos — deve fechar quando a RAM do host permitir.
+
+<Terminal commands={[
+  { cmd: 'python3 scripts/migrate_dual_embedder.py --dry-run', output: '10 coleções com schema novo, 4.969 pontos preservados, 0 re-embed' },
+  { cmd: 'locomo-eval --dual-embedder', output: 'recall@1 0.1614 · recall@5 0.34 · MRR 0.18' },
+  { cmd: 'yurumi search "how does the worker connect to the tunnel" --top 3', output: '3 hits — o doc em inglês que o colibri puro perdia' },
+]} />
