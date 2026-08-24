@@ -73,18 +73,20 @@ async function gh(path, opts = {}) {
 
 async function flipFile(slug) {
   // Flipa hidden:true -> false de UM arquivo. present=false = arquivo nao existe
-  // (post only-PT, por exemplo). Retorna { status, json, present }.
+  // (post only-PT, por exemplo). Retorna { status, json, present, already }.
+  // already=true = arquivo existia mas ja estava hidden:false (release repetida
+  // do par irmao) — NAO e erro, e idempotencia.
   if (!process.env.GH_TOKEN) {
-    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' }, present: true };
+    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' }, present: true, already: false };
   }
   const filePath = `src/content/posts/${slug}.mdx`;
   const enc = encodeURIComponent(filePath);
   const getRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}?ref=${BRANCH}`);
   if (getRes.status === 404) {
-    return { status: 404, json: { error: `Arquivo nao encontrado: ${slug}` }, present: false };
+    return { status: 404, json: { error: `Arquivo nao encontrado: ${slug}` }, present: false, already: false };
   }
   if (getRes.status !== 200) {
-    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` }, present: true };
+    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` }, present: true, already: false };
   }
   const { content, sha } = getRes.data;
   const decoded = Buffer.from(content, 'base64').toString('utf-8');
@@ -92,12 +94,15 @@ async function flipFile(slug) {
   // Flipa SOMENTE o campo hidden no frontmatter (primeiro bloco --- ---)
   const fmMatch = decoded.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!fmMatch) {
-    return { status: 422, json: { error: 'Frontmatter nao encontrado' }, present: true };
+    return { status: 422, json: { error: 'Frontmatter nao encontrado' }, present: true, already: false };
   }
   const fm = fmMatch[1];
   const updatedFm = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
   if (updatedFm === fm) {
-    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' }, present: true };
+    if (/^(\s*hidden:\s*)false(\s*)$/m.test(fm)) {
+      return { status: 200, json: { ok: true, slug, already: true }, present: true, already: true };
+    }
+    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' }, present: true, already: false };
   }
   const newContent = decoded.replace(fm, updatedFm);
   const newContentB64 = Buffer.from(newContent, 'utf-8').toString('base64');
@@ -123,20 +128,23 @@ async function releaseBoth(base) {
   const twin = base.startsWith('en/') ? base.slice(3) : 'en/' + base;
   const targets = [...new Set([base, twin])];
   let released = [];
+  let already = [];
   let missing = [];
   let errors = [];
   for (const t of targets) {
     const r = await flipFile(t);
     if (!r.present) missing.push(t);
+    else if (r.status === 200 && r.already) already.push(t); // ja estava hidden:false — idempotente
     else if (r.status === 200) released.push(t);
     else errors.push({ slug: t, error: r.json?.error || ('HTTP ' + r.status) });
   }
   if (errors.length > 0) {
     return { status: 502, json: { error: errors[0].error, errors, released } };
   }
-  if (released.length > 0) {
-    // missing = lingua irma inexistente (post only-PT/only-EN) — nao e erro
-    return { status: 200, json: { ok: true, released, missing, mode: 'github' } };
+  if (released.length > 0 || already.length > 0) {
+    // missing = lingua irma inexistente (post only-PT/only-EN) — nao e erro.
+    // already = par irmao ja tinha sido liberado junto — NAO e erro (idempotencia).
+    return { status: 200, json: { ok: true, released, already, missing, mode: 'github' } };
   }
   return { status: 422, json: { error: 'Nada foi liberado (todos os arquivos ja estavam liberados ou nao existem)' } };
 }

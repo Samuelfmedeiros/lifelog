@@ -87,7 +87,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   }
 
   function renderPost(entry) {
-    var langLabel = entry.lang === 'en' ? 'EN' : 'PT';
+    var langs = entry.langs && entry.langs.length ? entry.langs : [entry.lang || 'pt'];
+    var langBadges = langs.map(function (l) {
+      return '<span class="text-xs px-2 py-0.5 rounded-full mr-1" style="background: var(--color-accent-soft, rgba(0,212,255,.15)); color: var(--color-accent)">' + l.toUpperCase() + '</span>';
+    }).join('');
     var preview = entry.content.replace(/^---[\s\S]*?---/, '').slice(0, 600);
     var el = document.createElement('div');
     el.className = 'p-5 rounded-xl';
@@ -95,7 +98,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     el.innerHTML =
       '<div class="flex items-start justify-between gap-3">' +
         '<div>' +
-          '<span class="text-xs px-2 py-0.5 rounded-full mr-2" style="background: var(--color-accent-soft, rgba(0,212,255,.15)); color: var(--color-accent)">' + langLabel + '</span>' +
+          langBadges +
           '<span class="text-xs" style="color: var(--color-text-muted)">' + esc(entry.date || '') + '</span>' +
           '<h3 class="font-bold mt-1" style="color: var(--color-heading)">' + esc(entry.title) + '</h3>' +
         '</div>' +
@@ -122,7 +125,21 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       statusEl.style.color = 'var(--color-text-muted)';
       statusEl.classList.remove('hidden');
       var r = await api('/api/liberar', { path: btn.dataset.path });
-      if (r.status === 200) {
+      var releasedBoth = r.data && Array.isArray(r.data.released) ? r.data.released : null;
+      var alreadyList = r.data && Array.isArray(r.data.already) ? r.data.already : null;
+      if (r.status === 200 && releasedBoth && releasedBoth.length > 0) {
+        statusEl.textContent = 'Liberado (PT+EN). O deploy automatico publica o post em ~1-2 min.';
+        statusEl.style.color = '#4ade80';
+        btn.style.opacity = '0.5';
+        btn.textContent = 'Liberado';
+        btn.disabled = true;
+      } else if (r.status === 200 && alreadyList && alreadyList.length > 0) {
+        statusEl.textContent = 'Ja estava liberado (par PT+EN flipa junto). Atualize a lista.';
+        statusEl.style.color = '#4ade80';
+        btn.style.opacity = '0.5';
+        btn.textContent = 'Liberado';
+        btn.disabled = true;
+      } else if (r.status === 200) {
         statusEl.textContent = 'Liberado. O deploy automatico publica o post em ~1-2 min.';
         statusEl.style.color = '#4ade80';
         btn.style.opacity = '0.5';
@@ -159,9 +176,22 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     if (posts.length === 0) {
       empty.classList.remove('hidden');
     } else {
-      posts.forEach(function (p) { list.appendChild(renderPost(p)); });
-    }
-  }
+      // Agrupa por slug base: PT + EN do mesmo post viram UM card (a API
+      // libera o par inteiro num clique — dois cards davam erro no segundo).
+      var groups = {};
+      var order = [];
+      posts.forEach(function (p) {
+        var baseSlug = p.slug;
+        if (!groups[baseSlug]) { groups[baseSlug] = []; order.push(baseSlug); }
+        groups[baseSlug].push(p);
+      });
+      order.forEach(function (baseSlug) {
+        var group = groups[baseSlug];
+        var primary = group.find(function (g) { return g.lang !== 'en'; }) || group[0];
+        primary.langs = group.map(function (g) { return g.lang || 'pt'; });
+        list.appendChild(renderPost(primary));
+      });
+    }  }
 
   document.getElementById('login-btn').addEventListener('click', function () {
     var val = document.getElementById('secret-input').value.trim();
