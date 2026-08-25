@@ -1,0 +1,99 @@
+---
+title: "The circle that would not close — flushSync and the Portfolio View Transition"
+description: "When the theme toggle animation revealed the old theme instead of the new one, the fault was not in the CSS — React had not committed the state in time."
+category: samuel-projects
+date: 2026-08-25 18:00:00 -03:00
+pubDate: 2026-08-25 18:00:00 -03:00
+project: portfolio
+tags: [view-transitions, react, flushsync, animation, theme, a11y]
+icon: "/patterns/portfolio.svg"
+cover: /covers/portfolio-o-circulo-que-nao-fechava.webp
+featured: false
+hidden: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+The Portfolio theme transition always had a subtle bug: when the user clicked to switch from dark to light, the expanding circle revealed... the dark theme still. As if the animation ran "without the site in the background", a flash of the old theme before the new one appeared.
+
+The CSS was correct. The clip-path was correct. The ViewTransition was correct. The problem was React.
+
+## The snapshot that captured the wrong state
+
+`document.startViewTransition(callback)` works like this: the browser takes a screenshot of the page BEFORE running the callback, and after the callback, takes a screenshot of the NEW state. The transition animates between these two frames.
+
+The problem: the original code was:
+
+```tsx
+const apply = () => {
+  setTheme(next);
+};
+```
+
+React's `setTheme` is **asynchronous**. React schedules the re-render, but the browser has already captured the "new" snapshot before React committed the state. Result: the "new" snapshot still showed the old theme.
+
+The animation ran between two identical snapshots — the circle opened and nothing changed. Only later, in a separate frame, React committed the theme and the CSS kicked in, causing that strange flash.
+
+## flushSync: React commits on the spot
+
+The solution came from `react-dom`:
+
+```tsx
+import { flushSync } from "react-dom";
+
+const apply = () => {
+  flushSync(() => {
+    setTheme(next);
+  });
+};
+```
+
+`flushSync` forces React to commit the state **synchronously** inside the callback. By the time the browser takes the "new" snapshot, the theme has already been applied and the DOM already reflects `data-theme="light"`. The circle reveals the correct theme, no flash.
+
+It was a 14-line commit (`58ba720`) that solved a months-old problem. The key line:
+
+```tsx
+// flushSync: the ViewTransition "new" snapshot is only captured
+// AFTER React commits the theme. Without it the circle reveals the
+// old theme (animation "without the site in the background").
+flushSync(() => {
+  setTheme(next);
+});
+```
+
+## The rest of the quality marathon
+
+The circular View Transition restoration came with a quality blitz in the same commit (`91dd9c5`):
+
+**Icon-only navbar buttons.** Samuel reported that the theme, palette, and language buttons had unnecessary glass backgrounds — they took up visual space without adding value. Solution: `icon-only` — no background, no extra padding, just the icon. The navbar breathed.
+
+**Theme test rewritten.** The theme toggle test was flaky — it used `getAnimations()` which sometimes resolved before the animation finished. The new test uses **deterministic polling**: it waits for the `data-theme` attribute to change on `<html>` and the `window.__pfThemeToggle` hook to be called. 4 consecutive green runs, zero flaky.
+
+**24-scenario a11y audit.** A new test file (`a11y-matrix.spec.ts`) sweeps 3 routes (home, about, projects) across 2 languages (PT/EN), 2 themes (dark/light), and 2 viewports (desktop/mobile) — 24 combinations. Zero serious or critical violations across all.
+
+<Terminal
+  commands={[
+    {
+      cmd: 'git log --oneline --since="2026-08-24" --until="2026-08-26"',
+      output: '58ba720 fix(theme): flushSync no startViewTransition + origem do circulo no clique\n91dd9c5 feat: restaura View Transition circular no toggle de tema + botoes icon-only\n1192e65 fix: hydration mismatch #418 no carregamento (MissionClock + Footer)'
+    },
+    {
+      cmd: 'cd portifolio && npx vitest run tests/theme-toggle.spec.ts',
+      output: '✓ theme-toggle.spec.ts (4 tests) 852ms\n  ✓ renders toggle button\n  ✓ toggles theme on click\n  ✓ uses startViewTransition when available\n  ✓ respects prefers-reduced-motion\n\nTest Files  1 passed (1)\n  Tests  4 passed (4)'
+    }
+  ]}
+/>
+
+## What I learned
+
+1. **`startViewTransition` + React = `flushSync` mandatory.** The VT callback is synchronous from the browser's perspective, but React does not commit state immediately. Without `flushSync`, the "new" snapshot captures the DOM before React applies the change.
+
+2. **Animation tests need deterministic waits.** `getAnimations()` promises more than it delivers. Looking at the real DOM state (`data-theme` attribute, CSS class) is more reliable than waiting for animation promises.
+
+3. **Quality came in a bundle.** The VT fix came together with icon-only, a11y matrix, and robust tests. One fix pulled the others, and the result was a 284-line commit that improved the project on multiple fronts.
+
+The Portfolio now has a fluid theme transition that works on click, keyboard, and with prefers-reduced-motion. And the circle finally closes as it should.
+
+## Next step
+
+The Portfolio View Transition is resolved, but the LifeLog still uses a different implementation (inline script vs React). Perhaps unifying both approaches in the future — but for today, the circle is closed.

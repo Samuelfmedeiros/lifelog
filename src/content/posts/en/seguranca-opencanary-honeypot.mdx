@@ -1,0 +1,97 @@
+---
+title: "The old server that does not exist — the honeypot as a defense layer"
+description: "After mapping the port inventory, the next step was planting bait: fake services, deliberately outdated in appearance, that pose as easy targets. A watcher classifies every touch on the log, and the central dispatcher decides when a detection becomes a notification."
+date: 2026-08-25 12:00:00 -03:00
+pubDate: 2026-08-25 12:00:00 -03:00
+project: seguranca
+tags: [seguranca, honeypot, watchdog, alerts, automation, detection]
+cover: /covers/seguranca-opencanary-honeypot.webp
+featured: false
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day I decided to fool a scanner
+
+The last post ended with the port inventory: knowing what listens, why it listens, and where. The watchdog learned to shout when a new port shows up. But there was a hole the inventory cannot cover: **what about when someone from the outside knocks on the door?**
+
+A network scanner leaves no trace in your service logs. It sweeps, reads the banner, takes notes, and moves on. You only find out you were visited weeks later — when the visitor comes back with an exploit ready. The problem is not the scanner itself; it is that the visit costs the attacker nothing and you learn nothing.
+
+The classic answer is a firewall. But a firewall is mute: it blocks and does not tell you who tried. That is when I remembered an old security trick — the honeypot — and realized it fit perfectly into what we already had.
+
+## The bait: a service that looks forgotten
+
+The honeypot idea is simple: create services that **do not really exist**, but look vulnerable. Whoever sweeps the network sees an easy target and tries. The attempt becomes a log. The log becomes an alert. The alert becomes knowledge — with no real service at risk.
+
+The facades follow classic categories of tempting targets:
+
+| Category | Why it attracts |
+|----------|-----------------|
+| Old file transfer | generic banner, smell of a forgotten system |
+| Outdated remote shell | old version with years of known CVEs |
+| Legacy remote login | classic default credential, brute force bait |
+| Unauthenticated cache | "easy" data for anyone hunting secrets |
+| Simulated admin panel | NAS/domain look, an invitation to explore |
+
+The detail I enjoy the most is the choice of banners: deliberately outdated versions, full of public vulnerabilities. Nobody runs software from that era in production today — and that is exactly why they work. It is what a scanner looks for: a soft target. And there is more: the fake network also answers to names pretending to be something important, the kind of server that draws attention from someone exploring a domain.
+
+The honeypot even detects sweeps on its own: it monitors connection rhythm and flags when someone scans too fast.
+
+## The watcher that reads the footprint
+
+A honeypot is useless if nobody reads the log. A watcher runs on a fixed cycle, resumes the log where the previous read stopped, and classifies each event:
+
+1. **Touch with credentials** — someone tried to log in to a fake service. That is gold: a human (or bot) actually trying to get in.
+2. **Simple touch** — a scanner passed, connected, saw the banner and left.
+3. **Startup noise** — the honeypot itself bringing services up. Ignored.
+
+Each category gets a different treatment downstream — and the exact criteria of that separation are intentionally kept out of this blog: the effectiveness of a trap lives in not knowing how to tell it apart from a real service.
+
+The watcher runs outside the monitored host and stores only the position of the last record read — so each run is a fresh probe, with no dependency on a live session with the host.
+
+## The dispatcher that decides when to bother you
+
+Too many alerts become spam, and spam trains you to ignore the system. The dispatcher centralized the decision of when a detection deserves an interruption:
+
+- Severity triage — not every honeypot touch becomes a notification.
+- **False-positive whitelist** — known patterns that never trigger external alerts.
+- **Time-window dedupe** — the same repeated detection does not notify again.
+- **Auto-containment** — when an alert goes out, it already goes out with what will be done next: source investigated, baseline re-verified.
+
+The practical result: the honeypot can be touched dozens of times a day by random internet scanners without turning into noise. When a detection really matters, it arrives with context — and the first action is already defined.
+
+## The inventory learned to recognize the bait
+
+The final touch was integrating the honeypot into the existing inventory watchdog. The bait ports entered the intentional binds list and the known services dictionary:
+
+```text
+known port + documented intentional bind  → silence
+any new or uncataloged port               → alarm
+```
+
+In other words: the port inventory no longer shouts when it sees the bait. They are known, intentional and documented — exactly like any other legitimate service. The alarm stays ready for any **new** port, which is the case that matters.
+
+## Lessons learned
+
+1. **The honeypot turns curiosity into evidence.** The scanner that would go unnoticed now leaves a signature in the log. You do not have to guess who is probing you — it introduces itself.
+2. **Outdated banners are better bait than modern ones.** Old versions with known CVEs are scanner magnets. Worth more than any exotic configuration.
+3. **An alert without triage is spam.** Whitelist + dedupe + auto-containment is what separates a "security system" from a "noise source".
+4. **The details are part of the defense.** Which ports are bait, which events stay silent, how long detection takes — none of that belongs on a blog. A deception layer only works while its map stays private.
+5. **Layers talk to each other.** The port inventory does not conflict with the honeypot — it absorbs it as an intentional bind. Defense gets richer, not more confusing.
+
+## What comes next
+
+- **Shared IP reputation** — combine honeypot intelligence with collaborative reputation feeds.
+- **OWASP Agentic Top 10** — audit the agentic stack (agents, tools, memory) through the lens of agent risks, not just servers.
+- **Cross-correlation** — cross honeypot touches with real login attempts and detections from the hunt on the main system.
+
+<Terminal
+  commands={[
+    { label: 'status', cmd: 'systemctl status honeypot.service' },
+    { label: 'log', cmd: 'journalctl -u honeypot -n 20 --no-pager' },
+    { label: 'watch', cmd: 'python3 watcher.py --dry-run' },
+    { label: 'triage', cmd: 'dispatcher --demo --explain-triage' },
+  ]}
+/>

@@ -1,0 +1,96 @@
+---
+title: "O servidor velho que não existe — o honeypot como camada de defesa"
+description: "Depois de mapear o inventário de portas, o próximo passo foi plantar iscas: serviços falsos, com aparência propositalmente defasada, que se passam por alvos fáceis. Um watcher classifica cada toque no log, e o dispatcher central decide quando o alerta vira notificação."
+date: 2026-08-25 12:00:00 -03:00
+pubDate: 2026-08-25 12:00:00 -03:00
+project: seguranca
+tags: [seguranca, honeypot, watchdog, alertas, automacao, deteccao]
+cover: /covers/seguranca-opencanary-honeypot.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que eu decidi enganar um scanner
+
+O post anterior terminou com o inventário de portas: saber o que escuta, por que escuta e onde. O watchdog aprendeu a gritar quando uma porta nova aparece. Mas tinha um buraco que o inventário não cobre: **e quando alguém de fora bate na porta?**
+
+Um scanner de rede não deixa rastro no seu log de serviço. Ele varre, descobre o banner, anota e segue. Você só descobre que foi visitado semanas depois — quando o visitante volta com uma exploração pronta. O problema não é o scanner; é que a visita não custa nada pra ele e você não fica sabendo de nada.
+
+A resposta clássica é o firewall. Mas firewall é mudo: bloqueia e não te conta quem tentou. Foi aí que eu lembrei de um truque velho de segurança — o honeypot — e percebi que ele encaixava perfeito no que já tínhamos.
+
+## A isca: um serviço que parece esquecido
+
+A ideia do honeypot é simples: criar serviços que **não existem de verdade**, mas parecem vulneráveis. Quem varre a rede vê um alvo fácil e tenta. A tentativa vira um log. O log vira um alerta. O alerta vira conhecimento — sem nenhum serviço real em risco.
+
+As fachadas seguem categorias clássicas de alvo tentador:
+
+| Categoria | Por que atrai |
+|-----------|---------------|
+| Transferência de arquivos antiga | banner genérico, cheiro de sistema esquecido |
+| Shell remoto defasado | versão velha com anos de CVEs conhecidas |
+| Login remoto legado | credencial padrão clássica, tentação de brute force |
+| Cache sem autenticação | dado "fácil" pra quem procura segredos |
+| Painel de administração simulado | cara de NAS/domínio, convite a exploração |
+
+O detalhe que mais me diverte é a escolha dos banners: versões propositalmente defasadas, cheias de vulnerabilidades públicas. Ninguém roda software daquela era em produção hoje — e é exatamente por isso que funcionam. É o que um scanner procura: um alvo macio. E tem mais: a rede falsa também responde por nomes que fingem ser algo importante, o tipo de servidor que atrai atenção de quem está explorando um domínio.
+
+O honeypot ainda detecta varredura por conta própria: monitora o ritmo de conexões e marca quando alguém varre rápido demais.
+
+## O watcher que lê a pegada
+
+De nada adianta o honeypot se ninguém ler o log. Um watcher roda em ciclo fixo, retoma o log de onde parou na leitura anterior e classifica cada evento:
+
+1. **Toque com credencial** — alguém tentou login num serviço fake. Isso é ouro: é um humano (ou bot) tentando entrar de verdade.
+2. **Toque simples** — um scanner passou, conectou, viu o banner e foi embora.
+3. **Ruído de startup** — o próprio honeypot subindo serviços. Ignorado.
+
+Cada categoria tem um destino diferente na esteira de alertas — e os critérios exatos dessa separação ficam de propósito fora do blog: a eficácia de uma isca mora em quem não sabe distinguir armadilha de serviço real.
+
+O watcher roda fora do host monitorado e guarda apenas a posição do último registro lido — assim cada execução é um probe novo, sem depender de sessão viva com o host.
+
+## O dispatcher que decide quando incomodar
+
+Alerta demais vira spam, e spam treina você a ignorar o sistema. O dispatcher centralizou a decisão de quando uma detecção merece interrupção:
+
+- Triagem por severidade — nem todo toque no honeypot vira notificação.
+- **Whitelist de falso positivo** — padrões conhecidos que nunca viram alerta externo.
+- **Dedupe por janela de tempo** — o mesmo alerta repetido não re-notifica.
+- **Auto-contenção** — quando o alerta sai, já sai acompanhado do que será feito: origem investigada, baseline re-verificado.
+
+O resultado prático: o honeypot pode ser tocado dezenas de vezes por dia por scanners aleatórios da internet sem virar ruído. Quando uma detecção realmente importa, ela chega com contexto — e a primeira ação já está definida.
+
+## O inventário aprendeu a reconhecer as iscas
+
+O toque final foi integrar o honeypot ao watchdog de inventário que já existia. As portas das iscas entraram na lista de binds intencionais e no dicionário de serviços conhecidos:
+
+```text
+porta conhecida + bind intencional documentado  → silêncio
+qualquer porta nova ou não catalogada           → alarme
+```
+
+Ou seja: o inventário de portas não grita mais quando vê as iscas. Elas são conhecidas, intencionais e documentadas — exatamente como qualquer outro serviço legítimo. O alarme continua pronto pra qualquer porta **nova**, que é o caso que importa.
+
+## Aprendizados
+
+1. **O honeypot transforma curiosidade em evidência.** O scanner que passaria despercebido agora deixa uma assinatura no log. Você não precisa adivinhar quem está te explorando — ele se apresenta.
+2. **Banner defasado é isca melhor que banner moderno.** Versões velhas com CVEs conhecidas são ímãs de scanner. Vale mais que qualquer configuração exótica.
+3. **Alerta sem triagem é spam.** Whitelist + dedupe + auto-contenção é o que separa "sistema de segurança" de "fonte de ruído".
+4. **Os detalhes são parte da defesa.** Quais portas são isca, quais eventos ficam mudos e quanto tempo leva pra detectar — isso não vai pro blog. Camada de engano só funciona enquanto o mapa dela é privado.
+5. **Camadas conversam entre si.** O inventário de portas não conflita com o honeypot — ele o absorve como bind intencional. A defesa fica mais rica, não mais confusa.
+
+## O que vem depois
+
+- **Reputação compartilhada de IP** — juntar a inteligência do honeypot com feeds de reputação colaborativos.
+- **OWASP Agentic Top 10** — auditar a stack agêntica (agentes, tools, memória) sob a ótica de riscos de agentes, não só de servidores.
+- **Correlação cruzada** — cruzar toques no honeypot com tentativas de login reais e detecções do hunt no sistema principal.
+
+<Terminal
+  commands={[
+    { label: 'status', cmd: 'systemctl status honeypot.service' },
+    { label: 'log', cmd: 'journalctl -u honeypot -n 20 --no-pager' },
+    { label: 'watch', cmd: 'python3 watcher.py --dry-run' },
+    { label: 'triagem', cmd: 'dispatcher --demo --explain-triage' },
+  ]}
+/>
