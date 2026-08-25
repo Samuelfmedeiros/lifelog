@@ -1,0 +1,91 @@
+---
+title: "O Capivara que não cai — espelho na máquina de backup e o failover que funcionou sozinho"
+description: "O hub pessoal devolvia 502 intermitente no tunnel. A solução: espelhar o Capivara na máquina de backup (fallback) com sync one-way e healthcheck — e provar com um teste de failover real: cloudflared do nó principal parado 40s, site 5/5 = 200, a máquina de backup assumiu sozinha."
+date: 2026-08-03 19:00:00 -03:00
+hidden: true
+pubDate: 2026-08-03 19:00:00 -03:00
+project: capivara
+tags: ["capivara", "high-availability", "failover", "douglas", "infra"]
+cover: /covers/capivara-espelho-douglas-failover-real.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+##  O hub pessoal que não pode cair
+
+O Capivara é o painel de comando do meu ecossistema: dashboard, health checks dos serviços, Umami, admin de tudo, Segundo Cérebro. Se ele cai, **tudo parece morto** — mesmo que os outros projetos estejam de pé.
+
+Em agosto de 2026, ele tava devolvendo **502 intermitente** no tunnel. Não era um crash — era pior: um downtime invisível, que aparecia e sumia. A resposta foi o princípio arquitetural que vale pra todo o ecossistema: **máquina de backup = espelho + fallback**. E pra provar que funcionava, a gente fez o teste mais honesto que existe: derrubou o serviço principal de propósito.
+
+##  Contexto — o 502 que ia e voltava
+
+O Capivara roda no nó principal: FastAPI na porta 8001, Cloudflare Tunnel expondo `capivara.seu.pet`. A máquina de backup é o nó espelho/fallback do ecossistema — o mesmo papel que já cumpre pro Arachne e pro Dogwalk.
+
+O problema: o tunnel respondia **200/502 alternando**. Um healthcheck de passagem pegava 200, outro pegava 502. Pro usuário (eu), era "às vezes funciona". Pro sistema, era um ponto único de falha sem cobertura.
+
+A regra do ecossistema: **se o nó principal OU o de backup cair, o site continua de pé**. O Capivara ainda não seguia essa regra.
+
+##  A luta — montando o espelho
+
+A implementação (Opção A — espelho completo, decidida em 03/08/2026) foi cirúrgica:
+
+1. **Backend copiado pro nó de backup** — mesmo path, venv Python 3.13.5 + deps extras (httpx, psutil, pyotp, qrcode, pywebpush, chromadb). O `requirements.txt` tava desatualizado — a cópia forçou a lista real (commit `9477700`)
+2. **frontend/dist copiado** — o SPA inteiro
+3. **Serviço idêntico** — `capivara-backend.service` (127.0.0.1:8001, EnvironmentFile .env, **JWT secret IGUAL** — os dois lados aceitam os mesmos tokens)
+4. **Tunnel do nó de backup** — `capivara.seu.pet → 127.0.0.1:8001` no cloudflared dele
+5. **Sync do banco one-way** (principal → backup), via script dedicado:
+
+```bash
+# capivara-db-sync-douglas.sh — snapshot consistente mesmo com o app rodando
+sqlite3 capivara.db ".backup /tmp/capivara_sync.db"  # snapshot
+scp /tmp/capivara_sync.db usuario@<ip-do-espelho>:C:/Temp/  # transfere
+# no backup: para o serviço, troca o db, sobe de novo
+```
+
+6. **Healthcheck** — timer de 5min no nó de backup pra garantir que o serviço tá vivo
+
+O sync usa **SQLite mode delete (sem WAL)** — snapshot via `.backup` é consistente mesmo com o app escrevendo. Um detalhe que evita corromper o banco no meio da cópia.
+
+Depois de montado, o teste imediato: `/health` **10/10 = 200** via tunnel com o nó de backup ativo (antes: 200/502 alternando).
+
+##  Resolução — o failover que funcionou sozinho
+
+A prova final foi o **teste de failover real**: o cloudflared do principal foi **parado por ~40 segundos**. Sem tocar em nada no nó de backup.
+
+Resultado:
+
+```
+capivara.seu.pet → 5/5 = 200  (a máquina de backup assumiu SOZINHO)
+dogwalk uptime: 61024 → 61104  (prova de que a origem mudou pro backup)
+religou o cloudflared do principal → 5/5 = 200
+```
+
+O detalhe mais bonito: a prova não veio de um log do Capivara — veio do **uptime do Dogwalk**, que conta de onde a resposta veio. O contador pulou pro backup no momento exato do failover e voltou quando o principal religou. High availability validada de verdade, não na teoria.
+
+##  Métricas
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| Tunnel | 200/502 alternando | 5/5 = 200 estável |
+| Failover | não existia | automático (o backup assume em ~40s) |
+| Origem da resposta | principal (única) | principal + backup (espelho) |
+| Sync DB | não existia | one-way principal → backup (cron 1h) |
+| Healthcheck | — | timer 5min no backup |
+| Uptime Dogwalk | origem única | 61024→61104 (prova de troca) |
+
+##  Aprendizados
+
+1. **Disponibilidade se PROVA, não se promete** — o teste de failover real (derrubar o principal e ver o espelho assumir) vale mais que qualquer arquitetura documentada.
+2. **O espelho precisa ser idêntico até no secret** — JWT secret igual nos dois lados significa que os tokens do usuário sobrevivem ao failover sem re-login.
+3. **Sync one-way com snapshot consistente** — `sqlite3 .backup` + swap evita banco corrompido. SQLite mode delete (sem WAL) simplifica o sync.
+4. **A prova pode estar no vizinho** — o uptime do Dogwalk provou o failover do Capivara. Observabilidade cruzada entre serviços é um superpoder.
+
+<Terminal
+  lines={[
+  { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'snapshot sqlite3 .backup → scp → swap no backup' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — backup assumindo durante o failover' },
+  { cmd: 'git log --oneline -3', output: '9477700 docs+req: espelho backup do Capivara (2026-08-03)' },
+  { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart do backend no principal' },
+  ]}
+/>

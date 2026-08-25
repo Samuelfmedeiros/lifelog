@@ -1,0 +1,91 @@
+---
+title: "The Capivara that never falls — mirror on the backup machine and the failover that worked on its own"
+description: "The personal hub was returning intermittent 502s on the tunnel. The fix: mirror Capivara to the backup machine (fallback) with one-way sync and healthcheck — and prove it with a real failover test: The primary node's cloudflared stopped for 40s, site 5/5 = 200, the backup machine took over by itself."
+date: 2026-08-03 19:00:00 -03:00
+hidden: true
+pubDate: 2026-08-03 19:00:00 -03:00
+project: capivara
+tags: ["capivara", "high-availability", "failover", "douglas", "infra"]
+cover: /covers/capivara-espelho-douglas-failover-real.webp
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+##  The personal hub that can't go down
+
+Capivara is the command center of my ecosystem: dashboard, service health checks, Umami, admin for everything, Second Brain. If it goes down, **everything looks dead** — even when the other projects are standing.
+
+In August 2026, it was returning **intermittent 502s** on the tunnel. It wasn't a crash — it was worse: invisible downtime that appeared and disappeared. The answer was the architectural principle that applies to the whole ecosystem: **backup machine = mirror + fallback**. And to prove it worked, we did the most honest test there is: we took down the primary service on purpose.
+
+##  Context — the 502 that came and went
+
+Capivara runs on the primary node: FastAPI on port 8001, Cloudflare Tunnel exposing `capivara.seu.pet`. The backup machine is the ecosystem's mirror/fallback PC — the same role it already plays for Arachne and Dogwalk.
+
+The problem: the tunnel was answering **200/502 alternating**. One healthcheck caught 200, the next caught 502. To the user (me), it was "sometimes it works". To the system, it was a single point of failure with no coverage.
+
+The ecosystem rule: **if the primary node OR the backup goes down, the site stays up**. Capivara wasn't following that rule yet.
+
+##  The struggle — building the mirror
+
+The implementation (Option A — full mirror, decided on 03/08/2026) was surgical:
+
+1. **Backend copied to the backup node** — same path, Python 3.13.5 venv + extra deps (httpx, psutil, pyotp, qrcode, pywebpush, chromadb). The `requirements.txt` was outdated — the copy forced the real list (commit `9477700`)
+2. **frontend/dist copied** — the whole SPA
+3. **Identical service** — `capivara-backend.service` (127.0.0.1:8001, EnvironmentFile .env, **SAME JWT secret** — both sides accept the same tokens)
+4. **the backup node's tunnel** — `capivara.seu.pet → 127.0.0.1:8001` in its cloudflared config
+5. **One-way DB sync** (primary → backup), via a dedicated script:
+
+```bash
+# capivara-db-sync-douglas.sh — consistent snapshot even with the app running
+sqlite3 capivara.db ".backup /tmp/capivara_sync.db"  # snapshot
+scp /tmp/capivara_sync.db usuario@<ip-do-espelho>:C:/Temp/  # transfer
+# on the backup: stop service, swap db, start again
+```
+
+6. **Healthcheck** — 5-minute timer on the backup to make sure the service stays alive
+
+The sync uses **SQLite delete mode (no WAL)** — a `.backup` snapshot is consistent even while the app is writing. A detail that avoids corrupting the database mid-copy.
+
+Right after setting it up, the immediate test: `/health` **10/10 = 200** through the tunnel with the backup node active (before: 200/502 alternating).
+
+##  Resolution — the failover that worked on its own
+
+The final proof was the **real failover test**: The primary's cloudflared was **stopped for ~40 seconds**. Nothing touched on the backup.
+
+Result:
+
+```
+capivara.seu.pet → 5/5 = 200  (the backup took over ON ITS OWN)
+dogwalk uptime: 61024 → 61104  (proof that the origin switched to the backup)
+turned the primary's cloudflared back on → 5/5 = 200
+```
+
+The coolest detail: the proof didn't come from a Capivara log — it came from **Dogwalk's uptime counter**, which tracks where the response came from. The counter jumped to the backup at the exact moment of failover and came back when the primary reconnected. High availability validated for real, not in theory.
+
+##  Metrics
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Tunnel | 200/502 alternating | 5/5 = 200 stable |
+| Failover | didn't exist | automatic (the backup takes over in ~40s) |
+| Response origin | principal (only) | principal + backup (mirror) |
+| DB sync | didn't exist | one-way principal → backup (1h cron) |
+| Healthcheck | — | 5-min timer on backup |
+| Dogwalk uptime | single origin | 61024→61104 (proof of switch) |
+
+##  Lessons
+
+1. **Availability is PROVEN, not promised** — a real failover test (take down the primary and watch the mirror take over) is worth more than any documented architecture.
+2. **The mirror must be identical down to the secret** — same JWT secret on both sides means user tokens survive the failover with no re-login.
+3. **One-way sync with a consistent snapshot** — `sqlite3 .backup` + swap avoids database corruption. SQLite delete mode (no WAL) simplifies the sync.
+4. **The proof can live in the neighbor** — Dogwalk's uptime proved Capivara's failover. Cross-service observability is a superpower.
+
+<Terminal
+  lines={[
+  { cmd: '~/.config/hermes/scripts/capivara-db-sync-douglas.sh', output: 'sqlite3 .backup snapshot → scp → swap on backup' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet', output: '200 — backup serving during the failover' },
+  { cmd: 'git log --oneline -3', output: '9477700 docs+req: Capivara mirror on backup (2026-08-03)' },
+  { cmd: 'systemctl --user restart capivara-backend.service', output: 'restart the backend on principal' },
+  ]}
+/>
