@@ -217,7 +217,7 @@ import { PALETTES } from '../lib/palettes'
   const PALETTE_KEY = 'lifelog-palette'
   const THEME_KEY = 'lifelog-theme'
   let animating = false
-  let lastTouchX = 0, lastTouchY = 0
+  let lastTouchX = 0, lastTouchY = 0, lastTouchTime = 0
 
   // ═══════════════════════════════════════
   // PALETTES — must match src/lib/palettes.ts (single source of truth)
@@ -293,15 +293,28 @@ import { PALETTES } from '../lib/palettes'
     // senão o CENTRO DO BOTÃO de tema (nunca o centro da tela). Cliques
     // sintetizados (ghost click mobile pós-scroll, atalho de teclado Enter)
     // podem vir com clientX=0 — o ?? deixa 0 passar e o círculo nascia no
-    // canto (0,0) ou no centro da viewport.
+    // canto (0,0) ou no centro da viewport. 🔴 26/08: no celular REAL o
+    // ghost click pós-scroll entrega clientX/Y do ponto onde o dedo COMEÇOU
+    // o scroll (meio da tela) → círculo nascia longe do botão. Fix: a origem
+    // só é aceita se estiver geometricamente perto do botão (dedo de verdade);
+    // caso contrário (ghost/sintético) usa o centro do botão.
     function themeOrigin(ev) {
       const btn = document.getElementById('rail-theme')
       const rect = btn?.getBoundingClientRect()
       const btnX = rect ? rect.left + rect.width / 2 : innerWidth / 2
       const btnY = rect ? rect.top + rect.height / 2 : innerHeight / 2
-      const x = lastTouchX > 0 ? lastTouchX : (ev && ev.clientX > 0 ? ev.clientX : btnX)
-      const y = lastTouchY > 0 ? lastTouchY : (ev && ev.clientY > 0 ? ev.clientY : btnY)
-      return [x, y]
+      // Raio de aceitação: ~2x o tamanho do botão (dedo real cobre ~48px+)
+      const nearBtn = (px, py) => btn && Math.hypot(px - btnX, py - btnY) < 96
+      // Toque registrado (pointerdown/touchstart) recente e perto do botão
+      const recent = Date.now() - lastTouchTime < 700
+      if (recent && lastTouchX > 0 && nearBtn(lastTouchX, lastTouchY)) {
+        return [lastTouchX, lastTouchY]
+      }
+      // clientX/Y do próprio evento, se perto do botão
+      if (ev && ev.clientX > 0 && ev.clientY > 0 && nearBtn(ev.clientX, ev.clientY)) {
+        return [ev.clientX, ev.clientY]
+      }
+      return [btnX, btnY]
     }
 
     if (document.startViewTransition) {
@@ -364,13 +377,13 @@ import { PALETTES } from '../lib/palettes'
         animating = false
         // Reset da origem — não deixar o toque antigo vazar pro próximo
         // clique (ghost click pós-scroll usaria posição de outra viewport)
-        lastTouchX = 0; lastTouchY = 0
+        lastTouchX = 0; lastTouchY = 0; lastTouchTime = 0
         document.documentElement.classList.remove('vt-running')
       })
       setTimeout(() => {
         if (finished) return
         animating = false
-        lastTouchX = 0; lastTouchY = 0
+        lastTouchX = 0; lastTouchY = 0; lastTouchTime = 0
         document.documentElement.classList.remove('vt-running')
       }, animDuration + 1500)
       return
@@ -408,7 +421,7 @@ import { PALETTES } from '../lib/palettes'
         setTheme(next)
         overlay.remove()
         animating = false
-        lastTouchX = 0; lastTouchY = 0
+        lastTouchX = 0; lastTouchY = 0; lastTouchTime = 0
       }, fallbackMs)
     } else {
       setTheme(next)
@@ -472,8 +485,15 @@ import { PALETTES } from '../lib/palettes'
     const btn = document.getElementById('rail-theme')
     if (btn && btn.contains(e.target)) {
       const t = e.changedTouches?.[0]
-      if (t) { lastTouchX = t.clientX; lastTouchY = t.clientY }
+      if (t) { lastTouchX = t.clientX; lastTouchY = t.clientY; lastTouchTime = Date.now() }
     }
+  }, { passive: true })
+
+  // Pointerdown universal — captura toque (Chrome/Safari/Android) E mouse.
+  // No celular, o ghost click pós-scroll não passa por touchstart no botão,
+  // mas o pointerdown sempre carrega as coords reais do dedo → origem certa.
+  document.addEventListener('pointerdown', function(e) {
+    lastTouchX = e.clientX; lastTouchY = e.clientY; lastTouchTime = Date.now()
   }, { passive: true })
 
   document.addEventListener('click', function(e) {
