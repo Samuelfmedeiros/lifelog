@@ -1,0 +1,102 @@
+---
+title: "Capivara — the layout builder that almost wiped the admin (and the double PUT that survived)"
+description: "When reordering a single admin view reset all other views' configs. The story of the controlled LayoutEditor, strict section whitelists, and how one PUT became zero."
+date: 2026-08-24 12:00:00 -03:00
+pubDate: 2026-08-26 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "layout", "api", "frontend", "controlled-component", "fastapi", "react"]
+cover: /covers/capivara-layout-builder.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The dream of a self-organizing dashboard
+
+Capivara has always been the central hub of the ecosystem — a dashboard with service health, an admin panel with views for projects, system, logs, and the RAG brain. But there was an annoying problem: **the section order was fixed**.
+
+Service Health had to come first, then Portifolio, Umami, Dogwalk... It was whatever I decided one day and never changed. But as the ecosystem grew, some sections became more relevant than others. I wanted to **reorder**, **hide** temporarily what wasn't relevant.
+
+And of course, I wanted the admin to be customizable too — decide which views appear in Overview, what goes to the Projects tab, what goes to System.
+
+Thus **LayoutConfig** was born: an `/api/layout` endpoint supporting dashboard and admin scopes, with strict section whitelists, overlap validation, and a simple data model — `scope` as PK, `config` as JSON string. Beautiful in theory.
+
+## The devil lives in the double PUT
+
+The LayoutEditor was a React component that displayed sections in order with move-up/move-down buttons and a visibility toggle. When the user applied a change, the component:
+
+1. Called `onApply(order, hidden)` — the page (`useLayoutConfig`) would do the PUT
+2. **And also called `persist()` internally** — which did another `apiFetch` PUT
+
+Result: **two PUT calls** for every apply. The backend received the first PUT, saved it. The second PUT, with the same data, saved again. Seemed harmless — until you used it in the admin.
+
+The admin has 5 views: `overview`, `projetos`, `sistema`, `registros`, `brain`. Each view has its allowed sections. The LayoutEditor was used INSIDE a specific view — when the user reordered `projetos`, the internal `persist()` built:
+
+```json
+{ "views": { "projetos": { "order": [...], "hidden": [...] } } }
+```
+
+But the backend expects the **complete** object — all 5 views. What it received was a partial object with ONE view. Since the backend does `PUT` (not `PATCH`), it replaced the entire config. The result: views `overview`, `sistema`, `registros`, and `brain` reverted to defaults — **zeroed config**.
+
+The bug was silent. You reordered `projetos` and, without knowing, reset the other 4 views. Next time you opened the admin, the customizations from the other views were gone.
+
+## The fix: controlled component
+
+The fix was surgical:
+
+```typescript
+// LayoutEditor.tsx (before)
+const persist = useCallback((nextOrder: string[], nextHidden: string[]) => {
+  onApply(nextOrder, nextHidden) // call 1: page does PUT
+  apiFetch('/api/layout/' + scope, { method: 'PUT', body: { config } }) // call 2: DOUBLE PUT!
+}, [onApply, scope])
+
+// LayoutEditor.tsx (after)
+const persist = useCallback((nextOrder: string[], nextHidden: string[]) => {
+  onApply(nextOrder, nextHidden) // single call — the page decides the save
+}, [onApply])
+```
+
+The LayoutEditor became a **controlled component**: it doesn't persist anything on its own. The page (`useLayoutConfig`) decides when and how to save. The optional `saving` prop provides visual feedback without the component needing to know about the API.
+
+The persist test was updated to verify: was `onApply` called? Yes. Was `apiFetch` called by the component? No — the page is responsible.
+
+## The whitelist that lets nothing through
+
+The backend also got an extra security layer I really liked. `_validate_dashboard` and `_validate_admin` use explicit whitelists:
+
+```python
+DASHBOARD_SECTIONS = [
+    "service_health", "portifolio", "umami",
+    "dogwalk", "portifolio_prod", "invites", "telemetry",
+]
+
+ADMIN_VIEW_SECTIONS = {
+    "overview":  ["overview", "notifications"],
+    "projetos":  ["dogwalk", "umami", "arachne", "tracking"],
+    "sistema":   ["wsl", "infra", "security"],
+    "registros": ["logs", "timeline"],
+    "brain":     ["brain"],
+}
+```
+
+If a payload arrives with `hacker_section` in the `order`, the backend returns 422 with `"Unknown sections: ['hacker_section']"`. If a section is in both `order` and `hidden`, also 422. Zero chance of corrupted config from malicious or malformed payloads.
+
+## What I learned
+
+1. **Controlled vs uncontrolled isn't just React pedantry.** The uncontrolled LayoutEditor caused a real double-PUT bug that wiped data. Controlled is more verbose, but the data flow is predictable: one source of truth, one persistence point.
+
+2. **PUT is not PATCH.** If the backend expects a complete object and the frontend sends only a piece, what wasn't sent reverts to default. Always document whether the endpoint is PUT (replaces everything) or PATCH (partial merge).
+
+3. **Whitelist beats blacklist.** Instead of trying to filter what's dangerous, define what's allowed and reject everything else. Zero surprises.
+
+4. **Test the persist, not the layout.** The layout test now verifies that `onApply` was called and `apiFetch` was not called by the component. This would catch the double PUT in the PR, not in production.
+
+<Terminal
+  commands={[
+    { cmd: 'git log --oneline -1 8cbabfc', label: 'Fix double PUT' },
+    { cmd: 'git diff --stat 8cbabfc', label: 'Files touched' },
+    { cmd: 'pytest backend/tests/test_layout.py -v', label: '146 lines of tests' },
+  ]}
+/>

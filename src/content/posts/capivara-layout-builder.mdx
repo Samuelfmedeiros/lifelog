@@ -1,0 +1,102 @@
+---
+title: "Capivara — o layout builder que quase zerou o admin (e o duplo PUT que sobrou)"
+description: "Quando reordenar uma view do admin zerava as configs das outras. A história do LayoutEditor controlled, da whitelist estrita de seções, e de como um PUT virou zero."
+date: 2026-08-24 12:00:00 -03:00
+pubDate: 2026-08-26 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "layout", "api", "frontend", "controlled-component", "fastapi", "react"]
+cover: /covers/capivara-layout-builder.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sonho de um painel que se organiza sozinho
+
+O Capivara sempre foi o hub central do ecossistema — dashboard com saúde dos serviços, admin com views de projetos, sistema, registros, cérebro RAG. Mas tinha um problema chato: **a ordem das seções era fixa**.
+
+Service Health tinha que vir primeiro, Portifolio depois, Umami, Dogwalk... Era o que eu decidi um dia e nunca mais mudei. Mas conforme o ecossistema crescia, algumas seções ficavam mais relevantes que outras. Eu queria poder **reordenar**, **ocultar** temporariamente o que não interessava.
+
+E, claro, queria que o admin também fosse customizável — poder decidir quais views aparecem no Overview, o que vai pra aba Projetos, o que vai pra Sistema.
+
+Nasceu o **LayoutConfig**: um endpoint `/api/layout` que aceita dashboard e admin, com whitelist estrita de seções, validação de overlap e um modelo de dados simples — `scope` como PK, `config` como JSON string. Linda na teoria.
+
+## O diabo mora no duplo PUT
+
+O LayoutEditor no frontend era um componente React que exibia as seções em ordem, com drag-and-drop mental (botões de mover pra cima/baixo + toggle ocultar). Quando o usuário aplicava a mudança, o componente:
+
+1. Chamava `onApply(order, hidden)` — a página (useLayoutConfig) fazia o PUT
+2. **E também chamava `persist()` internamente** — que fazia outro `apiFetch` PUT
+
+Resultado: **duas chamadas PUT** para cada aplicação. O backend recebia o primeiro PUT, salvava. O segundo PUT, com os mesmos dados, salvava de novo. Parecia inofensivo — até você usar no admin.
+
+O admin tem 5 views: `overview`, `projetos`, `sistema`, `registros`, `brain`. Cada view tem suas seções permitidas. O LayoutEditor era usado DENTRO de uma view específica — quando o usuário reordenava `projetos`, o `persist()` interno montava:
+
+```json
+{ "views": { "projetos": { "order": [...], "hidden": [...] } } }
+```
+
+Só que o backend espera o objeto **completo** — todas as 5 views. O que ele recebia era um objeto parcial com UMA view. Como o backend faz `PUT` (não `PATCH`), ele substituía o config inteiro. O resultado: as views `overview`, `sistema`, `registros` e `brain` voltavam ao padrão — **config zerada**.
+
+O bug era silencioso. Você reordenava `projetos` e, sem saber, resetava as outras 4 views. Na próxima vez que abria o admin, as personalizações das outras views tinham sumido.
+
+## A solução: controlled component
+
+O fix foi cirúrgico:
+
+```typescript
+// LayoutEditor.tsx (antes)
+const persist = useCallback((nextOrder: string[], nextHidden: string[]) => {
+  onApply(nextOrder, nextHidden) // chamada 1: página faz PUT
+  apiFetch('/api/layout/' + scope, { method: 'PUT', body: { config } }) // chamada 2: DUPLO PUT!
+}, [onApply, scope])
+
+// LayoutEditor.tsx (depois)
+const persist = useCallback((nextOrder: string[], nextHidden: string[]) => {
+  onApply(nextOrder, nextHidden) // única chamada — a página decide o save
+}, [onApply])
+```
+
+O LayoutEditor virou um **controlled component**: ele não persiste nada sozinho. A página (`useLayoutConfig`) que decide quando e como salvar. O `saving` prop opcional dá feedback visual sem o componente ter que saber da API.
+
+O teste de `persist` foi atualizado para verificar: `onApply` foi chamado? Sim. `apiFetch` foi chamado pelo componente? Não — a página é responsável.
+
+## A whitelist que não deixa passar nada
+
+O backend também ganhou uma camada extra de segurança que eu curti. O `_validate_dashboard` e `_validate_admin` usam whitelists explícitas:
+
+```python
+DASHBOARD_SECTIONS = [
+    "service_health", "portifolio", "umami",
+    "dogwalk", "portifolio_prod", "invites", "telemetry",
+]
+
+ADMIN_VIEW_SECTIONS = {
+    "overview":  ["overview", "notifications"],
+    "projetos":  ["dogwalk", "umami", "arachne", "tracking"],
+    "sistema":   ["wsl", "infra", "security"],
+    "registros": ["logs", "timeline"],
+    "brain":     ["brain"],
+}
+```
+
+Se um payload chegar com `hacker_section` no `order`, o backend devolve 422 com `"Seções desconhecidas: ['hacker_section']"`. Se uma seção estiver ao mesmo tempo em `order` e `hidden`, também 422. Zero chance de config corrompida por payload malicioso ou mal formatado.
+
+## O que aprendi
+
+1. **Componente controlled vs uncontrolled não é só frescura de React.** O LayoutEditor uncontrolled causou um bug real de duplicação de PUT que zerava dados. Controlled é mais verboso, mas o fluxo de dados é previsível: uma fonte de verdade, um ponto de persistência.
+
+2. **PUT não é PATCH.** Se o backend espera um objeto completo e o frontend manda só um pedaço, o que não foi enviado volta ao padrão. Sempre documentar se o endpoint é PUT (substitui tudo) ou PATCH (merge parcial).
+
+3. **Whitelist é melhor que blacklist.** Em vez de tentar filtrar o que é perigoso, defina o que é permitido e rejeite o resto. Zero surpresas.
+
+4. **Teste o persist, não o layout.** O teste de layout agora verifica que `onApply` foi chamado e `apiFetch` não foi chamado pelo componente. Isso pegaria o duplo PUT na PR, não em produção.
+
+<Terminal
+  commands={[
+    { cmd: 'git log --oneline -1 8cbabfc', label: 'Fix duplo PUT' },
+    { cmd: 'git diff --stat 8cbabfc', label: 'Arquivos tocados' },
+    { cmd: 'pytest backend/tests/test_layout.py -v', label: '146 linhas de teste' },
+  ]}
+/>
