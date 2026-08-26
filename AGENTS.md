@@ -31,6 +31,12 @@ dá pra cobrir.
 Sem evidência real (testes + screenshot + nota) NÃO é entrega completa.
 
 
+## Sessão 2026-08-25 (fim de dia) — Scrub histórico + rename slug espelho
+- **security**: reconstrói histórico sem o commit que expunha stack defensiva — árvore final idêntica a main, force push (`6c9e720`); rename slug capivara-espelho-douglas → capivara-espelho-backup PT+EN (`e599155`)
+- **qa**: registra audit bug-hunter 2026-08-25 — 6/6 rotas ok (`391d15c`)
+- **docs**: consolida plano narrative-overhaul em OLD_STUFF (`cbaed96`)
+- 4 commits no dia · push origin ⚠️ (verificar) · HEAD: `391d15c`
+
 ## Sessão 2026-08-23 (fim de dia) — Posts WCAG/Estudos liberados + gate de capas + fix ocultos
 
 - **feat(post)**: 4 posts hidden PT+EN com capa AI — WCAG AA contraste (`514a4f6`), ternário (`0e882ed`), teoria de campo virou módulo (`7644d61`), semana que medi minha memória (`484e05d`)

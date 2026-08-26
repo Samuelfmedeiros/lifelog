@@ -1,5 +1,13 @@
 # 📋 CHANGELOG — LifeLog
 
+
+## [2026-08-25] — Scrub histórico + rename slug espelho
+
+- **security**: reconstrói histórico sem o commit que expunha stack defensiva — árvore final idêntica a main, force push (`6c9e720`); rename slug capivara-espelho-douglas → capivara-espelho-backup PT+EN (`e599155`)
+- **qa**: registra audit bug-hunter 2026-08-25 — 6/6 rotas ok (`391d15c`)
+- **docs**: consolida plano narrative-overhaul em OLD_STUFF (`cbaed96`)
+
+4 commits · push origin ⚠️ (verificar) · HEAD: `391d15c`
 ## [2026-08-23] — Posts WCAG/Estudos liberados + gate de capas + fix ocultos
 
 - **feat(post)**: 4 posts hidden PT+EN com capa AI (WCAG AA contraste, ternário, teoria de campo, semana-memória)
