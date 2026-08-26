@@ -1,5 +1,5 @@
-const CACHE = 'lifelog-v1'
-const STATIC_CACHE = 'lifelog-static-v1'
+const CACHE = 'lifelog-v2'
+const STATIC_CACHE = 'lifelog-static-v2'
 
 // Assets pré-cacheados na instalação — tudo que é estático e muda pouco
 const PRECACHE = [
