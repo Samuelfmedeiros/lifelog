@@ -343,20 +343,28 @@ import { PALETTES } from '../lib/palettes'
           { duration: animDuration, easing, pseudoElement: '::view-transition-new(root)' },
         ).finished
       )
+      // Safety: se done nunca resolver (edge case), não deixar vt-running
+      // preso — transitions ficariam desligadas pra sempre. NUNCA cortar a
+      // animação em andamento: em devices lentos o t.ready atrasa (main
+      // thread ocupado) e o timeout antigo fixo (1500ms) limpava ANTES do
+      // círculo terminar = stutter no fim / "trava pela metade". A flag
+      // finished garante que o finally cuida do caso normal; este timeout
+      // só age se done nunca resolver. Margem: duração + 1.5s de folga.
+      let finished = false
       done.catch(() => setTheme(next)).finally(() => {
+        finished = true
         animating = false
         // Reset da origem — não deixar o toque antigo vazar pro próximo
         // clique (ghost click pós-scroll usaria posição de outra viewport)
         lastTouchX = 0; lastTouchY = 0
         document.documentElement.classList.remove('vt-running')
       })
-      // Safety: se done nunca resolver (edge case), não deixar vt-running
-      // preso — transitions ficariam desligadas pra sempre
       setTimeout(() => {
+        if (finished) return
         animating = false
         lastTouchX = 0; lastTouchY = 0
         document.documentElement.classList.remove('vt-running')
-      }, 1500)
+      }, animDuration + 1500)
       return
     }
 
