@@ -164,7 +164,7 @@ import { PALETTES } from '../lib/palettes'
   .rail-dropdown.open .rail-dot:nth-child(4) { transition-delay: 90ms; }
   .rail-dropdown.open .rail-dot:nth-child(5) { transition-delay: 120ms; }
   .rail-dropdown.open .rail-dot:nth-child(6) { transition-delay: 150ms; }
-  .rail-dropdown.open .rail-dot:hover { opacity: 0.9; transform: scale(1.25); }
+  .rail-dropdown.open .rail-dot:hover { opacity: 0.9; transform: scale(1.25); box-shadow: 0 0 12px var(--color-accent); }
   .rail-dropdown.open .rail-dot.active { opacity: 1; }
 
   /* ─── Palette dots ─── */
@@ -183,6 +183,7 @@ import { PALETTES } from '../lib/palettes'
   .rail-dot:hover {
     opacity: 0.9;
     transform: scale(1.25);
+    box-shadow: 0 0 12px var(--color-accent);
   }
   .rail-dot:active { transform: scale(0.9); }
   .rail-dot.active {
@@ -351,7 +352,14 @@ import { PALETTES } from '../lib/palettes'
       // finished garante que o finally cuida do caso normal; este timeout
       // só age se done nunca resolver. Margem: duração + 1.5s de folga.
       let finished = false
-      done.catch(() => setTheme(next)).finally(() => {
+      done.catch(() => setTheme(next)).finally(async () => {
+        // 🔴 PISCADA FINAL: clip.finished resolve no último frame do círculo,
+        // MAS o browser ainda não desmontou os pseudos ::view-transition-*.
+        // Remover vt-running aqui religa transition:none !important na hora
+        // certa em que o snapshot old/new ainda está montado → piscada.
+        // Espera 2 rAF (um pro fim do frame atual, outro pra desmontagem dos
+        // pseudos) antes de limpar — verificado empiricamente (26/08).
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
         finished = true
         animating = false
         // Reset da origem — não deixar o toque antigo vazar pro próximo
