@@ -1,0 +1,121 @@
+---
+title: "Estudos — when documentation became knowledge"
+description: "Every project's AGENTS.md was the official instruction set of the ecosystem, but it lived outside the Yurumi's memory — the ingest only ran when someone remembered to run it. The fix was a signature watcher (mtime+size) that re-ingests only what changed. Along the way: a first_run that ran a full ingest every day, an os.stat that hung when WSL wedged, and the lesson of never trusting a junction."
+date: 2026-08-27 12:00:00 -03:00
+pubDate: 2026-08-27 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "yurumi", "automation", "watchdog", "ingest", "agents-md", "memory", "rag"]
+cover: /covers/estudos-quando-a-documentacao-virou-conhecimento.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The manual nobody read
+
+The Yurumi grew storing the ecosystem's memories — conversations, decisions, knowledge scattered across groups. But one class of document stayed out for a long time: the AGENTS.md files. Every project has one with the official instructions — architecture, commands, conventions, pitfalls. It's the most trustworthy text about that system, because it's what agents read before touching the code.
+
+The problem wasn't generating the knowledge — it was ingestion. The script that indexed these files existed, but only ran when someone remembered to run it. And "someone remembers" is the worst automation strategy that exists: it works until the first busy week, then the AGENTS.md changes and the memory keeps serving the stale version.
+
+The question was the same as always when the topic is automation: how do you make the system keep itself up to date, without turning that into yet another manual nobody reads?
+
+## The signature watcher
+
+The solution was a deliberately dumb watcher: compare signature (mtime + size) of each known AGENTS.md and re-ingest **only** what changed since the last run. No diff, no understanding the content — just the binary question "did this file change?"
+
+```python
+def _sig(p: str) -> str:
+    st = os.stat(p)
+    return f"{int(st.st_mtime)}:{st.st_size}"
+
+now = {p: _sig(p) for p in TARGETS}
+changed = [p for p in TARGETS if p in state and now.get(p) and now[p] != state[p]]
+missing = [p for p in TARGETS if p not in state]
+```
+
+The state lives in a JSON — `~/.yurumi/agentsmd-state.json` — holding the last seen signature of each file. First run or something changed? Run the ingest (only what changed). Nothing changed? Silence and exit zero, which is what a cron wants to hear.
+
+The targets are eight: the Hermes AGENTS.md itself and seven projects. The collection is `yurumi_global`, cross-group — because project instructions matter to any agent touching that code, not to one specific group.
+
+## The first_run that ran everything, every day
+
+Here lives the first monster. When the state file didn't exist — first run on the machine — `missing` contained all eight targets, and the code treated that as first_run and fired the **full** ingest: every section of every file, forty-something embeds, over thirty minutes under low RAM. A leftover 04:40 cron hit exactly that path and never left it — each fire was an embedding marathon from scratch.
+
+The fix wasn't complicated, but it required thinking about state: a seed script that reads the current signatures of the eight files and pre-populates the JSON. Then the watcher's first real run finds everything "already seen" and exits in seconds.
+
+```python
+state = {p: sig(p) for p in TARGETS if sig(p)}
+json.dump(state, open(tmp, "w", encoding="utf-8"), ensure_ascii=False)
+os.replace(tmp, final)
+```
+
+The architecture lesson here is a good one: **the first run of an idempotent system cannot be treated as normal state.** If "never ran" means "do the heaviest possible work," the bootstrap becomes a time bomb in any cron. Bootstrap must leave the system at rest state, not peak state.
+
+## The stat that hung when WSL wedged
+
+The second monster was subtler. The watcher runs on Windows and reads files via UNC — the `\\wsl$\...` path that exposes the WSL filesystem as if it were a network share. When WSL wedges (RAM contention, network timeout), `os.stat` on a UNC path **hangs** — it doesn't fail, it hangs. The cron stayed stuck in `TimeoutExpired` even with a two-hour timeout.
+
+The fix was treating the I/O risk as what it is: a network operation, not a local disk read. Each stat runs in a thread with a ten-second timeout; if it doesn't respond, the watcher treats it as "not changed" — preserving the previous signature and letting the next fire pick up the change when WSL is back.
+
+```python
+t = threading.Thread(target=_do, daemon=True)
+t.start()
+t.join(timeout=10)
+return res.get("sig")  # None on timeout => NOT counted as changed
+```
+
+Never fire a blind ingest with WSL wedged. The worst case leaves knowledge one cycle stale; a blind ingest leaves knowledge thirty minutes of discarded embeds behind.
+
+## The third monster: the junction that broke
+
+And the last one: the original code read files through a junction — `C:\Users\samue\projetos` pointing into WSL. Junctions are magic until they stop being: one day the folder became a plain directory with three items inside, and the ingest started indexing "nothing" without complaining. The fix was switching the source to the direct UNC path, which is the one that doesn't depend on any fragile link.
+
+**Lesson:** in automation, prefer the explicit canonical path over any indirection another process can silently break. A junction works while everything works; when something breaks, you find out you were betting on two layers of magic.
+
+## What the ingest became
+
+The ingest itself — the part that grew robust — gained a `only <project>` for surgical re-ingestion and an `add_with_retry` for the classic case of colibri/bge resetting the connection under low RAM:
+
+```python
+def add_with_retry(store, text, *, retries=3, delay=5, **kwargs):
+    for attempt in range(1, retries + 1):
+        try:
+            store.add(text, **kwargs)
+            return
+        except (httpx.ReadError, httpx.TimeoutException,
+                httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+            if attempt < retries:
+                time.sleep(delay)
+            else:
+                raise
+```
+
+Each file is chunked by markdown section (~3500 chars), and each chunk enters with a header stating the origin — `AGENTS.md {project} [{i}/{n}] — official project instructions` — and metadata `kind=agents-md`, `project=<name>`. Idempotent: dedup by text hash. Running twice doesn't duplicate.
+
+## The numbers
+
+| Metric | Value |
+|--------|-------|
+| Watched AGENTS.md | 8 (Hermes + 7 projects) |
+| Documents in KB | 559 |
+| Knowledge entries | 32 |
+| Time for a no-change fire | seconds (stat + JSON) |
+| Typical re-ingest (1 file changed) | ~1-2 min |
+
+## Takeaways
+
+1. **The first run of an idempotent system can't be the peak case.** If "never ran" triggers the most expensive path, the bootstrap becomes a cron bomb. Seed the state before turning it on.
+2. **UNC is network — treat it as network.** An `os.stat` that hangs is an I/O risk like any other — timeout per target, never a giant global timeout that only postpones the problem.
+3. **Prefer the canonical path over a junction.** Indirection another process can silently break is tech debt with an expiration date.
+4. **Silence is a feature in a watcher.** "Nothing changed" = exit zero. The cron only speaks when there's work to do.
+
+## What's next
+
+The KB backfill is still pending — the base this watcher now feeds was partially indexed by the old process, and the ideal is to repopulate it with the new chunks (header + metadata) so search finds instructions with the right context again. And the collection left mid-migration of the dual-embedder — 32 of 130 documents — is still waiting for host RAM to lighten up.
+
+<Terminal commands={[
+  { cmd: 'python scripts/watch_agents_md.py', output: 'AGENTS.md: nothing changed · exit 0 in <1s' },
+  { cmd: 'python seed-agentsmd-state.py', output: 'OK 8 entries — bootstrap at rest state' },
+  { cmd: 'python ingest-agents-md.py lifelog', output: 'AGENTS.md lifelog [1/4] — official project instructions · DONE total=4' },
+]} />
