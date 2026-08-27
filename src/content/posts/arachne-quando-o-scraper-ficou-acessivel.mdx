@@ -1,0 +1,100 @@
+---
+title: "Arachne — 92 violações a zero: a campanha de acessibilidade"
+description: "O relatório do axe-core não deixou escapatória: 92 nós de contraste falhos, botões sem nome, selects sem label, zoom bloqueado no onboarding. Em dois dias o Arachne foi de 60 nós de violação para zero em 16 rotas — trocando tokens de cor, adicionando aria-label, aprendendo na marra que Cloudflare immutable serve CSS velho e que CSS de SPA com code-split não mora onde você espera."
+date: 2026-08-27 16:00:00 -03:00
+pubDate: 2026-08-27 16:00:00 -03:00
+project: arachne
+tags: ["arachne", "acessibilidade", "wcag", "axe-core", "contraste", "a11y", "tokens", "vue"]
+cover: /covers/arachne-quando-o-scraper-ficou-acessivel.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O relatório que não deixou escapatória
+
+O Arachne sempre foi um produto de força bruta: scraping, RAG, visão, dezenas de ferramentas agênticas. Acessibilidade nunca tinha sido pauta — até o dia em que o axe-core rodou pela primeira vez contra produção e devolveu um número que não dava pra ignorar.
+
+**92 nós de violação de contraste.** Botões sem nome acessível, selects sem label, zoom bloqueado no onboarding. Nada disso estava "quebrado" para quem enxerga bem e usa mouse — e é exatamente por isso que acessibilidade é traiçoeira: o problema é invisível até você rodar a auditoria.
+
+A campanha teve três frentes: o baseline (medir), as correções baratas (semântica) e o trabalho chato (contraste). Cada uma escondeu uma armadilha diferente.
+
+## O baseline: 16 rotas, 3 tipos de violação
+
+A primeira rodada auditou 16 rotas em produção — 9 públicas e 7 autenticadas — usando axe-core 4.x via `axe-playwright-python`, com as regras WCAG 2.0/2.1 nível A e AA. O resultado foi sistemático demais para ser coincidência:
+
+| Tipo | Impacto | Ocorrência |
+|------|---------|------------|
+| `color-contrast` | serious | 50 nós / 15 rotas |
+| `button-name` | critical | 8 nós (dashboard, /account, onboarding) |
+| `select-name` | critical | 5 nós (dashboard, /account) |
+| `meta-viewport` | moderate | 1 nó (onboarding) |
+
+Cada tipo tinha a mesma causa raiz em todas as páginas. Isso é uma ótima notícia na prática: um fix resolve 10 páginas.
+
+## As correções baratas (mas críticas)
+
+Botões com apenas ícone e `@click` do Alpine sem `aria-label` eram violações críticas — um leitor de tela anunciava "botão" sem dizer o que ele fazia. O fix é vergonhosamente simples:
+
+```html
+<button @click="saveName()" aria-label="Salvar nome">...
+```
+
+O mesmo para selects: os filtros de status do dashboard e os selects de conta não tinham `aria-label` nem `<label for>` associado. E o onboarding bloqueava zoom com `user-scalable=no` no meta-viewport — uma violação de WCAG 1.4.4 que impede quem tem baixa visão de ampliar a página. Remover a restrição resolveu.
+
+**Lição:** semântica acessível é a parte mais barata da acessibilidade. Custa minutos, elimina violações critical, e nunca quebra layout.
+
+## O trabalho chato: contraste no tema dark
+
+Contraste é onde mora o diabo. O tema dark usava cinza médio sobre fundo escuro em links, textos auxiliares e botões secundários — lindo visualmente, ilegível para quem tem baixa visão. E o axe-core, ao contrário de um olhar humano, calcula a razão de contraste de verdade.
+
+A solução foi mexer nos tokens, não nas páginas:
+
+```css
+--text2: #8888a0  →  #a6a6c2;   /* contraste ≥ 4.5:1 no fundo escuro */
+--text3: #55556a  →  #8a8aa8;
+--accent: #8b5cf6 →  #9d84f8;
+```
+
+E para botões roxos com texto claro: o padrão virou `on-primary` com texto escuro (`#14102b`) sobre o accent — porque roxo vibrante com branco não alcança 4.5:1, mas com texto escuro alcança.
+
+Um detalhe que quase passou batido: `opacity` menor que 1 em texto derruba o contraste computado — o axe compõe a transparência contra o fundo, e o número que ele vê não é o que você vê. A troca foi de `opacity` para `color-mix()` ou hex sólido.
+
+## As armadilhas que quase sabotaram a campanha
+
+1. **Cloudflare immutable serve CSS velho.** Depois de corrigir os tokens, a auditoria oscilava entre zero e nove violações de forma imprevisível. A causa: o CDN servia o CSS antigo em cache imutável — a origem tinha o fix, o navegador recebia a versão velha. A solução foi cache-buster (`?v=a11y4`) nos 108 templates. **Regra:** mudou CSS atrás de CDN com immutable, troca o cache-buster no mesmo commit.
+
+2. **CSS de Vue com code-split não mora onde você espera.** A parte do front construída em Vue compila o CSS em chunks separados por página. O fix de tokens aplicado no `base.css` funcionava, mas um ajuste específico de uma página... estava no chunk daquela página (`McpToolsPage-*.css`). Mexer só no arquivo "principal" dá falso positivo na auditoria.
+
+3. **O overlay do runtime pode servir uma SPA vazia.** A SPA Vue é servida de um diretório que o image build nem sempre popula — sem os assets, as rotas novas respondem com a página em branco. O fix foi popular o volume com o build do front e sincronizar o overlay lendo de lá.
+
+4. **Jinja dentro de aria-label quebra em loop Alpine.** `{{ var }}` interpolado dentro de um atributo que o Alpine repete dispara erro de template não definido. O atributo precisa ser montado sem interpolação Jinja, ou a página inteira cai com 500.
+
+## Os números
+
+| Métrica | Valor |
+|---------|-------|
+| Rotas auditadas | 16 (9 públicas + 7 autenticadas) |
+| Violações no baseline | 60 nós (92 pontos de contraste consolidados) |
+| Violações após F2 + F2b | **0** (críticas e sérias em 16 rotas) |
+| Validação final | 3 rodadas consecutivas com zero contraste |
+| Correções de contraste | 92 nós → 0 |
+| Commits principais | e1fe689, 03b99d87, 745d30ec, 0866fe1d, 19b97c90 |
+
+## Aprendizados
+
+1. **Acessibilidade começa com uma auditoria automatizada.** Sem os números do axe, "está bonito" continua sendo o único critério — e os cegos e quem tem baixa visão continuam fora do produto.
+2. **Tokenizar cor salva a campanha inteira.** Corrigir 92 nós de contraste um a um é loucura; corrigir 5 tokens e ver 92 zerarem é engenharia.
+3. **CDN com cache imutável é o pior inimigo do deploy de CSS.** Teste sempre com cache-buster novo, senão você audita uma versão que o usuário nunca viu.
+4. **Ferramenta de auditoria é compasso afiado.** Ela mede a versão que ela carrega — se o HTML/CSS que ela recebe não é o que você commitou, o relatório vale zero.
+
+## O que vem a seguir
+
+Ainda aparecem como "best practice" (não bloqueiam A/AA): landmarks de região e ordem de headings. O plano tem fases F3-F5: rotor de teclado, API de navegação e testes com leitor de tela real. Sem violações A/AA restantes, mas o produto só estará verdadeiramente acessível quando alguém navegar ele só com teclado e ouvir o que um screen reader anuncia.
+
+<Terminal commands={[
+  { cmd: 'python audit_axe_f1.py --public', output: '9 rotas publicas · 44 nos → 0 violacoes A/AA' },
+  { cmd: 'python audit_axe_f1.py --auth', output: '7 rotas autenticadas · 16 nos → 0 violacoes' },
+  { cmd: 'git log --oneline -5', output: '0866fe1d a11y(F2c SPA Vue) · 19b97c90 a11y(F2c 2/2) · 745d30ec cache-buster v=a11y4' },
+]} />
