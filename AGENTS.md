@@ -5,31 +5,38 @@
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
 > **Status:** ✅ Operacional — 52 posts bilíngues (104 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
-> **Pipeline:** 📖 Narrative-First (desde 24/07) — auto-post diário desativado
+> **Pipeline:** 📖 Narrative-First (desde 24/07) — **2 posts/dia hidden às 09:00/09:30 → /ocultos** (ajuste 27/08; liberação manual do Samuel)
 
 ---
 
-## 🔴 TEST-LOOP OBRIGATÓRIO ANTES DE QUALQUER ENTREGA (18/08/2026 — Samuel)
+## 🔴 TEST-LOOP OBRIGATÓRIO ANTES DE QUALQUER ENTREGA (18/08 + v2 25/08/2026 — Samuel, GLOBAL)
 
 Regra permanente em TODOS os projetos. Antes de declarar pronta/fazer deploy de QUALQUER
 entrega (código, UI, pipeline, feature, fix), rodar SEMPRE o loop de testes com IA
 (skill `ai-test-loop`):
 
-1. **Testes** — unit + e2e + VRT reais do projeto (`test-loop-runner.py` ou o comando nativo)
-2. **Evidência visual** — screenshots DESKTOP + MOBILE (Playwright/VLM), regra obrigatória
+1. **Builder = opencode CLI** (corrige gaps de programação; NUNCA avalia o próprio trabalho — v2 25/08)
+2. **Testes reais** — unit + e2e + VRT do projeto (`test-loop-runner.py` ou o comando nativo)
+3. **Critic determinístico separado** — nota 0-100 com evidência real, contexto fresco
+4. **Reviewer opencode** — CONCORDO|DISCORDO (DISCORDO = reabrir loop) + nota revisor no PDF
+5. **Evidência visual** — screenshots DESKTOP + MOBILE (Playwright/VLM), regra obrigatória
    para mudanças de visual
-3. **Critic separado** — agente com contexto fresco dá nota 0-100
-4. **Vídeo de aprovação** = entregue ao FINAL (mensagem única no grupo), nunca no meio
-5. **Gate:** nota >= threshold; nota < 100 → reavaliar e corrigir (máx 8 rodadas);
-   nota documentada no relatório
+6. **Vídeo de aprovação** = entregue ao FINAL (mensagem única no grupo), nunca no meio
+7. **Gate:** nota >= threshold (UI=100, código=85); nota < threshold → reavaliar e corrigir
+   (máx 8 rodadas); nota documentada no relatório
+8. **PDF relatório** SEMPRE anexado via MEDIA:<caminho> (ou sendDocument + message_id confirmado)
 
 **ADICIONAR TESTES DE COMPLEMENTO:** se for preciso adicionar mais testes para melhorar
 o projeto ou cobrir outras áreas (novas features, áreas não cobertas, regressões),
 ISSO DEVE SER FEITO ANTES da entrega — nunca entregar deixando áreas sem cobertura quando
 dá pra cobrir.
 
-Sem evidência real (testes + screenshot + nota) NÃO é entrega completa.
+Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega completa.
 
+
+## Sessão 2026-08-27 — Pipeline 09:00/09:30 (fluxo hidden de manhã)
+- **feat(pipeline)**: crons 12h/16h → **09:00 (Post A) + 09:30 (Post B)** — os 2 posts do dia ficam hidden no /ocultos de manhã; Samuel libera no horário que quiser; Post B nunca repete o projeto do Post A
+- **feat(post)**: Estudos — "quando a documentação virou conhecimento" (PT+EN, capa AI) liberado 27/08
 
 ## Sessão 2026-08-25 (fim de dia) — Scrub histórico + rename slug espelho
 - **security**: reconstrói histórico sem o commit que expunha stack defensiva — árvore final idêntica a main, force push (`6c9e720`); rename slug capivara-espelho-douglas → capivara-espelho-backup PT+EN (`e599155`)
