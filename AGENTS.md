@@ -36,8 +36,10 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 ## Sessão 2026-08-28 — Recusar com nota no /ocultos + refazer pipeline
 - **feat(ocultos)**: botão **Recusar** com textarea de nota em cada card — POST `/api/recusar` (`api/recusar.mjs`, commit `5560caf`)
 - **feat(api)**: recusa persiste em 2 vias — GitHub Issue (label `refazer`) + arquivo `docs/recusas/<slug>.md` no repo; sanitização + rate limit 3/30s
-- **feat(ops)**: watcher `lifelog-recusas-watch.py` (cron `03cbac7f44a2`, 15min, silencioso se nada) avisa o grupo quando Samuel recusa
+- **feat(ops)**: watcher → **cron agente** `081b4d301432` "LifeLog Refazer Auto" (*/15, monitor_script `lifelog-recusas-watch.py` com estado persistente). Detecta recusa NOVA → **refaz sozinho** (PT+EN, capa, build, commit, push) → fecha issue → post de volta no /ocultos. Samuel não precisa avisar nada.
+- **feat(ui)**: layout do /ocultos melhorado (botão Recusar + form de nota)
 - **fix(pipeline)**: Post B de 28/08 não rodou — next_run bugou para 29/08 pós-mudança de schedule; disparado manualmente
+- **refactor(posts)**: refaz Capivara (remove LEVE LAVANDA) e Segurança (mais abstrato) conforme recusa do Samuel — commit `3c18217`
 
 ## Sessão 2026-08-27 — Pipeline 09:00/09:30 (fluxo hidden de manhã)
 - **feat(pipeline)**: crons 12h/16h → **09:00 (Post A) + 09:30 (Post B)** — os 2 posts do dia ficam hidden no /ocultos de manhã; Samuel libera no horário que quiser; Post B nunca repete o projeto do Post A
