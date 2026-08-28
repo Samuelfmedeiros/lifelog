@@ -103,6 +103,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           '<h3 class="font-bold mt-1" style="color: var(--color-heading)">' + esc(entry.title) + '</h3>' +
         '</div>' +
         '<button class="release-btn px-4 py-1.5 rounded-lg text-sm font-semibold shrink-0" data-path="' + esc(entry.path) + '" style="background: var(--color-accent); color: #000">Liberar</button>' +
+        '<button class="recuse-btn px-4 py-1.5 rounded-lg text-sm font-semibold shrink-0" data-path="' + esc(entry.path) + '" style="background: transparent; color: #ff6b6b; border: 1px solid #ff6b6b; margin-left: 8px">Recusar</button>' +
+      '</div>' +
+      '<div class="recuse-form hidden mt-3 p-3 rounded-lg" style="background: rgba(255,107,107,.08); border: 1px solid #ff6b6b">' +
+        '<label class="block text-sm mb-1" style="color: var(--color-text)">Nota de recusa — o que quer que mude ou refaça?</label>' +
+        '<textarea class="recuse-note w-full px-3 py-2 rounded-lg border text-sm" rows="3" maxlength="2000" placeholder="Ex.: o tema nao combina, refaca com foco em X; o tom esta generico demais..." style="background: var(--color-bg); color: var(--color-text); border-color: var(--color-border)"></textarea>' +
+        '<div class="flex gap-2 mt-2">' +
+          '<button class="recuse-send px-4 py-1.5 rounded-lg text-sm font-semibold" style="background: #ff6b6b; color: #000">Enviar recusa</button>' +
+          '<button class="recuse-cancel px-3 py-1.5 rounded-lg text-sm" style="border: 1px solid var(--color-border); color: var(--color-text-muted)">Cancelar</button>' +
+        '</div>' +
+        '<p class="recuse-status text-xs mt-2 hidden"></p>' +
       '</div>' +
         '<details class="mt-3">' +
           '<summary class="text-sm cursor-pointer" style="color: var(--color-accent)">Ver preview renderizado (PT / EN)</summary>' +
@@ -148,6 +158,47 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         statusEl.textContent = 'Erro: ' + (r.data && r.data.error ? r.data.error : r.status);
         statusEl.style.color = '#ff6b6b';
         btn.disabled = false;
+      }
+    });
+
+    // Recusa: abre/fecha form e envia nota
+    var recuseBtn = el.querySelector('.recuse-btn');
+    var recuseForm = el.querySelector('.recuse-form');
+    var recuseNote = el.querySelector('.recuse-note');
+    var recuseSend = el.querySelector('.recuse-send');
+    var recuseCancel = el.querySelector('.recuse-cancel');
+    var recuseStatus = el.querySelector('.recuse-status');
+
+    recuseBtn.addEventListener('click', function () {
+      recuseForm.classList.toggle('hidden');
+    });
+    recuseCancel.addEventListener('click', function () {
+      recuseForm.classList.add('hidden');
+      recuseStatus.classList.add('hidden');
+    });
+    recuseSend.addEventListener('click', async function () {
+      var nota = recuseNote.value.trim();
+      if (!nota) {
+        recuseStatus.textContent = 'Escreva a nota antes de enviar.';
+        recuseStatus.style.color = '#ff6b6b';
+        recuseStatus.classList.remove('hidden');
+        return;
+      }
+      recuseSend.disabled = true;
+      recuseStatus.textContent = 'Enviando recusa...';
+      recuseStatus.style.color = 'var(--color-text-muted)';
+      recuseStatus.classList.remove('hidden');
+      var r = await api('/api/recusar', { path: recuseBtn.dataset.path, nota: nota });
+      if (r.status === 200) {
+        recuseStatus.textContent = 'Recusa registrada. O pipeline refaz o post em breve (~15min).';
+        recuseStatus.style.color = '#ff6b6b';
+        recuseSend.textContent = 'Recusado';
+        recuseNote.disabled = true;
+        recuseCancel.style.display = 'none';
+      } else {
+        recuseStatus.textContent = 'Erro: ' + (r.data && r.data.error ? r.data.error : r.status);
+        recuseStatus.style.color = '#ff6b6b';
+        recuseSend.disabled = false;
       }
     });
     return el;
