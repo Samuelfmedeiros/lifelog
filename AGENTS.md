@@ -38,6 +38,8 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 - **feat(pipeline)**: crons 12h/16h → **09:00 (Post A) + 09:30 (Post B)** — os 2 posts do dia ficam hidden no /ocultos de manhã; Samuel libera no horário que quiser; Post B nunca repete o projeto do Post A
 - **feat(post)**: Estudos — "quando a documentação virou conhecimento" (PT+EN, capa AI) liberado 27/08
 
+- **release(post)**: liberados 27/08 — estudos/"quando a documentação virou conhecimento" (`4722285`/`2723469`) e arachne/"quando o scraper ficou acessível" (`43e3217`/`d7e8ec2`), capa AI
+- **docs(agents)**: pipeline 09:00/09:30 documentado (`d6d94b2`) — 7 commits no dia · push origin OK · HEAD: `d6d94b2`
 ## Sessão 2026-08-25 (fim de dia) — Scrub histórico + rename slug espelho
 - **security**: reconstrói histórico sem o commit que expunha stack defensiva — árvore final idêntica a main, force push (`6c9e720`); rename slug capivara-espelho-douglas → capivara-espelho-backup PT+EN (`e599155`)
 - **qa**: registra audit bug-hunter 2026-08-25 — 6/6 rotas ok (`391d15c`)

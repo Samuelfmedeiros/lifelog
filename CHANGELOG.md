@@ -1,6 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
 
+
+## [2026-08-27] — Pipeline 09:00/09:30 + posts liberados (estudos, arachne a11y)
+- **feat(pipeline)**: crons 12h/16h → 09:00 (Post A) + 09:30 (Post B), 2 posts/dia hidden no /ocultos p/ liberação manual
+- **release(post)**: estudos — quando a documentação virou conhecimento (`4722285`/`2723469`) + arachne — 92 violações a zero: campanha a11y F1-F2c (`43e3217`/`d7e8ec2`), PT+EN, capa AI
+- 7 commits · push origin OK · HEAD: `d6d94b2`
+
 ## [2026-08-25] — Scrub histórico + rename slug espelho
 
 - **security**: reconstrói histórico sem o commit que expunha stack defensiva — árvore final idêntica a main, force push (`6c9e720`); rename slug capivara-espelho-douglas → capivara-espelho-backup PT+EN (`e599155`)
