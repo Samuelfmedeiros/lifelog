@@ -13,10 +13,10 @@ const REPO = 'lifelog';
 const BRANCH = process.env.GH_BRANCH || 'main';
 const GITHUB_API = 'https://api.github.com';
 
-const SLUG_RE = /^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
-const MAX_NOTA = 2000;
+export const SLUG_RE = /^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/;
+export const MAX_NOTA = 2000;
 
-function secretOk(req) {
+export function secretOk(req) {
   const ADMIN_SECRET = process.env.ADMIN_SECRET;
   if (!ADMIN_SECRET) return { ok: false, error: 'ADMIN_SECRET nao configurado (env da Vercel)' };
   const auth = req.headers['authorization'] || '';
@@ -39,7 +39,7 @@ async function readBody(req) {
 }
 
 // Sanitiza a nota: escapa HTML, remove quebra de frontmatter e limita tamanho
-function sanitizeNota(text) {
+export function sanitizeNota(text) {
   let s = String(text || '').trim();
   // Limita tamanho
   s = s.slice(0, MAX_NOTA);
@@ -52,7 +52,7 @@ function sanitizeNota(text) {
   return s;
 }
 
-function slugFromPath(p) {
+export function slugFromPath(p) {
   const raw = String(p || '').trim();
   if (!raw) return '';
   const noExt = raw.replace(/\.mdx?$/, '').trim();
@@ -168,7 +168,7 @@ const rateMap = new Map();
 const RATE_WINDOW = 30_000; // 30s
 const RATE_MAX = 3;
 
-function checkRate(ip) {
+export function checkRate(ip) {
   const now = Date.now();
   const entry = rateMap.get(ip) || { count: 0, resetAt: now + RATE_WINDOW };
   if (now > entry.resetAt) {
