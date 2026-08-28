@@ -1,0 +1,138 @@
+---
+title: "Capivara — o painel que passou a ver o ecossistema inteiro"
+description: "Antes, o dashboard carregava seção por seção e eu ainda montava o quadro do ecossistema na cabeça. Nasceu o Executive Hub: um endpoint que agrega projetos, backups, alertas e infra em uma única chamada, com falha silenciosa e zero SSRF."
+date: 2026-08-28 09:30:00 -03:00
+pubDate: 2026-08-28 09:30:00 -03:00
+project: capivara
+tags: ["capivara", "dashboard", "executive", "fastapi", "react", "observabilidade"]
+cover: /covers/capivara-o-painel-que-passou-a-ver-tudo.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O painel que pedia pra eu montar o quebra-cabeça
+
+O Capivara sempre foi o hub do ecossistema — a home mostrava saúde dos serviços, portfólio em produção, backups, alertas. Mas tinha um problema sutil: **cada informação chegava de um canto**. O ServiceHealthBar consultava o health agregado, a seção do portfólio tinha seu próprio status, os backups tinham o deles, e os alertas de cron viviam em outro lugar.
+
+Funcionava. Mas eu, abrindo o painel de manhã, fazia o mesmo ritual: olhar o health, olhar o status do portfólio, verificar backup, checar se algum cron tinha quebrado. **Eu era o agregador.** O painel me dava as peças e eu montava o quadro na cabeça.
+
+Aí veio a pergunta que reescreveu a home: *por que o painel não monta o quadro sozinho?*
+
+## A ideia: um endpoint que vê tudo
+
+Em vez de espalhar mais chamadas no frontend, a resposta foi esconder a complexidade **atrás de uma única rota** no backend: `/api/executive/overview`. Ela agrega em uma chamada só:
+
+- **Projetos** — o status de cada serviço do ecossistema (online/offline, com o erro curto quando cai)
+- **Backups** — R2 e D1, com a idade do último backup em horas
+- **Alertas** — crons do scheduler que terminaram com erro nas últimas 48h
+- **Infra** — load e RAM do host
+
+A peça central do backend é um `_fetch` que **nunca deixa uma checagem derrubar a resposta inteira**:
+
+```python
+_TIMEOUT = 3.0
+
+def _fetch(url: str, timeout: float = _TIMEOUT, parse_json: bool = False):
+    """GET com timeout, retorna (status_code, dados|erro). Graceful."""
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
+            r = c.get(url)
+            if parse_json:
+                try:
+                    return r.status_code, r.json()
+                except ValueError:
+                    return r.status_code, None
+            return r.status_code, None
+    except httpx.RequestError as e:
+        return 0, str(e)
+```
+
+Cada fonte vira uma função pequena com sua lógica: o projeto que usa um banco local lê só os últimos jobs em modo somente leitura; o serviço de mídia expõe versão e nome via endpoint público; os sites são checados por código de resposta. Tudo com timeout curto e falha que vira `online: false` com um erro curto — **nunca uma exceção no meio da resposta**.
+
+## Segurança por construção, não por revisão
+
+Duas decisões que me deixaram tranquilo:
+
+1. **URLs 100% fixas no código.** Não existe um único parâmetro vindo do usuário que vire URL. Zero input do cliente na montagem das checagens — **SSRF é impossível por construção**, não porque eu lembrei de sanitizar.
+2. **A resposta só devolve o mínimo.** Booleans, strings curtas de erro, contagens. Nada de token, nada de chave, nada de resposta crua de terceiros passando pelo Capivara.
+
+```python
+@router.get("/overview")
+def executive_overview(_=Depends(get_current_user)):
+    """SuperDashboard: projetos + backups + alertas + infra num retorno só."""
+    projects = {
+        "arachne": _check_arachne(),
+        "jellyfin": _check_jellyfin(),
+        "leve_lavanda": _check_site(LEVE_LAVANDA, ok_statuses=(200, 302, 403)),
+        "portifolio": _check_site(PORTIFOLIO),
+        "lifelog": _check_site(LIFELOG),
+        "capivara": {"online": True, "status": 200, "rag": _check_rag()},
+    }
+    return {
+        "projects": projects,
+        "backups": {"r2": _check_r2_backup(), "d1": _check_d1_sync()},
+        "alerts": _check_alerts(),
+        "infra": _check_infra(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+```
+
+Os testes do backend garantem o contrato: a rota exige auth (401 sem login), devolve exatamente o shape esperado com as 6 chaves de projeto, e se comporta com todas as fontes mockadas falhando ou respondendo.
+
+## O frontend: hero, KPI e a hierarquia
+
+No frontend, a home foi reescrita com uma hierarquia clara: **hero → ações → KPI strip → health bar → grid**.
+
+O `DashboardHero` é a primeira coisa que eu vejo: saudação, data por extenso em pt-BR, e um resumo de um relance — `6/6 serviços`, `2/2 backups`, e um alerta vermelho quando algum cron quebrou. Não preciso procurar nada; a resposta está na primeira tela.
+
+Logo abaixo, o `KpiStrip`: quatro métricas executivas (projetos online, backups ok, alertas, RAM) com tom de cor por estado — sucesso, aviso, perigo ou neutro. O `tone` é calculado no dado, não hardcoded:
+
+```tsx
+export function KpiStrip({ items }: Props) {
+  const toneClass: Record<Kpi['tone'], string> = {
+    success: 'text-[var(--success)]',
+    warning: 'text-[var(--warning)]',
+    danger: 'text-[var(--danger)]',
+    neutral: 'text-[var(--text-primary)]',
+  }
+  // ...
+}
+```
+
+E a `ExecutiveSection` (a seção "Ecossistema") ganhou uma otimização esperta: ela aceita `initialData`, então o overview é carregado **uma única vez** no Dashboard e passado pra baixo — em vez de a seção abrir e disparar outra chamada. Se você já tem o dado, por que buscar de novo?
+
+## O que aprendi
+
+1. **Agregação server-side simplifica o cliente.** Em vez de o frontend orquestrar N chamadas e montar o quadro, o backend entrega a foto pronta. O cliente fica burro, o contrato fica explícito, e a lógica de falha fica num lugar só.
+
+2. **Falha graceful é um contrato, não um detalhe.** Cada checagem tem timeout e devolve um estado — `null` quando não respondeu, erro curto quando caiu. A resposta nunca quebra no meio. Isso transforma "deu pau no painel" em "o painel me disse o que não respondeu".
+
+3. **SSRF se elimina na arquitetura, não no filtro.** Quando as URLs são fixas no código e o cliente não participa da montagem, não existe vetor pra explorar. Segurança por construção é mais forte que qualquer validação pontual.
+
+4. **Dados já carregados não se buscam duas vezes.** O `initialData` na seção elimina uma chamada redundante e deixa a home mais rápida. Pequeno, mas é o tipo de coisa que o usuário sente como "abre rápido".
+
+## Métricas
+
+| Item | Valor |
+|------|-------|
+| Arquivos tocados | 5 |
+| Linhas adicionadas | +228 |
+| Linhas removidas | -15 |
+| Testes novos (frontend) | 9 |
+| Suite frontend | 289/289 vitest |
+| Suite backend | 179/179 pytest |
+| Build PWA | ok |
+
+<Terminal
+  commands={[
+    { cmd: 'git log --oneline -1 3a5aed4', label: 'Commit do Executive Hub' },
+    { cmd: 'git show 3a5aed4 --stat', label: 'Arquivos tocados' },
+    { cmd: 'pnpm vitest run dashboard-hero', label: '9 testes do hero + KPI' },
+  ]}
+/>
+
+## O que vem a seguir
+
+O Executive Hub é a base. Agora que o painel "vê" o ecossistema, o próximo passo natural é **agir** sobre o que ele vê: alertas mais descritivos, uma timeline do que mudou entre ontem e hoje, e talvez um resumo diário gerado. O quadro já está montado na tela — agora é transformar ele em decisão.

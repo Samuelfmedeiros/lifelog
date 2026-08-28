@@ -1,0 +1,139 @@
+---
+title: "Capivara — the dashboard that started seeing the whole ecosystem"
+description: "The home dashboard used to load section by section, and I still had to assemble the big picture in my head. Enter the Executive Hub: one endpoint aggregating projects, backups, alerts and infra in a single call, with graceful failure and zero SSRF."
+date: 2026-08-28 09:30:00 -03:00
+pubDate: 2026-08-28 09:30:00 -03:00
+project: capivara
+tags: ["capivara", "dashboard", "executive", "fastapi", "react", "observability"]
+cover: /covers/capivara-o-painel-que-passou-a-ver-tudo.webp
+featured: false
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The dashboard that asked me to assemble the puzzle
+
+Capivara has always been the ecosystem hub — the home page showed service health, portfolio in production, backups, alerts. But it had a subtle problem: **each piece of information came from a different corner**. The health bar queried an aggregated health endpoint, the portfolio section had its own status, backups had theirs, and cron alerts lived somewhere else.
+
+It worked. But when I opened the dashboard in the morning, I did the same ritual: check health, check portfolio status, verify backups, see if any cron had broken. **I was the aggregator.** The dashboard handed me the pieces and I assembled the picture in my head.
+
+Then came the question that rewrote the home page: *why doesn't the dashboard assemble the picture itself?*
+
+## The idea: one endpoint that sees everything
+
+Instead of spreading more calls across the frontend, the answer was to hide the complexity **behind a single route** on the backend: `/api/executive/overview`. It aggregates in one call:
+
+- **Projects** — the status of every service in the ecosystem (online/offline, with a short error when it drops)
+- **Backups** — R2 and D1, with the age of the last backup in hours
+- **Alerts** — scheduler jobs that ended with an error in the last 48h
+- **Infra** — host load and RAM
+
+The core piece of the backend is a `_fetch` that **never lets one check take down the whole response**:
+
+```python
+_TIMEOUT = 3.0
+
+def _fetch(url: str, timeout: float = _TIMEOUT, parse_json: bool = False):
+    """GET with timeout, returns (status_code, data|error). Graceful."""
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as c:
+            r = c.get(url)
+            if parse_json:
+                try:
+                    return r.status_code, r.json()
+                except ValueError:
+                    return r.status_code, None
+            return r.status_code, None
+    except httpx.RequestError as e:
+        return 0, str(e)
+```
+
+Each source becomes a small function with its own logic: the project that uses a local database reads only the latest jobs in read-only mode; the media service exposes version and name via a public endpoint; sites are checked by response code. Everything with a short timeout and failure that turns into `online: false` with a short error — **never an exception in the middle of the response**.
+
+## Security by construction, not by review
+
+Two decisions that put me at ease:
+
+1. **URLs 100% hardcoded.** There is not a single user-supplied parameter that becomes a URL. Zero client input in building the checks — **SSRF is impossible by construction**, not because I remembered to sanitize.
+2. **The response only returns the minimum.** Booleans, short error strings, counts. No tokens, no keys, no raw third-party response passing through Capivara.
+
+```python
+@router.get("/overview")
+def executive_overview(_=Depends(get_current_user)):
+    """SuperDashboard: projects + backups + alerts + infra in one return."""
+    projects = {
+        "arachne": _check_arachne(),
+        "jellyfin": _check_jellyfin(),
+        "leve_lavanda": _check_site(LEVE_LAVANDA, ok_statuses=(200, 302, 403)),
+        "portifolio": _check_site(PORTIFOLIO),
+        "lifelog": _check_site(LIFELOG),
+        "capivara": {"online": True, "status": 200, "rag": _check_rag()},
+    }
+    return {
+        "projects": projects,
+        "backups": {"r2": _check_r2_backup(), "d1": _check_d1_sync()},
+        "alerts": _check_alerts(),
+        "infra": _check_infra(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+```
+
+The backend tests guarantee the contract: the route requires auth (401 without login), returns exactly the expected shape with the 6 project keys, and behaves when all mocked sources fail or respond.
+
+## The frontend: hero, KPI and the hierarchy
+
+On the frontend, the home page was rewritten with a clear hierarchy: **hero → actions → KPI strip → health bar → grid**.
+
+`DashboardHero` is the first thing I see: greeting, full date in pt-BR, and a summary at a glance — `6/6 services`, `2/2 backups`, and a red alert when a cron broke. I don't have to look for anything; the answer is on the first screen.
+
+Right below, `KpiStrip`: four executive metrics (online projects, backups ok, alerts, RAM) with a tone color per state — success, warning, danger or neutral. The `tone` is computed from the data, not hardcoded:
+
+```tsx
+export function KpiStrip({ items }: Props) {
+  const toneClass: Record<Kpi['tone'], string> = {
+    success: 'text-[var(--success)]',
+    warning: 'text-[var(--warning)]',
+    danger: 'text-[var(--danger)]',
+    neutral: 'text-[var(--text-primary)]',
+  }
+  // ...
+}
+```
+
+And `ExecutiveSection` (the "Ecosystem" section) got a clever optimization: it accepts `initialData`, so the overview is loaded **once** in the Dashboard and passed down — instead of the section opening and firing another request. If you already have the data, why fetch it again?
+
+## What I learned
+
+1. **Server-side aggregation simplifies the client.** Instead of the frontend orchestrating N calls and assembling the picture, the backend delivers the ready snapshot. The client stays dumb, the contract stays explicit, and the failure logic lives in one place.
+
+2. **Graceful failure is a contract, not a detail.** Every check has a timeout and returns a state — `null` when it didn't respond, a short error when it dropped. The response never breaks mid-way. That turns "the dashboard broke" into "the dashboard told me what didn't respond".
+
+3. **SSRF is eliminated in the architecture, not in a filter.** When URLs are hardcoded and the client plays no part in building them, there is no vector to exploit. Security by construction beats any pointwise validation.
+
+4. **Already-loaded data is not fetched twice.** The `initialData` on the section removes a redundant call and makes the home faster. Small, but the kind of thing users feel as "it opens fast".
+
+## Metrics
+
+| Item | Value |
+|------|-------|
+| Files touched | 5 |
+| Lines added | +228 |
+| Lines removed | -15 |
+| New tests (frontend) | 9 |
+| Frontend suite | 289/289 vitest |
+| Backend suite | 179/179 pytest |
+| PWA build | ok |
+
+<Terminal
+  commands={[
+    { cmd: 'git log --oneline -1 3a5aed4', label: 'Executive Hub commit' },
+    { cmd: 'git show 3a5aed4 --stat', label: 'Files touched' },
+    { cmd: 'pnpm vitest run dashboard-hero', label: '9 hero + KPI tests' },
+  ]}
+/>
+
+## What's next
+
+The Executive Hub is the foundation. Now that the dashboard "sees" the ecosystem, the natural next step is to **act** on what it sees: more descriptive alerts, a timeline of what changed between yesterday and today, and maybe a generated daily summary. The picture is already on screen — now it's about turning it into decisions.
