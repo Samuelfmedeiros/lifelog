@@ -35,12 +35,13 @@ E havia o detalhe do template: o nome, o email e a mensagem que o visitante digi
 
 ### 1. Rate limit — a porta que se fecha
 
-Cada endpoint ganhou um limitador de requisições em memória: uma janela de um minuto, com um teto de cinco requisições por IP. Depois disso, responde 429 e manda embora. É o suficiente pra um humano baixar o currículo ou mandar uma mensagem — e o suficiente pra travar um bot.
+Cada endpoint ganhou um limitador de requisições em memória: uma janela curta, com um teto baixo por IP. Depois disso, responde 429 e manda embora. É o suficiente pra um humano baixar o currículo ou mandar uma mensagem — e o suficiente pra travar um bot.
 
 ```ts
+// janela de tempo curta + teto baixo de requisições por IP
 const rateLimit = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
-const RATE_LIMIT_MAX = 5; // máx por janela
+const RATE_LIMIT_WINDOW = JANELA; // ms
+const RATE_LIMIT_MAX = TETO; // máx por janela
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -54,9 +55,9 @@ function checkRateLimit(ip: string): boolean {
 }
 ```
 
-Detalhe que evita vazamento de memória: um `setInterval` de limpeza roda a cada cinco minutos e remove entradas expiradas. Um Map que nunca limpa é um leak disfarçado de proteção.
+Detalhe que evita vazamento de memória: um `setInterval` de limpeza roda periodicamente e remove entradas expiradas. Um Map que nunca limpa é um leak disfarçado de proteção.
 
-O IP vem de uma cadeia de headers de proxy (`x-forwarded-for`, `x-real-ip`, e o específico da plataforma de deploy), com fallback pra `unknown`. Não é à prova de spoofing sofisticado, mas é o suficiente contra o atacante que temos de verdade: o bot preguiçoso.
+O IP vem de uma cadeia de headers de proxy, com fallback pra `unknown`. Não é à prova de spoofing sofisticado, mas é o suficiente contra o atacante que temos de verdade: o bot preguiçoso.
 
 ### 2. Escape de HTML — a mensagem que não leva código
 
@@ -80,11 +81,11 @@ E cada valor interpolado no template do email — nome, email, mensagem, IP, ref
 E pra quem encontra uma falha de verdade, criei o arquivo que a indústria padronizou pra isso: `/.well-known/security.txt`. É o "se achou algo, fale comigo" do site — com o email de contato, a data de expiração, os idiomas preferidos e o link da política.
 
 ```
-Contact: mailto:meu-email
-Expires: 2027-08-28T00:00:00.000Z
+Contact: mailto:seu-email
+Expires: (data futura)
 Preferred-Languages: pt, en
-Canonical: https://samuelmedeiros.vercel.app/.well-known/security.txt
-Policy: https://samuelmedeiros.vercel.app/termos
+Canonical: (url do seu site)/.well-known/security.txt
+Policy: (url dos seus termos)
 ```
 
 É uma convenção simples: pesquisadores de segurança automatizados varrem a internet atrás desse arquivo pra saber como reportar um problema em cada domínio. Não ter o arquivo não impede um atacante — mas ter ele diz aos bons que existe um caminho de reporte.
@@ -94,7 +95,7 @@ Policy: https://samuelmedeiros.vercel.app/termos
 O passo final foi transformar tudo isso em **checklist que roda sozinha**. O portfólio ganhou dois níveis de vigilância:
 
 - **No CI, a cada push:** o workflow de segurança do repositório roda gitleaks (segredos no histórico do git), bandit (Python) e opengrep (padrões inseguros multi-linguagem) — o mesmo trio da caça ativa, agora acoplado ao deploy. Falhou, não entrega.
-- **Em produção, semanalmente:** um scanner roda contra a URL pública e verifica, um por um: headers de segurança (HSTS, CSP, proteção de conteúdo, frame, referrer), presença do security.txt, tentativa de acessar arquivos que não deveriam existir (variáveis de ambiente, config do git, config de deploy), o rate limit dos dois endpoints (manda seis requisições e espera a sexta voltar 429), tentativa de path traversal e a validade do certificado TLS.
+- **Em produção, semanalmente:** um scanner roda contra a URL pública e verifica, um por um: headers de segurança, presença do security.txt, tentativa de acessar arquivos que não deveriam existir, o rate limit dos endpoints (manda requisições até bater o bloqueio e confirma o 429), tentativa de path traversal e a validade do certificado TLS.
 
 A regra de ouro do scanner: **silêncio é feature**. Se está tudo certo, ele não diz nada. Ele só fala quando acha um problema — e aí entrega a lista exata do que está errado, pra correção ser direta.
 
@@ -116,8 +117,8 @@ A porta da frente agora tem sentinela: fecha quando estranho bate demais, entreg
 
 <Terminal
   commands={[
-    { label: 'rate', cmd: 'curl -s -o /dev/null -w "%{http_code}" -X POST https://samuelmedeiros.vercel.app/api/download-cv -d "{}" -H "Content-Type: application/json"' },
-    { label: 'well-known', cmd: 'curl -s https://samuelmedeiros.vercel.app/.well-known/security.txt' },
+    { label: 'rate', cmd: 'curl -s -o /dev/null -w "%{http_code}" -X POST <seu-site>/api/<endpoint> -d "{}" -H "Content-Type: application/json"' },
+    { label: 'well-known', cmd: 'curl -s <seu-site>/.well-known/security.txt' },
     { label: 'scan', cmd: 'python3 security-scanner.py' },
     { label: 'silêncio', cmd: '# stdout vazio = está tudo certo' },
   ]}

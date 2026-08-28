@@ -35,12 +35,13 @@ And there was the template detail: the name, email, and message typed by the vis
 
 ### 1. Rate limiting — the door that closes
 
-Each endpoint got an in-memory limiter: a one-minute window with a ceiling of five requests per IP. After that, it answers 429 and sends them away. Enough for a human to download a resume or send a message — and enough to choke a bot.
+Each endpoint got an in-memory limiter: a short window with a low ceiling per IP. After that, it answers 429 and sends them away. Enough for a human to download a resume or send a message — and enough to choke a bot.
 
 ```ts
+// short window + low ceiling of requests per IP
 const rateLimit = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW = 60_000; // 1 minute
-const RATE_LIMIT_MAX = 5; // max per window
+const RATE_LIMIT_WINDOW = WINDOW; // ms
+const RATE_LIMIT_MAX = CEILING; // max per window
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -54,9 +55,9 @@ function checkRateLimit(ip: string): boolean {
 }
 ```
 
-One detail that avoids a memory leak: a cleanup `setInterval` runs every five minutes and removes expired entries. A Map that never cleans up is a leak disguised as protection.
+One detail that avoids a memory leak: a cleanup `setInterval` runs periodically and removes expired entries. A Map that never cleans up is a leak disguised as protection.
 
-The IP comes from a chain of proxy headers (`x-forwarded-for`, `x-real-ip`, and the deploy platform's own), falling back to `unknown`. Not bulletproof against sophisticated spoofing, but enough against the attacker we actually have: the lazy bot.
+The IP comes from a chain of proxy headers, falling back to `unknown`. Not bulletproof against sophisticated spoofing, but enough against the attacker we actually have: the lazy bot.
 
 ### 2. HTML escaping — the message that can't carry code
 
@@ -80,11 +81,11 @@ And every value interpolated into the email template — name, email, message, I
 And for someone who finds a real flaw, I created the file the industry standardized for that: `/.well-known/security.txt`. It's the site's "if you found something, talk to me" — with the contact email, the expiration date, the preferred languages, and the policy link.
 
 ```
-Contact: mailto:my-email
-Expires: 2027-08-28T00:00:00.000Z
+Contact: mailto:your-email
+Expires: (a future date)
 Preferred-Languages: pt, en
-Canonical: https://samuelmedeiros.vercel.app/.well-known/security.txt
-Policy: https://samuelmedeiros.vercel.app/termos
+Canonical: (your site's url)/.well-known/security.txt
+Policy: (your terms url)
 ```
 
 A simple convention: automated security researchers crawl the internet looking for this file to learn how to report a problem on each domain. Not having the file doesn't stop an attacker — but having it tells the good guys there's a reporting path.
@@ -94,7 +95,7 @@ A simple convention: automated security researchers crawl the internet looking f
 The final step was turning all of this into a **checklist that runs by itself**. The portfolio gained two levels of vigilance:
 
 - **In CI, on every push:** the repository's security workflow runs gitleaks (secrets in git history), bandit (Python), and opengrep (insecure multi-language patterns) — the same trio from active hunting, now coupled to the deploy. Fail, and it doesn't ship.
-- **In production, weekly:** a scanner hits the public URL and checks, one by one: security headers (HSTS, CSP, content-type protection, frame, referrer), the presence of security.txt, attempts to reach files that shouldn't exist (environment files, git config, deploy config), the rate limit on both endpoints (sends six requests and expects the sixth to come back 429), a path traversal attempt, and TLS certificate validity.
+- **In production, weekly:** a scanner hits the public URL and checks, one by one: security headers, the presence of security.txt, attempts to reach files that shouldn't exist, the rate limit on both endpoints (sends requests until it hits the block and confirms the 429), a path traversal attempt, and TLS certificate validity.
 
 The scanner's golden rule: **silence is a feature.** If everything is fine, it says nothing. It only speaks when it finds a problem — and then it delivers the exact list of what's wrong, so the fix is direct.
 
@@ -116,8 +117,8 @@ The front door now has a sentry: it closes when a stranger knocks too much, deli
 
 <Terminal
   commands={[
-    { label: 'rate', cmd: 'curl -s -o /dev/null -w "%{http_code}" -X POST https://samuelmedeiros.vercel.app/api/download-cv -d "{}" -H "Content-Type: application/json"' },
-    { label: 'well-known', cmd: 'curl -s https://samuelmedeiros.vercel.app/.well-known/security.txt' },
+    { label: 'rate', cmd: 'curl -s -o /dev/null -w "%{http_code}" -X POST <your-site>/api/<endpoint> -d "{}" -H "Content-Type: application/json"' },
+    { label: 'well-known', cmd: 'curl -s <your-site>/.well-known/security.txt' },
     { label: 'scan', cmd: 'python3 security-scanner.py' },
     { label: 'silence', cmd: '# empty stdout = all good' },
   ]}

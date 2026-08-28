@@ -66,7 +66,7 @@ def executive_overview(_=Depends(get_current_user)):
     projects = {
         "arachne": _check_arachne(),
         "jellyfin": _check_jellyfin(),
-        "leve_lavanda": _check_site(LEVE_LAVANDA, ok_statuses=(200, 302, 403)),
+        # ... other ecosystem projects ...
         "portifolio": _check_site(PORTIFOLIO),
         "lifelog": _check_site(LIFELOG),
         "capivara": {"online": True, "status": 200, "rag": _check_rag()},
