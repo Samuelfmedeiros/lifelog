@@ -1,0 +1,8 @@
+# Gitleaks allowlist — LifeLog
+# 28/08/2026: `.astro/data-store.json` contém apenas digests hex de conteúdo
+# (frontmatter de posts), não tokens reais. A regra generic-api-key é ruidosa
+# com strings hex de 16+ chars.
+[allowlist]
+paths = [
+  ".astro/data-store.json",
+]
