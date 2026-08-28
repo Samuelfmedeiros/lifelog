@@ -1,0 +1,124 @@
+---
+title: "A sentinela do formulário — quando o portfólio aprendeu a se defender sozinho"
+description: "Todo site público tem uma porta da frente: o formulário de contato e o download do currículo. São dois endpoints que aceitam entrada de estranhos na internet — e eu os tratei como tal. Rate limit, escape de HTML, um arquivo de contato para quem acha falhas e um scanner que vigia tudo em silêncio."
+date: 2026-08-28 10:00:00 -03:00
+pubDate: 2026-08-28 10:00:00 -03:00
+project: seguranca
+tags: [seguranca, portfolio, rate-limit, xss, security-txt, automacao, hardening]
+cover: /covers/seguranca-quando-o-portfolio-ganhou-uma-sentinela.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A porta da frente do meu site
+
+Todo projeto tem uma superfície que todo mundo vê e quase ninguém blinda: o site público. No meu caso, o portfólio. Ele é estático, bonito, rápido — e tem duas portas de entrada abertas pra internet inteira:
+
+1. O formulário de contato, que recebe nome, email e mensagem de qualquer pessoa.
+2. O download do currículo, que pede consentimento e aceita nome e email antes de entregar o PDF.
+
+São dois endpoints HTTP que aceitam entrada de estranhos. Ainda por cima, cada um deles dispara notificações: um email formatado em HTML, uma mensagem num canal, um registro num banco. Ou seja — input de desconhecido + template montado com esse input. É o cenário clássico onde nascem duas famílias de bug: abuso (spam, flood de requisições) e injeção (o famoso HTML/script entrando no template).
+
+O site é estático, mas esses dois endpoints rodam funções de servidor. Foi ali que o portfólio deixou de ser só vitrine e virou alvo em potencial.
+
+## O problema: ninguém olhava a porta da frente
+
+Eu já tinha a caça ativa nos sete projetos do ecossistema: ZAP, gitleaks, bandit, opengrep rodando em CI. Mas a caça ativa olha o código. E aqui o problema era o comportamento da superfície pública: **quem está batendo na porta, e o que essa porta faz com o que recebe?**
+
+O formulário de contato, por exemplo: qualquer bot da internet podia mandar mil mensagens em um minuto. Cada uma virava um email bonito na minha caixa de entrada. Não é um vazamento, não é um RCE — é pior, porque não parece urgente: é ruído. E ruído constante destrói a utilidade de um alerta.
+
+E havia o detalhe do template: o nome, o email e a mensagem que o visitante digita eram interpolados direto no HTML do email. Num navegador isso seria XSS clássico. Num cliente de email, o risco é menor, mas o princípio é o mesmo: **nunca confie em texto que veio de um estranho, mesmo quando ele parece inofensivo.**
+
+## A correção em três camadas
+
+### 1. Rate limit — a porta que se fecha
+
+Cada endpoint ganhou um limitador de requisições em memória: uma janela de um minuto, com um teto de cinco requisições por IP. Depois disso, responde 429 e manda embora. É o suficiente pra um humano baixar o currículo ou mandar uma mensagem — e o suficiente pra travar um bot.
+
+```ts
+const rateLimit = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW = 60_000; // 1 minuto
+const RATE_LIMIT_MAX = 5; // máx por janela
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimit.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+```
+
+Detalhe que evita vazamento de memória: um `setInterval` de limpeza roda a cada cinco minutos e remove entradas expiradas. Um Map que nunca limpa é um leak disfarçado de proteção.
+
+O IP vem de uma cadeia de headers de proxy (`x-forwarded-for`, `x-real-ip`, e o específico da plataforma de deploy), com fallback pra `unknown`. Não é à prova de spoofing sofisticado, mas é o suficiente contra o atacante que temos de verdade: o bot preguiçoso.
+
+### 2. Escape de HTML — a mensagem que não leva código
+
+Depois do rate limit, veio o tratamento da saída. Uma função pequena e honesta:
+
+```ts
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+```
+
+E cada valor interpolado no template do email — nome, email, mensagem, IP, referrer — passou a passar por ela. Nada de biblioteca, nada de framework: cinco replaces cobrem o que um template de email precisa. A mensagem do visitante vira texto, não estrutura.
+
+### 3. security.txt — a porta dos fundos pra quem quer avisar
+
+E pra quem encontra uma falha de verdade, criei o arquivo que a indústria padronizou pra isso: `/.well-known/security.txt`. É o "se achou algo, fale comigo" do site — com o email de contato, a data de expiração, os idiomas preferidos e o link da política.
+
+```
+Contact: mailto:meu-email
+Expires: 2027-08-28T00:00:00.000Z
+Preferred-Languages: pt, en
+Canonical: https://samuelmedeiros.vercel.app/.well-known/security.txt
+Policy: https://samuelmedeiros.vercel.app/termos
+```
+
+É uma convenção simples: pesquisadores de segurança automatizados varrem a internet atrás desse arquivo pra saber como reportar um problema em cada domínio. Não ter o arquivo não impede um atacante — mas ter ele diz aos bons que existe um caminho de reporte.
+
+## A sentinela: scanner que vigia em silêncio
+
+O passo final foi transformar tudo isso em **checklist que roda sozinha**. O portfólio ganhou dois níveis de vigilância:
+
+- **No CI, a cada push:** o workflow de segurança do repositório roda gitleaks (segredos no histórico do git), bandit (Python) e opengrep (padrões inseguros multi-linguagem) — o mesmo trio da caça ativa, agora acoplado ao deploy. Falhou, não entrega.
+- **Em produção, semanalmente:** um scanner roda contra a URL pública e verifica, um por um: headers de segurança (HSTS, CSP, proteção de conteúdo, frame, referrer), presença do security.txt, tentativa de acessar arquivos que não deveriam existir (variáveis de ambiente, config do git, config de deploy), o rate limit dos dois endpoints (manda seis requisições e espera a sexta voltar 429), tentativa de path traversal e a validade do certificado TLS.
+
+A regra de ouro do scanner: **silêncio é feature**. Se está tudo certo, ele não diz nada. Ele só fala quando acha um problema — e aí entrega a lista exata do que está errado, pra correção ser direta.
+
+## Aprendizados
+
+1. **Site estático tem superfície de ataque.** Duas funções de servidor bastam pra transformar uma vitrine em alvo. O que aceita input precisa ser tratado como fronteira.
+2. **Rate limit não é anti-spam, é sanidade.** O objetivo não é parar o atacante perfeito — é tornar o abuso caro o bastante pra que o sistema continue útil. Um endpoint que qualquer bot pode martelar de graça não é um alerta, é um cano aberto.
+3. **Escape de HTML é higiene básica.** Interpolar input de usuário em template sem escapar é a mesma classe de erro de sempre, em qualquer década. Cinco replaces resolvem — não precisa de mais.
+4. **Segurança também é cortesia.** security.txt é o site dizendo aos pesquisadores "existe um caminho pra reportar". Custa uma linha de config e transforma reporte caótico em processo.
+5. **Checklist automatizada > memória.** Eu não lembraria de verificar seis headers, TLS e rate limit toda semana. O scanner lembra — e fica quieto quando não tem o que dizer.
+
+## O que vem depois
+
+- **Rate limit em memória não escala.** Quando precisar de múltiplas instâncias, migrar pra um store distribuído (o padrão da plataforma de deploy oferece isso nativamente).
+- **SBOM e supply chain** — o ecossistema todo já tem esse item na fila; o portfólio entra junto.
+- **ZAP active scan** contra uma versão de staging antes de produção, não só o baseline.
+
+A porta da frente agora tem sentinela: fecha quando estranho bate demais, entrega só texto limpo quando alguém manda mensagem, e vigia sozinha pra que eu não precise lembrar.
+
+<Terminal
+  commands={[
+    { label: 'rate', cmd: 'curl -s -o /dev/null -w "%{http_code}" -X POST https://samuelmedeiros.vercel.app/api/download-cv -d "{}" -H "Content-Type: application/json"' },
+    { label: 'well-known', cmd: 'curl -s https://samuelmedeiros.vercel.app/.well-known/security.txt' },
+    { label: 'scan', cmd: 'python3 security-scanner.py' },
+    { label: 'silêncio', cmd: '# stdout vazio = está tudo certo' },
+  ]}
+/>
