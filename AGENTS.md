@@ -5,7 +5,7 @@
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
 > **Status:** ✅ Operacional — 52 posts bilíngues (104 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
-> **Pipeline:** 📖 Narrative-First (desde 24/07) — **2 posts/dia hidden às 09:00/09:30 → /ocultos** (ajuste 27/08; liberação manual do Samuel)
+> **Pipeline:** 📖 Narrative-First (desde 24/07) — **3 posts/dia hidden: 08:00/12:00/16:00 → /ocultos** (28/08; liberação manual do Samuel)
 
 ---
 
@@ -40,6 +40,12 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 - **feat(ui)**: layout do /ocultos melhorado (botão Recusar + form de nota)
 - **fix(pipeline)**: Post B de 28/08 não rodou — next_run bugou para 29/08 pós-mudança de schedule; disparado manualmente
 - **refactor(posts)**: refaz Capivara (remove LEVE LAVANDA) e Segurança (mais abstrato) conforme recusa do Samuel — commit `3c18217`
+
+## Sessão 2026-08-28 (fim de dia) — Pipeline 3 posts/dia + Recusar/Refazer automático + fix layout /ocultos
+- **feat(pipeline)**: 2 posts/dia → **3 posts/dia** — A 08:00 (`37f26454f492`), B 12:00 (`7d09479ddc78`, não repete A), C 16:00 (`c57e4814586e`, não repete A/B); hidden no /ocultos, liberação manual
+- **feat(ocultos)**: botão **Recusar** + nota → `/api/recusar` (issue GitHub `refazer` + docs/recusas/) + **Refazer automático** (cron `081b4d301432`, monitor_script)
+- **fix(ocultos)**: layout mobile — título largura total (284px/3 linhas vs 83px/11 antes), botões em linha própria (`d1c63f3`)
+- **testes**: ai-test-loop lifelog ativo (lifelog.json + critic_check_lifelog.py) — loop 28/08 11:08 NOTA 100
 
 ## Sessão 2026-08-27 — Pipeline 09:00/09:30 (fluxo hidden de manhã)
 - **feat(pipeline)**: crons 12h/16h → **09:00 (Post A) + 09:30 (Post B)** — os 2 posts do dia ficam hidden no /ocultos de manhã; Samuel libera no horário que quiser; Post B nunca repete o projeto do Post A
