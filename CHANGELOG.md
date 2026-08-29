@@ -2,6 +2,13 @@
 
 
 
+## [2026-08-28] — Recusar com nota + refazer automático + posts liberados + pipeline 3/dia
+- **feat(ocultos)**: botão Recusar com nota + persistência (GitHub Issue + docs/recusas/) + segurança (rate limit, sanitização) (`5560caf`); refazer automático (cron 081b4d301432) (`1600650`); fix layout mobile /ocultos — título largura total + botões linha própria (`d1c63f3`)
+- **release(post)**: capivara — o painel que passou a ver o ecossistema inteiro (`c028195`, `b173337`, `ff18238`) + seguranca — sentinela do formulário (`791a2f4`, `8c85619`, `1a056b5`) PT+EN, capas AI
+- **pipeline**: 3 posts/dia hidden (08:00/12:00/16:00) + seleção por carência (`8384718`)
+- **chore**: gitleaks allowlist .astro/data-store.json (`371d6ba`)
+- 17 commits · push origin OK · HEAD: `8384718`
+
 ## [2026-08-27] — Pipeline 09:00/09:30 + posts liberados (estudos, arachne a11y)
 - **feat(pipeline)**: crons 12h/16h → 09:00 (Post A) + 09:30 (Post B), 2 posts/dia hidden no /ocultos p/ liberação manual
 - **release(post)**: estudos — quando a documentação virou conhecimento (`4722285`/`2723469`) + arachne — 92 violações a zero: campanha a11y F1-F2c (`43e3217`/`d7e8ec2`), PT+EN, capa AI
