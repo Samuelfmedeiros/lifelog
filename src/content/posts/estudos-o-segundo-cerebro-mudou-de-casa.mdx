@@ -1,0 +1,91 @@
+---
+title: "Estudos — quando o segundo cérebro mudou de casa"
+description: "O Capivara guardava as memórias dele num ChromaDB local, com embedder próprio e camadas L1-L4. O Yurumi guardava a memória do ecossistema inteiro num Qdrant. Duas memórias separadas significavam um cérebro que não conversava com o resto do corpo. A unificação em 28/08 migrou 182/182 memórias sem perder uma: dedup por hash, backup antes de deletar e um gate --apply que separa o plano da execução."
+date: 2026-08-28 10:00:00 -03:00
+pubDate: 2026-08-29 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "capivara", "yurumi", "migracao", "qdrant", "chromadb", "memoria", "rag"]
+cover: /covers/estudos-o-segundo-cerebro-mudou-de-casa.webp
+hidden: true
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Duas memórias, nenhuma lembrança em comum
+
+Quando o Capivara nasceu, o segundo cérebro dele era um banco vetorial próprio: ChromaDB local, embedder `nomic-embed-text` via Ollama e um sistema de camadas que eu tinha desenhado para separar o que era transitório do que era definitivo. L1 para notas de trabalho, L2 para eventos, L3 para fatos estáveis e L4 para procedimentos que nunca expiram. Fazia sentido na época: cada projeto com a própria memória, isolada, simples de manter.
+
+O problema é que a memória não vive no vácuo. O Yurumi foi crescendo ao lado como a memória do ecossistema inteiro — conversas, decisões, instruções de projeto, grafos de conhecimento — tudo num Qdrant com busca híbrida e extração local. E aí ficou o absurdo: o segundo cérebro do Capivara sabia coisas que ninguém mais sabia, e tudo o que o ecossistema aprendia ficava fora do alcance dele. Duas memórias desconectadas, cada uma achando que era a única.
+
+A pergunta de sempre apareceu: por que manter um banco vetorial inteiro só para um projeto, quando já existe a memória unificada que o resto do mundo usa?
+
+## A migração silenciosa
+
+A decisão foi a mais simples possível: o Capivara deixa de ter memória própria e passa a usar o Yurumi como store. O `brain.py` trocou o ChromaDB por um `MemoryStore` lazy com `group=capivara` — a mesma coleção que o Yurumi gerencia, com o mesmo schema, o mesmo embedder (Infinity colibri) e a mesma dedup por hash.
+
+```python
+def _get_store():
+    global _store
+    if _store is None:
+        from core.store import MemoryStore
+        _store = MemoryStore(backend="auto", group=YURUMI_GROUP)
+    return _store
+```
+
+As funções de CRUD — `add_memory`, `list_memories`, `count_memories`, `delete_memory`, `expire_layers` — foram reescritas sobre o store do Yurumi, preservando as camadas L1-L4 como metadata. O `ask()` (o RAG que responde perguntas com o contexto das memórias) passou a buscar no Qdrant com filtro `kind=brain_capivara`:
+
+```python
+results = store.search(question, top_k=TOP_K, filters={"kind": "brain_capivara"})
+```
+
+A camada de embedding via Ollama sumiu junto com o ChromaDB — agora quem embeda é o mesmo serviço que embeda tudo o resto. Uma dependência a menos, um embedder a mais compartilhado.
+
+## Migrar 182 memórias e não perder nenhuma
+
+Migrar dados é sempre o momento em que a engenharia mostra a que veio. O script de migração leu todas as memórias do ChromaDB e gravou na coleção do Yurumi, idempotente: o hash do conteúdo serve de dedup, então rodar duas vezes não duplica nada.
+
+```python
+def _text_hash(text: str) -> str:
+    return hashlib.md5(" ".join(text.lower().split()).encode()).hexdigest()
+```
+
+Antes de gravar cada ponto, o script verifica se o hash já existe na coleção de destino — se existir, pula. E um detalhe que mostra cuidado: o payload é corrigido no caminho, o canal aponta para o destino certo e o nome antigo de chat é substituído. O dado não só muda de endereço — ele chega no novo endereço com o formato certo.
+
+O passo final foi o mais neurótico e o mais correto: **backup antes de deletar**. Só depois de o backup terminar com sucesso as coleções órfãs vazias são removidas. E o destrutivo nunca roda sem querer: o script nasce em `--dry-run` e exige `--apply` explícito para executar.
+
+O resultado da migração: 182/182 memórias transferidas, 185 testes verdes com mock, e um teste E2E real — pergunta feita, resposta com as 5 fontes esperadas, filtro por camada L4 funcionando.
+
+## Por que isso importa
+
+Unificar a memória não foi só economia de infraestrutura. Foi eliminar uma classe inteira de cegueira: o Capivara agora busca no mesmo índice onde o Yurumi guarda instruções, decisões e grafos — e o ecossistema enxerga as memórias do Capivara com a mesma busca híbrida de sempre. Uma pergunta sobre um procedimento que o Capivara aprendeu ontem pode ser respondida com contexto que veio de outro projeto. Isso não era possível antes.
+
+As lições que ficaram:
+
+1. **Memória duplicada é memória dividida.** Dois bancos vetoriais para o mesmo dono significam dois pontos cegos. Um só, com schema comum, é mais fácil de buscar, de manter e de confiar.
+2. **Migração idempotente é migração segura.** Dedup por hash de conteúdo faz o script poder rodar de novo sem medo — e o `--apply` como gate separa a simulação do ato.
+3. **Backup não é opcional antes do destrutivo.** Apagar coleção sem backup é pedir para descobrir tarde demais que faltava um campo no payload.
+4. **Trocar de store não precisa trocar de conceito.** As camadas L1-L4 continuaram existindo como metadata — o que mudou foi o endereço, não o modelo mental.
+
+## Os números
+
+| Métrica | Valor |
+|---------|-------|
+| Memórias migradas | 182/182 |
+| Origem | ChromaDB local (embedder próprio) |
+| Destino | Qdrant do Yurumi (colibri, busca híbrida) |
+| Testes verdes após a troca | 185 |
+| E2E real | ask 200, 5 sources, filtro L4 OK |
+| Coleções órfãs removidas | 4 (2 com dados migrados, 2 vazias) |
+| Gate de execução | `--dry-run` padrão, `--apply` explícito |
+
+## O que vem a seguir
+
+Com a memória unificada, o próximo passo natural é fazer o Capivara buscar em mais que a própria coleção quando a pergunta pedir — a busca cross-grupo do Yurumi já existe, falta decidir quando o brain deve olhar além do próprio raio. E o ChromaDB, que ficou no requirements por compatibilidade, vai sair quando nenhum caminho de código o referenciar mais.
+
+<Terminal commands={[
+  { cmd: 'python migrate_chroma_to_yurumi.py', description: 'Lê o ChromaDB e grava no Qdrant, idempotente por hash' },
+  { cmd: 'python scripts/migrate_orphan_collections.py --dry-run', description: 'Mostra o plano das órfãs sem executar nada' },
+  { cmd: 'python scripts/migrate_orphan_collections.py --apply', description: 'Migra as órfãs remanescentes, faz backup e só então deleta' },
+  { cmd: 'curl -s -X POST /api/brain/ask -d \'{"question":"qual procedimento usamos para backup?"}\'', description: 'E2E real: pergunta, 5 fontes, camada certa' },
+]} />
