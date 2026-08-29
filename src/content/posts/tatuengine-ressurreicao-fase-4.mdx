@@ -1,0 +1,76 @@
+---
+title: "A Ressurreição — o dia em que o TatuEngine voltou dos mortos"
+description: "Uma atualização de sistema quebrou o build do TatuEngine da noite pro dia: toolchain incompatível, funções matemáticas reclamando, zero testes passando. O diagnóstico levou a uma correção cirúrgica e, no fim, ao momento que eu esperava há semanas — a autorização da Fase 4."
+date: 2026-08-29 12:00:00 -03:00
+pubDate: 2026-08-29 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "build", "treinamento", "toolchain", "fase-4"]
+cover: /covers/tatuengine-ressurreicao-fase-4.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que nada compilou
+
+Tem uma coisa que todo dev de ferramenta de baixo nível aprende cedo: o sistema operacional não é seu amigo silencioso. Um dia ele resolve se atualizar no meio da madrugada e, na manhã seguinte, o projeto que funcionava ontem simplesmente se recusa a nascer.
+
+Foi exatamente isso que aconteceu com o TatuEngine. A distro do WSL subiu — nova libc, compilador novo, tudo no lugar — e o build que era 100% na véspera desmoronou. Não foi uma mudança no meu código. Foi o chão debaixo dele que se moveu.
+
+## O diagnóstico
+
+O primeiro erro que apareceu era o clássico de compatibilidade: o compilador novo rejeitava o toolchain de CUDA que eu usava. Combinações que já foram estáveis ficaram proibidas da noite pro dia, e o projeto inteiro parou de compilar por causa de uma guerra de versões entre três ferramentas que nem são minhas.
+
+O padrão do diagnóstico foi o de sempre no TatuEngine:
+
+1. **Isolar** — rodar o build limpo e ler o PRIMEIRO erro, não o último. O primeiro conta a história real.
+2. **Identificar o conflito** — era uma tríade: libc nova, compilador novo e CUDA com regras próprias de compatibilidade. A combinação certa existia, mas não era a que estava instalada.
+3. **Ajustar o chão** — fixar a toolchain numa combinação que se sabe estável. Às vezes "atualizar" não é resolver; é escolher a versão que conversa com as outras.
+4. **Calar o resto** — depois do toolchain, o compilador passou a reclamar de um detalhe de C++ moderno: seis funções matemáticas precisavam ser marcadas como não-lançadoras de exceção. Um patch fino, de três linhas em cada uma, e o ruído sumiu.
+
+Não era glamouroso. Era cirurgia de precisão em funções que ninguém olha, no arquivo que ninguém abre, porque o compilador novo resolveu ficar mais rígido.
+
+## O verde voltou
+
+Depois do ajuste, o build voltou a 100%. E a prova de que nada tinha quebrado no caminho foi o `ctest`: **32/32 testes passando**, em 41 segundos.
+
+Tem um momento específico nesse tipo de manhã — quando a última suíte acende verde e você confere que o número de testes é exatamente o mesmo de ontem. É a confirmação de que a correção não escondeu nada, só destravou o que a atualização tinha travado.
+
+## A Fase 4 foi autorizada
+
+Com o build vivo de novo, o próximo passo era claro: voltar pro plano. O TatuEngine tem um arquiteto que orienta as fases do treinamento, e eu tinha acabado de chegar no fim da Fase 3. Fui lá, contei o que aconteceu (o susto do build, a correção, os 32 testes verdes) e pedi a ignição.
+
+A resposta veio: **Fase 4 — Ressurreição, Opção C Híbrida, autorizada**.
+
+O nome não podia ser mais apropriado. O plano da Fase 4 é literalmente retomar o treinamento do checkpoint campeão do aquecimento — a melhor versão que a Fase 3 deixou — e dar a ele um segundo fôlego:
+
+- **Carga limpa** — começar do checkpoint campeão, sem arrastar lixo de estados intermediários.
+- **Otimizador mais firme** — uma variante fundida de AdamW, com grupos de parâmetros recebendo taxas de aprendizado diferentes (alguns mais rápido, outros devagar).
+- **Loop híbrido** — alternar as duas fases de treinamento num mesmo run, em vez de uma após a outra.
+- **Telemetria separada** — acompanhar as duas perdas de forma independente depois do aquecimento inicial, pra saber exatamente qual fase está evoluindo.
+
+E tem uma decisão minha na mesa: o peso relativo entre as duas perdas no treino — manter uma proporção fixa do começo ao fim, ou deixar que ela decaia com o tempo, terminando bem diferente de como começou. É o tipo de escolha que muda o comportamento do modelo final, e ela ainda está em aberto.
+
+## Aprendizados
+
+- **Atualização de sistema é evento de risco, não de rotina.** O código que compila hoje pode não compilar amanhã sem você ter tocado em nada. Versionar a toolchain (ou documentá-la com rigor) vale o custo.
+- **O primeiro erro do build é o sinal, não o problema.** Ler o topo da pilha economizou horas de caça a sintomas.
+- **"Atualizar" nem sempre é a resposta.** Às vezes a solução é fixar uma combinação de versões que se sabe que conversam entre si — mesmo que não sejam as mais novas.
+- **Número de testes igual é prova silenciosa.** Quando 32/32 voltam verdes com a mesma contagem, a correção é honesta.
+
+## O que vem a seguir
+
+A Ressurreição começou. Com o build estável e a Fase 4 autorizada, o próximo passo é construir o run híbrido — carregar o checkpoint campeão, configurar o otimizador com os grupos de parâmetros, e deixar o treino rodar com as duas perdas sendo medidas lado a lado. A decisão do peso relativo entre elas é minha, e ela define o ritmo de tudo.
+
+O motor que quase não ligou hoje é o mesmo que vai passar semanas queimando GPU. A ironia é perfeita.
+
+<Terminal
+  commands={[
+    { label: 'sintoma', cmd: 'build quebrou apos update do sistema' },
+    { label: 'causa', cmd: 'libc + compilador + CUDA em guerra de versoes' },
+    { label: 'correcao', cmd: 'toolchain fixa + patch em funcoes matematicas' },
+    { label: 'prova', cmd: 'ctest: 32/32 verdes em 41s' },
+    { label: 'proximo', cmd: 'Fase 4: Ressurreicao (Opcao C Hibrida) autorizada' },
+  ]}
+/>
