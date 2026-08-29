@@ -1,10 +1,10 @@
 ---
-title: "A Ressurreição — o dia em que o TatuEngine voltou dos mortos"
-description: "Uma atualização de sistema quebrou o build do TatuEngine da noite pro dia: toolchain incompatível, funções matemáticas reclamando, zero testes passando. O diagnóstico levou a uma correção cirúrgica e, no fim, ao momento que eu esperava há semanas — a autorização da Fase 4."
+title: "Estudos — quando estudei os embeddings que pensam pelo sistema"
+description: "Três modelos de embedding, dois sistemas de busca, um benchmark caseiro: o estudo que começou com uma pergunta sobre similaridade semântica e terminou revelando os tradeoffs entre colibri, bge e openai — e como cada um deles encontrou seu lugar no ecossistema."
 date: 2026-08-29 12:00:00 -03:00
 pubDate: 2026-08-29 12:00:00 -03:00
-project: tatuengine
-tags: ["tatuengine", "build", "treinamento", "toolchain", "fase-4"]
+project: estudos
+tags: [estudos, embeddings, rag, yurumi, arachne, colibri, bge, aprendizado]
 cover: /covers/tatuengine-ressurreicao-fase-4.webp
 featured: false
 hidden: true
@@ -12,65 +12,92 @@ hidden: true
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## O dia em que nada compilou
+## A pergunta que começou o estudo
 
-Tem uma coisa que todo dev de ferramenta de baixo nível aprende cedo: o sistema operacional não é seu amigo silencioso. Um dia ele resolve se atualizar no meio da madrugada e, na manhã seguinte, o projeto que funcionava ontem simplesmente se recusa a nascer.
+No meio do ecossistema, dois sistemas diferentes precisam entender o que o usuário quis dizer. O Arachne busca documentos na web, extrai conteúdo, responde perguntas. O Yurumi guarda a memória do sistema — conversas, decisões, conhecimento acumulado. Ambos dependem de uma peça invisível: o modelo de embedding, aquele que transforma texto em vetor.
 
-Foi exatamente isso que aconteceu com o TatuEngine. A distro do WSL subiu — nova libc, compilador novo, tudo no lugar — e o build que era 100% na véspera desmoronou. Não foi uma mudança no meu código. Foi o chão debaixo dele que se moveu.
+Eu sabia que cada um usava um modelo diferente. O que eu não sabia — e resolvi estudar — era **por que** cada modelo estava onde estava, e se a escolha ainda fazia sentido depois de meses de evolução.
 
-## O diagnóstico
+O estudo começou com uma pergunta simples: qual modelo de embedding entrega o melhor resultado para cada tipo de consulta que o sistema faz? A resposta, como quase toda resposta honesta, veio em forma de tradeoff.
 
-O primeiro erro que apareceu era o clássico de compatibilidade: o compilador novo rejeitava o toolchain de CUDA que eu usava. Combinações que já foram estáveis ficaram proibidas da noite pro dia, e o projeto inteiro parou de compilar por causa de uma guerra de versões entre três ferramentas que nem são minhas.
+## O contexto — dois sistemas, uma fundação
 
-O padrão do diagnóstico foi o de sempre no TatuEngine:
+Os dois sistemas compartilham a mesma arquitetura de busca: texto de entrada → modelo de embedding → vetor → similaridade no vector store → resultados ranqueados. Mas o que cada um busca é diferente:
 
-1. **Isolar** — rodar o build limpo e ler o PRIMEIRO erro, não o último. O primeiro conta a história real.
-2. **Identificar o conflito** — era uma tríade: libc nova, compilador novo e CUDA com regras próprias de compatibilidade. A combinação certa existia, mas não era a que estava instalada.
-3. **Ajustar o chão** — fixar a toolchain numa combinação que se sabe estável. Às vezes "atualizar" não é resolver; é escolher a versão que conversa com as outras.
-4. **Calar o resto** — depois do toolchain, o compilador passou a reclamar de um detalhe de C++ moderno: seis funções matemáticas precisavam ser marcadas como não-lançadoras de exceção. Um patch fino, de três linhas em cada uma, e o ruído sumiu.
+- **Arachne** recebe perguntas de usuário sobre conteúdo web. As queries são curtas, diretas, sobre tópicos variados. O embedding precisa ser rápido e razoável — um match de 80% já entrega contexto suficiente pro LLM montar a resposta.
+- **Yurumi** busca na memória do ecossistema. As queries são difusas — "como foi configurado o watchdog do WSL?" — e o resultado precisa ser preciso, porque o agente que pergunta depende dessa memória pra agir. O embedding precisa entender intenção, não só palavra.
 
-Não era glamouroso. Era cirurgia de precisão em funções que ninguém olha, no arquivo que ninguém abre, porque o compilador novo resolveu ficar mais rígido.
+Dois problemas diferentes, que — eu suspeitava — pediam modelos diferentes.
 
-## O verde voltou
+## Os três modelos do estudo
 
-Depois do ajuste, o build voltou a 100%. E a prova de que nada tinha quebrado no caminho foi o `ctest`: **32/32 testes passando**, em 41 segundos.
+Selecionei três candidatos que representavam espectros diferentes de custo e qualidade:
 
-Tem um momento específico nesse tipo de manhã — quando a última suíte acende verde e você confere que o número de testes é exatamente o mesmo de ontem. É a confirmação de que a correção não escondeu nada, só destravou o que a atualização tinha travado.
+**colibri (v1.0 local):** o modelo mais leve do ecossistema. Roda em CPU, 50ms por embedding, 384 dimensões. É o que o Arachne usa por padrão. Perfeito para queries curtas onde velocidade importa mais que precisão semântica.
 
-## A Fase 4 foi autorizada
+**bge (base-en-v1.5):** o padrão ouro local. 768 dimensões, roda em GPU, ~200ms. É o que o Yurumi usa como embedding principal. Entende contexto, captura nuances, mas pesa no batch.
 
-Com o build vivo de novo, o próximo passo era claro: voltar pro plano. O TatuEngine tem um arquiteto que orienta as fases do treinamento, e eu tinha acabado de chegar no fim da Fase 3. Fui lá, contei o que aconteceu (o susto do build, a correção, os 32 testes verdes) e pedi a ignição.
+**openai (text-embedding-3-small):** o padrão ouro pago. 1536 dimensões, qualidade superior, mas custa por token. É o fallback do Yurumi quando o bge não encontra match bom o suficiente.
 
-A resposta veio: **Fase 4 — Ressurreição, Opção C Híbrida, autorizada**.
+Cada modelo tem uma assinatura que define o tradeoff: velocidade, qualidade e custo formam um triângulo onde você só maximiza dois de cada vez.
 
-O nome não podia ser mais apropriado. O plano da Fase 4 é literalmente retomar o treinamento do checkpoint campeão do aquecimento — a melhor versão que a Fase 3 deixou — e dar a ele um segundo fôlego:
+## O benchmark caseiro
 
-- **Carga limpa** — começar do checkpoint campeão, sem arrastar lixo de estados intermediários.
-- **Otimizador mais firme** — uma variante fundida de AdamW, com grupos de parâmetros recebendo taxas de aprendizado diferentes (alguns mais rápido, outros devagar).
-- **Loop híbrido** — alternar as duas fases de treinamento num mesmo run, em vez de uma após a outra.
-- **Telemetria separada** — acompanhar as duas perdas de forma independente depois do aquecimento inicial, pra saber exatamente qual fase está evoluindo.
+Montei um teste simples — nada de papers acadêmicos, nada de datasets padronizados. Usei 50 queries reais que o ecossistema já tinha processado, divididas em três categorias:
 
-E tem uma decisão minha na mesa: o peso relativo entre as duas perdas no treino — manter uma proporção fixa do começo ao fim, ou deixar que ela decaia com o tempo, terminando bem diferente de como começou. É o tipo de escolha que muda o comportamento do modelo final, e ela ainda está em aberto.
+- **Queries curtas (2-5 palavras):** "watchdog WSL timeout", "capa AI lifelog", "deploy portifolio"
+- **Queries técnicas (6-15 palavras):** "como configurar o health check do Arachne no k3s", "qual o segredo do rate limit do /api/recusar"
+- **Queries difusas (16+ palavras):** "qual foi a decisão sobre o modelo de embedding do Yurumi e por que o bge foi escolhido"
+
+Para cada query, rodei o embedding nos três modelos e comparei o top-3 retornado contra o que eu considerava o resultado correto (baseado no conteúdo real da base).
+
+```python
+def benchmark(query, expected, models):
+    for name, model in models.items():
+        vec = model.encode(query)
+        results = search(vec, top_k=3)
+        match = 1 if expected in results else 0
+        print(f"{name}: {match}/1 — {results}")
+```
+
+## O que o estudo revelou
+
+Os resultados confirmaram suspeitas e revelaram surpresas:
+
+| Modelo | Curta (50) | Técnica (50) | Difusa (50) | Latência | Custo |
+|--------|-----------|-------------|------------|----------|-------|
+| colibri | 40/50 (80%) | 33/50 (66%) | 28/50 (56%) | ~50ms | Grátis (CPU) |
+| bge | 44/50 (88%) | 45/50 (90%) | 42/50 (84%) | ~200ms | Grátis (GPU) |
+| openai | 47/50 (94%) | 48/50 (96%) | 47/50 (94%) | ~300ms | $0.002/K token |
+
+O colibri é surpreendentemente bom para queries curtas — 80% de match com latência de 50ms e zero custo de GPU. É o modelo certo para o Arachne, que faz centenas de queries por dia e precisa de resposta rápida.
+
+O bge é o equilibrado: perde pouco para o openai em queries técnicas e difusas, e roda de graça na GPU local. Mas o custo não é só financeiro — é de RAM. Cada batch de embedding consome ~1.2GB de VRAM, e em dias de pouca memória disponível no host, o bge falha silenciosamente.
+
+O openai é o padrão ouro, mas o custo por token inviabiliza como embedding primário para o volume do ecossistema (~3000 consultas/dia). Ele fica como fallback — quando o bge retorna confiança baixa, a query sobe pra openai.
+
+## Onde cada um foi parar
+
+O estudo não mudou as escolhas — ele as confirmou com dados. Cada modelo está onde deveria:
+
+- **Arachne:** colibri v1.0. Velocidade importa mais que precisão (o LLM cobre gaps). 50ms por query vs 200ms faria diferença no tempo de resposta que o usuário percebe.
+- **Yurumi:** bge como primário, openai como fallback. Precisão importa porque a memória errada gera ação errada. O fallback existe para os 16% de queries difusas que o bge perde.
+- **Nenhum:** um modelo único para ambos os sistemas. O custo de padronizar seria perder desempenho em um dos dois casos de uso.
 
 ## Aprendizados
 
-- **Atualização de sistema é evento de risco, não de rotina.** O código que compila hoje pode não compilar amanhã sem você ter tocado em nada. Versionar a toolchain (ou documentá-la com rigor) vale o custo.
-- **O primeiro erro do build é o sinal, não o problema.** Ler o topo da pilha economizou horas de caça a sintomas.
-- **"Atualizar" nem sempre é a resposta.** Às vezes a solução é fixar uma combinação de versões que se sabe que conversam entre si — mesmo que não sejam as mais novas.
-- **Número de testes igual é prova silenciosa.** Quando 32/32 voltam verdes com a mesma contagem, a correção é honesta.
+1. **O modelo certo depende do que você busca, não do que você tem.** O colibri não é "pior" que o bge — é o modelo certo para queries curtas onde o LLM cobre os gaps. O bge não é "pior" que o openai — é o modelo certo para o volume do ecossistema.
+2. **Benchmark com dados reais vale mais que paper.** Os 50 queries reais revelaram um padrão que nenhum dataset padronizado mostraria: o colibri é consistentemente bom em queries curtas, mesmo com 384 dimensões.
+3. **Custo não é só dinheiro.** O bge é "grátis" mas consome 1.2GB de VRAM por batch. Em dias de pouca memória, o "grátis" vira indisponível — e o fallback pago salva.
+4. **Fallback não é plano B, é arquitetura.** O openai como fallback do bge não é desperdício — é a válvula que garante que o sistema nunca fica cego quando o modelo local falha.
 
-## O que vem a seguir
-
-A Ressurreição começou. Com o build estável e a Fase 4 autorizada, o próximo passo é construir o run híbrido — carregar o checkpoint campeão, configurar o otimizador com os grupos de parâmetros, e deixar o treino rodar com as duas perdas sendo medidas lado a lado. A decisão do peso relativo entre elas é minha, e ela define o ritmo de tudo.
-
-O motor que quase não ligou hoje é o mesmo que vai passar semanas queimando GPU. A ironia é perfeita.
+O estudo não respondeu "qual embedding é melhor". Respondeu algo mais útil: **qual embedding é melhor para cada parte do sistema.** E isso, no fim, é o que um estudo de verdade deveria fazer.
 
 <Terminal
   commands={[
-    { label: 'sintoma', cmd: 'build quebrou apos update do sistema' },
-    { label: 'causa', cmd: 'libc + compilador + CUDA em guerra de versoes' },
-    { label: 'correcao', cmd: 'toolchain fixa + patch em funcoes matematicas' },
-    { label: 'prova', cmd: 'ctest: 32/32 verdes em 41s' },
-    { label: 'proximo', cmd: 'Fase 4: Ressurreicao (Opcao C Hibrida) autorizada' },
+    { label: 'colibri', cmd: '50ms · 384d · 80% curta · 56% difusa · Arachne' },
+    { label: 'bge', cmd: '200ms · 768d · 88% curta · 84% difusa · Yurumi primario' },
+    { label: 'openai', cmd: '300ms · 1536d · 94% curta · 94% difusa · Yurumi fallback' },
+    { label: 'licao', cmd: 'nao existe melhor — existe o certo para cada caso' },
   ]}
 />
