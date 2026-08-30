@@ -1,0 +1,41 @@
+---
+title: "Yurumi: the memory that learned to be an agent"
+description: "Yurumi started as a local replacement for mem0 — storing conversation memories. In two weeks it gained intent, actions, learning, its own identity and a knowledge graph. The journey from a simple store to a complete agentic system."
+date: 2026-08-30 18:00:00 -03:00
+pubDate: 2026-08-30 18:00:00 -03:00
+project: yurumi
+tags: [yurumi, agent, memory, qdrant, graphify, vectorize, identity]
+cover: /covers/yurumi-a-memoria-que-aprendeu-a-ser-agente.webp
+featured: false
+hidden: true
+---
+
+## From mem0 to agent
+
+Yurumi started as an experiment: replacing mem0 (expensive and slow) with something local, fast, and within budget. A Qdrant store with triple embedding and simple ReAct retrieval. It worked. But I wanted more.
+
+## The big leap: F1 to F4
+
+In less than two weeks, Yurumi stopped being passive memory and became a complete agentic system:
+
+**F1 — Intent and Actions:** Each memory is classified into 7 types. The agent itself executes real actions — notifying on Telegram, running commands, posting memory. All wired through INGEST→DECIDE→ACT→FEEDBACK→LEARN.
+
+**F2 — MCP and REST:** Every action gained MCP tools and REST endpoints. I can create/release holds, tick the agent, even restart WSL remotely (with approval).
+
+**F3 — Learning by itself:** consolidate dry-run groups latent duplicates without applying, expire cleans old holds, and the 5-min cron only wakes up when there's news.
+
+**F4 — Identity:** Each machine/agent has a unique ID in the AgentRegistry. The system knows who everyone is and what they can do.
+
+## Graphify: the graph that became a brain
+
+A knowledge graph connecting real entities with evidenced edges. It finds god nodes (the hubs connecting everything), surprising connections between distant communities, suggested questions crossing projects, and an interactive HTML visualization.
+
+## Vectorize: the fallback that saved the night
+
+On the dawn of 30/08, Qdrant went down (WSL out of RAM). Yurumi had a fallback: Cloudflare Vectorize. Insert worked, query worked, nobody noticed.
+
+## What I learned
+
+Memory isn't just about storing — it's deciding what to do with what was stored. A passive store is a database. An agentic memory system is a partner that remembers, acts, and learns.
+
+The F1-F4 architecture is portable. What works for memory works for any agent. I'm taking this pattern to all projects.
