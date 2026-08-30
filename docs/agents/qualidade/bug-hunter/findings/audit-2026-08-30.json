@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-08-30T03:11:27.063Z",
+  "url": "https://lifelog-sepia.vercel.app",
+  "duration": "117.8",
+  "routes": {},
+  "consoleErrors": [],
+  "networkErrors": [],
+  "navigationFailures": [
+    {
+      "route": "/",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "route": "/en/",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "route": "/arquivo",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/arquivo\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "route": "/en/archive",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/archive\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "route": "/sobre",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/sobre\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    },
+    {
+      "route": "/en/about",
+      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/about\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    }
+  ],
+  "passed": 0,
+  "failed": 6,
+  "loginOk": true
+}
