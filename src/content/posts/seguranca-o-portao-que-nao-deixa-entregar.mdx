@@ -1,0 +1,111 @@
+---
+title: "O portão que não deixa entregar — quando a segurança virou gate do processo"
+description: "Dez dias depois de automatizar a caça ativa, eu percebi que o problema não era encontrar falha — era garantir que ninguém entregasse código sem passar pela revisão de segurança. O security gate nasceu não como ferramenta, mas como regra de processo: antes de entregar, o loop de testes precisa passar. E o loop inclui um revisor de segurança."
+date: 2026-08-30 08:00:00 -03:00
+pubDate: 2026-08-30 08:00:00 -03:00
+project: seguranca
+tags: [seguranca, processo, test-loop, revisao, owasp, gate, automacao]
+cover: /covers/seguranca-o-portao-que-nao-deixa-entregar.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que o revisor virou porteiro
+
+No post anterior, o Security Agent cruzava os findings de dois caçadores e entregava um alarme único. A detecção estava resolvida. Mas sobrou um problema de processo: **o código que eu entregava no mesmo dia podia ter uma falha que o scanner só acharia na próxima rodada**.
+
+O alarme é reativo. Ele te avisa depois que o problema já está no ar. O que eu queria era um portão: algo que impedisse a entrega antes dela acontecer, se o código não passasse pela revisão de segurança.
+
+Foi assim que o **security gate** nasceu — não como ferramenta, como regra. O loop de testes que Samuel usa antes de cada entrega ganhou um revisor de segurança dedicado.
+
+## O problema de achar falha depois que já está no ar
+
+O ecossistema tem scanners que rodam em CI, watchdogs que varrem em produção, e um agente que cruza os dois. Tudo isso funciona — mas tudo isso é **depois do deploy**. O código que vai pro ar hoje, com uma falha de segurança, fica exposto até a próxima varredura. Que pode ser em 6 horas, 12 horas, ou no próximo commit.
+
+A diferença entre "detectar em produção" e "impedir antes do deploy" é a mesma entre um alarme de incêndio e um extintor. O alarme avisa. O extintor apaga. O security gate é o extintor.
+
+O que eu precisava era de um revisor que lesse o código antes de ir pra produção, aplicasse uma lista de categorias de risco, e emitisse um parecer: **bloqueado** ou **liberado**. E que isso fosse parte do fluxo normal de entrega, não mais um passo manual que eu esqueceria na correria.
+
+## A regra de processo: o loop antes de tudo
+
+Em 30 de agosto, Samuel explicitou a regra que já vinha sendo praticada: **antes de toda entrega, o loop de testes precisa rodar**. O loop inclui três fases:
+
+1. **Builder** — o código compila, os testes unitários passam, o build está limpo.
+2. **Critic** — um revisor de código avalia a implementação: arquitetura, edge cases, legibilidade, e **segurança**.
+3. **Revisor de segurança** — um analista dedicado percorre uma checklist de OWASP e emite o parecer final.
+
+O revisor de segurança é uma instância do mesmo agente que faz o critic, mas com um prompt diferente: ele não olha se o código é bonito ou performático. Ele olha só para o que pode dar errado. O prompt que ele recebe é uma lista enxuta de categorias de risco:
+
+- SSRF e injeção de requisição interna
+- Exposição de dados sensíveis em resposta
+- Headers de segurança faltando (CSP, HSTS, X-Frame-Options)
+- Timeout e denial-of-service em endpoints públicos
+- Cross-site scripting (XSS) em saída que o usuário vê
+- Dependências com vulnerabilidades conhecidas
+- Secrets codificados no código
+
+Cada categoria tem uma pergunta específica. O revisor não precisa responder "sim" ou "não" pra cada uma — ele precisa responder se o código que está sendo entregue **introduz** ou **agrava** algum desses riscos. Se sim, o parecer é bloqueado. Se não, é liberado.
+
+## O que o revisor de segurança olha (e o que ele não olha)
+
+O revisor de segurança não substitui o scanner de produção. Ele não varre o histórico do git, não testa runtime, não faz scan de rede. Ele faz uma coisa só: **leia o diff e me diga se este código pode ser entregue**.
+
+```
+O que ele olha:
+  - O diff do commit: cada linha adicionada ou modificada
+  - O contexto arquitetural: o que esse endpoint/componente faz
+  - O tratamento de input: de onde vêm os dados, como são validados
+  - O tratamento de output: para onde vão os dados, como são serializados
+
+O que ele não olha:
+  - O histórico do repositório (isso é do gitleaks)
+  - O runtime (isso é do watchdog)
+  - O inventário de portas (isso é do scanner semanal)
+```
+
+A divisão é intencional. Cada camada cobre um pedaço do problema. O revisor de segurança cobre o **momento da entrega** — o intervalo entre "código compilou" e "código no ar". É uma janela curta, mas é onde a maioria das falhas de segurança entra em produção.
+
+## O allowlist de exemplo
+
+Uma decisão de design que apareceu nos primeiros dias: ferramentas de scan de segurança usam tokens de exemplo em testes (como `AKIAIOSFODNN7EXAMPLE` da AWS). O revisor de segurança, se não for instruído, pode bloquear o commit por causa de um token que não é real.
+
+A solução não foi desligar o revisor, foi adicionar uma **allowlist de padrões conhecidos** ao prompt. O revisor aprendeu que certos valores são placeholders de documentação e não disparam alarme. O mesmo vale para hashes de exemplo, emails de teste, e URLs de documentação.
+
+O detalhe é que essa allowlist é **explícita e documentada**. Não é um "ignora tudo que parece falso" — é uma lista de padrões que o próprio time de segurança reconhece como seguros. Qualquer coisa fora da lista continua sendo bloqueada.
+
+## Métricas que importam
+
+| Métrica | Valor |
+|---------|-------|
+| Gate de segurança | Antes de toda entrega |
+| Categorias de risco no prompt | 7 (SSRF, dados, headers, DoS, XSS, deps, secrets) |
+| Allowlist de exemplo | Padrões documentados (não silencioso) |
+| Saída do revisor | Bloqueado / Liberado |
+| Responsabilidade do revisor | Só o diff, não o runtime |
+
+## Aprendizados
+
+1. **Segurança como processo vence segurança como ferramenta.** Uma ferramenta que você não usa não protege nada. Um processo que bloqueia a entrega, você usa toda vez.
+2. **O revisor de segurança não precisa ser complexo.** Sete categorias de risco cobrem a maioria dos problemas que um diff pode introduzir. O resto é coberto pelas outras camadas.
+3. **Allowlist explícita > silêncio.** É melhor documentar o que é seguro do que ensinar o revisor a "confiar" em padrões que parecem suspeitos.
+4. **O gate é o extintor, não o alarme.** O alarme (scanner em produção) avisa depois. O gate impede antes. Os dois são necessários, e um não substitui o outro.
+5. **Prompt de segurança é diferente de prompt de código.** O revisor de segurança não quer código bonito — ele quer código que não quebre. O mindset é diferente, e o prompt reflete isso.
+
+## O que vem depois
+
+- **Teste de penetração automatizado** como parte do gate, não só em CI semanal.
+- **SBOM e supply chain** — verificar dependências no momento da entrega, não só no scan periódico.
+- **Correlação com o watchdog** — se o revisor bloqueou algo, o watchdog cruza com o inventário de portas para ver se o serviço afetado está documentado.
+
+O security gate não é a ferramenta mais bonita do ecossistema. É a mais chata. E é por isso que funciona: ele para a entrega antes dela acontecer, e você é obrigado a olhar antes de liberar.
+
+<Terminal
+  commands={[
+    { label: 'gate', cmd: 'revisor-de-seguranca --diff <commit>' },
+    { label: 'checklist', cmd: 'revisor-de-seguranca --categorias' },
+    { label: 'exemplo', cmd: '# AKIAIOSFODNN7EXAMPLE na allowlist — não bloqueia' },
+    { label: 'resultado', cmd: 'echo "PARECER: LIBERADO — nenhuma nova categoria de risco detectada"' },
+  ]}
+/>

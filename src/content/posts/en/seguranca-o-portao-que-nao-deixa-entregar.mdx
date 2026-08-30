@@ -1,0 +1,111 @@
+---
+title: "The gate that blocks delivery — when security became a process rule"
+description: "Ten days after automating active hunting, I realized the problem wasn't finding flaws — it was making sure nothing shipped without a security review. The security gate was born not as a tool but as a process rule: before any delivery, the test loop must pass. And the loop includes a dedicated security reviewer."
+date: 2026-08-30 08:00:00 -03:00
+pubDate: 2026-08-30 08:00:00 -03:00
+project: seguranca
+tags: [security, process, test-loop, review, owasp, gate, automation]
+cover: /covers/seguranca-o-portao-que-nao-deixa-entregar.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day the reviewer became a gatekeeper
+
+In the previous post, the Security Agent cross-referenced the findings of two hunters and delivered a single consolidated alert. Detection was solved. But a process problem remained: **the code I shipped the same day could carry a flaw that the scanner would only find on the next run**.
+
+An alert is reactive. It tells you after the problem is already live. What I wanted was a gate: something that blocked the delivery before it happened, if the code didn't pass a security review.
+
+That's how the **security gate** was born — not as a tool, as a rule. The test loop used before every delivery gained a dedicated security reviewer.
+
+## The problem with finding flaws after they're live
+
+The ecosystem has CI scanners, production watchdogs, and an agent that cross-references both. All of it works — but all of it is **after deploy**. Code that goes live today with a security flaw stays exposed until the next scan. Which might be 6 hours, 12 hours, or the next commit away.
+
+The difference between "detect in production" and "block before deploy" is the same as a fire alarm versus a fire extinguisher. The alarm warns. The extinguisher puts it out. The security gate is the extinguisher.
+
+What I needed was a reviewer that read the code before it hit production, applied a list of risk categories, and issued a verdict: **blocked** or **released**. And it had to be part of the normal delivery flow — not another manual step I'd forget in the rush.
+
+## The process rule: the loop before everything
+
+On August 30, the rule that had been forming in practice became explicit: **before every delivery, the test loop must run**. The loop has three phases:
+
+1. **Builder** — the code compiles, unit tests pass, the build is clean.
+2. **Critic** — a code reviewer evaluates the implementation: architecture, edge cases, readability, and **security**.
+3. **Security reviewer** — a dedicated analyst walks an OWASP checklist and issues the final verdict.
+
+The security reviewer is an instance of the same agent that does the critic, but with a different prompt: it doesn't care whether the code is pretty or performant. It looks only at what can go wrong. The prompt it receives is a lean list of risk categories:
+
+- SSRF and internal request injection
+- Sensitive data exposure in responses
+- Missing security headers (CSP, HSTS, X-Frame-Options)
+- Timeouts and denial-of-service on public endpoints
+- Cross-site scripting (XSS) in user-facing output
+- Dependencies with known vulnerabilities
+- Hardcoded secrets in code
+
+Each category has a specific question. The reviewer doesn't answer "yes" or "no" for every one — it answers whether the code being delivered **introduces** or **worsens** any of these risks. If yes, the verdict is blocked. If not, it's released.
+
+## What the security reviewer looks at (and what it doesn't)
+
+The security reviewer doesn't replace the production scanner. It doesn't scan git history, doesn't test runtime, doesn't run network scans. It does one thing: **read the diff and tell me whether this code can ship**.
+
+```
+What it looks at:
+  - The commit diff: every added or modified line
+  - Architectural context: what this endpoint/component does
+  - Input handling: where data comes from, how it's validated
+  - Output handling: where data goes, how it's serialized
+
+What it doesn't look at:
+  - Repository history (that's the secret scanner's job)
+  - Runtime (that's the watchdog's job)
+  - The port inventory (that's the weekly scanner's job)
+```
+
+The split is intentional. Each layer covers a piece of the problem. The security reviewer covers the **delivery moment** — the gap between "code compiled" and "code live". It's a short window, but it's where most security flaws reach production.
+
+## The example allowlist
+
+One design decision showed up in the first days: security scanning tools use example tokens in tests (like `AKIAIOSFODNN7EXAMPLE` from AWS). The security reviewer, if not instructed, could block a commit because of a token that isn't real.
+
+The fix wasn't turning the reviewer off — it was adding an **allowlist of known patterns** to the prompt. The reviewer learned that certain values are documentation placeholders and don't trigger an alert. The same applies to example hashes, test emails, and documentation URLs.
+
+The key detail: that allowlist is **explicit and documented**. It's not a "ignore anything that looks fake" — it's a list of patterns the security team itself recognizes as safe. Anything outside the list keeps getting blocked.
+
+## Metrics that matter
+
+| Metric | Value |
+|--------|-------|
+| Security gate | Before every delivery |
+| Risk categories in the prompt | 7 (SSRF, data, headers, DoS, XSS, deps, secrets) |
+| Example allowlist | Documented patterns (not silent) |
+| Reviewer output | Blocked / Released |
+| Reviewer scope | Only the diff, not the runtime |
+
+## Lessons learned
+
+1. **Security as process beats security as a tool.** A tool you don't use protects nothing. A process that blocks delivery, you use every time.
+2. **The security reviewer doesn't need to be complex.** Seven risk categories cover most problems a diff can introduce. Everything else is covered by the other layers.
+3. **Explicit allowlist > silence.** It's better to document what's safe than to teach the reviewer to "trust" patterns that look suspicious.
+4. **The gate is the extinguisher, not the alarm.** The alarm (production scanner) warns after. The gate blocks before. Both are necessary, and neither replaces the other.
+5. **A security prompt is different from a code prompt.** The security reviewer doesn't want pretty code — it wants code that won't break. The mindset differs, and the prompt reflects that.
+
+## What's next
+
+- **Automated penetration testing** as part of the gate, not only in weekly CI.
+- **SBOM and supply chain** — checking dependencies at delivery time, not just in periodic scans.
+- **Correlation with the watchdog** — if the reviewer blocks something, the watchdog cross-checks the port inventory to see if the affected service is documented.
+
+The security gate isn't the prettiest tool in the ecosystem. It's the most annoying. And that's why it works: it stops the delivery before it happens, and you're forced to look before you release.
+
+<Terminal
+  commands={[
+    { label: 'gate', cmd: 'security-reviewer --diff <commit>' },
+    { label: 'checklist', cmd: 'security-reviewer --categories' },
+    { label: 'example', cmd: '# AKIAIOSFODNN7EXAMPLE in allowlist — no block' },
+    { label: 'verdict', cmd: 'echo "VERDICT: RELEASED — no new risk category detected"' },
+  ]}
+/>
