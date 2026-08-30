@@ -1,0 +1,145 @@
+---
+title: "TatuEngine: the lm_head Returns — the Audit That Unlocked Phase 4"
+description: "The codec post ended with a dangling issue: the lm_head diverging in validation. Two weeks later, a methodical audit rescaled the model's head, generated a clean checkpoint, and became the foundation of Phase 4 — the Resurrection."
+date: 2026-08-30 10:30:00 -03:00
+pubDate: 2026-08-30 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, lm_head, checkpoint, fase4, pytorch, mamba, ssm]
+cover: /covers/tatuengine-o-retorno-do-lm-head.webp
+featured: false
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The issue no one forgot
+
+In the codec post, I left a spoiler at the end: *"the lm_head will make a comeback."* And it did.
+
+The short story: the ternary block codec shrank the model from 27GB to 245MB, but per-tensor validation flagged a divergence in the `lm_head` — the layer that maps internal states to the vocabulary. While `in_proj` came out perfect (ULP-level differences) and `out_proj` was explained by accumulation order, the lm_head stayed as an open item in the backlog.
+
+Two weeks later, I came back to it with an audit script — and what I found changed the entire project's course.
+
+## The audit
+
+The `lm_head_fix.py` script was born from a simple question: **what's inside the lm_head after all that compression?**
+
+The first thing it does is load the original checkpoint and measure the weight matrix statistics:
+
+```python
+w = model.lm_head.weight.data
+print(f"lm_head.weight: mean={w.float().mean().item():.4f} "
+      f"std={w.float().std().item():.4f} "
+      f"max|w|={w.float().abs().max().item():.4f}")
+print(f"zeros absolutos: {(w.float().abs() < 1e-12).sum().item()} / {w.numel()}")
+```
+
+Then it compares with the embedding:
+
+```python
+ew = model.embed.weight.data
+print(f"embed.weight: mean={ew.float().mean().item():.4f} "
+      f"std={ew.float().std().item():.4f}")
+print(f"compartilhados (tied): {torch.equal(ew, w)}")
+```
+
+What the audit revealed: the lm_head weight distribution was **misaligned** with the embedding's. In causal models with tied embeddings, the vocabulary head should track the input scale. After the codec transformations and intermediate checkpoints, the scale had drifted — and that was what made validation diverge.
+
+## The fix: Xavier rescale
+
+The decision was surgical: instead of touching the whole model, re-initialize **only** the lm_head with a small scale, like a fresh head. Using Xavier uniform — the same classic initialization for a newborn layer:
+
+```python
+new_w = torch.empty_like(w)
+fan_in, fan_out = w.shape[1], w.shape[0]
+bound = math.sqrt(6.0 / (fan_in + fan_out))
+new_w.uniform_(-bound, bound)
+lh.weight.data.copy_(new_w)
+```
+
+The sanity check came right after: run a forward pass with a real sentence and look at the top 5 logits — to confirm the head still produced reasonable magnitudes, not a sea of NaN:
+
+```python
+top5_vals, top5_idx = logits[-1].topk(5)
+for v, i in zip(top5_vals.tolist(), top5_idx.tolist()):
+    print(f"  {v:10.2f} -> {repr(tok.decode([i]))}")
+```
+
+Then the loss retest with a training batch — expecting a value near random (~10.8), because a re-initialized head hasn't learned anything yet:
+
+```python
+loss = F.cross_entropy(shift.reshape(-1, shift.size(-1)), sample[:, 1:].reshape(-1))
+print(f"LOSS AFTER RESCALE: {loss.item():.4f} (random expected ~10.8)")
+```
+
+And finally, a backward test with gradients — checking that gradients flow, there are no NaN, and the total norm makes sense:
+
+```python
+loss3.backward()
+total_norm = sum(g**2 for g in grad_norms) ** 0.5
+print(f"grad_norm total: {total_norm:.4f}")
+print(f"NaN in grads: {any(math.isnan(g) for _, g in grad_norms)}")
+```
+
+## The checkpoint that unlocked everything
+
+The audit produced a new checkpoint: `bitmamba_1b_lmfix.pt` — the same model, but with a healthy, rescaled head.
+
+And this exact file was what `run_fase4.py` chose as its foundation. Check the config line:
+
+```python
+# Base .pt (bare model — no training, HF weights)
+MODEL_PT = PROJECT_ROOT / "models" / "bitmamba_cpp" / "bitmamba_1b_lmfix.pt"
+```
+
+Phase 4 — dubbed the Resurrection, authorized by the architect on August 28 — needs a **clean load**: a pretraining checkpoint without SFT contaminating memory. The original `bitmamba_1b.pt` had a drifted head; `_lmfix` is the corrected version. Without the audit, Phase 4 would have started with a sick head, and the first training steps would have been fighting the wrong scale.
+
+The Phase 4 service order:
+
+```text
+1. Clean load: full_warmup/best — pretrain, no SFT
+2. AdamW (Fused) + Parameter Groups: A_log/D @ 10x, rest @ 0.3x
+3. Hybrid Loop: 0-300 pure pretrain, 300-2000 co-training pretrain:SFT
+4. Telemetry: separate losses (Pretrain vs SFT) from step 301
+```
+
+The training even gained per-group gradient inspection — including the lm_head separated from the rest:
+
+```python
+gnorm_lm = 0.0
+for n, p_g in model.named_parameters():
+    if p_g.grad is not None and "lm_head" in n:
+        gnorm_lm += p_g.grad.float().norm().item() ** 2
+gnorm_lm = gnorm_lm ** 0.5
+```
+
+Now the lm_head has its own telemetry in the log at every step. After being the villain of the codec validation, it became one of the most watched metrics in training.
+
+## Metrics
+
+| Metric | Value |
+|--------|-------|
+| Original checkpoint | `bitmamba_1b.pt` (2.04GB) |
+| Fixed checkpoint | `bitmamba_1b_lmfix.pt` (2.04GB) |
+| Technique | Xavier uniform rescale, lm_head only |
+| Post-rescale loss | ~10.8 (expected for a fresh head) |
+| Phase 4 | Resurrection (Hybrid Option C), authorized Aug 28 |
+| Phase 4 base | `bitmamba_1b_lmfix.pt` — clean load |
+
+## Lessons learned
+
+1. **A documented issue becomes a trail, not debt** — "lm_head diverging" stayed as a spoiler in the codec post. Two weeks later, it became the base checkpoint for the project's most important phase. A well-documented issue is worth gold.
+2. **Audit scale before training** — most training problems aren't in the architecture, they're in the input weight scale. An out-of-scale head makes loss diverge in a way that looks like a code bug.
+3. **Re-initialization is surgical** — I didn't need to rebuild anything. One new tensor, one copy, one save. The smallest intervention that unlocks the next step is almost always the right one.
+4. **Separate telemetry tells the story** — isolating the lm_head gradient from the rest of the model turned the former villain into a daily health signal.
+
+The Resurrection started with the right head. And the codec spoiler, at last, paid off.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 lm_head_fix.py', output: 'lm_head: Xavier rescale OK · loss ~10.8 · grad OK · checkpoint saved' },
+  { cmd: 'ls models/bitmamba_cpp/bitmamba_1b_lmfix.pt', output: '2.0G Aug 30 00:23 bitmamba_1b_lmfix.pt' },
+  { cmd: 'grep MODEL_PT tatu/scripts/run_fase4.py', output: 'MODEL_PT = ... bitmamba_1b_lmfix.pt  ← Phase 4 base' },
+  ]}
+/>
