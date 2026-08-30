@@ -182,6 +182,14 @@ html[data-theme="light"] .filter-bar.filter-bar {  --bar-accent: #5850ec;  --bar
 [data-project="lifelog"] .post-banner::after {  background: radial-gradient(ellipse at center, rgba(168,85,247,0.1) 0%, transparent 70%);
 }
 
+/*========================================  YURUMI — Memória / Agente  ======================================== */
+[data-project="yurumi"] {  --color-accent: #8b5cf6;  --color-accent-soft: color-mix(in srgb, #8b5cf6 15%, transparent);  --color-glow: rgba(139,92,246,0.3);  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #0f0a1a 30%, #0a0a0f 70%, #0a0a0f 100%);  --pattern-url: url('/patterns/brain.svg');  --pattern-opacity: 0.06;
+}
+[data-project="yurumi"] .post-banner {  border-color: #8b5cf6;  box-shadow: 0 0 40px rgba(139,92,246,0.15);
+}
+[data-project="yurumi"] .post-banner::after {  background: radial-gradient(ellipse at center, rgba(139,92,246,0.1) 0%, transparent 70%);
+}
+
 /*========================================  DEV / Outros — Tech neutral  ======================================== */
 [data-project="dev"] {  --color-accent: #848d97;  --color-accent-soft: rgba(132, 141, 151, 0.08);  --color-glow: 0 0 20px rgba(132, 141, 151, 0.08);  --pattern-url: none;  --pattern-opacity: 0;  --hover-scale: 1.01;  --card-border: 1px solid #21262d;  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #101015 50%, #0a0a0f 100%);
 }

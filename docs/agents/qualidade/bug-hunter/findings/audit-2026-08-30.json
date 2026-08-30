@@ -1,37 +1,145 @@
 {
-  "timestamp": "2026-08-30T03:11:27.063Z",
+  "timestamp": "2026-08-30T21:01:08.502Z",
   "url": "https://lifelog-sepia.vercel.app",
-  "duration": "117.8",
-  "routes": {},
+  "duration": "29.4",
+  "routes": {
+    "/": {
+      "url": "https://lifelog-sepia.vercel.app/",
+      "title": "Início — LifeLog",
+      "contentSize": 377645,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=354753"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 40732 chars"
+        }
+      ]
+    },
+    "/en/": {
+      "url": "https://lifelog-sepia.vercel.app/en/",
+      "title": "Home — LifeLog",
+      "contentSize": 377015,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "i18n-en",
+          "desc": "Timeline em inglês",
+          "ok": true,
+          "detail": "body 39921 chars (EN)"
+        }
+      ]
+    },
+    "/arquivo": {
+      "url": "https://lifelog-sepia.vercel.app/arquivo",
+      "title": "Arquivo — LifeLog",
+      "contentSize": 195243,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=172351"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 10517 chars"
+        }
+      ]
+    },
+    "/en/archive": {
+      "url": "https://lifelog-sepia.vercel.app/en/archive",
+      "title": "Archive — LifeLog",
+      "contentSize": 186011,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=163126"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 10256 chars"
+        }
+      ]
+    },
+    "/sobre": {
+      "url": "https://lifelog-sepia.vercel.app/sobre",
+      "title": "Sobre o LifeLog — LifeLog",
+      "contentSize": 31916,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=9024"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 871 chars"
+        }
+      ]
+    },
+    "/en/about": {
+      "url": "https://lifelog-sepia.vercel.app/en/about",
+      "title": "About LifeLog — LifeLog",
+      "contentSize": 31991,
+      "servesHtml": {
+        "ok": true,
+        "detail": "content-type=text/html; charset=utf-8 status=200"
+      },
+      "renderChecks": [
+        {
+          "id": "root-mounted",
+          "desc": "Astro renderizou",
+          "ok": true,
+          "detail": "main len=9106"
+        },
+        {
+          "id": "has-cards",
+          "desc": "Cards de post na timeline",
+          "ok": true,
+          "detail": "body 863 chars"
+        }
+      ]
+    }
+  },
   "consoleErrors": [],
   "networkErrors": [],
-  "navigationFailures": [
-    {
-      "route": "/",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    },
-    {
-      "route": "/en/",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    },
-    {
-      "route": "/arquivo",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/arquivo\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    },
-    {
-      "route": "/en/archive",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/archive\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    },
-    {
-      "route": "/sobre",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/sobre\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    },
-    {
-      "route": "/en/about",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://lifelog-sepia.vercel.app/en/about\", waiting until \"domcontentloaded\"\u001b[22m\n"
-    }
-  ],
-  "passed": 0,
-  "failed": 6,
+  "navigationFailures": [],
+  "passed": 6,
+  "failed": 0,
   "loginOk": true
 }
