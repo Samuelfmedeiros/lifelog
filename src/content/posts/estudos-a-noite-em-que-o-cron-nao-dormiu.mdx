@@ -1,0 +1,132 @@
+---
+title: "Estudos — a noite em que o cron não dormiu: O(n²) vs numpy"
+description: "Quando o cron de consolidação de memória do Yurumi parou de funcionar, descobri que minhas 7.957 memórias estavam sendo re-embedadas a cada 5 minutos. E a similaridade de cosseno em Python puro levava mais tempo que o timeout."
+category: samuel-projects
+date: 2026-08-31 10:00:00 -03:00
+pubDate: 2026-08-31 08:00:00 -03:00
+project: estudos
+tags: [estudos, yurumi, performance, numpy, qdrant, embeddings, consolidacao, aprendizado]
+icon: "estudos"
+cover: /covers/estudos-a-noite-em-que-o-cron-nao-dormiu.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A queda
+
+O cron `yurumi-agent-loop` roda a cada 5 minutos. Ele executa o loop F3 LEARN — consolidação de memória, detecção de duplicatas, clusters. Na teoria, um ciclo silencioso que mantém o ecossistema organizado sem ninguém perceber.
+
+Na prática, ele estava falhando há 10 execuções consecutivas.
+
+Quando fui investigar, o log mostrava uma linha repetida como um looping de terror:
+
+> exit 1 (timeout 300s) — `yurumi-agent-loop-cron.py`
+
+O wrapper dava 300 segundos pro script completar. E toda vez, o script morria antes de terminar — sem conseguir nem emitir um erro legível no stdout, porque o timeout cortava seco.
+
+## O diagnóstico
+
+O `AgentLoop.run_once()` chama três fases: F1 (intent/hold), F2 (actions/triggers), F3 (LEARN). A fase de aprendizado roda `find_clusters()`, que carrega memórias, embeda o que não tem vetor, e agrupa por similaridade semântica.
+
+O problema estava em duas frentes:
+
+### 1. Re-embedando tudo a cada tick
+
+O `_load_memories()` fazia `scroll(with_vectors=False)` no Qdrant — ou seja, pedia os pontos sem o vetor embutido. Depois, pra cada lote, chamava o colibri (`:7997`, modelo de embedding em 768 dimensões) pra re-embedar o texto completo.
+
+Eram **7.957 memórias**. Cada lote de ~520KB levava entre 10 e 30 segundos no colibri. Multiplicando: **mais de 30 minutos** só pra carregar os dados que já estavam embedados, salvos, e prontos no Qdrant.
+
+### 2. O(n²) em Python puro
+
+Depois de carregar os vetores (quando conseguia), `find_clusters()` iterava todos os pares de memória:
+
+```python
+# Antes: O(n²) com sklearn
+from sklearn.metrics.pairwise import cosine_similarity
+
+for i, m1 in enumerate(memories):
+    for j, m2 in enumerate(memories):
+        if i >= j:
+            continue
+        sim = cosine_similarity([m1["vector"]], [m2["vector"]])[0][0]
+        # ... processa
+```
+
+Pra 4.649 vetores, isso dava ~21 milhões de comparações de cosseno, cada uma alocando arrays numpy temporários. Python puro, CPU-bound, sem paralelismo.
+
+**Combinação dos dois: >30 minutos de processamento num cron que tinha 300 segundos de vida.**
+
+## O fix em duas linhas (mais ou menos)
+
+### Fix 1: vetores salvos existem pra ser lidos
+
+O Qdrant guarda o vetor colibri junto com cada ponto. Bastava pedir:
+
+```python
+def _load_memories(self, limit=2000, with_vectors=True):
+    points = self.qdrant.scroll(
+        collection_name=self.collection_name,
+        limit=limit,
+        with_payload=True,
+        with_vectors=with_vectors,  # <-- a mágica
+        order_by={"field": "metadata.timestamp", "direction": "desc"}
+    )
+```
+
+**Resultado:** 8,4 segundos. Sem chamar o colibri nenhuma vez.
+
+### Fix 2: numpy matmul resolve O(n²) em 2 segundos
+
+Em vez de comparar par a par, normalizei todos os vetores pra comprimento unitário e usei multiplicação de matrizes:
+
+```python
+vectors = np.array([m["vector"] for m in memories if m.get("vector") is not None])
+norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+norms[norms == 0] = 1e-10
+vectors_norm = vectors / norms
+similarity = np.dot(vectors_norm, vectors_norm.T)  # (N, N) matrix
+```
+
+A matriz `similarity` de 2000x2000 resolve em **menos de 2 segundos**. A mesma operação com sklearn demorava mais de 30 minutos.
+
+**Total da rodada de consolidação: 10,7 segundos** (52 clusters, 140 candidatos a merge).
+
+## O pitfall escondido — coleção anonymous
+
+O AGENTS.md do projeto descrevia a coleção Qdrant com named vectors `{colibri: 768d, bge: 384d, bm25: sparse}`. Mas a coleção **real** era **anonymous** (size=768, Cosine) — legado de antes da migração.
+
+Isso significa que `p.vector` podia ser:
+
+- Uma `list` de 768 floats (vetor anônimo puro)
+- Um `dict` com chave `""` (string vazia) apontando pro vetor colibri
+- Um `dict` com `{"colibri": [...], "bge": [...], "bm25": [...]}` (raro, schema novo)
+
+O código original tentava `v.get("colibri")` — e retornava `None` pros pontos com chave `""`. Isso me fez pensar que **5.249 memórias estavam sem vetor** e precisavam de backfill. Na verdade, todas as 9.917 memórias tinham vetor 768d — era só um bug de leitura.
+
+## O que aprendi
+
+| Métrica | Antes | Depois |
+|---------|-------|--------|
+| `_load_memories()` | >30min (re-embed 7.957) | 8,4s (vetor salvo) |
+| `find_clusters()` | O(n²) Python, ~21M pares | numpy matmul, &lt;2s p/ 2k |
+| Consolidação total | >30min | **10,7s** |
+| Cron (timeout 300s) | exit 1 (10x falha) | **exit 0** |
+| Testes | — | 46/46 passando |
+| Suite completa | — | 1.145 testes, 0 falhas |
+
+Três lições que valem o post:
+
+1. **Nunca re-embedar o que já está embedado** — se o banco de vetores salva o vetor, leia ele. Parece óbvio, mas o código original simplesmente não pedia `with_vectors=True`. O custo: 30 minutos de embed num cron de 5 minutos.
+
+2. **Produto de matrizes é mais rápido que pair-wise** — O(n²) com numpy matmul roda em C, sem alocação por par. Pra 2.000 vetores, a diferença é de 30 minutos pra 2 segundos.
+
+3. **Documentação vs realidade** — o AGENTS.md descrevia named vectors, mas a coleção era anonymous. Antes de fazer backfill de 5 mil vetores "faltando", verificar o schema real da coleção. Uma amostra de 5 pontos teria revelado o bug em 30 segundos.
+
+<Terminal commands={[
+  { cmd: 'git log --oneline -1 971cb97', comment: 'O commit do fix'},
+  { cmd: 'cd ~/projetos/yurumi-agent-memory && python3 -c "import core.consolidate as c; c.EmbeddingConsolidator().consolidate()"', comment: 'consolidacao em 10s'},
+  { cmd: '# Verificar schema real da coleção Qdrant', comment: 'before backfill, check reality'},
+  { cmd: 'curl -s http://localhost:6333/collections/yurumi_memory | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[\'result\'][\'config\'][\'params\'][\'vectors\'])"', comment: 'anonymous vs named?'}
+]}/>
