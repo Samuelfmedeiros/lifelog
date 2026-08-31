@@ -1,0 +1,100 @@
+---
+title: "Capivara — the requests app and the double /api that returned 404"
+description: "A brand-new CRUD in the personal hub, with groups, priorities and status — and a silent bug: the apiFetch helper already prepends /api, and I called /api/pedidos on top of it. /api/api/pedidos was born, and nobody saw it."
+date: 2026-08-30 12:00:00 -03:00
+pubDate: 2026-08-31 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "requests", "api", "crud", "frontend", "fastapi", "react"]
+cover: /covers/capivara-o-app-de-pedidos-e-o-duplo-api.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The idea: write down what I want, in the place I already live
+
+Capivara is the hub where everything in my ecosystem passes through — projects, health, backups, alerts. But one thing lived outside it: **the requests list**. Each group (Arachne, Dogwalk, media, security, infra) keeps its requests scattered across conversations, issues and loose notes. Whenever I wanted to remember "what did I ask Arachne for again?", I had to hunt through three places.
+
+The question that unlocked it was simple: *why not have a single place to write down each request, with group, priority and status, and follow the whole lifecycle?*
+
+The **Requests App** was born — a full CRUD inside the Capivara admin.
+
+## The backend: a router that won't let anything wrong through
+
+The API is lean: `GET`, `POST`, `PATCH` and `DELETE` on `/api/pedidos`, all with a **strict whitelist** of valid values on the server:
+
+```python
+GRUPOS_VALIDOS = [
+    "arachne", "capivara", "dogwalk", "media", "portifolio",
+    "yurumi", "seguranca", "infra", "geral"
+]
+STATUS_VALIDOS = ["pendente", "em_andamento", "concluido", "blocked"]
+```
+
+The model stores the essentials: the request text, group, priority (`baixa`, `media`, `alta`, `urgente`), who created it and timestamps. And there's a detail I like — when status turns `concluido`, the backend records `concluido_em` automatically:
+
+```python
+if body.status == "concluido":
+    pedido.concluido_em = datetime.now(timezone.utc)
+```
+
+Everything is **admin-only**: without `is_admin`, the response is 403 before it even touches the database. And groups, priorities and statuses are validated again on `PATCH` — you can't send an invented group.
+
+## The silent bug: /api/api/pedidos
+
+The frontend has an `apiFetch()` helper that **already builds the `/api` prefix** by itself:
+
+```typescript
+const API = '/api'
+
+async function apiFetch(path: string, options?: RequestInit) {
+  const token = getToken()
+  let res = await fetch(`${API}${path}`, {
+    // ...
+  })
+```
+
+Notice: `apiFetch('/pedidos')` becomes `GET /api/pedidos`. Now look at what I wrote in the new admin section, across all **four** methods (list, create, edit, delete):
+
+```typescript
+apiFetch(`/api/pedidos?${params}`)   // becomes /api/api/pedidos
+apiFetch('/api/pedidos', { method: 'POST' })  // same
+```
+
+`apiFetch('/api/pedidos')` → `fetch('/api' + '/api/pedidos')` → **`/api/api/pedidos`** → **404**.
+
+The worst part: **the bug didn't scream.** The section opened, called the GET, got a 404, and the `catch` only showed a small error message. Nothing crashed loudly — the requests app simply looked empty. If you weren't expecting to see requests, you wouldn't even notice something was wrong.
+
+## The fix: one letter per call
+
+The fix was surgical — removing the duplicated `/api` from the four calls:
+
+```typescript
+// before
+apiFetch(`/api/pedidos?${params}`)
+// after
+apiFetch(`/pedidos?${params}`)
+```
+
+Same thing on POST, PATCH and DELETE. It was one of the fastest fixes of the week in editing time, and one of the most frustrating in debugging time — because the bug didn't produce a stack trace, just a quiet 404 I had to hunt down.
+
+## Lessons learned
+
+1. **Helper conventions are contracts.** If `apiFetch` builds the prefix, the rule is: pass the path WITHOUT the prefix. A violated convention in one place becomes a silent bug everywhere.
+2. **A "soft" error hides a real problem.** A `catch` that only shows a small error line is great for UX, terrible for debugging. Worth logging the full URL that was called — `/api/api/pedidos` would show up immediately.
+3. **CRUD with server-side whitelist is cheap and right.** Group, priority and status validated on the backend, not just in the frontend dropdown. That's the kind of validation that keeps dirty data out of the database.
+4. **New features deserve a real click in the admin.** The unit tests passed because they mocked `apiFetch` — the double `/api` only appeared when the section called the real API.
+
+## What's next
+
+The Requests App is live and is now the single place to write down a request. Natural next steps: link each request to an issue or project card, and add a per-group summary on the dashboard (pending count by group). The full cycle — requested → in progress → done — already has its skeleton in place.
+
+## Terminal
+
+<Terminal commands={[
+  { cmd: 'git log --oneline --all --grep="pedido"' },
+  { cmd: 'b81ccd8 feat: Requests App (H11) — API /api/pedidos + admin section' },
+  { cmd: 'cbc6c1a fix(frontend): double /api in apiFetch pedidos (404)' },
+  { cmd: '95ca86d chore: bug-hunter findings audit 30-31/08 (pedidos fix validated in prod)' },
+]}/>

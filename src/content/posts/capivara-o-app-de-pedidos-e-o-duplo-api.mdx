@@ -1,0 +1,100 @@
+---
+title: "Capivara — o app de pedidos e o duplo /api que devolvia 404"
+description: "Um CRUD novo no hub pessoal, com grupos, prioridades e status — e um bug silencioso: o helper apiFetch já montava /api, e eu chamei /api/pedidos por cima. Nasceu o /api/api/pedidos que ninguém via."
+date: 2026-08-30 12:00:00 -03:00
+pubDate: 2026-08-31 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "pedidos", "api", "crud", "frontend", "fastapi", "react"]
+cover: /covers/capivara-o-app-de-pedidos-e-o-duplo-api.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A ideia: anotar o que eu quero, no lugar onde eu já moro
+
+O Capivara é o hub onde tudo do meu ecossistema passa — projetos, saúde, backups, alertas. Mas tinha uma coisa que vivia fora dele: **a lista de pedidos**. Cada grupo (Arachne, Dogwalk, mídia, segurança, infra) tem seus pedidos espalhados em conversas, issues e notas soltas. Quando eu queria lembrar "o que eu pedi mesmo pro Arachne?", eu tinha que caçar em três lugares.
+
+A pergunta que destravou foi simples: *por que não ter um lugar único pra anotar cada pedido, com grupo, prioridade e status, e acompanhar o ciclo de vida inteiro?*
+
+Nasceu o **App de Pedidos** — um CRUD completo dentro do admin do Capivara.
+
+## O backend: um router que não deixa passar nada errado
+
+A API é enxuta: `GET`, `POST`, `PATCH` e `DELETE` em `/api/pedidos`, tudo com **whitelist estrita** de valores válidos no servidor:
+
+```python
+GRUPOS_VALIDOS = [
+    "arachne", "capivara", "dogwalk", "media", "portifolio",
+    "yurumi", "seguranca", "infra", "geral"
+]
+STATUS_VALIDOS = ["pendente", "em_andamento", "concluido", "blocked"]
+```
+
+O modelo guarda o essencial: texto do pedido, grupo, prioridade (`baixa`, `media`, `alta`, `urgente`), quem criou e timestamps. E tem um detalhe que eu gosto — quando o status vira `concluido`, o backend grava o `concluido_em` automaticamente:
+
+```python
+if body.status == "concluido":
+    pedido.concluido_em = datetime.now(timezone.utc)
+```
+
+Tudo é **admin-only**: sem `is_admin`, a resposta é 403 antes mesmo de tocar no banco. E os grupos, prioridades e status são validados de novo no `PATCH` — não dá pra mandar um grupo inventado.
+
+## O bug silencioso: /api/api/pedidos
+
+O frontend tem um helper `apiFetch()` que **já monta o prefixo `/api`** sozinho:
+
+```typescript
+const API = '/api'
+
+async function apiFetch(path: string, options?: RequestInit) {
+  const token = getToken()
+  let res = await fetch(`${API}${path}`, {
+    // ...
+  })
+```
+
+Repara: `apiFetch('/pedidos')` vira `GET /api/pedidos`. Agora olha o que eu escrevi na seção nova do admin, nos **quatro** métodos (listar, criar, editar, deletar):
+
+```typescript
+apiFetch(`/api/pedidos?${params}`)   // vira /api/api/pedidos
+apiFetch('/api/pedidos', { method: 'POST' })  // idem
+```
+
+`apiFetch('/api/pedidos')` → `fetch('/api' + '/api/pedidos')` → **`/api/api/pedidos`** → **404**.
+
+O pior: **o bug não gritava**. A seção abria, chamava o GET, recebia 404, e o `catch` só mostrava uma mensagem pequena de erro. Nada quebrava com estrondo — o app de pedidos simplesmente parecia vazio. Se você não estivesse esperando ver pedidos, nem percebia que algo estava errado.
+
+## A correção: uma letra por chamada
+
+O fix foi cirúrgico — remover o `/api` duplicado das quatro chamadas:
+
+```typescript
+// antes
+apiFetch(`/api/pedidos?${params}`)
+// depois
+apiFetch(`/pedidos?${params}`)
+```
+
+Mesma coisa no POST, no PATCH e no DELETE. Foi um dos fixes mais rápidos da semana em tempo de edição, e um dos mais frustrantes em tempo de debug — porque o bug não dava stack trace, só um 404 quieto que eu tinha que caçar.
+
+## Aprendizados
+
+1. **Convenção de helper é contrato.** Se `apiFetch` monta o prefixo, a regra é: passar o caminho SEM o prefixo. Convenção violada em um lugar vira bug silencioso em todos.
+2. **Erro "leve" esconde problema real.** O `catch` que só mostra uma linha pequena de erro é ótimo pra UX, péssimo pra debug. Vale logar a URL completa que foi chamada — o `/api/api/pedidos` apareceria na hora.
+3. **CRUD com whitelist no servidor é barato e certo.** Grupo, prioridade e status validados no backend, não só no dropdown do frontend. É o tipo de validação que impede dado sujo de entrar no banco.
+4. **Feature nova merece um clique de teste no admin real.** Os testes unitários passavam porque mockavam o `apiFetch` — o duplo `/api` só apareceu quando a seção chamou a API de verdade.
+
+## O que vem a seguir
+
+O App de Pedidos está no ar e já é o lugar único de anotar pedido. Próximos passos naturais: vincular cada pedido a uma issue ou card de projeto, e um resumo por grupo no dashboard (contagem de pendentes por grupo). O ciclo completo — pedido → em andamento → concluído — já tem o esqueleto pronto.
+
+## Terminal
+
+<Terminal commands={[
+  { cmd: 'git log --oneline --all --grep="pedido"' },
+  { cmd: 'b81ccd8 feat: App de Pedidos (H11) — API /api/pedidos + seção admin Pedidos' },
+  { cmd: 'cbc6c1a fix(frontend): duplo /api em apiFetch pedidos (404)' },
+  { cmd: '95ca86d chore: findings bug-hunter audit 30-31/08 (pedidos fix validado em prod)' },
+]}/>
