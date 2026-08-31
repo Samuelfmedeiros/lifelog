@@ -1,0 +1,122 @@
+---
+title: "LifeLog — the blog that became a product with process"
+description: "Cover gate at build time, WCAG AA contrast, the 10th project in the schema, and a bug-hunter audit with zero violations. The story of how a blog stopped being just a blog and became a quality system."
+date: 2026-08-31 16:00:00 -03:00
+pubDate: 2026-08-31 16:00:00 -03:00
+project: lifelog
+tags: [lifelog, validation, coverage, process, quality, wcag, accessibility, yurumi]
+icon: "📖"
+cover: /covers/lifelog-o-blog-que-virou-produto.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The blog that documents everything learned to document itself
+
+LifeLog was born in July with a simple purpose: document the journey of the projects. In August, it started documenting its *own* journey — and that's when things got interesting.
+
+What was a static dev blog became a system with quality gates, accessibility audits, a self-correcting publishing pipeline, and the ability to absorb new projects without refactoring. It wasn't planned. It happened because every problem that appeared left a piece of infrastructure behind.
+
+## The end of the cover saga
+
+The previous post (Aug 22) told the story of the watchdog that discovered fake covers. It would find posts without a `cover:` line in the frontmatter, regenerate the cover, commit. It worked, but it was *reactive* — the post was already in the air (or about to go) when the watchdog acted.
+
+The definitive fix came the next day: a **cover gate at build time**.
+
+```bash
+# scripts/validate-covers.mjs — runs before astro build
+# Behavior:
+# - cover missing but .webp exists → AUTO-FIX (inserts the line) and proceeds
+# - dead path but .webp exists → AUTO-FIX (fixes the path)
+# - no cover at all → exit 1 (blocks the deploy)
+```
+
+The script scans every `.mdx` in `src/content/posts/` (PT and EN), checks if each has a `cover:` pointing to an existing file in `public/covers/`. If the `.webp` exists but the `cover:` line is missing, it inserts it — and the build proceeds. If neither the line nor the file exists, **exit 1**. The deploy doesn't happen.
+
+The `package.json` chains it directly:
+
+```json
+"build": "node scripts/validate-covers.mjs && astro build"
+```
+
+Not a single post went live without a cover again. The problem that lasted weeks was solved with 110 lines of Node.js.
+
+## Accessibility is not optional
+
+That same day, an axe-core audit swept every page of the blog in both themes (light and dark) — 14 tests, zero critical/serious violations.
+
+The problems found were subtle but educational:
+
+- **Shiki comments in dark mode**: Astro inlines `--shiki-dark:#6A737D` on code comment spans. That value yields 3.9:1 over the `#0d1117` background — fails AA. Fix: override with `#8b949e` (4.77:1) via attribute selector.
+
+- **Astro scoping breaks ancestor selectors**: `[data-theme="light"] .foo` in component scoped CSS becomes `[data-astro-cid-X][data-theme="light"] .foo[data-astro-cid-X]` — `data-theme` lives on `<html>` (no cid), so the rule never applies. Fix: `:global(html[data-theme="light"]) .foo`.
+
+- **axe doesn't composite alpha**: translucent background `rgba(0,0,0,0.05)` over gradient cards with `color(srgb)` makes axe report a violation even when real contrast is 5.9:1. Fix: opaque background.
+
+- **All 6 palettes in light mode**: amber, cyan, green and rose fail AA as small text (2.85 to 4.20:1). Fix: `color-mix(in srgb, var(--color-accent) 60%, #1a1a2e)` — text color adapts to any palette, worst case 5.6:1.
+
+Fourteen tests, 4 discoveries, 4 fixes. The blog became truly accessible — not just "looks pretty."
+
+## The 10th project: Yurumi
+
+The blog's project schema starts with a `z.enum()` in `src/content.config.ts`:
+
+```ts
+project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+                  'tatuengine', 'estudos', 'descobertas',
+                  'lifelog', 'seguranca', 'yurumi']),
+```
+
+When Yurumi was added as the 10th project, the blog needed 4 changes to absorb it:
+
+1. **Schema**: the enum grew from 9 to 10 values
+2. **Theme**: `themes.css` gained `[data-project="yurumi"]` with color `#b98a5e` (violet), dark gradient, and the brain pattern
+3. **Pattern**: `public/patterns/brain.svg` — a stylized brain SVG, loaded via `--pattern-url`
+4. **Tests**: `projects.test.ts` updated the expectation from 9 to 10 projects
+
+The interesting part: everything else — color palettes, i18n, AI cover, FilterBar, PostCard — **worked without changes**. The theme system was designed to be extensible, and the proof came when an entirely new project appeared.
+
+## Quality as process
+
+In the last week of August, a bug-hunter audit swept LifeLog: 6 routes, 2 themes, 3 breakpoints, 142 tests. Result: **zero issues**.
+
+It's not luck. The blog has:
+
+- **Cover gate at build**: impossible to publish without a cover
+- **14 axe-core tests**: accessibility verified every deploy
+- **142 total tests**: 113 E2E (Playwright) + 29 unit (Vitest)
+- **31 tests for the /api/recusar endpoint**: the publishing feedback loop with coverage
+- **check-lang-sync.py**: CI breaks if a PT post has no EN version (or vice versa)
+
+Every deploy runs through all these tests. If something breaks, the deploy doesn't happen. Process replaced manual vigilance.
+
+```
+────────────────────────────────────────────────
+LifeLog by the numbers (end of August 2026)
+────────────────────────────────────────────────
+Posts:         117 PT + 117 EN
+AI Covers:     132 (.webp)
+Projects:      10 (latest: yurumi)
+Tests:         142 (113 E2E + 29 unit)
+Themes:        2 (light/dark) × 6 palettes
+Patterns:      10 themed SVGs
+Audits:        bug-hunter 28-29/08 → 0 issues
+────────────────────────────────────────────────
+```
+
+## What's next
+
+The blog that documents the journey now has processes to ensure the documentation is quality. The cover gate, WCAG accessibility, extensible schema, and the review pipeline (/ocultos → Liberar/Recusar) form a foundation that will sustain growth.
+
+Yurumi was the 10th project. There's room for more. Every new project that enters the ecosystem will find a blog ready to receive it — with theme, pattern, AI cover, i18n, and tests.
+
+The blog became a product. And the process is here to stay.
+
+<Terminal commands={[
+  { cmd: 'git log --oneline --since="2026-08-22" -- src/ --count', result: '34 infrastructure commits' },
+  { cmd: 'node scripts/validate-covers.mjs && echo "OK"', result: 'OK — 117 posts verified' },
+  { cmd: 'npx playwright test e2e/a11y.spec.ts --reporter=dot', result: '14 passed, 0 failed' },
+  { cmd: 'python3 scripts/check-lang-sync.py', result: 'PT/EN sync: OK (117 pairs)' },
+]} />

@@ -1,0 +1,122 @@
+---
+title: "LifeLog — o blog que virou produto com processo"
+description: "Gate de capas no build, contraste WCAG AA, o 10o projeto no schema, e uma auditoria bug-hunter com zero violacoes. A historia do blog que parou de ser so um blog e virou um sistema com qualidade."
+date: 2026-08-31 16:00:00 -03:00
+pubDate: 2026-08-31 16:00:00 -03:00
+project: lifelog
+tags: [lifelog, validacao, cobertura, processo, qualidade, wcag, acessibilidade, yurumi]
+icon: "📖"
+cover: /covers/lifelog-o-blog-que-virou-produto.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O blog que documenta tudo aprendeu a se documentar
+
+O LifeLog nasceu em julho com um proposito simples: documentar a jornada dos projetos. Em agosto, ele passou a documentar a *propria* jornada — e foi ai que as coisas ficaram interessantes.
+
+O que era um blog estatico de dev virou um sistema com gates de qualidade, auditoria de acessibilidade, um pipeline de publicacao que se auto-corrige, e capacidade de absorver novos projetos sem refatoracao. Nao foi planejado. Aconteceu porque cada problema que aparecia deixava um pedaco de infraestrutura pra tras.
+
+## O fim da saga das capas
+
+O post anterior (22/08) contou a historia do watchdog que descobria capas falsas. Ele encontrava post sem `cover:` no frontmatter, regenerava, commitava. Funcionava, mas era *reativo* — o post ja estava no ar (ou prestes a ir) quando o watchdog agia.
+
+A correcao definitiva veio no dia seguinte: um **gate de capas no build**.
+
+```bash
+# scripts/validate-covers.mjs — roda antes do astro build
+# Comportamento:
+# - cover ausente mas .webp existe → AUTO-FIX (insere a linha) e segue
+# - caminho morto mas .webp existe → AUTO-FIX (corrige o caminho)
+# - sem capa nenhuma → exit 1 (bloqueia o deploy)
+```
+
+O script varre todos os `.mdx` em `src/content/posts/` (PT e EN), confere se cada um tem `cover:` apontando pra um arquivo que existe em `public/covers/`. Se o `.webp` existe mas a linha `cover:` esta faltando, ele insere — e o build segue. Se nao existe nem linha nem arquivo, **exit 1**. O deploy nao acontece.
+
+O `package.json` encadeia direto:
+
+```json
+"build": "node scripts/validate-covers.mjs && astro build"
+```
+
+Nunca mais um post subiu sem capa. O problema que durou semanas foi resolvido com 110 linhas de Node.js.
+
+## Acessibilidade nao e opcional
+
+No mesmo dia, uma auditoria axe-core varreu todas as paginas do blog nos dois temas (claro e escuro) — 14 testes, zero violacoes critical/serious.
+
+Os problemas encontrados foram sutis, mas didaticos:
+
+- **Comentarios Shiki no dark mode**: o Astro injeta `--shiki-dark:#6A737D` inline nos spans de comentario de codigo. Esse valor da 3.9:1 sobre o fundo `#0d1117` — falha AA. A correcao: sobrescrever com `#8b949e` (4.77:1) via seletor de atributo.
+
+- **Scoping Astro quebra seletores ancestrais**: `[data-theme="light"] .foo` no CSS scoped de componente vira `[data-astro-cid-X][data-theme="light"] .foo[data-astro-cid-X]` — o `data-theme` vive no `<html>` (sem cid), entao a regra nunca aplica. Fix: `:global(html[data-theme="light"]) .foo`.
+
+- **axe nao compoe alpha**: fundo translucido `rgba(0,0,0,0.05)` sobre cards com gradientes e `color(srgb)` faz o axe reportar violacao mesmo com contraste real de 5.9:1. Fix: fundo opaco.
+
+- **Todas as 6 paletas no light mode**: amber, cyan, green e rose falham AA como texto pequeno (2.85 a 4.20:1). Fix: `color-mix(in srgb, var(--color-accent) 60%, #1a1a2e)` — a cor do texto se ajusta a qualquer paleta, com pior caso de 5.6:1.
+
+Quatorze testes, 4 descobertas, 4 correcoes. O blog ficou acessivel de verdade — nao so "parece bonito".
+
+## O 10o projeto: Yurumi
+
+O esquema de projetos do blog comeca com um `z.enum()` em `src/content.config.ts`:
+
+```ts
+project: z.enum(['arachne', 'dogwalk', 'portfolio', 'capivara',
+                  'tatuengine', 'estudos', 'descobertas',
+                  'lifelog', 'seguranca', 'yurumi']),
+```
+
+Quando o Yurumi foi adicionado como 10o projeto, o blog precisou de 4 mudancas para absorve-lo:
+
+1. **Schema**: o enum cresceu de 9 para 10 valores
+2. **Tema**: `themes.css` ganhou `[data-project="yurumi"]` com cor `#b98a5e` (violeta), gradiente escuro e o pattern brain
+3. **Pattern**: `public/patterns/brain.svg` — um cerebro estilizado como SVG, carregado via `--pattern-url`
+4. **Testes**: `projects.test.ts` atualizou a expectativa de 9 para 10 projetos
+
+O interessante e que o resto — paletas de cores, i18n, capa AI, FilterBar, PostCard — **funcionou sem alteracao**. O sistema de temas foi projetado pra ser extensivel, e a prova veio quando um projeto inteiramente novo apareceu.
+
+## Qualidade como processo
+
+Na ultima semana de agosto, um bug-hunter audit varreu o LifeLog: 6 rotas, 2 temas, 3 breakpoints, 142 testes. Resultado: **zero issues**.
+
+Nao e sorte. O blog tem:
+
+- **Gate de capas no build**: impossivel publicar sem capa
+- **14 testes axe-core**: acessibilidade verificada a cada deploy
+- **142 testes total**: 113 E2E (Playwright) + 29 unit (Vitest)
+- **31 testes do endpoint /api/recusar**: o feedback loop de publicacao com cobertura
+- **check-lang-sync.py**: CI quebra se um post PT nao tiver versao EN (ou vice-versa)
+
+Cada deploy passa por todos esses testes. Se algo quebra, o deploy nao acontece. O processo substituiu a vigilancia manual.
+
+```
+────────────────────────────────────────────────
+LifeLog em numeros (final de agosto 2026)
+────────────────────────────────────────────────
+Posts:         117 PT + 117 EN
+Capas AI:      132 (.webp)
+Projetos:      10 (ultimo: yurumi)
+Testes:        142 (113 E2E + 29 unit)
+Temas:         2 (claro/escuro) × 6 paletas
+Patterns:      10 SVG tematicos
+Auditorias:    bug-hunter 28-29/08 → 0 issues
+────────────────────────────────────────────────
+```
+
+## O que vem a seguir
+
+O blog que documenta a jornada agora tem processos para garantir que a documentacao e de qualidade. O gate de capas, a acessibilidade WCAG, o schema extensivel e o pipeline de revisao (/ocultos → Liberar/Recusar) formam uma base que vai sustentar o crescimento.
+
+O Yurumi foi o 10o projeto. Ha espaco para mais. Cada novo projeto que entrar no ecossistema vai encontrar um blog pronto para recebe-lo — com tema, pattern, capa AI, i18n, e testes.
+
+O blog virou produto. E o processo veio para ficar.
+
+<Terminal commands={[
+  { cmd: 'git log --oneline --since="2026-08-22" -- src/ --count', result: '34 commits de infraestrutura' },
+  { cmd: 'node scripts/validate-covers.mjs && echo "OK"', result: 'OK — 117 posts verificados' },
+  { cmd: 'npx playwright test e2e/a11y.spec.ts --reporter=dot', result: '14 passed, 0 failed' },
+  { cmd: 'python3 scripts/check-lang-sync.py', result: 'PT/EN sync: OK (117 pares)' },
+]} />
