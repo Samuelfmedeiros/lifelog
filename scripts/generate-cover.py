@@ -79,6 +79,10 @@ PROJECT_STYLES = {
         "prompt_suffix": "Academic blueprint theme, deep blue and cyan, technical drawing aesthetic, clean scholarly atmosphere, 16:9 wallpaper",
         "colors": ["#3b82f6", "#60a5fa", "#1e3a5f"],
     },
+    "yurumi": {
+        "prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Purple, teal and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper",
+        "colors": ["#e05a3c", "#7c3aed", "#22d3ee", "#0b1424"],
+    },
     "descobertas": {
         "prompt_suffix": "Ethereal discovery theme, soft blue and violet, dreamy atmosphere with light particles, sense of wonder, 16:9 wallpaper",
         "colors": ["#38bdf8", "#818cf8", "#1e1b4b"],
@@ -184,6 +188,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "seguranca": "vigilant, armored, red-alert intensity",
         "lifelog": "reflective, layered, ink bleeding into circuits",
         "estudos": "structured, precise, blueprint aesthetic",
+        "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
         "descobertas": "curious, expansive, light breaking through darkness",
     }
     mood = project_moods.get(project, "atmospheric, immersive, cinematic")
