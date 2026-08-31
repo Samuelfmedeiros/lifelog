@@ -112,7 +112,7 @@ The 150 orphan jobs were removed in a single cleanup. From then on, every job re
 | Metric | Before | After |
 |--------|--------|-------|
 | `_load_memories()` | >30min (re-embed 7,957 memories) | 8.4s (vector from Qdrant) |
-| `find_clusters()` | O(n²) Python, ~21M pairs | numpy matmul, <2s for 2k vectors |
+| `find_clusters()` | O(n²) Python, ~21M pairs | numpy matmul, &lt;2s for 2k vectors |
 | Yurumi consolidation | >30min | **10.7s** |
 | Yurumi cron (300s timeout) | exit 1 (10x failures) | **exit 0** |
 | Total cron jobs | 289 | **139** (150 orphans removed) |

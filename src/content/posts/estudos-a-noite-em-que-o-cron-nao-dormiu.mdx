@@ -112,7 +112,7 @@ Os 150 jobs órfãos foram removidos em uma limpeza única. A partir daí, cada 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
 | `_load_memories()` | >30min (re-embed 7.957 memórias) | 8,4s (vetor do Qdrant) |
-| `find_clusters()` | O(n²) Python, ~21M pares | numpy matmul, <2s p/ 2k vetores |
+| `find_clusters()` | O(n²) Python, ~21M pares | numpy matmul, &lt;2s p/ 2k vetores |
 | Consolidação Yurumi | >30min | **10,7s** |
 | Cron Yurumi (timeout 300s) | exit 1 (10x falha) | **exit 0** |
 | Jobs cron totais | 289 | **139** (150 órfãos removidos) |
