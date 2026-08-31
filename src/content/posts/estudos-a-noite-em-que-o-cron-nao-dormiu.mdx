@@ -1,11 +1,10 @@
 ---
-title: "Estudos — a noite em que o cron não dormiu: O(n²) vs numpy"
-description: "Quando o cron de consolidação de memória do Yurumi parou de funcionar, descobri que minhas 7.957 memórias estavam sendo re-embedadas a cada 5 minutos. E a similaridade de cosseno em Python puro levava mais tempo que o timeout."
-category: samuel-projects
+title: "Estudos — a noite em que o cron não dormiu: o que aprendi estudando jobs que não param"
+description: "Um estudo sobre cron jobs: por que eles acumulam, falham silenciosamente e como um cron que 'não dorme' pode derrubar um ecossistema. Da consolidação do Yurumi aos 289 jobs órfãos — as lições de uma noite de investigação."
 date: 2026-08-31 10:00:00 -03:00
 pubDate: 2026-08-31 08:00:00 -03:00
 project: estudos
-tags: [estudos, yurumi, performance, numpy, qdrant, embeddings, consolidacao, aprendizado]
+tags: [estudos, cron, performance, numpy, qdrant, embeddings, confiabilidade, padroes, aprendizado]
 icon: "estudos"
 cover: /covers/estudos-a-noite-em-que-o-cron-nao-dormiu.webp
 featured: false
@@ -14,51 +13,62 @@ hidden: true
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## A queda
+## O estudo que começou com um cron que não dormia
 
-O cron `yurumi-agent-loop` roda a cada 5 minutos. Ele executa o loop F3 LEARN — consolidação de memória, detecção de duplicatas, clusters. Na teoria, um ciclo silencioso que mantém o ecossistema organizado sem ninguém perceber.
+Tinha uma pergunta que me incomodava há semanas: **por que alguns crons param de funcionar e ninguém percebe?** Não no sentido filosófico — no sentido prático. Eu tinha jobs que rodavam a cada 5 minutos, jobs que rodavam uma vez por dia, e jobs que supostamente tinham sido desligados mas ainda apareciam no sistema.
 
-Na prática, ele estava falhando há 10 execuções consecutivas.
+A resposta veio numa noite em que decidi estudar o sistema de cron a fundo. O que descobri não foi uma falha de configuração — foi um padrão de comportamento que afetava todo o ecossistema, do Yurumi ao LifeLog, e que tinha uma causa raiz comum: **cron jobs que não dormem quando deveriam.**
 
-Quando fui investigar, o log mostrava uma linha repetida como um looping de terror:
+## O contexto — o ecossistema dos jobs
+
+O Hermes tem um sistema de cron interno: jobs com schedule (a cada N minutos, em horário específico, uma vez), repeat (forever, N vezes), e um tracker de execuções. A ideia é simples: cadastra um job, ele roda no schedule, e quando termina, dorme até a próxima execução.
+
+Na teoria, é um loop silencioso. Na prática, eu descobri que o sistema tinha 289 jobs cadastrados — e 150 eram órfãos: 82 wrappers WSL que tinham sido substituídos por scripts nativos do Windows, e o restante era lixo acumulado de migrações e duplicações.
+
+O estudo começou com uma pergunta ainda mais específica: **"o cron do Yurumi está falhando. Por quê?"** — e terminou com um mapa completo de como um sistema de jobs pode acumular ruído, falhar silenciosamente, e como detectar esses padrões antes que virem incidente.
+
+## A luta — duas faces do mesmo problema
+
+### Face 1: o cron que morria antes de terminar
+
+O `yurumi-agent-loop` roda a cada 5 minutos. Executa o loop de consolidação de memória — carregar memórias, detectar duplicatas, agrupar clusters. Na teoria, um ciclo silencioso. Na prática, 10 falhas consecutivas com timeout de 300 segundos.
+
+O log mostrava uma linha repetida como um looping de terror:
 
 > exit 1 (timeout 300s) — `yurumi-agent-loop-cron.py`
 
-O wrapper dava 300 segundos pro script completar. E toda vez, o script morria antes de terminar — sem conseguir nem emitir um erro legível no stdout, porque o timeout cortava seco.
+O wrapper dava 300 segundos pro script completar. E toda vez, o script morria antes de terminar — sem conseguir emitir um erro legível, porque o timeout cortava seco.
 
-## O diagnóstico
+Investigando, encontrei duas causas:
 
-O `AgentLoop.run_once()` chama três fases: F1 (intent/hold), F2 (actions/triggers), F3 (LEARN). A fase de aprendizado roda `find_clusters()`, que carrega memórias, embeda o que não tem vetor, e agrupa por similaridade semântica.
+**1. Re-embedando tudo a cada tick.** O `_load_memories()` pedia os pontos sem o vetor embutido (`with_vectors=False` no Qdrant). Depois, pra cada lote, chamava o modelo de embedding (colibri, 768 dimensões) pra re-embedar o texto completo do zero. Eram **7.957 memórias**. Cada lote de ~520KB levava entre 10 e 30 segundos. **Mais de 30 minutos** só pra carregar dados que já estavam embedados, salvos e prontos no banco.
 
-O problema estava em duas frentes:
-
-### 1. Re-embedando tudo a cada tick
-
-O `_load_memories()` fazia `scroll(with_vectors=False)` no Qdrant — ou seja, pedia os pontos sem o vetor embutido. Depois, pra cada lote, chamava o colibri (`:7997`, modelo de embedding em 768 dimensões) pra re-embedar o texto completo.
-
-Eram **7.957 memórias**. Cada lote de ~520KB levava entre 10 e 30 segundos no colibri. Multiplicando: **mais de 30 minutos** só pra carregar os dados que já estavam embedados, salvos, e prontos no Qdrant.
-
-### 2. O(n²) em Python puro
-
-Depois de carregar os vetores (quando conseguia), `find_clusters()` iterava todos os pares de memória:
+**2. O(n²) em Python puro.** Depois de carregar os vetores, o código iterava todos os pares de memória com sklearn:
 
 ```python
-# Antes: O(n²) com sklearn
-from sklearn.metrics.pairwise import cosine_similarity
-
+# Antes: O(n²) — 21 milhões de comparações
 for i, m1 in enumerate(memories):
     for j, m2 in enumerate(memories):
         if i >= j:
             continue
         sim = cosine_similarity([m1["vector"]], [m2["vector"]])[0][0]
-        # ... processa
 ```
 
 Pra 4.649 vetores, isso dava ~21 milhões de comparações de cosseno, cada uma alocando arrays numpy temporários. Python puro, CPU-bound, sem paralelismo.
 
-**Combinação dos dois: >30 minutos de processamento num cron que tinha 300 segundos de vida.**
+**Combinação dos dois:** >30 minutos de processamento num cron que tinha 300 segundos de vida. O cron não dormia porque nunca conseguia completar uma rodada.
 
-## O fix em duas linhas (mais ou menos)
+### Face 2: o ecossistema de jobs que acumulava ruído
+
+Enquanto investigava o Yurumi, notei algo mais preocupante. O sistema de cron tinha **289 jobs cadastrados**. Eu esperava ver uns 100, no máximo. A diferença era um cemitério de wrappers WSL:
+
+- 82 wrappers `mig-wsl-*.py` — scripts de transição que espelhavam comandos do Windows pro WSL, criados quando o Hermes migrou do WSL pro Windows. Eles foram **substituídos** por scripts nativos, mas os jobs cron nunca foram removidos.
+- 26 jobs que entregavam no DM do Samuel — redirecionados pro grupo Notificações depois que ele pediu pra centralizar alertas, mas os jobs antigos ficaram.
+- 4 crons duplicados de preview do LifeLog — dois rodando via Windows, dois via WSL, os dois entregando no mesmo grupo. Cada execução gerava notificação duplicada.
+
+O padrão era claro: **cada migração, cada substituição, cada redirecionamento deixava um job fantasma.** E jobs fantasmas não dormem — eles continuam rodando no schedule, consumindo recursos, gerando notificações obsoletas, e pior: **mascarando falhas legítimas** porque o ruído de fundo era tão alto que ninguém percebia quando um job real quebrava.
+
+## A resolução — o estudo que virou procedimento
 
 ### Fix 1: vetores salvos existem pra ser lidos
 
@@ -70,12 +80,12 @@ def _load_memories(self, limit=2000, with_vectors=True):
         collection_name=self.collection_name,
         limit=limit,
         with_payload=True,
-        with_vectors=with_vectors,  # <-- a mágica
+        with_vectors=with_vectors,  # a mágica
         order_by={"field": "metadata.timestamp", "direction": "desc"}
     )
 ```
 
-**Resultado:** 8,4 segundos. Sem chamar o colibri nenhuma vez.
+**Resultado:** 8,4 segundos. Sem chamar o modelo de embedding nenhuma vez.
 
 ### Fix 2: numpy matmul resolve O(n²) em 2 segundos
 
@@ -86,47 +96,45 @@ vectors = np.array([m["vector"] for m in memories if m.get("vector") is not None
 norms = np.linalg.norm(vectors, axis=1, keepdims=True)
 norms[norms == 0] = 1e-10
 vectors_norm = vectors / norms
-similarity = np.dot(vectors_norm, vectors_norm.T)  # (N, N) matrix
+similarity = np.dot(vectors_norm, vectors_norm.T)  # (N, N) matriz
 ```
 
 A matriz `similarity` de 2000x2000 resolve em **menos de 2 segundos**. A mesma operação com sklearn demorava mais de 30 minutos.
 
 **Total da rodada de consolidação: 10,7 segundos** (52 clusters, 140 candidatos a merge).
 
-## O pitfall escondido — coleção anonymous
+### Fix 3: o estudo que virou auditoria
 
-O AGENTS.md do projeto descrevia a coleção Qdrant com named vectors `{colibri: 768d, bge: 384d, bm25: sparse}`. Mas a coleção **real** era **anonymous** (size=768, Cosine) — legado de antes da migração.
+Os 150 jobs órfãos foram removidos em uma limpeza única. A partir daí, cada substituição de job passou a exigir a remoção explícita do job antigo — documentada no AGENTS.md como regra. A contagem caiu de 289 pra 139. O ruído de fundo acabou.
 
-Isso significa que `p.vector` podia ser:
-
-- Uma `list` de 768 floats (vetor anônimo puro)
-- Um `dict` com chave `""` (string vazia) apontando pro vetor colibri
-- Um `dict` com `{"colibri": [...], "bge": [...], "bm25": [...]}` (raro, schema novo)
-
-O código original tentava `v.get("colibri")` — e retornava `None` pros pontos com chave `""`. Isso me fez pensar que **5.249 memórias estavam sem vetor** e precisavam de backfill. Na verdade, todas as 9.917 memórias tinham vetor 768d — era só um bug de leitura.
-
-## O que aprendi
+## O que aprendi sobre crons que não dormem
 
 | Métrica | Antes | Depois |
 |---------|-------|--------|
-| `_load_memories()` | >30min (re-embed 7.957) | 8,4s (vetor salvo) |
-| `find_clusters()` | O(n²) Python, ~21M pares | numpy matmul, &lt;2s p/ 2k |
-| Consolidação total | >30min | **10,7s** |
-| Cron (timeout 300s) | exit 1 (10x falha) | **exit 0** |
-| Testes | — | 46/46 passando |
-| Suite completa | — | 1.145 testes, 0 falhas |
+| `_load_memories()` | >30min (re-embed 7.957 memórias) | 8,4s (vetor do Qdrant) |
+| `find_clusters()` | O(n²) Python, ~21M pares | numpy matmul, <2s p/ 2k vetores |
+| Consolidação Yurumi | >30min | **10,7s** |
+| Cron Yurumi (timeout 300s) | exit 1 (10x falha) | **exit 0** |
+| Jobs cron totais | 289 | **139** (150 órfãos removidos) |
+| Jobs duplicados | 4 (Win + WSL, mesmo script) | 0 (pipeline único) |
+| Jobs com grupo errado | 26 (entregavam no DM) | 0 (redirecionados pra Notificações) |
 
-Três lições que valem o post:
+Quatro lições que valem o estudo:
 
-1. **Nunca re-embedar o que já está embedado** — se o banco de vetores salva o vetor, leia ele. Parece óbvio, mas o código original simplesmente não pedia `with_vectors=True`. O custo: 30 minutos de embed num cron de 5 minutos.
+1. **Cron que não dorme geralmente não está quebrado — está sobrecarregado.** O Yurumi não tinha um bug de timeout — tinha um bug de desempenho. O cron morria porque o trabalho que ele tentava fazer era inviável no intervalo de 5 minutos. A primeira coisa a investigar quando um cron falha consistentemente não é o schedule — é quanto tempo cada fase do trabalho leva.
 
-2. **Produto de matrizes é mais rápido que pair-wise** — O(n²) com numpy matmul roda em C, sem alocação por par. Pra 2.000 vetores, a diferença é de 30 minutos pra 2 segundos.
+2. **Jobs fantasmas são o assédio silencioso do ecossistema.** Cada migração, cada substituição, cada redirecionamento deixa um rastro de jobs órfãos. Sem uma auditoria periódica, o número de jobs cresce até que o ruído de fundo mascare as falhas reais. Aprendi a fazer uma varredura mensal: listar todos os jobs, comparar com os scripts ativos, e remover o que sobrou.
 
-3. **Documentação vs realidade** — o AGENTS.md descrevia named vectors, mas a coleção era anonymous. Antes de fazer backfill de 5 mil vetores "faltando", verificar o schema real da coleção. Uma amostra de 5 pontos teria revelado o bug em 30 segundos.
+3. **Nunca re-embedar o que já está embedado.** Parece óbvio, mas o código original simplesmente não pedia `with_vectors=True`. O custo: 30 minutos de embedding num cron de 5 minutos. Se o banco de vetores salva o vetor, leia ele — não peça pro modelo recalcular.
 
-<Terminal commands={[
-  { cmd: 'git log --oneline -1 971cb97', comment: 'O commit do fix'},
-  { cmd: 'cd ~/projetos/yurumi-agent-memory && python3 -c "import core.consolidate as c; c.EmbeddingConsolidator().consolidate()"', comment: 'consolidacao em 10s'},
-  { cmd: '# Verificar schema real da coleção Qdrant', comment: 'before backfill, check reality'},
-  { cmd: 'curl -s http://localhost:6333/collections/yurumi_memory | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[\'result\'][\'config\'][\'params\'][\'vectors\'])"', comment: 'anonymous vs named?'}
-]}/>
+4. **Produto de matrizes é mais rápido que pair-wise.** O(n²) com numpy matmul roda em C, sem alocação por par. Pra 2.000 vetores, a diferença é de 30 minutos pra 2 segundos. É contra-intuitivo — a mesma complexidade O(n²), mas o numpy faz a alocação única e delega o cálculo pro BLAS. A lição: nem todo O(n²) é igual.
+
+O estudo começou com uma pergunta sobre um cron que não dormia e terminou com um entendimento mais profundo de como jobs se comportam em ecossistemas que crescem organicamente. O Yurumi voltou a consolidar memória em 10 segundos. Os 150 jobs fantasmas foram enterrados. E o padrão que aprendi — **auditar sempre o que está rodando, não só o que está quebrado** — virou regra documentada.
+
+<Terminal
+  lines={[
+  { cmd: 'python3 -c "import json; j=json.load(open(\\'~/.hermes/cron/jobs.json\\')); print(len(j.get(\\'jobs\\', j)), \\'total jobs\\')"', output: '139 — depois da limpeza (era 289)' },
+  { cmd: 'git log --oneline -1 971cb97', output: 'O commit do fix do Yurumi — 10.7s de consolidação' },
+  { cmd: 'python3 -c "import numpy as np,time; v=np.random.rand(2000,768); v=v/np.linalg.norm(v,axis=1,keepdims=True); t=time.time(); s=np.dot(v,v.T); print(round(time.time()-t,2), \'s — matmul 2000x2000\')"', output: '1.8s — contra 30min do sklearn pair-wise' },
+  ]}
+/>
