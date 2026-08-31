@@ -183,11 +183,11 @@ html[data-theme="light"] .filter-bar.filter-bar {  --bar-accent: #5850ec;  --bar
 }
 
 /*========================================  YURUMI — Memória / Agente  ======================================== */
-[data-project="yurumi"] {  --color-accent: #8b5cf6;  --color-accent-soft: color-mix(in srgb, #8b5cf6 15%, transparent);  --color-glow: rgba(139,92,246,0.3);  --bg-gradient: linear-gradient(135deg, #0a0a0f 0%, #0f0a1a 30%, #0a0a0f 70%, #0a0a0f 100%);  --pattern-url: url('/patterns/brain.svg');  --pattern-opacity: 0.06;
+[data-project="yurumi"] {  --color-accent: #b98a5e;  --color-accent-soft: color-mix(in srgb, #b98a5e 15%, transparent);  --color-glow: rgba(185,138,94,0.3);  --bg-gradient: linear-gradient(135deg, #120f0c 0%, #1d1712 30%, #120f0c 70%, #120f0c 100%);  --pattern-url: url('/patterns/brain.svg');  --pattern-opacity: 0.06;
 }
-[data-project="yurumi"] .post-banner {  border-color: #8b5cf6;  box-shadow: 0 0 40px rgba(139,92,246,0.15);
+[data-project="yurumi"] .post-banner {  border-color: #b98a5e;  box-shadow: 0 0 40px rgba(185,138,94,0.15);
 }
-[data-project="yurumi"] .post-banner::after {  background: radial-gradient(ellipse at center, rgba(139,92,246,0.1) 0%, transparent 70%);
+[data-project="yurumi"] .post-banner::after {  background: radial-gradient(ellipse at center, rgba(185,138,94,0.1) 0%, transparent 70%);
 }
 
 /*========================================  DEV / Outros — Tech neutral  ======================================== */

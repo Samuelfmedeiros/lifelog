@@ -22,7 +22,7 @@ export const PROJECTS: ProjectDef[] = [
   { id: 'lifelog',     label: 'LifeLog',    icon: 'lifelog',    accentDark: '#a855f7',  group: 'projetos' },
   { id: 'estudos',     label: 'Estudos',    icon: 'estudos',    accentDark: '#3b82f6',  group: 'estudos' },
   { id: 'descobertas', label: 'Descobertas',icon: 'descobertas',accentDark: '#38bdf8',  group: 'descobertas' },
-  { id: 'yurumi',      label: 'Yurumi',     icon: 'yurumi',     accentDark: '#e05a3c',  group: 'projetos' },
+  { id: 'yurumi',      label: 'Yurumi',     icon: 'yurumi',     accentDark: '#b98a5e',  group: 'projetos' },
 ]
 
 export function getProject(id: string): ProjectDef | undefined {

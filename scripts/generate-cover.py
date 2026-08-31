@@ -80,8 +80,8 @@ PROJECT_STYLES = {
         "colors": ["#3b82f6", "#60a5fa", "#1e3a5f"],
     },
     "yurumi": {
-        "prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Purple, teal and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper",
-        "colors": ["#e05a3c", "#7c3aed", "#22d3ee", "#0b1424"],
+        "prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper",
+        "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
         "prompt_suffix": "Ethereal discovery theme, soft blue and violet, dreamy atmosphere with light particles, sense of wonder, 16:9 wallpaper",
