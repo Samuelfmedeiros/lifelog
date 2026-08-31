@@ -2,6 +2,13 @@
 
 
 
+## [2026-08-30] — Posts yurumi + lm_head + portão de segurança (PT+EN, hidden) + capas AI
+- **feat(post)**: yurumi — a memória que aprendeu a ser agente (PT+EN, hidden, capa AI) (`ae6b3d0`); projeto yurumi no schema + tema violeta + pattern brain (`692de59`); capa Gemini fiel ao personagem com cerrado de Brasília 16:9 (`217a625`); test 9→10 projetos (`486dafa`)
+- **feat(post)**: tatuengine — o retorno do lm_head (PT+EN, hidden, capa AI) (`28cedc1`) + capa AI watchdog (`bbc1488`); seguranca — o portão que não deixa entregar (hidden, PT+EN) (`f9980d5`) + capa AI watchdog (`cd78f77`)
+- **release(post)**: seguranca-o-portao-que-nao-deixa-entregar (`094db2f`, `b51ec92`) + tatuengine-o-retorno-do-lm-head (`81c30f6`, `2b4ea9f`) PT+EN
+- **chore**: versiona finding bug-hunter audit-2026-08-30 (navigation timeouts transientes — rotas 200 em <1.5s) (`af41fc8`)
+- 13 commits · push origin OK · HEAD: `486dafa`
+
 ## [2026-08-28] — Recusar com nota + refazer automático + posts liberados + pipeline 3/dia
 - **feat(ocultos)**: botão Recusar com nota + persistência (GitHub Issue + docs/recusas/) + segurança (rate limit, sanitização) (`5560caf`); refazer automático (cron 081b4d301432) (`1600650`); fix layout mobile /ocultos — título largura total + botões linha própria (`d1c63f3`)
 - **release(post)**: capivara — o painel que passou a ver o ecossistema inteiro (`c028195`, `b173337`, `ff18238`) + seguranca — sentinela do formulário (`791a2f4`, `8c85619`, `1a056b5`) PT+EN, capas AI
