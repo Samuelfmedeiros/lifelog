@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { PROJECTS, getProject, PROJECT_ACCENTS } from '../lib/projects';
 
 describe('projects.ts — data-driven', () => {
-  it('PROJECTS contains exactly the 9 registered projects', () => {
-    expect(PROJECTS.length).toBe(9);
+  it('PROJECTS contains exactly the 10 registered projects', () => {
+    expect(PROJECTS.length).toBe(10);
     // ids únicos
     const ids = PROJECTS.map(p => p.id);
-    expect(new Set(ids).size).toBe(9);
+    expect(new Set(ids).size).toBe(10);
   });
 
   // Data-driven: cada projeto validado com o MESMO contrato
@@ -68,7 +68,7 @@ describe('getProject — casos limite', () => {
 });
 
 describe('PROJECT_ACCENTS — integridade', () => {
-  it('cobre exatamente os 9 ids', () => {
+  it('cobre exatamente os 10 ids', () => {
     const ids = PROJECTS.map(p => p.id).sort();
     const accentIds = Object.keys(PROJECT_ACCENTS).sort();
     expect(accentIds).toEqual(ids);
