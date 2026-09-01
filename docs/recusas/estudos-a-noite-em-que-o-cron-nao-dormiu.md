@@ -1,10 +1,10 @@
 # Recusa: estudos-a-noite-em-que-o-cron-nao-dormiu
 
-**Data:** 2026-08-31T20:11:18.991Z
+**Data:** 2026-09-01T06:32:19.622Z
 
 **Nota:**
 
-Veio sem capa. Arruma a capa
+Arrume a capa.
 
 ---
 _Gerado automaticamente pelo /api/recusar_
