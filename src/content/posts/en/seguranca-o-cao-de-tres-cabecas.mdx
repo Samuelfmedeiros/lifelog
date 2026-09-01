@@ -1,0 +1,121 @@
+---
+title: "The three-headed dog — when the defense hired an authorized attacker"
+description: "After the alarm and the gate, a third guardian was missing: someone who actually attacks the house, in an authorized way, once a week, and delivers an honest penetration report. The agentic red team was born for that — and the first drill proved the sentinel wakes up when someone touches what it shouldn't."
+date: 2026-09-01 08:00:00 -03:00
+pubDate: 2026-09-01 08:00:00 -03:00
+project: seguranca
+tags: [security, red-team, pentest, automation, scanner, drill, owasp]
+cover: /covers/seguranca-o-cao-de-tres-cabecas.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The third guardian
+
+My security story has three chapters so far. First came the **alarm**: hunters that scan the code and production and warn when something is wrong. Then came the **gate**: a reviewer that blocks delivery before deploy if the diff introduces risk. Together they cover the known surface — what I already suspect might break.
+
+But there's a gap between them. The alarm only fires for signatures it knows. The gate only looks at what's being delivered. And the whole house? Who looks at the whole house with the eyes of someone who wants to get in?
+
+That question led me to the third guardian: an **authorized attacker**. Someone whose job is to try to break in, week after week, following the same flow as a real intruder — reconnaissance, scanning, attempts, validation — and end with a report of what held and what gave way.
+
+## Why I needed to attack my own house
+
+There's a subtle difference between "testing security" and "trying to break in". Security tests verify that things are configured the way I think they are. Break-in attempts verify that the configuration can withstand someone who doesn't care what I think.
+
+In practice, the two meet when the test is run by an offensive pipeline. The flow is the same as a classic pentest:
+
+1. **Reconnaissance** — map what's exposed: public services, internal apps, entry surfaces.
+2. **Active scanning** — send real requests, test failure categories: injection, path traversal, broken authentication, missing headers.
+3. **Validation** — separate the real finding from the false positive. Only what reproduces becomes a finding.
+4. **Verdict** — a posture score, deductions by severity, and a report of what to fix.
+
+The point isn't finding everything. It's finding, **repeatably and cheaply**, what a lazy attacker would find in one night. Most intrusions don't use zero-days: they use forgotten configuration, an endpoint without authentication, an open port with no owner. The automated red team hunts exactly that.
+
+## The scope: only what's mine
+
+The first rule of a penetration test is the most important one: **authorization**. There's no such thing as a "practice" attack — either you have written permission for the surface you're testing, or you're committing a crime.
+
+In my case, the scope is explicit and closed: only the services and applications of my ecosystem. No third-party providers, no foreign networks, no "let me see if that IP responds". Each target is listed in a configuration file, with the scan types allowed for it — some get the full battery, others only header checks. And every scan is **read-only**: I send requests, I read responses. There's no destructive operation in the flow.
+
+That scope discipline is what separates a red team from a malicious script. The pipeline can run on its own on a schedule because the rules are written before execution.
+
+## The battery of checks
+
+The pipeline combines well-known tools with its own checks. The categories it sweeps:
+
+- **Injection** — the classic family: trying to inject commands or structures into parameters the application interprets.
+- **Path traversal** — requesting files that shouldn't be served and seeing if the server obeys.
+- **Broken authentication** — hitting sensitive endpoints without credentials, with an empty token, with a made-up token, and seeing if any responds as if authenticated.
+- **Security headers** — checking that public responses carry the expected transport and content protections.
+- **Known surface** — listing the ports and services that respond on a machine and comparing with what should be open. A port that responds without a documented owner is a candidate for investigation.
+
+Each category has filters so it doesn't scream for nothing. Login pages and public health endpoints are recognized and ignored — a 200 on a health check isn't a finding, it's expected behavior.
+
+## Validation: not every finding is true
+
+The most important part of the pipeline is what happens **after** the scan. Scanning tools generate a mountain of suspicions; most are false positives. The red team separates the wheat:
+
+- Findings of **high or critical** severity are treated as confirmed — they deserve immediate action.
+- Findings of **medium** severity stay as not reproduced: they appear in the report, but don't get the same weight until someone confirms manually.
+
+That policy is conservative by design. I'd rather have a false negative that someone investigates later than a false positive that teaches the team to ignore alerts. Every run ends with a **posture score**: above the threshold, the house is healthy. Below it, it's time to pause deliveries and look at the findings with priority.
+
+And the final report isn't a log — it's a document with nine sections: verdict, division of work, rounds, timeline, independent review, files, detailed findings with what was done, final state, and next step. The same pattern as the ecosystem's delivery reports.
+
+## The drill: when the sentinel came alive
+
+A scanner that runs on its own is good, but I wanted to know something no scan answers: **does detection actually work when someone really touches things?**
+
+That's what the drill is for. The idea is simple: plant a sentinel file in a watched directory, with known content, and then **modify it** — the way an intruder would when leaving traces or replacing files. Then wait and observe: does the system protecting file integrity wake up? Does it detect the change? Does it restore?
+
+The result of the first drill was exactly what I wanted to see:
+
+```
+drill: sentinel file modified (expected)
+drill: integrity detected the change  -> MODIFIED
+drill: automatic restore triggered
+drill: file integrity restored
+```
+
+A curious detail came up along the way: the restore mechanism, when recreating the original file, **rewrites the creation timestamp**. The restored file's hash differs from the original — not because the content changed, but because the metadata was touched. We learned that the right validation path is the **modification status**, not a blind hash comparison. If I had automated the check with hashes, the drill would have accused my own defense of failing when it was working perfectly.
+
+The drill isn't a process audit. It's a fire drill: every detection layer is exercised end to end, with a simulated incident, so the real response isn't the first time the team hears the alarm ring.
+
+## Metrics that matter
+
+| Metric | Value |
+|--------|-------|
+| Red team cadence | Weekly, automated |
+| Verification | Single pass (not iterative) |
+| Scope | Only authorized systems, read-only |
+| Validation | High/critical = confirmed; medium = not reproduced |
+| Report format | 9 sections (ecosystem standard) |
+| Response drill | Detected, restored, simulated failure exit |
+
+## Lessons learned
+
+1. **Defense that is never attacked rusts.** Passive scanners find what you already know to look for. The authorized attacker finds what you forgot existed.
+2. **Authorization is the foundation.** The same pipeline that is a useful red team would be malware without documented scope and read-only operation.
+3. **False positives silence the alarm.** Validating severity before shouting is what keeps alerts trustworthy — and trustworthy is the only way people keep listening.
+4. **Test detection, not just configuration.** A well-configured sentinel proves nothing until someone touches it and it wakes up.
+5. **Metadata is evidence too.** The drill taught that restoring a file touches the timestamp — and that the right check depends on what you're comparing.
+
+## What's next
+
+- **Full monthly drill** — exercise all detection layers at once, not just file integrity.
+- **Heavy scanning on surfaces previously covered by light checks** — when the target is available, apply the full battery.
+- **Import red team findings as gaps into the corrective process** — turn every finding into a security backlog item, not just a report.
+
+The three-headed dog isn't one more tool on the shelf. It's the difference between a house that says it's secure and a house that **tests** being secure. Once a week, it barks at its own shadow — and when the shadow really moves, it bites.
+
+<Terminal
+  commands={[
+    { label: 'scan', cmd: 'red-team --project <eco>' },
+    { label: 'target', cmd: 'red-team --target <service>' },
+    { label: 'drill', cmd: 'red-team --drill' },
+    { label: 'validation', cmd: '# only what reproduces becomes a finding' },
+    { label: 'report', cmd: '# verdict + findings + next step' },
+  ]}
+/>

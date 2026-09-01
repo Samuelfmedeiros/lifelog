@@ -1,0 +1,121 @@
+---
+title: "O cão de três cabeças — quando a defesa contratou um atacante autorizado"
+description: "Depois do alarme e do portão, faltava o terceiro vigilante: alguém que atacasse a própria casa de verdade, de forma autorizada, uma vez por semana, e entregasse um relatório de penetração honesto. O red team agêntico nasceu para isso — e o primeiro drill provou que a sentinela acorda quando alguém mexe no que não deve."
+date: 2026-09-01 08:00:00 -03:00
+pubDate: 2026-09-01 08:00:00 -03:00
+project: seguranca
+tags: [seguranca, red-team, pentest, automatizacao, scanner, drill, owasp]
+cover: /covers/seguranca-o-cao-de-tres-cabecas.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O terceiro vigilante
+
+A história da minha segurança tem três capítulos até aqui. Primeiro veio o **alarme**: caçadores que varrem o código e a produção e avisam quando algo está errado. Depois veio o **portão**: um revisor que bloqueia a entrega antes do deploy se o diff introduz risco. Os dois cobrem a superfície conhecida — o que eu já suspeito que pode quebrar.
+
+Mas existe um buraco entre eles. O alarme só dispara para o que a assinatura conhece. O portão só olha o que está sendo entregue. E a casa inteira? Quem olha para a casa inteira com os olhos de quem quer entrar?
+
+Foi essa pergunta que me levou ao terceiro vigilante: um **atacante autorizado**. Alguém cujo trabalho é tentar invadir, semana após semana, seguindo o mesmo fluxo de um invasor real — reconhecimento, varredura, tentativa, validação — e terminar com um relatório do que aguentou e do que cedeu.
+
+## Por que eu precisava atacar a minha própria casa
+
+Existe uma diferença sutil entre "testar segurança" e "tentar invadir". Testes de segurança verificam se as coisas estão configuradas do jeito que eu acho que estão. Tentativas de invasão verificam se a configuração aguenta alguém que não se importa com o que eu acho.
+
+Na prática, as duas coisas se encontram quando o teste é conduzido por um pipeline ofensivo. O fluxo é o mesmo de um pentest clássico:
+
+1. **Reconhecimento** — mapear o que está exposto: serviços públicos, aplicações internas, superfícies de entrada.
+2. **Varredura ativa** — enviar requisições reais, testar categorias de falha: injeção, travessia de caminho, autenticação quebrada, headers ausentes.
+3. **Validação** — separar o achado real do falso positivo. Só o que se reproduz vira finding.
+4. **Parecer** — uma nota de postura, deduções por severidade, e um relatório do que corrigir.
+
+O ponto não é achar tudo. É achar, de forma **repetível e barata**, o que um atacante preguiçoso acharia em uma noite. A maioria das invasões não usa zero-day: usa configuração esquecida, endpoint sem autenticação, porta aberta sem dono. O red team automatizado caça exatamente isso.
+
+## O escopo: só o que é meu
+
+A primeira regra de um teste de invasão é a mais importante: **autorização**. Não existe ataque "de brincadeira" — ou você tem permissão escrita da superfície que está testando, ou está cometendo um crime.
+
+No meu caso, o escopo é explícito e fechado: apenas os serviços e aplicações do meu ecossistema. Nada de provedores terceiros, nada de redes alheias, nada de "deixa eu ver se aquele IP responde". Cada alvo está listado num arquivo de configuração, com os tipos de varredura permitidos para ele — alguns recebem a bateria completa, outros só verificação de headers. E toda a varredura é **somente leitura**: envio requisições, leio respostas. Não há nenhuma operação destrutiva no fluxo.
+
+Essa disciplina de escopo é o que separa um red team de um script malicioso. O pipeline pode rodar sozinho no cron porque as regras estão escritas antes da execução.
+
+## A bateria de verificações
+
+O pipeline usa uma combinação de ferramentas conhecidas e verificações próprias. As categorias que ele varre:
+
+- **Injeção** — a família clássica: tentar injetar comandos ou estruturas em parâmetros que a aplicação interpreta.
+- **Travessia de caminho** — pedir arquivos que não deveriam ser servidos e ver se o servidor obedece.
+- **Autenticação quebrada** — bater em endpoints sensíveis sem credencial, com token vazio, com token inventado, e ver se algum responde como se estivesse autenticado.
+- **Headers de segurança** — conferir se as respostas públicas carregam as proteções de transporte e conteúdo esperadas.
+- **Superfície conhecida** — listar as portas e serviços que respondem numa máquina e comparar com o que deveria estar aberto. Porta que responde sem ter dono documentado é candidata a investigação.
+
+Cada categoria tem filtros para não gritar à toa. Páginas de login e endpoints de saúde pública são reconhecidos e ignorados — um 200 num health check não é um achado, é o comportamento esperado.
+
+## A validação: nem todo achado é verdade
+
+A parte mais importante do pipeline é o que acontece **depois** da varredura. Ferramentas de scanning geram uma montanha de suspeitas; a maioria é falso positivo. O red team separa o joio:
+
+- Achar de severidade **alta ou crítica** é tratado como confirmado — merece ação imediata.
+- Achar de severidade **média** fica como não reproduzido: aparece no relatório, mas não recebe o mesmo peso até alguém confirmar à mão.
+
+Essa política é conservadora por design. Prefiro um falso negativo que alguém investiga depois a um falso positivo que ensina o time a ignorar alertas. Cada verificação termina com uma **nota de postura**: acima do limite, a casa está em estado saudável. Abaixo, é hora de parar as entregas e olhar os findings com prioridade.
+
+E o relatório final não é um log — é um documento com nove seções: veredito, divisão do trabalho, rodadas, timeline, revisão independente, arquivos, os findings detalhados com o que foi feito, o estado final e o próximo passo. O mesmo padrão dos relatórios de entrega do ecossistema.
+
+## O drill: quando a sentinela ganhou vida
+
+Um scanner que roda sozinho é bom, mas eu queria saber uma coisa que nenhuma varredura responde: **a detecção funciona quando alguém mexe de verdade?**
+
+Foi para isso que criei o drill. A ideia é simples: plantar um arquivo sentinela num diretório vigiado, com conteúdo conhecido, e depois **alterá-lo** — como um invasor faria ao deixar rastros ou substituir arquivos. Depois, esperar e observar: o sistema que protege a integridade dos arquivos acorda? Ele detecta a modificação? Ele restaura?
+
+O resultado do primeiro drill foi exatamente o que eu queria ver:
+
+```
+drill: arquivo sentinela alterado (esperado)
+drill: integridade detectou a modificação  -> MODIFIED
+drill: restauração automática disparada
+drill: integridade do arquivo restaurada
+```
+
+Um detalhe curioso apareceu no processo: o mecanismo de restauração, ao recriar o arquivo original, **reescreve o timestamp de criação**. O hash do arquivo restaurado difere do original — não porque o conteúdo mudou, mas porque o metadado foi tocado. Descobrimos que o caminho certo de validação é o **status de modificação**, não a comparação cega de hash. Se eu tivesse automatizado a verificação com hash, o drill teria acusado a própria defesa de falhar quando ela estava funcionando perfeitamente.
+
+O drill não é uma auditoria de processo. É um ensaio de incêndio: cada camada de detecção é exercitada de ponta a ponta, com um incidente simulado, para que a resposta real não seja a primeira vez que a equipe vê o alarme tocar.
+
+## Métricas que importam
+
+| Métrica | Valor |
+|---------|-------|
+| Cadência do red team | Semanal, automática |
+| Verificação | Passagem única (não iterativa) |
+| Escopo | Só sistemas autorizados, somente leitura |
+| Validação | Alta/crítica = confirmada; média = não reproduzida |
+| Formato do relatório | 9 seções (padrão do ecossistema) |
+| Drill de resposta | Detectou, restaurou, exit de falha simulado |
+
+## Aprendizados
+
+1. **Defesa que nunca é atacada enferruja.** Scanners passivos encontram o que você já sabe procurar. O atacante autorizado encontra o que você esqueceu que existia.
+2. **Autorização é o alicerce.** O mesmo pipeline que é um red team útil seria um malware sem o escopo documentado e a operação somente-leitura.
+3. **Falso positivo cala o alarme.** Validar severidade antes de gritar é o que mantém os alertas confiáveis — e confiáveis é o único jeito de alguém continuar ouvindo.
+4. **Teste a detecção, não só a configuração.** Uma sentinela bem configurada não prova nada até alguém mexer nela e ela acordar.
+5. **Metadado também é evidência.** O drill ensinou que restaurar um arquivo mexe no timestamp — e que a verificação certa depende do que você está comparando.
+
+## O que vem depois
+
+- **Drill mensal completo** — exercitar todas as camadas de detecção de uma vez, não só a integridade de arquivos.
+- **Varredura pesada em superfícies antes cobertas por verificação leve** — quando o alvo estiver disponível, aplicar a bateria completa.
+- **Importar findings do red team como gaps do processo corretivo** — transformar cada achado em item de backlog de segurança, não só em relatório.
+
+O cão de três cabeças não é uma ferramenta a mais na prateleira. É a diferença entre uma casa que diz estar segura e uma casa que **testa** estar segura. Uma vez por semana, ele late para a própria sombra — e quando a sombra se move de verdade, ele morde.
+
+<Terminal
+  commands={[
+    { label: 'scan', cmd: 'red-team --project <eco>' },
+    { label: 'alvo', cmd: 'red-team --target <servico>' },
+    { label: 'drill', cmd: 'red-team --drill' },
+    { label: 'validação', cmd: '# só o que se reproduz vira finding' },
+    { label: 'relatório', cmd: '# veredito + findings + próximo passo' },
+  ]}
+/>
