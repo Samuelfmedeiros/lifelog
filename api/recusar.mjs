@@ -62,7 +62,7 @@ export function slugFromPath(p) {
 // ── Via 1: GitHub Issue ──────────────────────────────────────────
 async function createIssue(slug, nota) {
   if (!process.env.GH_TOKEN) return { ok: false, error: 'GH_TOKEN nao configurado' };
-  const title = `♻️ Refazer: ${slug}`;
+  const title = `Refazer: ${slug}`;
   const body = [
     `## Post recusado: \`${slug}\``,
     '',

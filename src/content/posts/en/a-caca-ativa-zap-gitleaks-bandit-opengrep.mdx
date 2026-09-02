@@ -5,7 +5,6 @@ date: 2026-08-16 12:00:00 -03:00
 pubDate: 2026-08-16 12:00:00 -03:00
 project: seguranca
 tags: [security, zap, gitleaks, bandit, opengrep, audit, watchdog, hardening]
-icon: "🛡️"
 cover: /covers/a-caca-ativa-zap-gitleaks-bandit-opengrep.webp
 featured: false
 lang: en
@@ -106,7 +105,7 @@ Active hunting became **continuous process**. Created `security-watchdog.py` run
 # 4. ZAP baseline scan against production URLs (on deploy)
 # 5. Checks .env permissions (600), Dockerfile USER, CI persist-credentials
 # 6. Checks TLS certs (expires < 30 days = alert)
-# Summary: ✅ All clean  |  ⚠️ Warnings  |  🚨 Critical → Telegram alert
+# Summary: OK All clean  |  [WARN] Warnings  |  [ALERTA] Critical → Telegram alert
 ```
 
 Philosophy: **silent cron = healthy system**. Don't want daily "all good" notifications. Want to be woken only when **it's not good**.
@@ -119,8 +118,8 @@ Philosophy: **silent cron = healthy system**. Don't want daily "all good" notifi
 | Tools in arsenal | 4 (ZAP, gitleaks, bandit, opengrep) |
 | Critical findings fixed | 5 (database, browser, SSRF, key, command injection) |
 | Warning findings fixed | 12 (Dockerfile, CI, TS/JS, Python) |
-| CI scan blocking deploy | ✅ Active (fail = no deploy) |
-| Daily watchdog | ✅ ciclo diário, silencioso salvo problemas |
+| CI scan blocking deploy | OK Active (fail = no deploy) |
+| Daily watchdog | OK ciclo diário, silencioso salvo problemas |
 | Alert channel | Notifications (Telegram) |
 
 ## Lessons learned
@@ -143,6 +142,6 @@ Philosophy: **silent cron = healthy system**. Don't want daily "all good" notifi
   { cmd: 'gitleaks detect --source . --no-banner', output: 'no leaks found — scan on git history' },
   { cmd: 'bandit -r arachne/app/ -q', output: '0 high severity issues — Python static analysis' },
   { cmd: 'opengrep scan --config=auto .', output: '0 critical · 0 high · 3 medium (fixed)' },
-  { cmd: 'python3 security-watchdog.py', output: '✅ All clean — monitoring 24/7, alert only on issues' },
+  { cmd: 'python3 security-watchdog.py', output: 'OK All clean — monitoring 24/7, alert only on issues' },
   ]}
 />

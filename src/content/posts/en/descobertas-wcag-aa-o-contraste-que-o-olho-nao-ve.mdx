@@ -24,8 +24,8 @@ The WCAG AA rule is easy to say, hard to memorize: normal text needs **4.5:1** c
 
 ```css
 /* Code comment in dark theme — looked fine, measured 3.9:1 (FAIL) */
---shiki-dark: #6A737D;   /* ❌ 3.9:1 on #0d1117 */
---shiki-dark: #8b949e;   /* ✅ 4.77:1 — passed */
+--shiki-dark: #6A737D;   /* FAIL 3.9:1 on #0d1117 */
+--shiki-dark: #8b949e;   /* OK 4.77:1 — passed */
 ```
 
 Astro injects the comment token color as `--shiki-dark` **inline** on the span. The global rule `color: var(--shiki-dark) !important` resolved to the span's own inline value — so my CSS override never applied. The fix was targeting the exact value:
@@ -44,10 +44,10 @@ An attribute selector because of a comment color. That's when I realized accessi
 Tailwind got me used to writing `[data-theme="light"] .thing` anywhere. In an Astro component's scoped CSS, that selector becomes `[data-astro-cid-X][data-theme="light"] .thing[data-astro-cid-X]` — which requires `data-astro-cid` on the **ancestor**. But `data-theme` lives on `<html>`, which has no `data-astro-cid`. Result: the rule **never** applies, and I didn't know.
 
 ```css
-/* ❌ Silently broken by Astro scoping */
+/* FAIL Silently broken by Astro scoping */
 [data-theme="light"] .tag-cloud-pill { color: ... }
 
-/* ✅ Correct: escape scoping with :global() */
+/* OK Correct: escape scoping with :global() */
 :global(html.light) .tag-cloud-pill { color: ... }
 ```
 
@@ -58,10 +58,10 @@ That was the worst kind of bug: the CSS looked right, compiled without error, an
 The project badge on `/archive` used `background: rgba(0,0,0,0.05)` translucent over a card with a gradient. The *real* contrast was 5.9:1 — it passed. But axe-core computes against what it assumes underneath, and with alpha it reports a violation even when the real contrast is fine.
 
 ```css
-/* ❌ axe-core won't compose alpha over gradients */
+/* FAIL axe-core won't compose alpha over gradients */
 background: rgba(0, 0, 0, 0.05);
 
-/* ✅ Opaque background — the scanner computes correctly */
+/* OK Opaque background — the scanner computes correctly */
 background: #edebe5;
 ```
 

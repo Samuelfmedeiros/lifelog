@@ -24,8 +24,8 @@ A regra WCAG AA é simples de falar, difícil de decorar: texto normal precisa d
 
 ```css
 /* Comentário de código no tema escuro — parecia ok, media 3.9:1 (FALHA) */
---shiki-dark: #6A737D;   /* ❌ 3.9:1 sobre #0d1117 */
---shiki-dark: #8b949e;   /* ✅ 4.77:1 — aprovado */
+--shiki-dark: #6A737D;   /* FAIL 3.9:1 sobre #0d1117 */
+--shiki-dark: #8b949e;   /* OK 4.77:1 — aprovado */
 ```
 
 O Astro injeta a cor do token de comentário como `--shiki-dark` **inline** no span. A regra global `color: var(--shiki-dark) !important` resolvia pro valor inline do próprio span — ou seja, meu override no CSS nunca pegava. A correção foi mirar o valor exato:
@@ -44,10 +44,10 @@ Um seletor de atributo por causa de uma cor de comentário. Foi quando eu perceb
 O Tailwind me viciou em escrever `[data-theme="light"] .coisa` em qualquer lugar. No CSS scoped de um componente Astro, esse seletor vira `[data-astro-cid-X][data-theme="light"] .coisa[data-astro-cid-X]` — o que exige o `data-astro-cid` **no ancestral**. Mas o `data-theme` vive no `<html>`, que não tem `data-astro-cid`. Resultado: a regra **nunca** aplica, e eu nem sabia.
 
 ```css
-/* ❌ Quebrado em silêncio pelo scoping do Astro */
+/* FAIL Quebrado em silêncio pelo scoping do Astro */
 [data-theme="light"] .tag-cloud-pill { color: ... }
 
-/* ✅ Correto: escapa o scoping com :global() */
+/* OK Correto: escapa o scoping com :global() */
 :global(html.light) .tag-cloud-pill { color: ... }
 ```
 
@@ -58,10 +58,10 @@ Esse foi o pior tipo de bug: o CSS parecia certo, compilava sem erro, e simplesm
 O badge de projeto em `/arquivo` usava `background: rgba(0,0,0,0.05)` translúcido sobre um card com gradiente. O contraste *real* era 5.9:1 — passava. Mas o axe-core calcula contra o que ele assume por baixo, e com alpha ele reporta violação mesmo com contraste real OK.
 
 ```css
-/* ❌ axe-core não compõe alpha sobre gradientes */
+/* FAIL axe-core não compõe alpha sobre gradientes */
 background: rgba(0, 0, 0, 0.05);
 
-/* ✅ Fundo opaco — o scanner calcula certo */
+/* OK Fundo opaco — o scanner calcula certo */
 background: #edebe5;
 ```
 

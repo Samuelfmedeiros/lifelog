@@ -5,7 +5,6 @@ date: 2026-08-16 12:00:00 -03:00
 pubDate: 2026-08-16 12:00:00 -03:00
 project: seguranca
 tags: [seguranca, zap, gitleaks, bandit, opengrep, auditoria, watchdog, hardening]
-icon: "🛡️"
 cover: /covers/a-caca-ativa-zap-gitleaks-bandit-opengrep.webp
 featured: false
 ---
@@ -105,7 +104,7 @@ A caça ativa virou **processo contínuo**. Criei o `security-watchdog.py` que r
 # 4. ZAP baseline scan contra URLs de produção (quando houver deploy)
 # 5. Verifica .env permissions (600), Dockerfile USER, CI persist-credentials
 # 6. Checa certificados TLS (expira em < 30 dias = alerta)
-# Summary: ✅ All clean  |  ⚠️ Warnings  |  🚨 Critical → alerta Telegram
+# Summary: OK All clean  |  [WARN] Warnings  |  [ALERTA] Critical → alerta Telegram
 ```
 
 A filosofia: **cron silencioso = sistema saudável**. Não quero notificação diária de "tudo bem". Quero ser acordado só quando **não está bem**.
@@ -118,8 +117,8 @@ A filosofia: **cron silencioso = sistema saudável**. Não quero notificação d
 | Ferramentas no arsenal | 4 (ZAP, gitleaks, bandit, opengrep) |
 | Achados críticos corrigidos | 5 (banco, browser, SSRF, chave, command injection) |
 | Achados warnings corrigidos | 12 (Dockerfile, CI, TS/JS, Python) |
-| Scan CI bloqueando deploy | ✅ Ativo (falha = não entrega) |
-| Watchdog diário | ✅ ciclo diário, silencioso salvo problemas |
+| Scan CI bloqueando deploy | OK Ativo (falha = não entrega) |
+| Watchdog diário | OK ciclo diário, silencioso salvo problemas |
 | Alerta canal | Notificações (Telegram) |
 
 ## Aprendizados
@@ -142,6 +141,6 @@ A filosofia: **cron silencioso = sistema saudável**. Não quero notificação d
   { cmd: 'gitleaks detect --source . --no-banner', output: 'no leaks found — scan no histórico do git' },
   { cmd: 'bandit -r arachne/app/ -q', output: '0 high severity issues — análise estática Python' },
   { cmd: 'opengrep scan --config=auto .', output: '0 critical · 0 high · 3 medium (fixed)' },
-  { cmd: 'python3 security-watchdog.py', output: '✅ All clean — monitorando 24/7, alerta só em problema' },
+  { cmd: 'python3 security-watchdog.py', output: 'OK All clean — monitorando 24/7, alerta só em problema' },
   ]}
 />

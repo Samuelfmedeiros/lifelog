@@ -293,7 +293,7 @@ import { PALETTES } from '../lib/palettes'
     // senão o CENTRO DO BOTÃO de tema (nunca o centro da tela). Cliques
     // sintetizados (ghost click mobile pós-scroll, atalho de teclado Enter)
     // podem vir com clientX=0 — o ?? deixa 0 passar e o círculo nascia no
-    // canto (0,0) ou no centro da viewport. 🔴 26/08: no celular REAL o
+    // canto (0,0) ou no centro da viewport.  26/08: no celular REAL o
     // ghost click pós-scroll entrega clientX/Y do ponto onde o dedo COMEÇOU
     // o scroll (meio da tela) → círculo nascia longe do botão. Fix: a origem
     // só é aceita se estiver geometricamente perto do botão (dedo de verdade);
@@ -366,7 +366,7 @@ import { PALETTES } from '../lib/palettes'
       // só age se done nunca resolver. Margem: duração + 1.5s de folga.
       let finished = false
       done.catch(() => setTheme(next)).finally(async () => {
-        // 🔴 PISCADA FINAL: clip.finished resolve no último frame do círculo,
+        //  PISCADA FINAL: clip.finished resolve no último frame do círculo,
         // MAS o browser ainda não desmontou os pseudos ::view-transition-*.
         // Remover vt-running aqui religa transition:none !important na hora
         // certa em que o snapshot old/new ainda está montado → piscada.

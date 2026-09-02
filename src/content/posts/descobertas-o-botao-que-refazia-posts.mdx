@@ -108,7 +108,7 @@ Nenhum mock de GitHub API — os testes do handler testam validacao de entrada, 
 <Terminal
   commands={[
     { cmd: 'POST /api/recusar', result: '200 { ok: true, slug: "capivara-o-painel...", errors: null }' },
-    { cmd: '# 15min depois...', result: 'Issue #42 foi fechada com "♻️ Refazer: capivara-o-painel..."' },
+    { cmd: '# 15min depois...', result: 'Issue #42 foi fechada com " Refazer: capivara-o-painel..."' },
     { cmd: '# Post volta pro /ocultos refeito', result: 'Samuel libera ou recusa de novo' },
   ]}
   title="Fluxo do Refazer"
