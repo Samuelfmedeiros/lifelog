@@ -1,0 +1,102 @@
+---
+title: "Step 322 — when training dies in silence and VRAM is left orphaned"
+description: "The Phase 4 run dropped mid-flight with no traceback, no OOM, no error log: the process simply stopped existing. Chasing the cause turned into a lesson about watching the wrong metrics — and about the invisible cost of letting your GPU driver sweep up your garbage."
+date: 2026-09-03 09:30:00 -03:00
+pubDate: 2026-09-03 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, fase4, pytorch, gpu, vram, monitoring, checkpoint]
+icon: "🌊"
+cover: /covers/tatuengine-o-step-322.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The disappearance
+
+I had just checked the screen for the last time. Step 320, gradient 3.5, everything within the range the previous run had taught me to expect. I went off to do something else.
+
+When I came back, the process no longer existed.
+
+I don't mean "it failed". Failure leaves a trace: a traceback, a `CUDA out of memory`, a non-zero exit code, a red line at the end of the log. None of that happened. The log ended in the middle of a normal step, as if someone had yanked the power cord. GPU memory was back to idle levels. The log file hadn't been touched in minutes.
+
+And that's the part that bothered me: **the monitor didn't alert**. The watchdog I had built fired when the log went 20 minutes without an update. In other words: I had automated the detection of a *slow* training run, not a *dead* one. Twenty minutes is a long time to notice there is nothing left to notice.
+
+## The right metric
+
+The first thing I did was list everything I had been watching and ask, for each item, whether it would have changed at the moment of death.
+
+| What I watched | Does it change when the process dies? |
+|----------------|---------------------------------------|
+| Log file age | Yes, but only after minutes |
+| Process presence | Yes, instantly |
+| Last step's loss | No — freezes at the last value |
+| Throughput (tokens/s) | No — freezes at the last value |
+| Memory allocated by the deep learning library | Drops to near zero |
+| Memory used by the GPU (driver's view) | Depends. And that's where the story turned |
+
+Two of those lines would have given me the diagnosis in seconds if I had thought of them beforehand: **the memory the GPU reports** and **the last step number saved to disk**. The first drops immediately when a process truly dies. The second freezes — and a frozen number is a much better alarm than a file nobody touches.
+
+The rule that came out of this: *log age detects slowness; absence of memory detects death.* They are different signals, and a watchdog that only has the first one is blind to the second.
+
+## The ghost
+
+I thought I was diagnosing a crash. I was diagnosing two.
+
+After relaunching the run from the last checkpoint, it came back — but dragging. The first seconds were fast, and then throughput fell through the floor and stayed there, humiliating, a fraction of what the same configuration had delivered days earlier. The GPU showed low usage. The process was alive. Steps were advancing, just too slowly for it to be a model problem.
+
+And then the number I didn't know I needed to look at appeared: the memory the GPU driver attributed to the virtual machine's process was almost double what the deep learning library reported using.
+
+This is classic desktop GPU driver behavior with shared memory management. When a process dies without releasing its resources — and a process killed from the outside never releases — the driver doesn't hand the memory back to the world. It keeps it reserved, mapped, waiting for the owner to return. Except the owner is dead. The memory stays trapped in a state where it is neither used nor available: ghost memory.
+
+Every previous crash of the run had left a bit of that behind. The accumulated effect wasn't a failure — it was a slowdown. The GPU was working with half the space it seemed to have, and the rest of the budget was occupied by corpses of past executions.
+
+## The cure nobody wants to prescribe
+
+There was no command to release it. Ghost memory belongs to the driver, and the driver only returns it when the entire session ends — which, inside a virtual machine, means restarting the virtual machine.
+
+Restart. The oldest and most humbling solution in engineering.
+
+I restarted. Relaunched from the same checkpoint, same configuration, same everything. First step: it went straight back to the speed I had lost sight of. The slowness was never the model, nor the hyperparameters, nor the dataset. It was garbage from three previous crashes that nobody had collected.
+
+## What changed afterward
+
+**Checkpoint every 50 steps.** The silent death cost 22 steps — a few hours of training. With more frequent checkpoints, the same event costs at most half of that. It's the only real defense against a process that dies without explaining itself: reduce what you lose, since you can't predict when it dies.
+
+**Relaunch detached, for real.** A child process of a session that can be restarted dies along with it. Training must be born outside the process tree of whoever launched it, with stdin disconnected and output redirected — otherwise your own working environment is the single point of failure.
+
+**Detect by absence, not by age.** The monitor now watches GPU memory and the last step number saved. If memory dropped and the step froze, it's dead — and that fires within one collection cycle, not twenty minutes.
+
+**Count zombie processes on the VM.** Two instances of the same hosting process means an old session that was never released. It's the same ghost problem, seen from the other side.
+
+**And what I still don't know.** The root cause of the first crash remains unknown. Nothing in the log, nothing in the kernel records, no visible memory exhaustion. If the run dies again near the same step, the hypothesis shifts to something specific to that region of training — and then the investigation is a different one. One silent death is bad luck; twice in the same place is a pattern.
+
+## Metrics
+
+| Item | Value |
+|------|-------|
+| Steps lost to the silent death | 22 |
+| Checkpoint cadence | 50 steps |
+| Max loss with the new cadence | ~half of the previous |
+| Speed before the cleanup | fraction of normal |
+| Speed after restarting the VM | recovered on the first step |
+| Memory divergence (driver vs library) | nearly 2x |
+
+## Lessons
+
+1. **Absence is a signal, not a silence.** A process that stopped existing is different information from a process that stopped progressing. If your monitoring only knows how to detect the second, the first slips by until someone looks at the screen.
+2. **Check memory from two points of view.** What your library thinks it's using and what the driver reports are rarely the same — and the difference between them is free diagnostics. A large, persistent gap is a leak or uncollected garbage.
+3. **On desktops with shared video memory management, crashes have cumulative cost.** Every death without cleanup takes a bit of available capacity. You don't see a failure, you see a slowdown — and you hunt the problem in the wrong place, in the model.
+4. **Sometimes the solution is restarting, and the mistake is spending hours trying not to use it.** There's a class of problem whose only remedy is dropping the session. Recognizing that class early saves an entire afternoon.
+5. **Checkpoints are insurance against the unknown.** If you don't know why training dies, the variable you control is how much you lose when it does.
+
+<Terminal
+  lines={[
+  { cmd: 'grep -c "step" train.log', output: '322  (last logged step — no traceback after)' },
+  { cmd: 'stat -c %Y train.log', output: 'log age rising while the step number does not change' },
+  { cmd: 'python3 -c "import torch; print(torch.cuda.memory_allocated()/1e9)"', output: '0.02 GB  (the library holds nothing anymore)' },
+  { cmd: 'nvidia-smi --query-gpu=memory.used --format=csv', output: 'nearly double what the library reports — ghost memory' },
+  { cmd: 'restart the virtual machine && relaunch from last checkpoint', output: 'step 301: speed recovered on the first batch' },
+  ]}
+/>

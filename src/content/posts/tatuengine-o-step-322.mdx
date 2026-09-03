@@ -1,0 +1,102 @@
+---
+title: "O step 322 — quando o treino morre em silêncio e a VRAM fica de órfã"
+description: "A rodada da Fase 4 caiu no meio sem traceback, sem OOM e sem log de erro: o processo simplesmente deixou de existir. Caçar a causa virou uma lição sobre olhar a métrica certa — e sobre o custo invisível de deixar o driver da GPU varrendo o seu lixo."
+date: 2026-09-03 09:30:00 -03:00
+pubDate: 2026-09-03 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, fase4, pytorch, gpu, vram, monitoramento, checkpoint]
+icon: "🌊"
+cover: /covers/tatuengine-o-step-322.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sumiço
+
+Eu tinha acabado de olhar a tela pela última vez. Step 320, gradiente 3.5, tudo dentro da faixa que a rodada anterior tinha ensinado a esperar. Fui resolver outra coisa.
+
+Quando voltei, o processo não existia mais.
+
+Não quero dizer "falhou". Falha deixa rastro: um traceback, um `CUDA out of memory`, um exit code diferente de zero, uma linha vermelha no fim do log. Nada disso aconteceu. O log terminava no meio de um step normal, como se alguém tivesse arrancado a tomada. A memória da GPU tinha voltado ao valor de repouso. O arquivo de log não era modificado há minutos.
+
+E essa é a parte que me incomodou: **o monitor não avisou**. O watchdog que eu tinha montado disparava quando o log ficava sem atualização por 20 minutos. Ou seja: eu tinha automatizado a detecção de um treino *lento*, não de um treino *morto*. Vinte minutos é muito tempo para perceber que não existe mais nada para perceber.
+
+## A métrica certa
+
+A primeira coisa que fiz foi listar o que eu tinha observado até ali e perguntar, para cada item, se ele teria mudado no momento da morte.
+
+| O que eu vigiava | Muda quando o processo morre? |
+|------------------|-------------------------------|
+| Idade do arquivo de log | Sim, mas só depois de minutos |
+| Presença do processo | Sim, na hora |
+| Loss do último step | Não — congela no último valor |
+| Throughput (tokens/s) | Não — congela no último valor |
+| Memória alocada pela biblioteca de deep learning | Cai para perto de zero |
+| Memória usada pela GPU (visão do driver) | Depende. E foi aqui que a história virou |
+
+Duas dessas linhas me dariam o diagnóstico em segundos se eu tivesse pensado nelas antes: **a memória que a GPU reporta** e **o número do último step salvo em disco**. A primeira cai imediatamente quando o processo morre de verdade. A segunda congela — e um número congelado é um alarme muito melhor do que um arquivo que ninguém toca.
+
+A regra que saiu disso: *idade do log detecta lentidão; ausência de memória detecta morte.* São sinais diferentes e um watchdog que só tem o primeiro está cego para o segundo.
+
+## O fantasma
+
+Achei que estava diagnosticando um crash. Estava diagnosticando dois.
+
+Depois de relançar a rodada a partir do último checkpoint, ela voltou — mas arrastando. Os primeiros segundos foram rápidos e depois o throughput caiu por terra e ficou ali, humilhante, uma fração do que a mesma configuração entregava dias antes. A GPU mostrava consumo baixo. O processo estava vivo. Os steps avançavam, só que devagar demais para ser um problema de modelo.
+
+E aí o número que eu não sabia que precisava olhar apareceu: a memória que o driver da GPU atribuía ao processo da máquina virtual era quase o dobro da memória que a biblioteca de deep learning dizia estar usando.
+
+Esse é o comportamento clássico de driver de vídeo em desktop com gerenciamento de memória em modo compartilhado. Quando um processo morre sem liberar os recursos — e um processo killado de fora nunca libera — o driver não devolve a memória para o mundo. Ele a mantém reservada, mapeada, esperando que o dono volte. Só que o dono morreu. A memória fica presa em um estado que não é usada nem está disponível: memória fantasma.
+
+Cada crash anterior da rodada tinha deixado um pouco disso para trás. O efeito acumulado não era uma falha — era uma lentidão. A GPU estava trabalhando com metade do espaço que parecia ter, e o resto do orçamento estava ocupado por cadáveres de execuções passadas.
+
+## A cura que ninguém quer receitar
+
+Não existia comando para liberar aquilo. A memória fantasma pertence ao driver, e o driver só a devolve quando a sessão inteira acaba — o que, dentro de uma máquina virtual, significa reiniciar a máquina virtual.
+
+Reiniciar. A solução mais antiga e mais humilhante da engenharia de computação.
+
+Reiniciei. Relançar a partir do mesmo checkpoint, mesma configuração, mesmo tudo. Primeiro step: voltou para a velocidade que eu tinha perdido de vista. A lentidão nunca foi do modelo, nem dos hiperparâmetros, nem do dataset. Era lixo de três crashes anteriores que ninguém tinha recolhido.
+
+## O que ficou de mudança
+
+**Checkpoint a cada 50 steps.** A morte silenciosa custou 22 steps — algumas horas de treino. Com checkpoint mais frequente, o mesmo evento custa no máximo meio caminho. É a única defesa real contra um processo que morre sem explicar: reduzir o que se perde, já que não dá para prever quando.
+
+**Relançar detached, de verdade.** Um processo filho de uma sessão que pode ser reiniciada morre junto com ela. O treino precisa nascer fora da árvore de processos de quem o lançou, com stdin desligado e saída redirecionada — senão o seu próprio ambiente de trabalho é o ponto único de falha.
+
+**Detecção por ausência, não por idade.** O monitor agora olha a memória da GPU e o número do último step salvo. Se a memória caiu e o step parou, está morto — e isso dispara em um ciclo de coleta, não em vinte minutos.
+
+**Contagem de processos zumbis da máquina virtual.** Duas instâncias do mesmo processo de hospedagem significa uma sessão antiga que não foi liberada. É o mesmo problema do fantasma, visto do outro lado.
+
+**E o que eu ainda não sei.** A causa raiz do primeiro crash continua desconhecida. Nada no log, nada no registro do kernel, nada de esgotamento de memória visível. Se a rodada morrer de novo na mesma vizinhança de step, a hipótese passa a ser algo específico daquela região do treino — e aí a investigação é outra. Morte silenciosa uma vez é azar; duas vezes no mesmo lugar é padrão.
+
+## Métricas
+
+| Item | Valor |
+|------|-------|
+| Steps perdidos na morte silenciosa | 22 |
+| Cadência de checkpoint | 50 steps |
+| Perda máxima com a cadência nova | ~meio caminho do anterior |
+| Velocidade antes da limpeza | fração do normal |
+| Velocidade depois de reiniciar a VM | recuperada no primeiro step |
+| Divergência de memória (driver vs biblioteca) | quase 2x |
+
+## Aprendizados
+
+1. **Ausência é um sinal, não um silêncio.** Um processo que parou de existir é uma informação diferente de um processo que parou de progredir. Se o seu monitoramento só sabe detectar o segundo, o primeiro passa batido até alguém olhar a tela.
+2. **Confira a memória de dois pontos de vista.** O que a sua biblioteca acha que está usando e o que o driver reporta raramente são iguais — e a diferença entre eles é diagnóstico gratuito. Diferença grande e persistente é vazamento ou lixo não recolhido.
+3. **Em desktop com memória de vídeo gerenciada em modo compartilhado, crash tem custo acumulado.** Cada morte sem limpeza tira um pouco de capacidade disponível. Você não vê uma falha, vê uma lentidão — e procura o problema no lugar errado, no modelo.
+4. **Às vezes a solução é reiniciar, e o erro é gastar horas tentando não usar ela.** Existe uma classe de problema cujo único remédio é derrubar a sessão. Reconhecer essa classe cedo é economia de tarde inteira.
+5. **Checkpoint é seguro contra o desconhecido.** Se você não sabe por que o treino morre, a variável que você controla é quanto você perde quando ele morrer.
+
+<Terminal
+  lines={[
+  { cmd: 'grep -c "step" treino.log', output: '322  (último step registrado — sem traceback depois)' },
+  { cmd: 'stat -c %Y treino.log', output: 'idade do log subindo enquanto o step não muda' },
+  { cmd: 'python3 -c "import torch; print(torch.cuda.memory_allocated()/1e9)"', output: '0.02 GB  (a biblioteca não segura mais nada)' },
+  { cmd: 'nvidia-smi --query-gpu=memory.used --format=csv', output: 'quase o dobro do que a biblioteca reporta — memória fantasma' },
+  { cmd: 'reiniciar a maquina virtual && relancar do ultimo checkpoint', output: 'step 301: velocidade recuperada no primeiro batch' },
+  ]}
+/>
