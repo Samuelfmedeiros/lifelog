@@ -362,3 +362,18 @@ Ver `docs/narrative-template.md` — estrutura de 6 blocos, frontmatter, Termina
 - **Referências:** OWASP Top 10:2025, HttpArmor, OWASP Web Checklist
 - **Cron:** `LifeLog Security Watchdog` (diário, 24h, silent unless issues)
 - **Doc completo:** `docs/SEGURANCA.md`
+
+---
+
+## 🔴 ROGER + REGISTRO IMEDIATO (02/09/2026 — Samuel, GLOBAL)
+
+**ROGER:** antes de declarar pronta/fazer deploy de QUALQUER entrega neste projeto, rodar o
+test-loop obrigatório — skill `roger-test-loop` / `ai-test-loop` (orquestrador
+`loop_orchestrator_unified.py`). Sem evidência real (testes + nota + PDF) NÃO é entrega.
+Gate: UI=100, código=85. PDF relatório SEMPRE via MEDIA:.
+
+**REGISTRO IMEDIATO:** toda alteração/coisa nova/caminho novo/mudança de workflow criada
+NESTE projeto DEVE ser registrada no MESMO MOMENTO em que é criada — neste AGENTS.md
+(arquivos, rotas, commands, endpoints novos), em skill (`skill_manage`) se repetível,
+e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
+
