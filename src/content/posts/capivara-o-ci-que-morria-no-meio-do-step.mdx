@@ -1,0 +1,191 @@
+---
+title: "O CI que morria no meio do step — e os tres bugs que a morte escondia"
+description: "O pipeline do Capivara rodava numa maquina reserva e morria no meio de step longo, com erro generico. Nada era timeout, nada era crash de servico: o runtime estava derrubando a distro sozinho. E quando a morte parou, tres bugs de verdade apareceram."
+date: 2026-08-29 21:30:00 -03:00
+pubDate: 2026-09-03 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "ci", "self-hosted-runner", "playwright", "testes", "wsl"]
+cover: /covers/capivara-o-ci-que-morria-no-meio-do-step.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O erro que nao dizia nada
+
+Migreio o CI do Capivara para um runner auto-hospedado numa maquina reserva da rede local. O motivo era pratico: os testes E2E sobem backend, frontend e navegador de verdade, e isso em runner hospedado fica lento e caro.
+
+Funcionou. Mais ou menos.
+
+Os jobs comecaram a morrer no meio de step longo com uma mensagem que nao ajudava em nada — um `terminate` seco, sem stack, sem log do que estava rodando. O backend morria no meio do `pytest`. O E2E morria no meio do build.
+
+E o detalhe que me fez perder uma tarde inteira: **o tempo de morte era quase sempre o mesmo**. Entre sessenta e cem segundos.
+
+## As tres hipoteses erradas
+
+Quando um job morre no mesmo intervalo de tempo, o cerebro pede uma explicacao de relogio. Eu testei tres:
+
+1. **Idle timeout do runner.** Achei que o agente estava se desligando por falta de atividade. Ajustei configuracao de idle, nada mudou.
+2. **Crash do servico da maquina reserva.** Parecia plausivel — o servico do runtime morria e levava o job junto. So que os logs do servico estavam limpos.
+3. **Task agendada derrubando a sessao.** Revirei o agendador de tarefas atras de algo que matasse a sessao. Nada.
+
+As tres hipoteses tinham um defeito em comum: procuravam o problema **dentro** do ambiente de execucao. O problema estava no ciclo de vida do runtime em si.
+
+## A causa raiz: o runtime fecha a distro quando ninguem esta olhando
+
+A maquina reserva roda Linux por cima do Windows. E esse tipo de configuracao tem um comportamento pouco documentado que morde exatamente quem usa a distro como ambiente de CI: **quando a ultima sessao interativa da distribuicao fecha, o runtime encerra a distro pouco depois** — alguns segundos, um minuto e pouco.
+
+O runner do GitHub Actions executa cada step como uma sessao nova. Nao existe sessao "aberta" segurando a distribuicao entre steps. Entao, no meio de um step longo, sem ninguem do lado do terminal, a distro era simplesmente recolhida — e o job morria junto com ela.
+
+Nao era timeout de idle. Nao era crash. Nao era task. Era o proprio runtime fazendo a limpeza dele, no horario dele.
+
+A prova foi simples de obter e humilhante de nao ter pensado antes: deixar uma sessao aberta de proposito e observar. Com uma sessao viva, zero mortes. Sem sessao, morte garantida em pouco mais de um minuto.
+
+## O keepalive: uma sessao que nunca fecha
+
+A correcao nao foi elegante. Foi eficaz.
+
+Uma sessao persistente, iniciada de fora, que roda um loop de dormir para sempre dentro da distro — e se cair, volta sozinha:
+
+```bash
+# keepalive do runtime na maquina reserva — sessao que nunca fecha
+while true; do
+  ssh -T -o ServerAliveInterval=30 -o ConnectTimeout=20 \
+      "$RESERVE_HOST" \
+      'wsl -d Debian -e bash -c "while true; do sleep 3600; done"' 2>/dev/null
+  sleep 30   # sessao morreu? reconecta
+done
+```
+
+O loop externo existe porque a rede cai e a maquina reserva reinicia. Sem auto-reconect, o keepalive vira o proximo ponto de falha silencioso — e eu ja tinha um daqueles.
+
+Resultado: zero encerramentos em mais de trinta minutos de execucao continua. Os jobs pararam de morrer.
+
+E ai comecou o problema de verdade.
+
+## Os tres bugs que a morte escondia
+
+Esse e o ponto da historia. Durante semanas, o CI morria antes de chegar em certos steps — e eu lia isso como "o ambiente esta instavel". Quando o ambiente parou de morrer, tres bugs **reais** apareceram imediatamente. Todos de teste, nao de producao. E os tres eram meus.
+
+### Bug 1 — o componente evoluiu, o teste nao
+
+Adicionei um toggle de idioma no cabecalho. O componente novo consome um contexto de idioma, e tres arquivos de teste renderizavam o cabecalho sem esse contexto:
+
+```tsx
+// antes: renderiza sem provider — o LangToggle chama useLang() e quebra
+render(<AdminPage />)
+
+// depois: helper que embrulha no provider
+renderWithLang(<AdminPage />)
+```
+
+O erro era classico de contexto ausente. O que me incomoda e que eu escrevi o toggle sabendo que existiam testes do cabecalho — e rodei so o suite unitario isolado, nao o conjunto.
+
+### Bug 2 — uma flag que nunca existiu
+
+No workflow de E2E, eu passei a URL base do Playwright como argumento de linha de comando:
+
+```yaml
+# ERRADO: --base-url nao existe no CLI do Playwright
+- run: npx playwright test --base-url "$E2E_URL"
+
+# CERTO: o config le do ambiente
+- run: BASE_URL="$E2E_URL" npx playwright test
+```
+
+Escrevi essa linha confiando na memoria de outra ferramenta. O arquivo de configuracao ja lia `BASE_URL` do ambiente — ou seja, a correcao era apagar a flag, nao inventar um jeito de passar.
+
+### Bug 3 — a resposta mudou, o mock ficou para tras
+
+O painel executivo ganhou um monitor novo. O shape da resposta mudou, e o teste que valida o modo offline nao conhecia o campo novo:
+
+```python
+# o overview agora inclui o host reserva — o mock precisa responder tambem
+patch("routers.executive._check_reserve",
+      return_value={"online": False, "status": 0, "error": "host nao respondeu"})
+```
+
+Esse e o mais educativo dos tres: o teste nao estava errado, estava **incompleto**. Adicionei um monitor ao painel e atualizei o teste feliz. So que o teste cobria o caminho de erro de um monitor especifico, e o novo monitor tinha o proprio caminho de erro — sem cobertura nenhuma.
+
+## A trilha de fixes de ambiente
+
+Com o runner estavel, apareceu uma fila de problemas de provisionamento que tambem estavam mascarados. Vale listar porque sao todos do mesmo tipo: o ambiente do runner nao e o ambiente da sua maquina.
+
+```yaml
+# Debian novo nao tem Python 3.13 no setup-python — usa o do sistema
+- name: Setup Python
+  run: |
+    if command -v python3.13 >/dev/null 2>&1; then
+      PY_BIN="$(command -v python3.13)"
+    else
+      PY_BIN="$(command -v python3)"
+    fi
+    echo "PY_BIN=$PY_BIN" >> "$GITHUB_ENV"
+```
+
+```yaml
+# ambiente gerenciado externamente: pip direto e barrado — cria venv
+- name: Install dependencies
+  run: |
+    "$PY_BIN" -m venv .venv-ci
+    echo "$(pwd)/.venv-ci/bin" >> "$GITHUB_PATH"
+    .venv-ci/bin/pip install -r requirements.txt
+```
+
+Os outros quatro, em ordem de aparecimento:
+
+- **Lock orfao no checkout** — um crash anterior deixou `.git/index.lock` e travou todo o resto. Limpeza no inicio do job.
+- **Binario do navegador hardcoded** — o config apontava para o chromium do sistema, que so existe na minha maquina. No CI, usar o bundled:
+
+```ts
+launchOptions: {
+  // CI: browser do `npx playwright install chromium`
+  // dev local: chromium do sistema
+  executablePath: process.env.CI ? undefined : '/usr/bin/chromium',
+},
+```
+
+- **Cache de navegador no usuario errado** — o cache foi instalado num usuario e o runner rodava em outro.
+- **E2E sem build** — o backend serve a SPA a partir de `dist/`; sem buildar o frontend antes, o E2E testava uma pagina vazia e passava.
+- **Seed com coluna NOT NULL** — o insert do usuario de teste nao fornecia o identificador, que nao tem default no servidor.
+
+## O primeiro verde completo
+
+Depois de tudo isso, o pipeline de seguranca — o job mais longo, que era sempre o primeiro a morrer — rodou inteiro pela primeira vez na historia do projeto. Verde, sem retry, sem truque.
+
+| Item | Antes | Depois |
+|---|---|---|
+| Jobs mortos no meio do step | recorrente | zero |
+| Suite de backend | nao chegava ao fim | 224/224 |
+| Suite de frontend | mascarada | 298/298 |
+| Lint do backend | 29 pendencias | zero |
+| TypeScript | nao verificado | 0 erros |
+| Pipeline de seguranca | nunca terminou | primeiro run verde |
+
+## Aprendizados
+
+1. **Instabilidade tem prazo de validade na sua paciencia.** Aceitei por semanas um CI que morria sozinho porque o sintoma era aleatorio o suficiente para parecer azar. Morte com intervalo parecido nao e azar — e um relogio de alguem.
+2. **Antes de culpar o ambiente, prove que o ambiente esta vivo.** Uma sessao aberta de proposito respondeu em dez minutos o que tres hipoteses nao responderam em uma tarde.
+3. **Um CI que morra cedo esconde bugs com carinho.** Toda falha de infraestrutura que ocorre antes dos testes rodarem e uma area cega de graca. O valor de um runner estavel nao e conforto — e visibilidade.
+4. **Teste que nao cobre o caminho de erro do codigo novo nao e teste completo.** Os dois primeiros bugs eram ruído; o terceiro era um buraco real de cobertura.
+5. **Ambiente de runner nao e o seu notebook.** Caminho de binario, versao de Python, politica de instalacao de pacote — tudo isso e bug latente esperando o primeiro job na maquina errada.
+
+## O que vem a seguir
+
+- Rodar o suite completo de teste localmente antes de push, nao o suite isolado do componente tocado.
+- Auditoria de cobertura nos caminhos de erro dos monitores do painel executivo.
+- Verificar se o seed de teste em CI pode sobrescrever dados de producao — suspeita aberta desde o incidente de login.
+- Manter o keepalive monitorado: hoje ele e um ponto unico de falha silenciosa do CI.
+
+<Terminal
+  lines={[
+  { cmd: 'wsl --list --running', output: 'distro sumindo da lista sem ninguem fechar nada — ai esta a pista' },
+  { cmd: 'ssh -T "$RESERVE_HOST" \'wsl -l -v\'', output: 'uma sessao aberta segura a distro: zero encerramentos' },
+  { cmd: 'gh run list --workflow=ci.yml --limit 5', output: 'concluir  concluir  concluir  concluir  concluir' },
+  { cmd: 'cd backend && pytest -q', output: '224 passed' },
+  { cmd: 'cd frontend && npx vitest run', output: '298 passed' },
+  ]}
+/>
+
+> **TL;DR:** o CI do Capivara morria no meio do step porque o runtime da maquina reserva recolhia a distribuicao quando a ultima sessao fechava. Um keepalive com auto-reconect resolveu — e revelou tres bugs de teste que a instabilidade escondia havia semanas. Instabilidade prolongada nao e so incomodo: e um censor de bugs.
