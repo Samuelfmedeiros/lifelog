@@ -1,0 +1,97 @@
+---
+title: "The queue nobody answers — when security became a Monday routine"
+description: "The alarm hunts, the gate blocks, the dog attacks. But there is a fourth layer in my security setup that nobody wrote about: the dependency update queue. On August 31st, the bot delivered five fix proposals. Three days later, all five are still open. The queue became the surface."
+date: 2026-09-03 08:00:00 -03:00
+pubDate: 2026-09-03 08:00:00 -03:00
+project: seguranca
+tags: [security, supply-chain, dependencies, automation, review]
+cover: /covers/seguranca-a-fila-que-ninguem-atende.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The fourth layer
+
+The story of my security setup so far has three well-documented chapters. The **alarm**: hunters that sweep code and production and cross-check findings into a single warning. The **gate**: a reviewer that reads the diff and blocks delivery if it introduces risk. The **dog**: an authorized attacker that tests the whole house once a week.
+
+All three look at the code I write. None of them looks at the code I *install*.
+
+On August 15th, I configured the fourth layer: a dependency update bot. It is not a scanner, not a firewall — it is a courier. Every Monday at eight in the morning, it opens the project's dependency wallet, compares it with what the world has published, and brings ready fix proposals: one pull request per package, with the diff, the changelog, and the verification build.
+
+The configuration is lean: two monitored ecosystems — the package registry and the CI pipeline itself — a limit on simultaneous proposals, fixed "dependencies" and "security" labels. The bot decides nothing. It delivers.
+
+## The conflict: the bot did its part
+
+On Monday, August 31st, the first batch arrived. Five proposals, all at once:
+
+- the site generator, from 7.1.6 to 7.2.9
+- the MDX plugin, from 7.0.5 to 7.0.8
+- the linter, from 10.8.0 to 10.9.1
+- the test runner, from 4.1.10 to 4.1.11
+- the typing rule set, from 8.65.0 to 8.68.0
+
+Each proposal came with a clean, prefixed, labeled commit. The pipeline ran on all of them: build passed, tests passed. In under two minutes, all five were green.
+
+And then they stopped.
+
+Today is Thursday, September 3rd. All five are still open. Nobody clicked merge. Nobody rejected with an argument. The queue simply stayed.
+
+There is a detail that makes the scene even better: the site generator proposal updated itself overnight, at 00:30 today. The bot tracks a moving target — a new version shipped mid-week, so it rebased and reopened the proposal. The dependency moves; the queue grows.
+
+## Why a stalled queue is a security problem
+
+It is tempting to treat dependency PRs as bureaucracy — "when I have time, I'll look". But every open proposal in the queue has a specific geometry:
+
+1. **It is a known problem.** The bot does not open PRs on a hunch; it opens one because a new version exists, and new versions exist because something changed — a fix, a feature, or a published vulnerability.
+2. **It is a problem with a ready fix.** Unlike a scanner finding that requires design work, the dependency PR already ships with the diff applied and tested. The cost of accepting is nearly zero.
+3. **The cost of waiting is asymmetric.** Every day in the queue is a day running the old version — with the old flaws — while the new one waits on the other side of a button.
+
+The security debt does not live only in the code left to write. It lives in the queue left to answer.
+
+## The other side of the gate: what gets in
+
+The queue is the layer that takes care of what is *already installed*. Its complement is the layer that watches what *gets in*: the pre-commit hook that scans every commit before it exists.
+
+That hook has one simple rule: secrets never reach history. Token, key, password — if the pattern shows up in the diff, the commit is blocked. And there is a second rule, subtler: a documented false positive beats a silent one. When the scanner flagged an automatically generated hexadecimal digest as if it were a credential, the answer was not to turn the scanner off — it was to add an explicit allowlist entry, with the reason written into the configuration file.
+
+Same philosophy as the queue: the tool delivers, the human decides — but the decision must be recorded, not improvised.
+
+## The week's numbers
+
+| Item | Value |
+|------|-------|
+| Layer configured | Aug 15 (packages + CI pipeline) |
+| First batch of proposals | Aug 31, Monday morning |
+| Proposals in the first batch | 5 |
+| Time to green CI | under 2 min each |
+| Proposals answered by Sep 3 | 0 |
+| Proposal reopened by a mid-week release | 1 (overnight today) |
+| False positives in the scanner allowlist | 1 (documented Aug 28) |
+
+## Lessons
+
+1. **Automation that delivers without an owner becomes noise.** The bot did its part with clockwork precision — literally, Monday morning. The part that cannot be automated is the merge click. A queue without an owner is just delayed notification.
+2. **The cheapest attack surface is the one with a ready fix.** Nobody exploits a blog's zero-days; they exploit the outdated dependency the ecosystem itself already patched.
+3. **A moving target demands a living queue.** The proposal that updated itself overnight is the bot saying: "the fix window is still open, and it closes by itself if you do nothing."
+4. **A documented allowlist beats a disabled scanner.** Same lesson as the gate, now on the inbound layer: the explicit record of the exception beats silence.
+5. **Routine security is real security.** Alarm, gate, and dog are events. The queue is process — and process is what survives when incident adrenaline wears off.
+
+## What comes next
+
+- **Queue answering routine** — a fixed weekly slot to review open proposals, with a clear rule: patch and minor with green CI go in; major waits for evaluation.
+- **Stalled queue alert** — if a proposal stays open for more than a few days, the security monitor bills it, like any other finding.
+- **Dependency inventory** — the queue says what changed; the inventory says what exists. Together they close the supply chain picture.
+
+The fourth layer of my security does not hunt, block, or attack. It waits. And what I learned this week is that a layer that waits in silence is the easiest to forget — and the cheapest to exploit.
+
+<Terminal
+  commands={[
+    { label: 'queue', cmd: 'gh pr list --label dependencies --state open' },
+    { label: 'route', cmd: '# patch/minor with green CI -> merge; major -> evaluate' },
+    { label: 'billing', cmd: '# proposal stalled for days -> becomes a finding' },
+    { label: 'inbound', cmd: '# secret in the diff -> commit blocked' },
+    { label: 'exception', cmd: '# false positive -> documented allowlist' },
+  ]}
+/>

@@ -1,0 +1,97 @@
+---
+title: "A fila que ninguém atende — quando a segurança virou rotina de segunda-feira"
+description: "O alarme caça, o portão bloqueia, o cão ataca. Mas existe uma quarta camada na minha segurança que ninguém escreveu: a fila de atualização de dependências. Em 31 de agosto, o bot entregou cinco propostas de correção. Três dias depois, todas as cinco continuam abertas. A fila virou a superfície."
+date: 2026-09-03 08:00:00 -03:00
+pubDate: 2026-09-03 08:00:00 -03:00
+project: seguranca
+tags: [seguranca, supply-chain, dependencias, automacao, revisao]
+cover: /covers/seguranca-a-fila-que-ninguem-atende.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A quarta camada
+
+A história da minha segurança até aqui tem três capítulos bem documentados. O **alarme**: caçadores que varrem código e produção e cruzam os achados num único aviso. O **portão**: um revisor que lê o diff e bloqueia a entrega se ele introduz risco. O **cão**: um atacante autorizado que testa a casa inteira uma vez por semana.
+
+Os três olham para o código que eu escrevo. Nenhum deles olha para o código que eu *instalo*.
+
+Em 15 de agosto, configurei a quarta camada: um bot de atualização de dependências. Não é um scanner, não é um firewall — é um estafeta. Toda segunda-feira às oito da manhã, ele abre a carteira de dependências do projeto, compara com o que o mundo publicou de novo, e traz propostas de correção prontas: um pull request por pacote, com o diff, o changelog e o build de verificação.
+
+A configuração é enxuta: dois ecossistemas monitorados — o de pacotes e o da própria esteira de CI —, limite de propostas simultâneas, rótulos fixos de "dependencies" e "security". O bot não decide nada. Ele entrega.
+
+## O conflito: o bot fez a parte dele
+
+Na segunda-feira, 31 de agosto, a primeira leva chegou. Cinco propostas, todas ao mesmo tempo:
+
+- o gerador do site, de 7.1.6 para 7.2.9
+- o plugin de MDX, de 7.0.5 para 7.0.8
+- o linter, de 10.8.0 para 10.9.1
+- o test runner, de 4.1.10 para 4.1.11
+- o conjunto de regras de tipagem, de 8.65.0 para 8.68.0
+
+Cada proposta veio com um commit limpo, prefixado, rotulado. A esteira rodou em todas: build passou, testes passaram. Em menos de dois minutos, as cinco estavam verdes.
+
+E pararam ali.
+
+Hoje é quinta-feira, 3 de setembro. As cinco continuam abertas. Ninguém clicou em merge. Ninguém rejeitou com argumento. A fila simplesmente ficou.
+
+Tem um detalhe que torna a cena ainda melhor: a proposta do gerador do site foi atualizada de madrugada, às 00:30 de hoje. O bot acompanha alvo móvel — saiu uma versão nova no meio da semana, ele rebaseou e reabriu a proposta. A dependência se move; a fila cresce.
+
+## Por que uma fila parada é problema de segurança
+
+É tentador tratar PR de dependência como burocracia — "quando eu tiver tempo, eu olho". Mas cada proposta aberta na fila tem uma geometria específica:
+
+1. **É um problema conhecido.** O bot não abre PR por intuição; ele abre porque existe uma versão nova, e versões novas existem porque algo mudou — correção, funcionalidade, ou uma vulnerabilidade publicada.
+2. **É um problema com correção pronta.** Diferente de um achado de scanner que exige design, o PR de dependência já vem com o diff aplicado e testado. O custo de aceitar é quase zero.
+3. **O custo de esperar é assimétrico.** Cada dia na fila é um dia rodando a versão antiga — com as falhas antigas — enquanto a nova espera do lado de cá do botão.
+
+A dívida de segurança não mora só no código que falta escrever. Mora na fila que falta atender.
+
+## O outro lado do portão: o que entra
+
+A fila é a camada que cuida do que *já está instalado*. O complemento é a camada que vigia o que *entra*: o gancho de pré-commit que varre cada commit antes dele existir.
+
+Esse gancho tem uma regra simples: segredo não entra no histórico. Token, chave, senha — se o padrão aparece no diff, o commit é bloqueado. E tem uma segunda regra, mais sutil: falso positivo documentado vence falso positivo silencioso. Quando o scanner apontou um digest hexadecimal gerado automaticamente como se fosse credencial, a resposta não foi desligar o scanner — foi adicionar uma allowlist explícita, com o motivo escrito no arquivo de configuração.
+
+A mesma filosofia da fila: a ferramenta entrega, o humano decide — mas a decisão precisa ser registrada, não improvisada.
+
+## As contas da semana
+
+| Item | Valor |
+|------|-------|
+| Camada configurada | 15/08 (pacotes + esteira de CI) |
+| Primeira leva de propostas | 31/08, manhã de segunda |
+| Propostas na primeira leva | 5 |
+| Tempo até CI verde | menos de 2 min cada |
+| Propostas atendidas até 03/09 | 0 |
+| Proposta reaberta por versão nova no meio da semana | 1 (de madrugada hoje) |
+| Falso positivo na allowlist do scanner | 1 (documentado em 28/08) |
+
+## Aprendizados
+
+1. **Automação que entrega sem dono vira ruído.** O bot fez a parte dele com precisão de relógio — literalmente, segunda de manhã. A parte que não se automatiza é o clique no merge. Fila sem dono é só notificação atrasada.
+2. **A superfície de ataque mais barata é a que já tem correção pronta.** Ninguém explora zero-day de blog; exploram dependência desatualizada que o próprio ecossistema já consertou.
+3. **Alvo móvel exige fila viva.** A proposta que se atualizou sozinha de madrugada é o bot dizendo: "a janela de correção continua aberta, e ela fecha sozinha se você não fizer nada."
+4. **Allowlist documentada vale mais que scanner desligado.** É a mesma lição do portão, agora na camada de entrada: o registro explícito da exceção vence o silêncio.
+5. **Segurança de rotina é segurança real.** Alarme, portão e cão são eventos. A fila é processo — e processo é o que sobrevive quando a adrenalina do incidente acaba.
+
+## O que vem depois
+
+- **Rotina de atendimento da fila** — um horário fixo na semana para revisar as propostas abertas, com regra clara: patch e minor com CI verde entram; major espera avaliação.
+- **Alerta de fila parada** — se uma proposta passa de alguns dias aberta, o monitor de segurança cobra, como cobra qualquer outro achado.
+- **Inventário de dependências** — a fila diz o que mudou; o inventário diz o que existe. Juntos, eles fecham a visão da cadeia de suprimentos.
+
+A quarta camada da minha segurança não caça, não bloqueia, não ataca. Ela espera. E o que eu aprendi essa semana é que uma camada que espera em silêncio é a mais fácil de esquecer — e a mais barata de explorar.
+
+<Terminal
+  commands={[
+    { label: 'fila', cmd: 'gh pr list --label dependencies --state open' },
+    { label: 'rota', cmd: '# patch/minor com CI verde -> merge; major -> avaliacao' },
+    { label: 'cobranca', cmd: '# proposta parada ha dias -> vira finding' },
+    { label: 'entrada', cmd: '# segredo no diff -> commit bloqueado' },
+    { label: 'excecao', cmd: '# falso positivo -> allowlist documentada' },
+  ]}
+/>
