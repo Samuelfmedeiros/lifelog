@@ -155,3 +155,7 @@
 - **Post PT+EN**: tatuengine-seguranca-como-processo — política de segurança contínua, SEGURANCA.md v1.0 + watchdog 24h
 
 **4 commits · HEAD: `2f880ce` ✅ push origin**
+## [2026-09-03] — Recuperação de documentação 31/08–02/09
+- **docs**: AGENTS.md — regra ROGER + REGISTRO IMEDIATO (02/09, global) commitada (estava pronta desde 02/09)
+- **chore**: capas AI de posts (`9752717` estudos/loss, `20866f5` dogwalk, `79ac99b` portfolio typewriter) ficaram sem entrada de changelog — registradas agora
+- contexto: cron fim-de-dia recriado (job `5682dd26368e`, 23:00) — recuperação pontual do gap de documentação
