@@ -1,0 +1,48 @@
+---
+title: "O typewriter que apagava o próprio texto"
+description: "O hero do portfólio digitava, apagava e redigitava — não por efeito, mas por bug: a hidratação adiada montava o componente e zerava o texto que já estava na tela. A história de como o LCP de 3.6s caiu pra 2.7s removendo a hidratação ociosa do lugar errado."
+date: 2026-09-02 16:00:00 -03:00
+pubDate: 2026-09-02 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "performance", "lcp", "hydration", "nextjs", "react"]
+cover: /covers/portfolio-o-typewriter-que-apagava-o-proprio-texto.webp
+featured: true
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O efeito que ninguém pediu
+
+O hero do portfólio tinha um typewriter — aquele efeito de texto que digita sozinho, letra por letra. Elegante, até. O problema é que, em alguns loads, ele fazia um show completo: digitava a primeira frase, apagava tudo, e começava de novo.
+
+Não era charme. Era bug.
+
+A sequência denunciava a causa: o texto já estava na tela (HTML estático), aí o React montava o componente por cima, zerava o estado e o typewriter recomeçava do início. O usuário via o texto piscar e voltar pro começo — exatamente quando o LCP estava sendo medido.
+
+## O culpado: hidratação adiada no lugar errado
+
+O componente tinha sido "otimizado" com `requestIdleCallback`: só hidratava quando o navegador estava ocioso. A intenção era boa — tirar o trabalho do path crítico. Mas o typewriter é justamente o componente que não pode ser hidratado depois, porque a hidratação dele é *destrutiva*: montar por cima reseta o texto.
+
+A otimização melhorava a métrica de um lado e piorava a experiência do outro.
+
+<Terminal command="git log --oneline -3" output="520270c perf(typewriter): remove idle-hydration que apagava texto e redigitava
+01c2704 perf(idle-hydration): rIC puro, readyState não dispara mais (root cause)
+7edb55d perf(cockpit): idle-hydration tira GSAP+canvas do path crítico" />
+
+## A correção
+
+Duas decisões separadas:
+
+1. **Typewriter voltou a hidratar na hora.** Texto que já está na tela não pode ser apagado pela hidratação. O efeito ficou server-rendered estável e o JS só assume por cima sem resetar estado.
+
+2. **Idle-hydration ficou só onde faz sentido:** no background (CockpitBackground), onde o atraso é invisível. GSAP + canvas saíram do path crítico sem ninguém perceber — ali o adiamento é ganho puro.
+
+O resultado: LCP caiu de ~3.6s para ~2.7s, e o texto do hero parou de "piscar" no load.
+
+## A lição
+
+**Nem toda otimização de performance vale para todo componente.** `requestIdleCallback` é ótimo para trabalho que pode esperar; é péssimo para trabalho que destrói o que já foi renderizado. A pergunta certa antes de adiar qualquer hidratação: *o que acontece visualmente quando esse componente monta por cima?* Se a resposta for "apaga algo", não adie — ou o usuário vai assistir seu hero se auto-destruir toda vez que abrir a página.
+
+A métrica melhorou de verdade, e não na base do "a página parecia mais rápida mas piscava". Melhoria de performance que degrada a experiência não é melhoria — é troca.

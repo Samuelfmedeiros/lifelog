@@ -1,0 +1,61 @@
+---
+title: "O dia em que a loss parou de aprender"
+description: "300 passos de treino, loss congelada em 10.8125 e um modelo que insistia em sair em branco. A causa não era a taxa de aprendizado baixa — eram pesos explodidos no checkpoint de partida. A história de como um treino parado virou um diagnóstico completo."
+date: 2026-09-02 08:00:00 -03:00
+pubDate: 2026-09-02 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "llm", "pretrain", "loss", "debugging", "tatuengine"]
+cover: /covers/estudos-o-dia-em-que-a-loss-parou-de-aprender.webp
+featured: true
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma silencioso
+
+O treino começou bem. Os logs subiam, o batch passava, a GPU esquentava. E a loss não descia.
+
+Não descia de verdade: ficava colada em 10.8125, passando disso não ia. O modelo gerava texto, mas era texto de modelo branco — aquele ruído estatístico de quem ainda não aprendeu nada. Trezentos passos depois, nada tinha mudado.
+
+A primeira suspeita era clássica: taxa de aprendizado baixa demais. 1e-6 em um pré-treino de modelo grande é conservador demais — eu mesmo já tinha caído nessa armadilha antes, ajustando o learning rate pra baixo até o treino "ficar estável", só pra descobrir que estabilidade e estagnação são a mesma coisa vista de ângulos diferentes.
+
+Mas o log tinha uma pista que o LR baixo não explicava.
+
+## A pista: um loss de 96 no primeiro step
+
+O checkpoint de partida não era um modelo qualquer. A loss inicial era 96 — não 10, não 11: 96. Números assim não aparecem em modelo saudável; aparecem quando os pesos estão explodidos.
+
+Fui olhar a distribuição dos pesos do `lm_head` — a camada que traduz a representação interna em probabilidades sobre o vocabulário. O desvio padrão era 13.87. Para um head de saída, isso é um espanto: pesos saudáveis ficam na casa de décimos, não de dezenas.
+
+O que aconteceu ficou claro: os trezentos passos não estavam aprendendo. Estavam *normalizando*. O modelo passou o treino inteiro tentando desfazer o estrago do checkpoint — e quando finalmente chegou em 10.82, que é exatamente o logaritmo do tamanho do vocabulário, ele tinha virado um modelo branco de novo.
+
+## A matemática que explica tudo
+
+A loss de um modelo que chuta uniformemente sobre o vocabulário é `ln(vocab_size)`. Com um vocabulário de 50.257 tokens, isso dá:
+
+```python
+import math
+math.log(50257)  # 10.826...
+```
+
+10.8125 é o piso. É a loss de quem não aprendeu nada. O modelo não estava estagnado num patamar ruim — ele tinha *voltado ao zero* depois de gastar todo o treino consertando pesos quebrados.
+
+E o pior: com LR de 1e-6, ele nunca ia sair dali. Para um pré-treino dessa escala, o learning rate correto é da ordem de 3e-4 — trezentas vezes maior.
+
+## A armadilha do checkpoint "bom"
+
+O detalhe cruel: o checkpoint tinha passado por uma fase de warmup do head e aparecia com o nome "best" na árvore de arquivos. Um checkpoint com nome de melhor, pesos explodidos e loss inicial de 96. A nomenclatura mentia, e a confiança nela custou trezentos passos de GPU.
+
+A lição é a pergunta que eu deveria ter feito antes de relançar: qual é a loss do primeiro batch? Se o primeiro valor já é absurdo, não é problema de aprendizado — é problema de partida. Nenhuma taxa de aprendizado conserta pesos explodidos; o treino inteiro vira reabilitação.
+
+<Terminal command="python3 -u train.py --resume step_0300 --lr 3e-4 --max-steps 500" output="loss 10.82 -> 9.91 -> 8.47 ... finalmente aprendendo" />
+
+## O que mudou
+
+O relançamento usou o checkpoint limpo como base — os pesos normalizados viraram o ponto de partida real — e a taxa de aprendizado correta para a escala. O treino que estava congelado voltou a aprender de verdade.
+
+Ficou registrado também o segundo bug, escondido na lógica de resume: uma condição de passo que só funcionava quando o treino começava do zero. Com resume em 300 e gradiente acumulado de 16, o contador de passos entrava num loop que nunca batia com o múltiplo esperado — GPU em 0%, log congelado, treino parado sem erro visível. A correção trocou a contagem pelo acumulador real.
+
+Diagnosticar um treino que não aprende é quase sempre a mesma história: ou o ponto de partida está podre, ou a taxa está errada, ou o resume está mentindo. Desta vez foram os três.

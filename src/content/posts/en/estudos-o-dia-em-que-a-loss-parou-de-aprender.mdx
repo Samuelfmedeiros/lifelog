@@ -1,0 +1,61 @@
+---
+title: "The day the loss stopped learning"
+description: "300 training steps, a loss stuck at 10.8125, and a model that insisted on coming out blank. The cause wasn't a low learning rate — it was exploded weights in the starting checkpoint. The story of how a stalled run became a full diagnosis."
+date: 2026-09-02 08:00:00 -03:00
+pubDate: 2026-09-02 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "llm", "pretrain", "loss", "debugging", "tatuengine"]
+cover: /covers/estudos-o-dia-em-que-a-loss-parou-de-aprender.webp
+featured: true
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The silent symptom
+
+The training run started fine. Logs went up, batches passed, the GPU got warm. And the loss didn't go down.
+
+Not really down: it sat glued at 10.8125 and refused to move. The model generated text, but it was blank-model text — that statistical noise of something that hasn't learned anything yet. Three hundred steps later, nothing had changed.
+
+The first suspect was the classic one: too low a learning rate. 1e-6 for pretraining a large model is overly conservative — I've fallen into that trap before, turning the LR down until training "stabilized", only to find that stability and stagnation are the same thing seen from different angles.
+
+But the log had a clue the low LR couldn't explain.
+
+## The clue: a loss of 96 on the first step
+
+The starting checkpoint wasn't just any model. The initial loss was 96 — not 10, not 11: 96. Numbers like that don't show up in a healthy model; they show up when the weights are exploded.
+
+I went to inspect the weight distribution of the `lm_head` — the layer that translates the internal representation into probabilities over the vocabulary. The standard deviation was 13.87. For an output head, that's alarming: healthy weights sit in the tenths range, not the tens.
+
+What happened became clear: those three hundred steps weren't learning. They were *normalizing*. The model spent the entire run trying to undo the checkpoint's damage — and when it finally reached 10.82, which is exactly the logarithm of the vocabulary size, it had become a blank model all over again.
+
+## The math that explains everything
+
+The loss of a model that guesses uniformly over the vocabulary is `ln(vocab_size)`. With a vocabulary of 50,257 tokens, that gives:
+
+```python
+import math
+math.log(50257)  # 10.826...
+```
+
+10.8125 is the floor. It's the loss of something that has learned nothing. The model wasn't stuck at a bad plateau — it had *returned to zero* after spending the entire run fixing broken weights.
+
+And the worst part: at an LR of 1e-6, it was never going to leave. For pretraining at this scale, the right learning rate is on the order of 3e-4 — three hundred times larger.
+
+## The trap of the "good" checkpoint
+
+The cruel detail: the checkpoint had gone through a head warmup phase and wore the name "best" in the file tree. A checkpoint named best, with exploded weights and a starting loss of 96. The naming lied, and trusting it cost three hundred steps of GPU.
+
+The lesson is the question I should have asked before relaunching: what is the loss of the first batch? If the first value is already absurd, it's not a learning problem — it's a starting problem. No learning rate fixes exploded weights; the whole run becomes rehabilitation.
+
+<Terminal command="python3 -u train.py --resume step_0300 --lr 3e-4 --max-steps 500" output="loss 10.82 -> 9.91 -> 8.47 ... finally learning" />
+
+## What changed
+
+The relaunch used the clean checkpoint as its base — the normalized weights became the real starting point — and the learning rate correct for the scale. The frozen run finally started actually learning.
+
+It also surfaced the second bug, hidden in the resume logic: a step condition that only worked when training started from zero. With a resume at 300 and gradient accumulation of 16, the step counter entered a loop that never matched the expected multiple — GPU at 0%, frozen log, training stalled with no visible error. The fix swapped the count for the real accumulator.
+
+Diagnosing a run that won't learn is almost always the same story: either the starting point is rotten, or the rate is wrong, or the resume is lying. This time it was all three.

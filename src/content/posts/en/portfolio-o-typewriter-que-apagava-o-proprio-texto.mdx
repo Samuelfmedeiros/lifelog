@@ -1,0 +1,48 @@
+---
+title: "The typewriter that erased its own text"
+description: "The portfolio hero typed, erased, and retyped — not as an effect, but as a bug: deferred hydration mounted the component and reset the text already on screen. The story of how LCP dropped from 3.6s to 2.7s by removing idle-hydration from the wrong place."
+date: 2026-09-02 16:00:00 -03:00
+pubDate: 2026-09-02 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "performance", "lcp", "hydration", "nextjs", "react"]
+cover: /covers/portfolio-o-typewriter-que-apagava-o-proprio-texto.webp
+featured: true
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The effect nobody asked for
+
+The portfolio hero had a typewriter — the effect where text types itself, letter by letter. Elegant, even. The problem: on some loads it put on a full show — typed the first sentence, erased everything, and started over.
+
+That wasn't charm. It was a bug.
+
+The sequence gave away the cause: the text was already on screen (static HTML), then React mounted the component on top, reset the state, and the typewriter restarted from the beginning. The user watched the text blink and rewind — exactly when LCP was being measured.
+
+## The culprit: deferred hydration in the wrong place
+
+The component had been "optimized" with `requestIdleCallback`: it only hydrated when the browser was idle. The intent was good — taking work off the critical path. But the typewriter is precisely the component that can't be hydrated later, because its hydration is *destructive*: mounting on top resets the text.
+
+The optimization improved one metric while hurting the experience.
+
+<Terminal command="git log --oneline -3" output="520270c perf(typewriter): remove idle-hydration that erased and retyped text
+01c2704 perf(idle-hydration): pure rIC, readyState no longer fires (root cause)
+7edb55d perf(cockpit): idle-hydration takes GSAP+canvas off critical path" />
+
+## The fix
+
+Two separate decisions:
+
+1. **The typewriter went back to hydrating immediately.** Text already on screen must not be erased by hydration. The effect stayed server-rendered and stable, with JS only taking over without resetting state.
+
+2. **Idle-hydration stayed only where it makes sense:** in the background (CockpitBackground), where the delay is invisible. GSAP + canvas left the critical path without anyone noticing — there, deferral is pure gain.
+
+The result: LCP dropped from ~3.6s to ~2.7s, and the hero text stopped "blinking" on load.
+
+## The lesson
+
+**Not every performance optimization is right for every component.** `requestIdleCallback` is great for work that can wait; it's terrible for work that destroys what's already rendered. The right question before deferring any hydration: *what visibly happens when this component mounts on top?* If the answer is "it erases something", don't defer — or your users will watch your hero self-destruct every time they open the page.
+
+The metric genuinely improved, and not on the back of "the page seemed faster but blinked". A performance gain that degrades experience isn't an improvement — it's a trade.

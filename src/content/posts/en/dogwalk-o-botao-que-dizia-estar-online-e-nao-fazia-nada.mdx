@@ -1,0 +1,48 @@
+---
+title: "The button that said it was online — and did nothing"
+description: "The walker toggle 'Go Online' rendered, animated, and even changed color. But the handler was an empty function: the state never left 'online'. The story of how a test loop caught a ghost button and gave back real online status."
+date: 2026-09-02 12:00:00 -03:00
+pubDate: 2026-09-02 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react", "state", "testing", "qa", "bug"]
+cover: /covers/dogwalk-o-botao-que-dizia-estar-online-e-nao-fazia-nada.webp
+featured: true
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The perfect button
+
+The button looked like it worked. Right text, right color, right animation. Click it, the visual changed, giving the feeling of control. The walker "Went Online" and "Went Offline" — at least on the surface.
+
+The problem was that the handler was an empty function.
+
+`onToggleStatus={() => {}}` — a callback that called nothing. The walker state was hardcoded to `online` inside the hook, so the click was purely cosmetic: the UI simulated the change, the state ignored the click.
+
+A button that lies is worse than a broken button. You fix the broken one; the lying one destroys trust slowly, because whoever uses it starts doubting every other control on the screen.
+
+## How the test caught it
+
+The button wasn't found by visual inspection. It was caught by the test loop: the walker screen's acceptance criteria required the toggle to actually change the online↔offline state, and the test opened the component, clicked, and the state didn't change. A deterministic test looking at what the button *does*, not what it *shows*.
+
+The finding became fix #1 in a round that found three problems total:
+
+<Terminal command="git log --oneline 508901fb^..508901fb" output="fix #1: toggle Go Online/Offline calls setWalkerStatus (real state)
+fix #2: handleAcceptRequest now has try/catch (error propagated without feedback)
+fix #3: PricingSection was dead code — documented as decision" />
+
+## The fix
+
+The handler started calling `setWalkerStatus` exposed by `useWalkerDashboard` — the same state that feeds the entire panel. The click stopped being makeup and became the source of truth: button color, status dot, and everything depending on the state reacted to the real click.
+
+After that, the online status gained persistence (part 3.1): it wasn't enough for the button to work in-session — the state needed to survive reload and reflect what the server knows. An honest button and persistent state go together; the first without the second is just a more convincing animation.
+
+## What stays
+
+- **Empty handler is a bug, not a placeholder.** A `() => {}` callback in production isn't "to be implemented later" — it's a ghost button waiting for someone to click.
+- **Acceptance tests look at behavior, not visuals.** The button passed the eye test and failed the logic test; only the test caught it.
+- **Duplicate state creates lies.** The hardcoded state in the hook and the animated visual were two versions of truth. The fix unified both through `setWalkerStatus`.
+
+The test loop ran, found, fixed, and documented. And the button finally started doing what it always said it did.

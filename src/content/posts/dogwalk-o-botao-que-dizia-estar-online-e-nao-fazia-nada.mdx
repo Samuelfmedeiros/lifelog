@@ -1,0 +1,48 @@
+---
+title: "O botão que dizia estar online — e não fazia nada"
+description: "O toggle 'Ficar Online' do walker renderizava, animava e até mudava de cor. Mas o handler era uma função vazia: o estado nunca saía de 'online'. A história de como um teste de loop pegou um botão fantasma e devolveu o status online de verdade."
+date: 2026-09-02 12:00:00 -03:00
+pubDate: 2026-09-02 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react", "estado", "testes", "qa", "bug"]
+cover: /covers/dogwalk-o-botao-que-dizia-estar-online-e-nao-fazia-nada.webp
+featured: true
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O botão perfeito
+
+O botão parecia funcionar. Tinha o texto certo, a cor certa, a animação certa. Clicava, mudava o visual, dava a sensação de controle. O walker "Ficava Online" e "Ficava Offline" — pelo menos na superfície.
+
+O problema é que o handler era uma função vazia.
+
+`onToggleStatus={() => {}}` — um callback que não chamava nada. O estado do walker estava fixo em `online` dentro do hook, então o clique era puramente cosmético: a UI simulava a mudança, o estado ignorava o clique.
+
+Um botão que mente é pior que um botão quebrado. O quebrado você conserta; o que mente destrói confiança aos poucos, porque quem usa começa a duvidar de todos os outros controles da tela.
+
+## Como o teste pegou
+
+O botão não foi achado por inspeção visual. Foi pego pelo loop de testes: o critério de aceite da tela do walker exigia que o toggle mudasse o estado online↔offline e o teste abriu o componente, clicou, e o estado não mudou. Um teste determinístico olhando para o que o botão *faz*, não para o que ele *mostra*.
+
+O achado virou o fix #1 de uma rodada que encontrou três problemas no total:
+
+<Terminal command="git log --oneline 508901fb^..508901fb" output="fix #1: toggle Ficar Online/Offline liga no setWalkerStatus (estado real)
+fix #2: handleAcceptRequest agora tem try/catch (erro propagava sem feedback)
+fix #3: PricingSection era dead code — documentado como decisão" />
+
+## A correção
+
+O handler passou a chamar o `setWalkerStatus` exposto pelo `useWalkerDashboard` — o mesmo estado que alimenta o painel inteiro. O clique deixou de ser maquiagem e passou a ser a fonte de verdade: cor do botão, dot de status e tudo que depende do estado reagiu ao clique real.
+
+Na sequência, o status online ganhou persistência (parte 3.1): não bastava o botão funcionar na sessão — o estado precisava sobreviver a reload e refletir o que o servidor sabe. Botão honesto e estado persistente andam juntos; o primeiro sem o segundo é só uma animação mais convincente.
+
+## O que fica
+
+- **Handler vazio é bug, não placeholder.** Um callback `() => {}` em produção não é "a implementar depois" — é um botão fantasma esperando alguém clicar.
+- **Teste de aceite olha comportamento, não visual.** O botão passava no olho e falhava na lógica; só o teste pegou.
+- **Estado duplicado cria mentira.** O estado fixo no hook e o visual animado eram duas versões da verdade. O fix unificou as duas no `setWalkerStatus`.
+
+O teste de loop rodou, achou, corrigiu e documentou. E o botão, finalmente, passou a fazer o que sempre disse que fazia.
