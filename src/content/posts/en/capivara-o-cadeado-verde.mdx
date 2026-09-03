@@ -1,0 +1,128 @@
+---
+title: "The green padlock that couldn't see the leak — path traversal in Capivara"
+description: "Gitleaks, bandit and opengrep ran weekly and everything stayed green. Even so, a single GET request returned the entire .env in production. The hole wasn't a committed secret — it was a path my own code opened. And the one who found it wasn't the scanner."
+date: 2026-08-28 17:29:00 -03:00
+pubDate: 2026-09-03 18:30:00 -03:00
+project: capivara
+tags: [capivara, security, path-traversal, fastapi, agentic-review, defense-in-depth]
+icon: "🔒"
+cover: /covers/capivara-o-cadeado-verde.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The dashboard had a smoke alarm — and the building was on fire
+
+Capivara is the personal hub of my ecosystem: JWT with refresh, bcrypt, 2FA TOTP, Cloudflare Tunnel, rate limiting in three layers. And since August it also had a **weekly security gate**: gitleaks hunting committed secrets, bandit hunting Python anti-patterns, opengrep hunting dangerous patterns with rules I wrote myself — hardcoded secrets, SQL string concatenation, logging of sensitive data, weak crypto, eval. Every start of the week, everything green.
+
+Green, in that context, meant: **no secret ever reached the repository**.
+
+But a committed secret is only ONE way to leak. The one that bit me worked like this: a route serving the frontend build files takes the path from the URL and assembles the server-side path with a string division:
+
+```python
+# the 20-character line that almost cost the whole .env
+file_path = FRONTEND_DIST / path
+```
+
+With a normal path (`/assets/index-abc123.js`), this works perfectly — that's how every SPA served by a backend works. The catch: the Path division operator **just joins strings**; whoever resolves the `..` is the server's filesystem, at the moment of opening the file. URL-encode the dots — `%2e%2e` — and a request like this:
+
+```text
+GET /%2e%2e/%2e%2e/backend/.env
+```
+
+came back **200 with the entire .env**. In production. The same .env carrying the secret that signs the login JWTs — the secret that, once out, lets anyone forge a valid session on the whole hub. Not a database injection, not XSS, not brute force: my own code serving the file with its usual politeness.
+
+## Why the gate would never see it
+
+Gitleaks hunts **text in the git history**. Bandit hunts **suspicious API calls** by signature. Opengrep hunts **line patterns** with the rules I wrote. None of the three understands what my line actually did — because the bug didn't live in its text. It lived in the **semantics of execution**: in what that division *does* when it receives a URL-encoded `../`.
+
+That's the core of this story: **the runtime environment completes the code**. The innocent division only becomes a vulnerability when you combine three things — a user-controlled path, the filesystem's silent resolution of `..`, and a search root that is the build folder. Remove the user-controlled path and everything else is standard, documented, harmless API. The line scanner sees standard API and moves on.
+
+There's an aggravating factor that still bothers me: I **knew** path traversal. I knew the whole class, had read the write-ups, had seen CVEs with this exact shape. But my mental model of Capivara was "personal hub, small attack surface" — and small surface became a psychological excuse not to apply the checklist I would apply to a commercial product. Attacks don't read your mental model. The route existed, public, behind the tunnel — and that was all an attacker needed.
+
+## The one who found it wasn't the scanner — it was another agent
+
+The finding came from the **agentic security reviewer** that runs inside my test-loop: an agent with a mandate to attack the code like a real attacker — not to check patterns, but to **walk route by route** asking "what happens if I pass this?". It hit the static files route, sent the URL-encoded traversal, and got the .env back.
+
+The deterministic gate ran the same week. Both audits looked at the same code. One saw "path division, standard API". The other saw "public route + join + search root = arbitrary file read". The gate checks compliance; the agent conducts an investigation. **They are different questions** — and the second is the one that finds holes.
+
+To be honest about the trade-off: the gate is cheap, runs alone every week, and covers what's coverable by pattern — and it stays. The agentic reviewer is expensive, runs in episodes, and its quality depends on whoever frames the question. Neither replaces the other. The setup that worked was both, with distinct mandates.
+
+## The fix: resolve, anchor, reject
+
+The fix wasn't "filter `..` from the path" — blocklisting encodings is whack-a-mole (percent, double percent, unicode, backslash...). The robust fix inverts the logic: **resolve the path and demand it stays inside the root**:
+
+```python
+raw = FRONTEND_DIST / path
+try:
+    file_path = raw.resolve()
+    dist_root = FRONTEND_DIST.resolve()
+except OSError:
+    file_path = raw
+    dist_root = FRONTEND_DIST
+if not file_path.is_relative_to(dist_root):
+    # traversal outside dist → 404 (no leak, no existence disclosure)
+    return JSONResponse({"error": "Not found"}, status_code=404)
+```
+
+Three decisions in those fifteen lines are worth commenting on:
+
+1. **`resolve()` before comparing** — normalizes `../`, encodings and shortcuts into the real on-disk path. The comparison becomes canonical paths, not strings.
+2. **`is_relative_to()` as the anchor** — the resolved path must be *inside* the build root. If it got out, it's traversal, period. It doesn't matter how the attacker wrote the path.
+3. **Generic 404** — no message distinguishing "file exists but blocked" from "file doesn't exist". A response that reveals existence is also a leak.
+
+And SPA routing survived untouched — the fallback to `index.html` keeps working because the resolved SPA path is still inside the dist. The anchor didn't break the feature; it broke only the attacker.
+
+## The second layer: the proxy that became a side door
+
+A day later, the same reviewer found the same class somewhere else: the proxy that forwards analytics static assets into the hub. The URL path was interpolated **raw** into the forward:
+
+```python
+resp = await client.get(f"http://localhost:3100/_next/static/{path}")
+```
+
+Without normalization, a `/_next/static/../../api/auth/login` became, on the inside, a request to the analytics protected endpoint **without the secret header the proxy demands on protected routes**. Same family as the traversal, same hormone: a user-controlled path stitched into an internal destination. The hardening came in two layers:
+
+```python
+norm = posixpath.normpath(unquote(path))
+if norm.startswith("..") or "/.." in f"/{norm}":
+    return Response(status_code=404)
+# defense-in-depth: reject any absolute form (scheme, drive, leading slash)
+if norm.startswith("/") or ":" in norm.split("/")[0] or norm == "":
+    return Response(status_code=404)
+```
+
+Normalize first, reject residue after — plus a second rejection for absolute forms normpath doesn't cover. Not because each layer is infallible, but because **the lesson of the first hole was precisely that a single layer, however well designed, eventually fails together with its premise**.
+
+## Lessons
+
+1. **A green gate is not the absence of leaks — it's the absence of the leaks the gate knows how to look for.** Gitleaks covers committed secrets; it doesn't cover a route that reads files. Knowing what your gate does NOT cover is worth more than its report.
+
+2. **The runtime environment completes the code.** The vulnerable line was a perfectly readable path division. The bug wasn't in the text — it was in the line's meeting with the filesystem, encodings and a public route. Line scanners don't execute semantics.
+
+3. **Compliance and investigation are different questions.** "Does the code follow the standards?" and "how do I break this?" produce incomparable results. The gate answers the first; the agentic reviewer, the second. Complements, not competitors.
+
+4. **The canonical fix is an anchor, not a blocklist.** Resolve + validate the path stayed inside the root covers every encoding at once. Filtering known patterns is whack-a-mole: you're always behind the next encoding.
+
+5. **Defense-in-depth isn't paranoia — it's memory.** The second layer in the proxy exists because that week's first lesson was that a single layer fails together with its premise. An extra layer is cheap; a wrong premise is expensive.
+
+## What comes next
+
+- Map the remaining routes that interpolate user input into filesystem or internal network destinations — a stitching audit, not a pattern audit.
+- Bring the agentic reviewer into the weekly gate: what it learns to hunt becomes opengrep rules the following week.
+- Rotation chain: if the .env leaked in production, the canonical response is rotating everything in that file — a documented, tested incident response plan.
+- Review the ecosystem's surface with the same lens: a hub with a small surface is not a hub without traversal.
+
+<Terminal
+  lines={[
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet/%2e%2e/%2e%2e/backend/.env', output: '404' },
+  { cmd: 'git log --oneline -1 d80c267', output: 'fix(critical): path traversal in SPA — production secret leak' },
+  { cmd: 'git log --oneline -1 ed201dd', output: 'fix(sec): defense-in-depth hardening on the _next/static proxy' },
+  { cmd: 'git log --oneline -1 9d6a7f6', output: 'fix(sec): path traversal in Umami proxy — normalize path before the check' },
+  { cmd: 'cat .security/opengrep-rules.yml | head -8', output: 'secret-key-hardcoded · sql-string-concatenation · debug-print-leaking-data' },
+  ]}
+/>
+
+> **TL;DR:** Capivara's weekly security gate (gitleaks + bandit + opengrep) was green while a path traversal returned the entire .env in production. The hole was an unanchored path division — invisible to line scanners, obvious to a reviewer walking routes like an attacker. Canonical fix: resolve() + is_relative_to() against the build root, generic 404, and two-layer hardening on the internal proxy. Compliance and investigation are different questions — and a security pipeline needs both.
