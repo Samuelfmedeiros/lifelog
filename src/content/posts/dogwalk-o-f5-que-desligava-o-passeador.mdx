@@ -1,0 +1,97 @@
+---
+title: "O F5 que desligava o passeador"
+description: "O botão de status passou a funcionar na sessão — mas um F5 apagava tudo: o passeador recarregava a página e voltava como offline pro sistema inteiro. A continuação direta do botão fantasma: persistência real do status online, do front ao PATCH do perfil."
+date: 2026-09-02 15:00:00 -03:00
+pubDate: 2026-09-04 16:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react", "fastapi", "estado", "persistencia", "testes"]
+cover: /covers/dogwalk-o-f5-que-desligava-o-passeador.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O fantasma tinha nome
+
+O post anterior terminou com o botão de status funcionando de verdade: o clique mudava o estado, o dot respondia, a cor acompanhava. Missão cumprida — até alguém apertar F5.
+
+Recarregou a página? O passeador que tinha acabado de "Ficar Online" voltava offline pro sistema inteiro. O estado vivia só no `useState` do hook. O servidor, que é quem decide se o walker aparece disponível pra receber pedidos, continuava com o valor antigo. O botão havia parado de mentir na sessão — mas mentia entre sessões.
+
+```jsx
+// Antes: só estado local, morre no refresh
+onToggleStatus={() =>
+  setWalkerStatus(walkerStatus === 'online' ? 'offline' : 'online')
+}
+```
+
+Isso é um bug sutil porque ninguém reclama na hora. O walker clica, vê o botão verde, fecha o app satisfeito. O sistema nunca fica sabendo. Do outro lado, o tutor procura passeadores disponíveis — e o melhor passeador da região está invisível porque clicou num botão que só existia pra ele.
+
+## Estado local vs. verdade do servidor
+
+A regra que guiou o fix: **a fonte de verdade é o servidor; o front é uma projeção otimista**. Se o status online decide quem recebe pedidos, ele não pode ser detalhe de UI — tem que ser dado do perfil.
+
+O lado do backend foi pequeno de propósito. O `PATCH /profiles/me` já aceitava atualizações de perfil; faltava o contrato devolver o campo que o front precisa ler de volta:
+
+```python
+# backend/app/routers/profiles.py — response do PATCH
+    return {
+        "service_radius": profile.service_radius,
+        "vehicle_type": profile.vehicle_type,
+        "available": profile.available,
+        "is_online": profile.is_online,   # novo: front precisa ler de volta
+        "message": "Perfil atualizado com sucesso",
+    }
+```
+
+Sem o `is_online` no response, o front persiste no escuro: o `PATCH` pode ter dado certo ou não, e a UI não tem como sincronizar com o que o servidor realmente gravou. Uma linha no contrato vale mais que três camadas de retry no cliente.
+
+## No hook: projeção otimista com a verdade de volta
+
+Duas mudanças no `useWalkerDashboard`. Primeiro, a inicialização: quando o perfil carrega, o status nasce do que o servidor sabe — não de um default hardcoded:
+
+```js
+const data = await withRetry(() => api.get('/profiles/me'));
+setProfile(data || { name: user.email?.split('@')[0] || 'Passeador' });
+if (data?.is_online != null) {
+  setWalkerStatus(data.is_online ? 'online' : 'offline');
+}
+```
+
+Segundo, o toggle: muda a UI primeiro (responsividade), persiste depois, e deixa o servidor confirmar no retorno:
+
+```js
+const toggleStatus = useCallback(async () => {
+  const next = walkerStatus === 'online' ? 'offline' : 'online';
+  setWalkerStatus(next);
+  try {
+    await api.patch('/profiles/me', { is_online: next === 'online' });
+  } catch (err) {
+    if (import.meta.env.DEV) console.error('[WalkerDashboard] falha ao persistir status:', err);
+  }
+}, [walkerStatus]);
+```
+
+E o `WalkerDashboard` parou de fabricar o próprio handler: `onToggleStatus={toggleStatus}` — a mesma função do hook que o teste consegue exercitar isolada. Acabou a era dos callbacks anônimos que ninguém consegue testar.
+
+## Os 4 testes que trancam a porta
+
+O post do botão fantasma mostrou como um handler vazio passou batido. A resposta dessa vez não foi confiar no olho — foram 4 testes no `useWalkerDashboard` que cobrem os dois sentidos de cada caminho:
+
+<Terminal command="npx vitest run src/hooks/__tests__/useWalkerDashboard.test.jsx" output="✓ deve inicializar walkerStatus como online quando profile.is_online é true
+✓ deve inicializar walkerStatus como offline quando profile.is_online é false
+✓ toggleStatus deve persistir is_online via PATCH /profiles/me (online → offline)
+✓ toggleStatus deve persistir is_online via PATCH /profiles/me (offline → online)
+Test Files  1 passed (1)
+     Tests  4 passed (4)" />
+
+Os cenários são deliberadamente chatos: inicializa online, inicializa offline, persiste ida, persiste volta. Chato é bom — cada um deles é um bug que já aconteceu ou ia acontecer. O boot lendo `is_online: false` e sobrescrevendo o estado com `true` é exatamente a classe de bug que o F5 expunha; agora existe um teste que falha se alguém regressar.
+
+## A lição da sequência
+
+- **Estado que muda disponibilidade de pessoas é dado de negócio.** Se o valor influencia o que outro usuário vê, ele mora no servidor — o front só projeta.
+- **Persistência otimista tem duas metades:** mudar a UI na hora e sincronizar com a resposta. Metade sem a outra é o botão fantasma de novo, só que mais convincente.
+- **Contrato de API termina no que o front lê.** Um PATCH que não devolve o campo atualizado empurra o problema pra dentro do cliente.
+
+O botão fantasma foi o capítulo 1. O F5 que desligava o passeador foi o capítulo 2. E os dois nasceram do mesmo lugar: um loop de testes que exige comportamento observável, não visual convincente.
