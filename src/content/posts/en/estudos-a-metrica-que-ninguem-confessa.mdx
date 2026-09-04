@@ -1,0 +1,102 @@
+---
+title: "The metric nobody confesses: I ran my memory without a reranker"
+description: "After the bilingual jump to 0.1614 recall@1, there was a number left on the bench: how much was the cross-encoder contributing on every search? The week I measured that latency and recall are a bill you pay on every query — and the answer ended up written as a permanent flag in the config."
+date: 2026-09-04 08:00:00 -03:00
+pubDate: 2026-09-04 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "yurumi", "qdrant", "embeddings", "rag", "locomo", "reranker", "latency"]
+cover: /covers/estudos-a-metrica-que-ninguem-confessa.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The number on the bench
+
+My memory system already had a new baseline. In the previous chapter, the jump from a PT-only embedder to a dual-embedder setup with a sparse term vector took recall@1 from 0.06 to 0.1614 on a public long-conversation benchmark — 1,977 questions against 5,882 memory items. On paper, the problem of "did the right document come first?" was considerably less wrong.
+
+But every benchmark leaves a number on the bench, and mine was there since the first run: the reranker. A cross-encoder sitting after retrieval that re-scores the top candidates together. The pipeline had the hook ready (`--rerank` was a flag), and I had never run the full config with it on for the official number. There was a reason, and it wasn't laziness: I didn't know **what that confidence was costing per question.**
+
+## What a reranker is for — and why it was left off
+
+The retrieval layer is fast because it is shallow: dense vectors are compared by cosine distance, sparse ones by exact term, and RRF just merges rankings. That whole dance does not read a single word of the documents — it compares compressed geometry.
+
+A cross-encoder does the opposite: it takes the question and each candidate **together** and reads the pair as a unit. The score gets much better — that's why it exists. The cost also gets much worse, because this reading doesn't scale with the index; it scales with the number of candidates you bring for the final cut.
+
+The bar I had set was simple and uncomfortable: the 95th percentile of the search could not exceed 300ms. That threshold is the difference between the memory feeling like part of the body and feeling like an external consultation — in an interactive agent, the memory is on the hot path of every response.
+
+## The experiment
+
+Three configurations, the same benchmark, the same questions:
+
+1. **Dense only** — the original single-embedder setup
+2. **Hybrid** — dual embedder + sparse vector, fused by rank
+3. **Hybrid + reranker** — the full config, with the cross-encoder active
+
+```python
+async def search(self, query: str, limit: int = 8):
+    cands = max(limit * 4, 20)
+    return await self.client.query_points(
+        collection_name=self.collection,
+        prefetch=[
+            {"query": dense_q, "using": "colibri", "limit": cands},
+            {"query": bge_q,   "using": "bge",     "limit": cands},
+            {"query": sparse_q, "using": "bm25",   "limit": cands},
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
+        limit=cands,
+    )
+
+def rerank(self, query, hits, keep=8):
+    pairs = [(query, h.payload["text"]) for h in hits]
+    scores = self.model.predict(pairs)   # this here is the expensive part
+    top = sorted(zip(hits, scores), key=lambda t: -t[1])[:keep]
+    return [h for h, _ in top]
+```
+
+Then I wrapped every search in a timer and split the time into two buckets: `retrieve` (vectors + fusion) and `rerank` (the cross-encoder). I ran the suite and started writing down percentiles, not averages — the average hides exactly the moment the user gives up.
+
+## The results
+
+| Config | recall@1 | p95 search |
+|--------|----------|------------|
+| Dense only | 0.06 | fast |
+| Hybrid (dual + sparse) | **0.1614** | **300ms** |
+| Hybrid + reranker | **0.1941** | **29s** |
+
+Read that third line again. The reranker really improves recall: 0.1941 is the best number in the history of this system, +3.3 points over the hybrid. What it adds on top of the fusion is exactly the "phrase-level reading" of the top candidates — the pairs that the geometry considered merely similar.
+
+And p95 went from 300ms to 29 seconds. **Almost a hundred times slower.** In practice, about 0.46 seconds of reranker per memory query — it looks harmless, until you remember that recall is measured on cold batches and that real p95 comes with queue, with concurrent load, with everything that doesn't exist in a controlled run. The measured tail doesn't fit inside the 300ms bar, not even close.
+
+## The decision
+
+The reranker didn't go to production. It stayed on the bench as **evaluation ammo**: every candidate change to the memory now runs on the benchmark with rerank on and off, and the deltas of each side get recorded. Rerank acts as the ceiling of what is possible; production runs without it, inside the latency budget.
+
+```python
+def flag_search():
+    v = os.environ.get("YURUMI_RERANKER_ENABLED", "").lower() in ("1", "true")
+    print(f"reranker: {'ON' if v else 'OFF'} (OFF = latency budget 300ms)")
+    return v
+```
+
+The default value of that flag is a studied decision, not an omission.
+
+## What I learned
+
+1. **The average metric seduces; the tail kills.** The p95 of a search is the number that decides whether memory is usable in an interactive conversation. I was comparing recall against recall, without ever writing the p95s side by side.
+2. **A module with two positions needs an explicit flag.** Having rerank available and choosing not to use it is a different product from not having it. The difference only exists documented — and defaultable.
+3. **Evaluation-off configuration is a real risk.** Nobody ever turned the reranker on because nobody knew the price. Money that nobody confesses paying is money spent.
+4. **The right comparison is three-way.** Without the dense-only row, I might have read "hybrid is fine, rerank is better" and given up on latency for +3 points. With it, I saw the geometry work had already given me 0.06 → 0.1614, and the marginal point cost a whole different order of magnitude.
+
+The next chapter of this series already has a defined destination: caching — of embeddings and fusion results — to raise the quality of the tail without touching the architecture. The lesson stuck: measure what you didn't ship, too.
+
+<Terminal
+  lines={[
+  { cmd: 'locomo-eval --dual-embedder', output: 'recall@1 0.1614 · p95 300ms (budget ok)' },
+  { cmd: 'locomo-eval --dual-embedder --rerank', output: 'recall@1 0.1941 · p95 29s (fora do budget)' },
+  { cmd: 'python3 -c "flag_search()"', output: 'reranker: OFF (default estudado)' },
+  { cmd: 'grep reranker core/config.py', output: 'default False — a decisão mora onde o código dorme' },
+  ]}
+/>
