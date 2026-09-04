@@ -1,39 +1,39 @@
 ---
-title: "The metric nobody confesses: I ran my memory without a reranker"
-description: "After the bilingual jump to 0.1614 recall@1, there was a number left on the bench: how much was the cross-encoder contributing on every search? The week I measured that latency and recall are a bill you pay on every query — and the answer ended up written as a permanent flag in the config."
+title: "A métrica que ninguém confessa: rodei minha memória sem reranker"
+description: "Depois do salto bilíngue para 0.1614 de recall@1, sobrou um número no banco: quanto o cross-encoder contribuía em cada busca? Na semana em que medi que latência e recall são uma conta que se paga em toda query — e a resposta acabou virada flag permanente no config."
 date: 2026-09-04 08:00:00 -03:00
 pubDate: 2026-09-04 08:00:00 -03:00
 project: estudos
-tags: ["estudos", "yurumi", "qdrant", "embeddings", "rag", "locomo", "reranker", "latency"]
+tags: ["estudos", "yurumi", "qdrant", "embeddings", "rag", "locomo", "reranker", "latencia"]
 cover: /covers/estudos-a-metrica-que-ninguem-confessa.webp
 featured: false
 hidden: true
-lang: 'en'
+lang: 'pt'
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## The number on the bench
+## O número que ficou no banco
 
-My memory system already had a new baseline. In the previous chapter, the jump from a PT-only embedder to a dual-embedder setup with a sparse term vector took recall@1 from 0.06 to 0.1614 on a public long-conversation benchmark — 1,977 questions against 5,882 memory items. On paper, the problem of "did the right document come first?" was considerably less wrong.
+Minha memória já tinha um baseline novo. No capítulo anterior, o salto de um embedder só-PT para a configuração com embedder duplo + vetor esparso levou o recall@1 de 0.06 para 0.1614 num benchmark público de conversas longas — 1.977 perguntas contra 5.882 itens de memória. No papel, o problema de "o documento certo veio primeiro?" estava consideravelmente menos errado.
 
-But every benchmark leaves a number on the bench, and mine was there since the first run: the reranker. A cross-encoder sitting after retrieval that re-scores the top candidates together. The pipeline had the hook ready (`--rerank` was a flag), and I had never run the full config with it on for the official number. There was a reason, and it wasn't laziness: I didn't know **what that confidence was costing per question.**
+Mas todo benchmark deixa um número no banco, e o meu estava lá desde o primeiro run: o reranker. Um cross-encoder sentado depois do retrieval que re-pontua os candidatos do topo em conjunto. O pipeline tinha o gancho pronto (`--rerank` era uma flag), e eu nunca tinha rodado a config completa com ele ligado pra tirar o número oficial. Havia um motivo, e não era preguiça: eu não sabia **quanto aquela confiança custava por pergunta.**
 
-## What a reranker is for — and why it was left off
+## Pra que serve um reranker — e por que ficou de fora
 
-The retrieval layer is fast because it is shallow: dense vectors are compared by cosine distance, sparse ones by exact term, and RRF just merges rankings. That whole dance does not read a single word of the documents — it compares compressed geometry.
+A camada de retrieval é rápida porque é rasa: vetores densos são comparados por distância cosseno, os esparsos por termo exato, e o RRF só funde rankings. Essa dança toda não lê uma única palavra dos documentos — compara geometria comprimida.
 
-A cross-encoder does the opposite: it takes the question and each candidate **together** and reads the pair as a unit. The score gets much better — that's why it exists. The cost also gets much worse, because this reading doesn't scale with the index; it scales with the number of candidates you bring for the final cut.
+O cross-encoder faz o oposto: pega a pergunta e cada candidato **juntos** e lê o par como uma unidade. O score melhora muito — é pra isso que ele existe. O custo também piora muito, porque essa leitura não escala com o índice; escala com o número de candidatos que você traz pro corte final.
 
-The bar I had set was simple and uncomfortable: the 95th percentile of the search could not exceed 300ms. That threshold is the difference between the memory feeling like part of the body and feeling like an external consultation — in an interactive agent, the memory is on the hot path of every response.
+A régua que eu tinha definido era simples e desconfortável: o percentil 95 da busca não podia passar de 300ms. Esse limiar é a diferença entre a memória parecer parte do corpo e parecer uma consulta externa — num agente interativo, a memória fica no hot path de toda resposta.
 
-## The experiment
+## O experimento
 
-Three configurations, the same benchmark, the same questions:
+Três configurações, o mesmo benchmark, as mesmas perguntas:
 
-1. **Dense only** — the original single-embedder setup
-2. **Hybrid** — dual embedder + sparse vector, fused by rank
-3. **Hybrid + reranker** — the full config, with the cross-encoder active
+1. **Só denso** — a configuração original de embedder único
+2. **Híbrido** — embedder duplo + vetor esparso, fundidos por rank
+3. **Híbrido + reranker** — a config completa, com o cross-encoder ativo
 
 ```python
 async def search(self, query: str, limit: int = 8):
@@ -56,23 +56,23 @@ def rerank(self, query, hits, keep=8):
     return [h for h, _ in top]
 ```
 
-Then I wrapped every search in a timer and split the time into two buckets: `retrieve` (vectors + fusion) and `rerank` (the cross-encoder). I ran the suite and started writing down percentiles, not averages — the average hides exactly the moment the user gives up.
+Então embrulhei cada busca num timer e dividi o tempo em dois baldes: `retrieve` (vetores + fusão) e `rerank` (o cross-encoder). Rodei a suíte e comecei a anotar percentis, não médias — a média esconde exatamente o momento em que o usuário desiste.
 
-## The results
+## Os resultados
 
-| Config | recall@1 | p95 search |
+| Config | recall@1 | p95 busca |
 |--------|----------|------------|
-| Dense only | 0.06 | fast |
-| Hybrid (dual + sparse) | **0.1614** | **300ms** |
-| Hybrid + reranker | **0.1941** | **29s** |
+| Só denso | 0.06 | rápido |
+| Híbrido (duplo + esparso) | **0.1614** | **300ms** |
+| Híbrido + reranker | **0.1941** | **29s** |
 
-Read that third line again. The reranker really improves recall: 0.1941 is the best number in the history of this system, +3.3 points over the hybrid. What it adds on top of the fusion is exactly the "phrase-level reading" of the top candidates — the pairs that the geometry considered merely similar.
+Releia a terceira linha. O reranker realmente melhora o recall: 0.1941 é o melhor número da história desse sistema, +3.3 pontos sobre o híbrido. O que ele adiciona em cima da fusão é exatamente a "leitura de nível de frase" dos candidatos do topo — os pares que a geometria considerou apenas parecidos.
 
-And p95 went from 300ms to 29 seconds. **Almost a hundred times slower.** In practice, about 0.46 seconds of reranker per memory query — it looks harmless, until you remember that recall is measured on cold batches and that real p95 comes with queue, with concurrent load, with everything that doesn't exist in a controlled run. The measured tail doesn't fit inside the 300ms bar, not even close.
+E o p95 foi de 300ms para 29 segundos. **Quase cem vezes mais lento.** Na prática, uns 0.46 segundos de reranker por query de memória — parece inofensivo, até você lembrar que recall é medido em lotes frios e que o p95 real vem com fila, com carga concorrente, com tudo que não existe num run controlado. A cauda medida não cabe na régua dos 300ms, nem de longe.
 
-## The decision
+## A decisão
 
-The reranker didn't go to production. It stayed on the bench as **evaluation ammo**: every candidate change to the memory now runs on the benchmark with rerank on and off, and the deltas of each side get recorded. Rerank acts as the ceiling of what is possible; production runs without it, inside the latency budget.
+O reranker não foi pra produção. Ficou no banco como **munição de avaliação**: toda mudança candidata na memória agora roda no benchmark com rerank ligado e desligado, e os deltas de cada lado ficam registrados. O rerank atua como teto do que é possível; a produção roda sem ele, dentro do orçamento de latência.
 
 ```python
 def flag_search():
@@ -81,16 +81,16 @@ def flag_search():
     return v
 ```
 
-The default value of that flag is a studied decision, not an omission.
+O valor default dessa flag é uma decisão estudada, não uma omissão.
 
-## What I learned
+## O que eu aprendi
 
-1. **The average metric seduces; the tail kills.** The p95 of a search is the number that decides whether memory is usable in an interactive conversation. I was comparing recall against recall, without ever writing the p95s side by side.
-2. **A module with two positions needs an explicit flag.** Having rerank available and choosing not to use it is a different product from not having it. The difference only exists documented — and defaultable.
-3. **Evaluation-off configuration is a real risk.** Nobody ever turned the reranker on because nobody knew the price. Money that nobody confesses paying is money spent.
-4. **The right comparison is three-way.** Without the dense-only row, I might have read "hybrid is fine, rerank is better" and given up on latency for +3 points. With it, I saw the geometry work had already given me 0.06 → 0.1614, and the marginal point cost a whole different order of magnitude.
+1. **A métrica média seduz; a cauda mata.** O p95 de uma busca é o número que decide se a memória é utilizável numa conversa interativa. Eu comparava recall contra recall, sem nunca escrever os p95 lado a lado.
+2. **Um módulo com duas posições precisa de flag explícita.** Ter rerank disponível e escolher não usar é um produto diferente de não ter. A diferença só existe documentada — e defaultável.
+3. **Configuração fora da avaliação é risco real.** Ninguém nunca ligou o reranker porque ninguém sabia o preço. Dinheiro que ninguém confessa pagar é dinheiro gasto.
+4. **A comparação certa é em três vias.** Sem a linha de só-denso, eu poderia ter lido "híbrido tá bom, rerank tá melhor" e entregue a latência por +3 pontos. Com ela, vi que o trabalho de geometria já tinha me dado 0.06 → 0.1614, e o ponto marginal custava outra ordem de grandeza.
 
-The next chapter of this series already has a defined destination: caching — of embeddings and fusion results — to raise the quality of the tail without touching the architecture. The lesson stuck: measure what you didn't ship, too.
+O próximo capítulo dessa série já tem destino definido: cache — de embeddings e resultados de fusão — pra subir a qualidade da cauda sem tocar na arquitetura. A lição ficou: medir também o que você não subiu.
 
 <Terminal
   lines={[
