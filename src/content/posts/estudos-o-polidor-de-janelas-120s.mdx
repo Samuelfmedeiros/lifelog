@@ -1,0 +1,58 @@
+---
+title: "O polidor de janelas: polir transcrição sem dar espaço pra alucinação"
+description: "O estágio novo do meu pipeline de transcrição usa Gemini TEXT por janelas de 120s — sem áudio, barato e rápido. O que impede o modelo de inventar não é um prompt educado: é um invariante numérico de ±35% de caracteres por janela, com retry e flag quando a conta não fecha."
+date: 2026-09-04 11:00:00 -03:00
+pubDate: 2026-09-04 11:00:00 -03:00
+project: estudos
+tags: ["estudos", "stt", "whisper", "gemini", "transcricao", "pipeline", "guardrails", "llm"]
+cover: /covers/estudos-o-polidor-de-janelas-120s.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+A transcrição raw do Whisper é fiel e, ao mesmo tempo, injuntável pra ler: titubeios, redundância oral, pontuação que morre no meio da frase. O estágio seguinte do meu pipeline de transcrição sempre foi "polir isso" — e a versão cloud desse estágio mandava o áudio inteiro pra um modelo multimodal ouvir e reescrever. Funciona. Mas pagar pra um modelo re-ouvir horas de reunião, a cada polimento, é um preço que só se justifica quando o áudio é a fonte da verdade.
+
+## O que mudou no estágio novo
+
+O design que fechou hoje divide a transcrição em **janelas de 120 segundos** e polifica cada janela separadamente com **Gemini TEXT** — só texto, zero áudio. Sem áudio, o prompt fica barato, a resposta volta rápido, e o custo do estágio cai pra uma fração do fluxo cloud. O resto do pipeline segue igual ao cloud: mesmo merge de bounds, mesmo gate de QA, mesmo PDF no final.
+
+Janela pequena não é só economia — é contenção de dano. Se o modelo alucina numa janela, ele corrompe 2 minutos de conteúdo, não a reunião inteira.
+
+## O invariante que importa: a conta de caracteres
+
+O ponto central do design não é o prompt. É um **invariante anti-alucinação por janela**:
+
+```bash
+# por janela de 120s
+if raw_chars * 0.65 <= polished_chars <= raw_chars * 1.35:
+    aceitar janela
+else:
+    retry da janela → se persistir, flag pra revisão humana
+```
+
+O texto polido precisa ter **±35% dos caracteres do raw**. Fora da faixa, a janela vai pro retry; insistindo, sai marcada pra revisão humana em vez de entrar silenciosamente no documento final.
+
+A lógica: polir bem uma fala real reordena palavras, corta muletas ("tipo", "né"), conserta pontuação — mas **não muda a ordem de grandeza do volume**. Uma janela que encolhe 50% não foi "polida", foi resumida. Uma que incha 60% ganhou conteúdo que não veio do áudio. Delírio de LLM tem assinatura de tamanho, e tamanho é a coisa mais barata de medir.
+
+Isso resolve o problema que todo prompt de "não invente nada" não resolve: prompt é pedido, invariante é contrato verificável. O modelo pode até tentar inventar — a conta não fecha e o sistema recusa.
+
+## Carimbos absolutos preservados
+
+Cada janela carrega os carimbos de tempo absolutos do chunk original. O polimento toca no texto, nunca nos timestamps — o merge por bounds que reconstrói o documento final (e o QA que audita densidade de fala e jitter de carimbo) continua funcionando sem adaptar nada. A polição é um degrau na cadeia, não uma bifurcação.
+
+## O trade-off honesto: sai sem nomes
+
+Whisper raw não separa falantes. Na versão cloud, os nomes vinham do áudio — o modelo ouvia quem falava o quê e atribuía a fala. Com Gemini TEXT sobre o raw, essa fonte desaparece: **a versão polida sai sem nomes de falantes**. É o preço do estágio barato, e é um preço documentado, não um defeito escondido. Quando a atribuição de fala importar, o fluxo cloud continua lá.
+
+## O que aprendi
+
+**Invariante numérico vence prompt bem escrito.** "Não alucine" é desejo; "±35% de caracteres por janela, senão retry" é verificável por máquina. Todo lugar onde eu peço pro LLM "não mudar" deveria virar uma medida que o pipeline consegue checar sozinho.
+
+**Janelas pequenas são contenção de blast radius.** Processar em fatias de 120s transformou alucinação de "risco de documento inteiro" pra "risco de janela com retry".
+
+**Medir o óbvio.** A conta mais boba possível — comparar dois comprimentos de string — captura a falha mais cara do pipeline. Antes de adicionar um judge de LLM caro pra validar saída, vale perguntar: um arithmetic não resolve?
+
+O estágio entrou no pipeline com as duas propriedades que eu exijo de degrau automatizado: falha explícita (flag, nunca silêncio) e custo por janela que dá pra prever antes de rodar.

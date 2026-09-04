@@ -1,0 +1,58 @@
+---
+title: "The window polisher: polishing transcripts without leaving room for hallucination"
+description: "The new stage in my transcription pipeline uses Gemini TEXT over 120s windows — no audio, cheap and fast. What keeps the model from making things up isn't a polite prompt: it's a numeric ±35% character invariant per window, with retry and flag when the math doesn't close."
+date: 2026-09-04 11:00:00 -03:00
+pubDate: 2026-09-04 11:00:00 -03:00
+project: estudos
+tags: ["estudos", "stt", "whisper", "gemini", "transcription", "pipeline", "guardrails", "llm"]
+cover: /covers/estudos-o-polidor-de-janelas-120s.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Whisper's raw transcript is faithful and, at the same time, unbearable to read: false starts, spoken redundancy, punctuation dying mid-sentence. The next stage of my transcription pipeline has always been "polish this" — and the cloud version of that stage sent the entire audio to a multimodal model to listen and rewrite. It works. But paying a model to re-listen to hours of meeting audio, on every polish pass, is a price that only makes sense when audio is the source of truth.
+
+## What changed in the new stage
+
+The design that landed today splits the transcript into **120-second windows** and polishes each window separately with **Gemini TEXT** — text only, zero audio. Without audio, the prompt is cheap, the response comes back fast, and the stage's cost drops to a fraction of the cloud flow. The rest of the pipeline stays identical to the cloud version: same bounds merge, same QA gate, same final PDF.
+
+Small windows aren't just savings — they're damage containment. If the model hallucinates inside a window, it corrupts 2 minutes of content, not the whole meeting.
+
+## The invariant that matters: the character count
+
+The core of the design isn't the prompt. It's a **per-window anti-hallucination invariant**:
+
+```bash
+# per 120s window
+if raw_chars * 0.65 <= polished_chars <= raw_chars * 1.35:
+    accept window
+else:
+    retry window → if it persists, flag for human review
+```
+
+The polished text must keep **±35% of the raw character count**. Outside that band, the window goes to retry; if it insists, it comes out flagged for human review instead of silently entering the final document.
+
+The logic: polishing real speech well reorders words, cuts verbal crutches ("like", "you know"), fixes punctuation — but it **does not change the order of magnitude of the volume**. A window that shrinks 50% wasn't "polished", it was summarized. One that swells 60% gained content that never came from the audio. LLM delusion has a size signature, and size is the cheapest thing to measure.
+
+This solves what every "don't invent anything" prompt fails to solve: a prompt is a request, an invariant is a verifiable contract. The model can even try to make things up — the math doesn't close and the system refuses.
+
+## Absolute timestamps preserved
+
+Each window carries the absolute timestamps of the original chunk. The polish touches the text, never the timestamps — the bounds-based merge that rebuilds the final document (and the QA that audits speech density and timestamp jitter) keeps working without adapting anything. Polish is a step in the chain, not a fork.
+
+## The honest trade-off: it comes out without names
+
+Whisper raw doesn't separate speakers. In the cloud version, names came from the audio — the model heard who said what and attributed the speech. With Gemini TEXT over the raw text, that source disappears: **the polished version comes out without speaker names**. That's the price of the cheap stage, and it's a documented price, not a hidden defect. When speaker attribution matters, the cloud flow is still there.
+
+## What I learned
+
+**A numeric invariant beats a well-written prompt.** "Don't hallucinate" is a wish; "±35% characters per window, else retry" is machine-verifiable. Every place where I ask an LLM "don't change anything" should become a measurement the pipeline can check by itself.
+
+**Small windows are blast-radius containment.** Processing in 120s slices turned hallucination from "whole-document risk" into "one-window risk with retry".
+
+**Measure the obvious.** The dumbest possible check — comparing two string lengths — catches the pipeline's most expensive failure. Before adding an expensive LLM judge to validate output, it's worth asking: wouldn't arithmetic do?
+
+The stage entered the pipeline with the two properties I demand from any automated step: explicit failure (flag, never silence) and per-window cost you can predict before running it.
