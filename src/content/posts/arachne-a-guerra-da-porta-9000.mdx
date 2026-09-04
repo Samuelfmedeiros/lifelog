@@ -1,0 +1,76 @@
+---
+title: "Arachne — a guerra da porta 9000: quem segura o socket manda"
+description: "A landing do Arachne carregava sem CSS, o watchdog reiniciava o serviço em loop invisível e um socat zumbi roubava a porta do dono legítimo. Três bugs encadeados em um único diagnóstico — e a lição de que um serviço 'parado' pode continuar causando estrago."
+date: 2026-09-03 14:00:00 -03:00
+pubDate: 2026-09-04 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "systemd", "socat", "kubernetes", "watchdog", "debug", "produção", "porta"]
+cover: /covers/arachne-a-guerra-da-porta-9000.webp
+hidden: true
+lang: pt
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma: uma página crua
+
+A landing page do Arachne carregava — HTTP 200, HTML completo, título lá. Mas sem CSS. Nenhum. Página crua, como se o stylesheet tivesse evaporado no deploy.
+
+O diagnóstico inicial apontou pra direção errada: o CSS novo simplesmente não estava no ar. E quando se investiga por que um asset não chegou, descobre-se algo bem maior — que o serviço respondendo na porta nem era o serviço que a gente achava.
+
+Esse post é a crônica de um único diagnóstico que desdobrou em três bugs encadeados: um serviço dono da porta que era um velho pipeline de API instável, um watchdog que brigava contra o primário errado, e um resscheduler de containers que renascia sozinho depois de "desligado".
+
+## Bug 1 — o dono da porta não era quem eu pensava
+
+O plano era direto: o serviço web oficial (uvicorn sob systemd do usuário) responde na porta 9000. O que descobri é que existia um segundo pipeline — uma ponte de API, feita com socat, que encaminhava tráfego para um container k3s rodando uma imagem mais velha.
+
+A ponte existia por um motivo legítimo: na época, ela servia de caminho entre o gateway e o cluster. Mas o código evoluiu, o repo passou a rodar direto no host, e a ponte continuou lá — com política de reinício agressiva. Sempre que o serviço web morria (ou o host reiniciava), a ponte reaparecia em milissegundos e **tomava a porta primeiro**. O uvicorn acordava, não achava o socket livre, e caía em errno 98 — "address already in use" — em loop silencioso.
+
+A aritmética do incidente era impiedosa: a ponte tinha mais de dezessete reinícios em treze horas. Cada um era uma tentativa de tomar a porta. O serviço "principal" era, na prática, um sobrevivente constante de uma guerra que ele não sabia que estava travando.
+
+O resto é bíblia de operação: parar a ponte, desabilitá-la do boot, confirmar que o systemd web segura a 9000 sozinho — local e público. Health 200 nas duas pontas, e o dono legítimo finalmente reinou.
+
+## Bug 2 — o watchdog que vigiava o endereço errado
+
+Com a porta estável, apareceu um loop de crash **invisível**. O watchdog de saúde tinha como endereço primário o endpoint do container no cluster — não o serviço web real. A lógica era: se o cluster responde, tudo bem; se não responde, reinicia o serviço web.
+
+Só que o cluster estava sendo intencionalmente aposentado como caminho principal. Resultado: o watchdog via "fora do ar" a cada checagem, mandava o serviço web reiniciar, o serviço subia saudável, e o watchdog continuava insatisfeito porque vigiava o alvo errado. Reinício a cada dois minutos, indefinidamente, com health 200 real na porta certa o tempo todo.
+
+A correção foi uma linha conceitual: o primário do watchdog é o health endpoint do serviço que hoje é o dono da porta. Sintomas desapareceram na hora — e o estado do watchdog finalmente descansou em zero.
+
+A lição aqui é desconfortável: **um monitor configurado para o passado não só não protege — ele sabota o presente.** Infra mudou de primário e o monitor ficou órfão da arquitetura antiga, gerando ações destrutivas com a melhor das intenções.
+
+## Bug 3 — o ressurreidor de containers
+
+Terceiro ato: mesmo com a ponte parada e desabilitada, o container velho no cluster renascia esporadicamente. "Desligado" não significa "não volta" quando existe um controlador de réplicas com política de recuperação. O kubernetes faz exatamente o que promete: mantém o estado declarado — e o estado declarado era "uma réplica viva".
+
+Reduzir a réplica para zero na declaração (não só matar o pod) encerrou a ressurreição. O estado desejado deixou de incluir o zumbi, então o zumbi deixou de existir.
+
+## O tabuleiro final
+
+| Pergunta | Resposta | Como descobri |
+|----------|----------|---------------|
+| Quem segura a porta de produção hoje? | O serviço web sob systemd do usuário | `ss -ltnp` apontando o PID |
+| Quem tentava roubar a porta? | A ponte socat com Restart=always | Contagem de restarts do unit |
+| Por que o watchdog reiniciava em loop? | Primário apontando pro cluster aposentado | Estado do watchdog + logs de decisão |
+| Por que o container velho voltava? | Réplica declarada, não pod morto | `kubectl get deploy` |
+
+O pipeline final ficou simples demais pra ser verdade depois de tanto enredo: **um serviço, uma porta, um health endpoint — e zero intermediários**. Tudo que era "meio caminho" (a ponte, o container legado, o watchdog órfão) saiu do tabuleiro.
+
+## Aprendizados
+
+1. **Health 200 não garante identidade.** A página respondia — era a versão errada do app. Quando algo parece "meio quebrado", primeiro confirme *quem* está respondendo, não só *se* responde.
+2. **Restart=always é uma bomba-relógio em serviços de transição.** Toda ponte/tunnel/proxy tem prazo de validade. Quando a aposentadoria vier, `stop` não basta: `disable` e, se for cluster, réplica zero.
+3. **Watchdogs herdaram a topologia antiga.** Monitor é código vivo que conhece uma arquitetura; quando a arquitetura muda, o monitor precisa migrar junto — senão vira agente do caos.
+4. **Errno 98 em loop é sintoma de guerra de porta, não de bug do app.** O uvicorn estava perfeito. A briga era em outro nível do stack.
+
+O plano de rollout antigo ainda guarda o caminho de rollback (reativar a ponte e devolver a réplica). Está anotado, documentado — e espero que nunca precise.
+
+<Terminal commands={[
+  { cmd: 'systemctl --user status arachne-web | head -3', output: 'Active: active (running) — porta 9000, dono único do socket' },
+  { cmd: 'ss -ltnp | grep 9000', output: 'LISTEN 0 511 *:9000 users:(("uvicorn",pid=2147,fd=8))' },
+  { cmd: 'systemctl --user is-enabled arachne-api-bridge', output: 'disabled' },
+  { cmd: 'kubectl -n arachne get deploy', output: 'NAME READY UP-TO-DATE AVAILABLE' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/health', output: '200' },
+]} />

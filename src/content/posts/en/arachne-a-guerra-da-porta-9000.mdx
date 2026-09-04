@@ -1,0 +1,76 @@
+---
+title: "Arachne — the war for port 9000: whoever holds the socket rules"
+description: "The Arachne landing page loaded without CSS, the watchdog restarted the service in an invisible loop, and a zombie socat relay kept stealing the port from its rightful owner. Three chained bugs in a single diagnosis — and the lesson that a 'stopped' service can keep causing damage."
+date: 2026-09-03 14:00:00 -03:00
+pubDate: 2026-09-04 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "systemd", "socat", "kubernetes", "watchdog", "debug", "production", "ports"]
+cover: /covers/arachne-a-guerra-da-porta-9000.webp
+hidden: true
+lang: en
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The symptom: a naked page
+
+The Arachne landing page loaded — HTTP 200, full HTML, title right there. But without CSS. None of it. A naked page, as if the stylesheet had evaporated mid-deploy.
+
+The initial diagnosis pointed the wrong way: the new CSS simply wasn't live. And when you dig into why an asset didn't make it, you find something much bigger — that the service answering on the port wasn't the service we thought it was.
+
+This post is the chronicle of a single diagnosis that unfolded into three chained bugs: a port owner that turned out to be an old, unstable API relay, a watchdog fighting the wrong primary, and a container rescheduler that kept resurrecting things after they were "shut down".
+
+## Bug 1 — the port owner wasn't who I thought
+
+The plan was straightforward: the official web service (uvicorn under user-level systemd) answers on port 9000. What I discovered is that a second pipeline existed — an API relay built with socat, forwarding traffic to a k3s container running an older image.
+
+The relay existed for a legitimate reason: back then, it served as the path between the gateway and the cluster. But the code evolved, the repo started running directly on the host, and the relay stayed — with an aggressive restart policy. Whenever the web service died (or the host rebooted), the relay reappeared in milliseconds and **grabbed the port first**. Uvicorn would wake up, find no free socket, and fall into errno 98 — "address already in use" — in a silent loop.
+
+The incident math was merciless: the relay had seventeen-plus restarts in thirteen hours. Each one was an attempt to seize the port. The "main" service was, in practice, a constant survivor of a war it didn't know it was fighting.
+
+The rest is operations bible: stop the relay, disable it from boot, confirm the systemd web service holds 9000 alone — locally and publicly. Health 200 on both ends, and the rightful owner finally reigned.
+
+## Bug 2 — the watchdog watching the wrong address
+
+With the port stable, an **invisible** crash loop appeared. The health watchdog had the container endpoint in the cluster as its primary address — not the real web service. The logic was: if the cluster answers, all good; if it doesn't, restart the web service.
+
+Except the cluster was being deliberately retired as the main path. Result: the watchdog saw "down" on every check, ordered the web service to restart, the service came up healthy, and the watchdog stayed unsatisfied because it was watching the wrong target. A restart every two minutes, indefinitely, with a real health 200 on the correct port the whole time.
+
+The fix was one conceptual line: the watchdog's primary is the health endpoint of the service that currently owns the port. Symptoms vanished instantly — and the watchdog state finally rested at zero.
+
+The lesson here is uncomfortable: **a monitor configured for the past doesn't just fail to protect — it sabotages the present.** The infrastructure changed primaries and the monitor was left orphaned from the old architecture, generating destructive actions with the best of intentions.
+
+## Bug 3 — the container resurrector
+
+Third act: even with the relay stopped and disabled, the old container in the cluster kept sporadically coming back to life. "Stopped" doesn't mean "won't return" when there's a replica controller with a recovery policy. Kubernetes does exactly what it promises: maintains the declared state — and the declared state was "one live replica".
+
+Scaling the replica to zero in the declaration (not just killing the pod) ended the resurrection. The desired state no longer included the zombie, so the zombie ceased to exist.
+
+## The final board
+
+| Question | Answer | How I found out |
+|----------|--------|-----------------|
+| Who holds the production port today? | The web service under user systemd | `ss -ltnp` pointing at the PID |
+| Who tried to steal the port? | The socat relay with Restart=always | Restart count on the unit |
+| Why did the watchdog restart in a loop? | Primary pointing at the retired cluster | Watchdog state + decision logs |
+| Why did the old container come back? | Declared replica, not a killed pod | `kubectl get deploy` |
+
+The final pipeline was almost too simple to be true after all that drama: **one service, one port, one health endpoint — zero intermediaries**. Everything that was a "halfway path" (the relay, the legacy container, the orphaned watchdog) left the board.
+
+## Lessons
+
+1. **Health 200 doesn't guarantee identity.** The page answered — it was the wrong version of the app. When something looks "half broken", first confirm *who* is answering, not just *whether* it answers.
+2. **Restart=always is a time bomb on transition services.** Every relay/tunnel/proxy has an expiration date. When retirement comes, `stop` isn't enough: `disable` and, if it's a cluster, scale to zero.
+3. **Watchdogs inherited the old topology.** A monitor is living code that knows an architecture; when the architecture changes, the monitor must migrate with it — otherwise it becomes an agent of chaos.
+4. **Errno 98 in a loop is a symptom of port warfare, not an app bug.** Uvicorn was perfect. The fight was at another layer of the stack.
+
+The old rollout plan still documents the rollback path (re-enable the relay, restore the replica). It's written down — and I hope it's never needed.
+
+<Terminal commands={[
+  { cmd: 'systemctl --user status arachne-web | head -3', output: 'Active: active (running) — port 9000, sole owner of the socket' },
+  { cmd: 'ss -ltnp | grep 9000', output: 'LISTEN 0 511 *:9000 users:(("uvicorn",pid=2147,fd=8))' },
+  { cmd: 'systemctl --user is-enabled arachne-api-bridge', output: 'disabled' },
+  { cmd: 'kubectl -n arachne get deploy', output: 'NAME READY UP-TO-DATE AVAILABLE' },
+  { cmd: 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/health', output: '200' },
+]} />
