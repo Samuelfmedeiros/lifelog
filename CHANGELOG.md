@@ -1,5 +1,13 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-03] — 3 posts novos (seguranca/tatuengine/capivara CI) + recusa->refazer + capas watchdog
+- **feat(post)**: seguranca — a fila que ninguem atende, supply chain, hidden PT+EN + capa AI (`1702214`); releases (`377fe57`, `516b85c`)
+- **feat(post)**: tatuengine — o-step-322, morte silenciosa + VRAM fantasma, hidden PT+EN, capa NIM (`57b86ef`); fix capa flatline issue #31 (`bff8035`); releases (`6fce316`, `c2ddc3f`)
+- **feat(post)**: capivara — o-ci-que-morria-no-meio-do-step, CI self-hosted, hidden PT+EN (`3dd9933`) + capa watchdog (`5617ce4`); recusa com nota (`f86784d`) -> refaz com tema trocado p/ seguranca path traversal issue #32 (`67234de`)
+- **chore(covers)**: regenera capas estudos (Worker FLUX) (`9567589`, `c41b79b`) + dogwalk/portfolio (watchdog) (`20866f5`, `79ac99b`, `9752717`)
+- 19 commits no dia · push origin OK · HEAD: `67234de`
+
+
 
 
 ## [2026-08-30] — Posts yurumi + lm_head + portão de segurança (PT+EN, hidden) + capas AI
