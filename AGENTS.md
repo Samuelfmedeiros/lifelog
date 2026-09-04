@@ -377,3 +377,9 @@ NESTE projeto DEVE ser registrada no MESMO MOMENTO em que é criada — neste AG
 (arquivos, rotas, commands, endpoints novos), em skill (`skill_manage`) se repetível,
 e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 
+
+## Sessão 2026-09-03 — Fim de dia (docs)
+- **3 posts novos (hidden, PT+EN):** seguranca — a fila que ninguem atende (supply chain, capa AI) (`1702214`); tatuengine — o step 322 (morte silenciosa + VRAM fantasma, capa NIM) (`57b86ef`); capivara — o CI que morria no meio do step (CI self-hosted + keepalive) (`3dd9933`).
+- **Pipeline recusa→refazer:** 3 recusas com nota funcionando — tatuengine ×2 (capa alinhada ao texto "onda que flatline", issue #31, `bff8035`), capivara ×1 (tema trocado p/ seguranca path traversal, issue #32, `67234de`).
+- **Capas watchdog:** regeneradas estudos/dogwalk/portfolio (`9752717`, `20866f5`, `79ac99b`).
+- **Docs:** CHANGELOG [2026-09-03] já cobre o dia (commit `2797068`); esta seção completa o AGENTS.md.
