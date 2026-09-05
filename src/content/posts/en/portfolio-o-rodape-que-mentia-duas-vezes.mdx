@@ -1,0 +1,93 @@
+---
+title: "The footer that lied twice"
+description: "React hydration error #418 in the portfolio footer, a mystery that only happened at night: the server renders in UTC, the visitor in local time, and a new Date() in JSX gave each of them a different answer. The hunt for the useState(null), the pinned timeZone, and the epilogue where I myself created a second bug while fixing the first."
+date: 2026-09-05 16:00:00 -03:00
+pubDate: 2026-09-05 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "react", "hydration", "ssr", "timezone", "nextjs"]
+cover: /covers/portfolio-o-rodape-que-mentia-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The error that only showed up at night
+
+There was a bug in the portfolio that seemed haunted. The footer — the most boring, most forgotten piece of any website — would occasionally crash React hydration with error #418. Not always. Never reproduced in the morning. Never reproduced on my machine. But the error logs kept piling up, and the pattern was eerie: every occurrence started after nine at night, local time.
+
+Nine PM. What does the footer have to do with that?
+
+## The wrong time lives in the timezone
+
+The answer was the clock — or rather, two clocks that didn't agree. The footer had something like this:
+
+```tsx
+<p>© {new Date().getFullYear()} Samuel Medeiros</p>
+```
+
+Harmless at first glance. But the site is server-rendered: the server generates the HTML first, and React hydrates the component later, in the visitor's browser. `new Date()` runs twice — once on the server, once on the client — and both answers must be identical, otherwise React screams.
+
+Except the deploy server runs in UTC and visitors run in their local timezone. Between 9 PM and midnight, the two clocks disagree about which day it is (and, when the year turns over, which year). The server paints one date, the visitor sees another on screen, React compares the expected text with the rendered text, finds the mismatch, and throws a hydration error. The page still renders — but hydration breaks, and with it the interactivity and state of that component.
+
+That's why it was nocturnal: the bug only existed during the hours when the visitor's local date had drifted from UTC. During the day, both clocks agreed and everything looked fine.
+
+<Terminal
+  commands={[
+    { cmd: '# 9 PM on any given night (visitor local time)', out: '' },
+    { cmd: 'server  (UTC): Sep 5, 02:00 -> "last updated: Sep 5"', out: '' },
+    { cmd: 'visitor (UTC-3): Sep 4, 23:00 -> "last updated: Sep 4"', out: '' },
+    { cmd: 'text mismatch -> React #418', out: '' },
+  ]}
+/>
+
+## Two bugs, two different fixes
+
+The real fix landed in a single commit, but with two distinct decisions — because there wasn't one problem, there were two wrong patterns coexisting in the code.
+
+**In the footer, the time became state after hydration.** The golden rule of hydration is simple: the first render must be deterministic, identical on server and client. No clocks, no randomness, no `Math.random()` in JSX. The fix was to render `null` on the first paint and fill in the real date afterwards, inside a `useEffect` — which only runs on the client, when the two clocks are allowed to disagree without breaking anything:
+
+```tsx
+const [now, setNow] = useState<Date | null>(null);
+useEffect(() => {
+  setNow(new Date());
+}, []);
+
+<p>© {now ? now.getFullYear() : 2026} Samuel Medeiros</p>
+```
+
+While `now` is `null`, server and client paint exactly the same thing. The real date arrives a fraction of a second later, invisible to readers and harmless to React.
+
+**For content dates, the timezone got pinned.** The blog section formats post dates and the project grid shows "last updated" for repositories — both with `toLocaleDateString` and no timezone set. There the data is fixed (a publication date doesn't change), so the solution isn't to defer: it's to guarantee both sides format it the same way, by pinning `timeZone: "UTC"`:
+
+```tsx
+d.toLocaleDateString("en-US", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+```
+
+The rule that stuck: data that comes from the server gets formatted with a pinned timezone; data that depends on the visitor's moment only renders after hydration.
+
+## The epilogue: I broke the footer again myself
+
+And here the story gains a second layer, a more embarrassing one. With #418 resolved, the next commit cleaned up the footer — and in it, the translation dictionary had the copyright text with the symbol included, something like "© Samuel Medeiros". The JSX, meanwhile, already rendered the `©` by itself in front of the year. Result: the footer started displaying the symbol twice, side by side.
+
+In other words: I fixed the hydration error and introduced, in the same file, a text duplication bug. The footer had stopped lying about the date — but it started stuttering.
+
+The fix was trivial: the symbol comes out of the dictionary and lives only in the component, which is the one assembling the year line. But the epilogue's lesson is better than the main bug's. When the same text is assembled from two sources — template and dictionary — each one assumes the other won't draw it. Two sources of truth is a rendering bug waiting for a merge to be born.
+
+## The lesson
+
+Hydration is a bit-for-bit contract between two renderers running on different machines, at different moments, with different clocks. Anything that depends on "now" violates that contract — the only variable is when the error shows up. Dates in JSX seem harmless because the error only fires during the window when the timezones disagree, and that window is small enough to look like flakiness.
+
+Three questions became a checklist for any server-rendered component:
+
+1. **Is the first render identical on both sides?** If it depends on the clock, randomness, or browser state, it isn't.
+2. **Is this data from the server or from the visitor?** From the server: pin the timezone in the formatting. From the visitor: `useState(null)` + `useEffect`.
+3. **Does this text have a single source of truth?** Template, dictionary, or component — pick one and keep the rest quiet.
+
+The footer now says the same thing to the server and to the visitor. And it says it only once.

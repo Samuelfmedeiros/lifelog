@@ -1,0 +1,93 @@
+---
+title: "O rodapé que mentia duas vezes"
+description: "Erro #418 do React no rodapé do portfólio, um mistério que só acontecia à noite: o servidor renderiza em UTC, o visitante em fuso local, e o new Date() no JSX devolvia respostas diferentes pra cada um. A caçada até o useState(null), o timeZone pinado, e o epílogo em que eu mesmo criei um segundo bug arrumando o primeiro."
+date: 2026-09-05 16:00:00 -03:00
+pubDate: 2026-09-05 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "react", "hydration", "ssr", "timezone", "nextjs"]
+cover: /covers/portfolio-o-rodape-que-mentia-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O erro que só aparecia de noite
+
+Tinha um bug no portfólio que parecia assombrado. O rodapé — aquele pedaço mais chato e esquecido de qualquer site — derrubava o React hydration com um erro #418 de vez em quando. Não era sempre. Não reproduzia de manhã. Não reproduzia no meu ambiente. Mas os logs de erro acumulavam, e o padrão era sinistro: as ocorrências começavam depois das nove da noite, horário de Brasília.
+
+Noventa e uma da noite. O que o rodapé tem a ver com isso?
+
+## A hora errada mora no fuso
+
+A resposta estava no relógio — ou melhor, em dois relógios que não batiam. O rodapé tinha algo assim:
+
+```tsx
+<p>© {new Date().getFullYear()} Samuel Medeiros</p>
+```
+
+Inofensivo à primeira vista. Mas o site é server-rendered: o servidor gera o HTML primeiro e o React hidrata o componente depois, no navegador do visitante. O `new Date()` roda duas vezes — uma no servidor, outra no cliente — e as duas respostas precisam ser idênticas, senão o React grita.
+
+Só que o servidor do deploy roda em UTC e os visitantes rodam em fuso local. Entre as 21h e a meia-noite de Brasília, os dois relógios discordam sobre qual dia (e, virando o ano, qual ano) é hoje. O servidor pinta "4 de setembro", o visitante enxerga "5 de setembro" na tela, o React compara o texto esperado com o texto renderizado, acha a diferença e solta o erro de hidratação. O site até renderiza — mas a hidratação quebra, e com ela vão interatividade e estado daquele componente.
+
+Por isso era noturno: o bug só existia nas três horas em que o Brasil estava no dia seguinte em relação ao UTC. De dia, os dois relógios concordavam e tudo parecia bem.
+
+<Terminal
+  commands={[
+    { cmd: '# 23h de uma noite qualquer (Brasil)', out: '' },
+    { cmd: 'servidor  (UTC): 05/09 02:00 -> "ultima atualizacao: 05/09"', out: '' },
+    { cmd: 'visitante (BRT): 04/09 23:00 -> "ultima atualizacao: 04/09"', out: '' },
+    { cmd: 'text mismatch -> React #418', out: '' },
+  ]}
+/>
+
+## Dois bugs, duas correções diferentes
+
+O fix verdadeiro veio num commit só, mas com duas decisões distintas — porque o problema não era um, eram dois padrões errados convivendo no código.
+
+**No rodapé, a hora virou estado depois da hidratação.** A regra de ouro da hidratação é simples: o primeiro render precisa ser determinístico, igual no servidor e no cliente. Nada de relógio, nada de aleatório, nada de `Math.random()` no JSX. A correção foi renderizar `null` no primeiro paint e preencher a data de verdade só depois, dentro de um `useEffect` — que roda só no cliente, quando os dois relógios já podem discordar sem derrubar nada:
+
+```tsx
+const [now, setNow] = useState<Date | null>(null);
+useEffect(() => {
+  setNow(new Date());
+}, []);
+
+<p>© {now ? now.getFullYear() : 2026} Samuel Medeiros</p>
+```
+
+Enquanto `now` é `null`, servidor e cliente pintam exatamente a mesma coisa. A data real chega uma fração de segundo depois, invisível pra quem lê e inofensiva pro React.
+
+**Nas datas de conteúdo, o fuso foi pinado.** O BlogSection formata datas de posts e o ProjectHangar mostra "atualizado em" dos repositórios — ambos com `toLocaleDateString` sem fuso definido. Ali o dado é fixo (uma data de publicação não muda), então a solução não é adiar: é garantir que a formatação seja a mesma dos dois lados, pinando `timeZone: "UTC"`:
+
+```tsx
+d.toLocaleDateString("pt-BR", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+```
+
+A regra que ficou: dado que vem do servidor, formata com fuso pinado; dado que depende do momento do visitante, só depois da hidratação.
+
+## O epílogo: eu mesmo quebrei o rodapé de novo
+
+E aqui a história ganha uma segunda camada, mais embaraçosa. Com o #418 resolvido, o commit seguinte foi limpar o rodapé — e nele o dicionário de traduções tinha o texto do copyright com o símbolo incluído, algo como "© Samuel Medeiros". O JSX, por sua vez, já renderizava o `©` sozinho na frente do ano. Resultado: o rodapé passou a exibir o símbolo duplicado, um ao lado do outro.
+
+Ou seja: consertei o erro de hidratação e introduzi, no mesmo arquivo, um bug de duplicação de texto. O rodapé tinha parado de mentir sobre a data — mas passou a gaguejar.
+
+O conserto foi trivial: o símbolo sai do dicionário e fica só no componente, que é quem monta a linha do ano. Mas a lição do epílogo é melhor que a do bug principal. Quando o mesmo texto é montado por duas fontes — template e dicionário — cada uma assume que a outra não vai desenhar aquilo. Dupla fonte de verdade é um bug de renderização esperando um merge pra nascer.
+
+## A lição
+
+Hidratação é um contrato de bit a bit entre dois renderizadores que rodam em máquinas diferentes, em momentos diferentes, com relógios diferentes. Qualquer coisa que dependa de "agora" viola esse contrato — a única variável é quando o erro aparece. Datas em JSX parecem inofensivas porque o erro só dispara na janela em que os fusos discordam, e essa janela é pequena o suficiente pra parecer intermitência.
+
+Três perguntas que viraram checklist pra qualquer componente server-rendered:
+
+1. **O primeiro render é idêntico nos dois lados?** Se depende de relógio, random ou estado do navegador, não é.
+2. **Esse dado é do servidor ou do visitante?** Do servidor: pina o fuso na formatação. Do visitante: `useState(null)` + `useEffect`.
+3. **Esse texto tem uma fonte de verdade só?** Template, dicionário ou componente — escolhe um e mantém o resto calado.
+
+O rodapé agora diz a mesma coisa pro servidor e pro visitante. E diz uma vez só.
