@@ -1,0 +1,106 @@
+---
+title: "The exception that got written twice — silencing an alarm is not defining policy"
+description: "On August 11 I put a secret scanner on this blog's pipeline. The next day it flagged a build cache file as if it were a key. I silenced it with an entry pinned to that finding's exact fingerprint. Sixteen days later I had to come back to the same spot and write the exception again, this time as policy. That gap is the difference between suppressing an event and defining what should never alarm in the first place."
+date: 2026-09-05 08:00:00 -03:00
+pubDate: 2026-09-05 08:00:00 -03:00
+project: seguranca
+tags: ["security", "secret-scanning", "false-positive", "allowlist", "triage", "ci"]
+cover: /covers/seguranca-a-excecao-que-foi-escrita-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The alarm I had already silenced once
+
+On August 11 I put a secret scanner on this blog's pipeline. Off-the-shelf tooling — the interesting part was never the scanner, it was finally having something watching the history instead of only what happens to be on screen.
+
+One day later it produced its first finding. And the finding was a lie.
+
+The target was the site generator's internal cache file. Every time the pipeline runs, that cache gets rebuilt: it stores a fingerprint of each post's content so it knows what needs regenerating. A content fingerprint is a long hexadecimal string. And a long hex string sitting in a file is exactly the shape a generic key-detection rule swallows whole.
+
+The scanner wasn't being dumb. It erred because it was tuned to prefer false positives over false negatives — the only defensible choice for a secret hunter. A 40-character hash slipping by unnoticed might be a real key. A hash that alarms costs two minutes of attention. That's the trade, and the trade is mine to manage.
+
+## The first answer: silence the event
+
+On the 12th I triaged the finding. Confirmed false positive, assigned priority, and recorded the exception in an ignore file.
+
+The entry had a very specific shape: a fingerprint of the finding, followed by the file path, the rule name, and the line. Four pieces tied together.
+
+And that's where I made the mistake without noticing — because the mistake worked.
+
+It worked perfectly: the alarm stopped. That day, that branch, that commit. I closed the laptop believing it was solved.
+
+What I had actually done was sign a receipt saying "this specific finding, in this exact repository state, I've seen." Not a decision about the file. A decision about the moment.
+
+## Why that exception was born stale
+
+The detail I didn't think through: the cache is regenerated on every build.
+
+New content comes in, content fingerprints change, the cache file changes end to end. And when the file changes, the line changes, the repository state changes — the finding's fingerprint is a different one. The exception I wrote doesn't cover the next build. It covers the build that already happened.
+
+So I hadn't turned the alarm off. I had postponed it by exactly one cycle.
+
+There's a name for this, and it isn't "false positive." The false positive is the finding. What I produced was a fragile exception — a rule whose scope shrinks on its own over time, because it was written about the instance instead of the category.
+
+## The second answer: define the policy
+
+On August 28, at 7:52 in the evening, I came back to the same file and wrote the exception again.
+
+This time, not by fingerprint. By path.
+
+The rule now says: that cache file, as a whole, regardless of content, line, or commit, is exempt from generic key-detection rules. And — this part matters as much as the rule — the reason was written alongside it, as a comment, right in the config file itself.
+
+The comment states what the file contains (content digests, not credentials), why the generic rule trips there (hex strings too long for the pattern), and when the call was made.
+
+The difference between the two versions isn't syntax. It's what each one answers when someone eventually asks "why is this allowed?":
+
+| | Fingerprint-based exception | Path-based exception |
+|---|---|---|
+| Scope | that finding, in that state | that category of file |
+| Lifespan | until the next build | until someone re-evaluates |
+| Question it answers | "have I seen this?" | "is this a secret?" |
+| Risk | alarm comes back on its own | over-allowing |
+| Maintenance cost | rewrite forever | review occasionally |
+
+The bad side of the table is real too: a path-based allowlist is wider, so it can wave through something that should have alarmed. That's why it stays scoped to a single tool-generated cache file — not a whole directory, not a file type, not a text pattern. Wide scope is just the polite way of turning the scanner off.
+
+## What writing the exception twice taught me
+
+1. **Silencing is not deciding.** If your exception dies on the next build, it didn't express a policy — it expressed fatigue.
+2. **An instance-scoped exception is debt disguised as configuration.** The instance changes; the category is what survives.
+3. **The reason must live in the same file as the rule.** An uncommented allowlist is a question someone will ask six months from now, with no answer on file — and the likely outcome is "I guess I can delete this."
+4. **A triaged false positive is a record, not a defeat.** I logged priority, date, and justification. The value isn't that the scanner was wrong — it's that the decision became auditable.
+5. **Preferring the false positive is the right configuration.** I don't want a hunter that lets things through. I want a hunter that alarms and a process that triages. The fix lives in the process.
+
+## The numbers behind this story
+
+| Item | Value |
+|------|-------|
+| Scanner on the blog's pipeline | Aug 11 |
+| First finding (false positive) | Aug 12 |
+| First exception (by fingerprint) | Aug 12 |
+| Second exception (by path, with rationale) | Aug 28, 7:52 PM |
+| Days between the two versions | 16 |
+| Files touched by the final exception | 1 |
+| Scope of the allowance | one generated cache file, not a directory |
+
+## What comes next
+
+- **Review exceptions by date, not by incident.** An allowlist without a review cadence becomes furniture. The next pass will check whether the exempted file is still just cache.
+- **Separate tool exceptions from risk acceptance.** What the scanner ignores is one thing; what I accept as risk is another, and the second needs to live somewhere I actually read.
+- **Same lesson for the other layers.** Alarm, gate, and queue have all shown up here before. Each taught the same thing from a different angle: the tool delivers the finding, the human delivers the rule — and the rule must be written to outlive the finding.
+
+An exception written twice is an honest record that the first time, I was solving the annoyance, not the problem.
+
+<Terminal
+  commands={[
+    { label: 'triage', cmd: '# finding -> false positive? classify, record, decide' },
+    { label: 'mistake', cmd: '# exception pinned to an instance -> dies on next build' },
+    { label: 'fix', cmd: '# exception by category + rationale in the same file' },
+    { label: 'limit', cmd: '# allow one generated file, never a whole directory' },
+    { label: 'review', cmd: '# an allowlist without a review date becomes furniture' },
+  ]}
+/>

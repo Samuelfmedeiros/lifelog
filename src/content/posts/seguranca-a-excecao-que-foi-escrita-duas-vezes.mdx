@@ -1,0 +1,106 @@
+---
+title: "A exceção que foi escrita duas vezes — calar um alarme não é definir política"
+description: "Em 11 de agosto coloquei um caçador de segredos na esteira do blog. No dia seguinte ele apontou um hash de build como se fosse chave. Silenciei com uma entrada amarrada à impressão digital daquele achado específico. Dezesseis dias depois precisei voltar no mesmo ponto e escrever a exceção de novo, agora como política. Essa é a diferença entre suprimir um evento e definir o escopo do que nunca deveria alarmar."
+date: 2026-09-05 08:00:00 -03:00
+pubDate: 2026-09-05 08:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "gitleaks", "falso-positivo", "allowlist", "triagem", "ci"]
+cover: /covers/seguranca-a-excecao-que-foi-escrita-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O alarme que eu já tinha desligado uma vez
+
+Em 11 de agosto coloquei um caçador de segredos para rodar na esteira do blog. Ferramenta pública, de mercado — a graça não estava no scanner, estava em finalmente ter algo olhando o histórico em vez de só o que está na tela.
+
+Um dia depois ele apontou o primeiro achado. E o achado era mentira.
+
+O alvo foi o arquivo de cache interno do gerador de site. Toda vez que a esteira roda, esse cache é reconstruído: ele guarda uma impressão digital do conteúdo de cada post, para saber o que precisa ser regenerado. Impressão digital de conteúdo é uma string hexadecimal longa. E uma string hexadecimal longa, solta num arquivo, é exatamente o formato que uma regra genérica de detecção de chave engole.
+
+O scanner não errou por burrice. Ele errou porque foi configurado para preferir o falso positivo ao falso negativo — que é a única escolha defensável num caçador de segredos. Um hash de 40 caracteres que passa despercebido pode ser uma chave real. Um hash que alarma custa dois minutos de atenção. A conta é essa, e ela é do meu lado.
+
+## A primeira resposta: silenciar o evento
+
+No dia 12 eu triei o achado. Marquei como falso positivo confirmado, classifiquei a prioridade, e registrei a exceção num arquivo de ignore.
+
+A entrada tinha uma forma específica: uma impressão digital do achado, seguida do caminho do arquivo, do nome da regra e da linha. Quatro peças amarradas juntas.
+
+E foi aí que eu cometi o erro sem perceber, porque o erro funcionou.
+
+Funcionou perfeitamente: o alarme parou de tocar. Naquele dia, naquela branch, naquele commit. Fechei o laptop achando que tinha resolvido.
+
+O que eu tinha feito, na verdade, foi assinar um recibo dizendo "este achado específico, neste exato estado do repositório, eu já vi". Não foi uma decisão sobre o arquivo. Foi uma decisão sobre o momento.
+
+## Por que essa exceção nasceu velha
+
+O detalhe que eu não pensei na hora: o cache é regenerado a cada build.
+
+Conteúdo novo entra, a impressão digital de conteúdo muda, o arquivo de cache muda de ponta a ponta. E se o arquivo mudou, a linha mudou, o estado do repositório mudou — a impressão digital do achado é outra. A exceção que eu escrevi não cobre o próximo build. Ela cobre o build que já passou.
+
+Ou seja: eu não desliguei o alarme. Eu adiei o alarme por um ciclo.
+
+Isso tem um nome, e o nome não é "falso positivo". Falso positivo é o achado. O que eu produzi foi uma exceção frágil — uma regra cujo escopo encolhe sozinho com o tempo, porque ela foi escrita sobre a instância em vez de ser escrita sobre a categoria.
+
+## A segunda resposta: definir a política
+
+Em 28 de agosto, às sete e cinquenta da noite, eu voltei no mesmo arquivo e escrevi a exceção de novo.
+
+Dessa vez, não por impressão digital. Por caminho.
+
+A regra passou a dizer o seguinte: aquele arquivo de cache, inteiro, independentemente de conteúdo, linha ou commit, não é varrido por regra genérica de detecção de chave. E — essa parte importa tanto quanto a regra — o motivo foi escrito junto, em comentário, no próprio arquivo de configuração.
+
+O comentário diz o que o arquivo contém (digests de conteúdo, não credenciais), por que a regra genérica se confunde ali (hexadecimal comprido demais para o padrão), e quando aquilo foi decidido.
+
+A diferença entre as duas versões não é sintaxe. É o que cada uma responde quando alguém pergunta "por que isso está liberado?":
+
+| | Exceção por impressão digital | Exceção por caminho |
+|---|---|---|
+| Escopo | aquele achado, naquele estado | aquela categoria de arquivo |
+| Vida útil | até o próximo build | até alguém reavaliar |
+| Pergunta que responde | "eu já vi isso?" | "isto aqui é segredo?" |
+| Risco | alarme volta sozinho | liberar demais |
+| Custo de manutenção | reescrever para sempre | revisar de vez em quando |
+
+O lado ruim da tabela também é real: allowlist por caminho é mais larga, então ela pode liberar junto algo que deveria ter alarmado. É por isso que ela fica restrita a um arquivo de cache gerado por ferramenta — não a um diretório inteiro, não a um tipo de arquivo, não a um padrão de texto. Escopo largo é a forma educada de desligar o scanner.
+
+## O que eu aprendi com uma exceção escrita duas vezes
+
+1. **Silenciar não é decidir.** Se a sua exceção morre no próximo build, ela não expressou uma política — expressou um cansaço.
+2. **Exceção sobre instância é dívida disfarçada de configuração.** A instância muda; a categoria é o que sobrevive.
+3. **O motivo precisa viver no mesmo arquivo que a regra.** Uma allowlist sem comentário é uma pergunta que alguém vai fazer daqui a seis meses, sem resposta, e a resposta provável vai ser "acho que posso apagar isso".
+4. **Falso positivo triado é registro, não derrota.** Marquei prioridade, data e justificativa. O valor não é o scanner ter errado — é a decisão ter ficado auditável.
+5. **Preferir o falso positivo é a configuração certa.** Eu não quero um caçador que deixa passar. Eu quero um caçador que alarme e um processo que triagem. A correção mora no processo.
+
+## As contas dessa história
+
+| Item | Valor |
+|------|-------|
+| Scanner na esteira do blog | 11/08 |
+| Primeiro achado (falso positivo) | 12/08 |
+| Primeira exceção (por impressão digital) | 12/08 |
+| Segunda exceção (por caminho, com motivo) | 28/08, 19:52 |
+| Dias entre as duas versões | 16 |
+| Arquivos tocados pela exceção definitiva | 1 |
+| Escopo da liberação | um arquivo de cache gerado, não um diretório |
+
+## O que vem depois
+
+- **Revisar exceções por data, não por incidente.** Uma allowlist sem prazo de revisão vira mobília. A próxima passada vai conferir se o arquivo liberado continua sendo só cache.
+- **Separar exceção de ferramenta e exceção de decisão.** O que o scanner ignora é uma coisa; o que eu aceito como risco é outra, e essa segunda precisa viver num lugar que eu leia.
+- **Mesma lição para as outras camadas.** Alarme, portão e fila já apareceram aqui antes. Todos eles ensinaram a mesma coisa de ângulos diferentes: a ferramenta entrega o achado, o humano entrega a regra — e a regra precisa ser escrita para durar mais que o achado.
+
+Uma exceção escrita duas vezes é um registro honesto de que a primeira vez eu estava resolvendo o incômodo, não o problema.
+
+<Terminal
+  commands={[
+    { label: 'triagem', cmd: '# achado -> falso positivo? classificar, registrar, decidir' },
+    { label: 'erro', cmd: '# excecao amarrada a instancia -> morre no proximo build' },
+    { label: 'correcao', cmd: '# excecao por categoria + motivo no mesmo arquivo' },
+    { label: 'limite', cmd: '# liberar um arquivo gerado, nunca um diretorio inteiro' },
+    { label: 'revisao', cmd: '# allowlist sem prazo de revisao vira mobilia' },
+  ]}
+/>
