@@ -1,0 +1,68 @@
+---
+title: "The state that outlived reality — when a boot resurrected a world that no longer exists"
+description: "After a reboot, everything came back green: process up, health check passing — and the page wouldn't open from anywhere. The service had resurrected with instructions from a past life, frozen in a state file, while the world outside had moved. This post covers the hunt, the fix at the source (stale state dies on every start, address defined in exactly one place) and the second half of the story: a network announcement that only talked to an interface with a fixed name, on the day the system renamed it."
+date: 2026-09-05 12:00:00 -03:00
+pubDate: 2026-09-05 12:00:00 -03:00
+project: descobertas
+tags: ["discovery", "state", "boot", "configuration", "networking", "ops"]
+cover: /covers/descobertas-o-estado-congelado.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The healthy service nobody could reach
+
+A reboot happens, the machine comes back, the dashboard lights up green: process running, health check passing, all in order. Except the page won't open. Not from the local network, not from outside. The service was alive and in a good mood — listening at an address that had stopped existing.
+
+The first suspects are always the obvious ones: it crashed, it started wrong, firewall. None of the three. Diagnosis only moved forward when I stopped looking at the process and started looking at where it had gotten its instructions.
+
+## Two worlds: the frozen one and the real one
+
+The answer hid in a detail that looks harmless: at some earlier point, a tool had *saved* the runtime configuration — address, port, names. And on the next boot, that frozen file won. The service didn't ask "where am I today?"; it asked "where was I last time?" — and stayed there.
+
+```json
+{
+  "listen": "127.0.0.1:8080",
+  "iface": "eth0"
+}
+```
+
+This is the most treacherous kind of state: it isn't a cache (evaporates), it isn't a log (decides nothing). It's a *past life's instruction* treated as present-day truth. The worst scenario: the process comes up "healthy" because the health check asks the same frozen world — and the two agree with each other, against reality.
+
+## The way out: define at the source, don't inherit
+
+The fix had two fronts, and the order matters:
+
+1. **Kill the inheritance.** State saved for convenience can't decide behavior. Where to listen now lives in *exactly one* place, declared at the source — the same file on every start, and stale state dies with it.
+2. **Read the world, not memory.** Whatever is an external fact (network address, interface names) gets read live, from the system, every time it matters.
+
+| | Inherit saved state | Define at the source |
+|---|---|---|
+| After the world changes | resurrects the past | tracks the present |
+| Typical failure | green but unreachable | breaks at startup, to your face |
+| Who's in charge | the last session | the code, always the same |
+| Trust | assumed | verifiable |
+
+The left column has a dangerous charm: it works *perfectly* — as long as nothing changes. The right one is boring in the best way: the same truth, every boot.
+
+## The interface that changed its name
+
+The second half of the story came from the same reboot, through another door. A network announcement service (the one that tells the others "I'm here") talked exclusively to an interface with a fixed name. The home network migrated to a different address range, the system renamed the interface — and the announcement kept talking, enthusiastically, to a name nobody answered anymore.
+
+The fix was accepting that an interface name isn't an identity, it's a nickname: listen on every possible name and publish on whichever is alive. The lesson is the same as the first half, at a smaller scale — assuming permanence where the system promises none.
+
+## Epilogue: the same bug at two scales
+
+Convenience state that becomes source-of-truth state. Every file saved to "remember how things were" is a silent bet that the world will stop changing. It won't — and on the day it does, the most dangerous system isn't the one that fails loudly: it's the one that comes up green, healthy and convinced, serving the world of a past life.
+
+<Terminal
+  commands={[
+    { label: 'stale state', cmd: 'cat state.json  # instructions from a past life' },
+    { label: 'single source', cmd: 'unit: Listen defined in 1 place, every start' },
+    { label: 'network', cmd: 'announcement: hears eth0 AND eth1, publishes on the live one' },
+    { label: 'audit', cmd: 'grep -rn "inherit state" --include="*.conf"' },
+  ]}
+/>

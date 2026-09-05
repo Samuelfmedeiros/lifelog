@@ -1,0 +1,68 @@
+---
+title: "O estado que sobreviveu à realidade — quando o boot ressuscitou um mundo que não existe mais"
+description: "Depois de um reboot, tudo voltou verde: processo de pé, health ok — e a página não abria em lugar nenhum. O serviço tinha ressuscitado com as instruções de uma vida passada, congeladas num arquivo de estado, enquanto o mundo lá fora mudava de endereço. O post cobre a caçada, o fix na fonte (estado velho morre a cada partida, endereço definido em um lugar só) e a segunda metade da história: um anúncio que só falava com uma interface de nome fixo, no dia em que o sistema decidiu renomeá-la."
+date: 2026-09-05 12:00:00 -03:00
+pubDate: 2026-09-05 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "estado", "boot", "configuracao", "rede", "ops"]
+cover: /covers/descobertas-o-estado-congelado.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O serviço saudável que ninguém alcançava
+
+Um reboot acontece, a máquina volta, e o painel acende verde: processo rodando, health check passando, tudo em ordem. Só que a página não abre. Nem da rede local, nem de fora. O serviço estava vivo, de bom humor — e ouvindo num lugar que tinha deixado de existir.
+
+A primeira suspeita é sempre a óbvia: caiu, subiu errado, firewall. Nenhuma das três. O diagnóstico só andou quando parei de olhar o processo e fui olhar de onde ele tinha tirado as instruções.
+
+## Dois mundos: o congelado e o real
+
+A resposta estava num detalhe que parece inofensivo: em algum momento anterior, uma ferramenta tinha *salvo* a configuração de execução — endereço, porta, nomes. E no boot seguinte, esse arquivo congelado venceu. O serviço não perguntou "onde estou hoje?"; ele perguntou "onde eu estava da última vez?" — e ficou lá.
+
+```json
+{
+  "listen": "127.0.0.1:8080",
+  "iface": "eth0"
+}
+```
+
+É a forma mais traiçoeira de estado: não é cache (evapora), não é log (não decide nada). É *instrução de vida passada* tratada como verdade presente. O pior cenário possível: o processo sobe "saudável" porque a checagem de saúde também pergunta pro mesmo mundo congelado — e os dois concordam entre si, contra a realidade.
+
+## A saída: definir na fonte, não herdar
+
+O conserto foi em duas frentes, e a ordem importa:
+
+1. **Matar a herança.** Estado salvo pra conveniência não pode decidir comportamento. A configuração de onde escutar passou a viver em *um* lugar só, declarado na fonte — o mesmo arquivo em toda partida, e o estado velho morre com ela.
+2. **Ouvir o mundo, não a memória.** O que é fato externo (endereço de rede, nomes de interface) se lê na hora, do sistema, toda vez que importa.
+
+| | Herdar estado salvo | Definir na fonte |
+|---|---|---|
+| Depois de mudar o mundo | ressuscita o passado | acompanha o presente |
+| Falha típica | verde e inalcançável | quebra na partida, na frente |
+| Quem manda | a última sessão | o código, sempre igual |
+| Confiança | pressuposto | verificável |
+
+A coluna esquerda tem um charme perigoso: funciona *perfeitamente* — enquanto nada muda. A direita é chata de tão previsível: sempre a mesma verdade, todo boot.
+
+## A interface que mudou de nome
+
+A segunda metade da história veio do mesmo reboot, por outro caminho. Um anúncio de rede (o serviço que conta aos outros "estou aqui") conversava exclusivamente com uma interface de nome fixo. A rede da casa migrou de faixa de endereço, o sistema renomeou a interface — e o anúncio continuou falando entusiasmado com um nome que ninguém mais respondia.
+
+O fix foi aceitar que nome de interface não é identidade, é apelido: ouvir todos os nomes possíveis e publicar em quem estiver vivo. A lição é a mesma da primeira metade, em escala menor — assumir permanência onde o sistema não promete nada.
+
+## Epílogo: o mesmo bug em duas escalas
+
+Estado de conveniência que vira estado de verdade. Todo arquivo salvo pra "lembrar como era" é uma aposta silenciosa de que o mundo para de mudar. Ele não para — e no dia em que muda, o sistema mais perigoso não é o que quebra barulhento: é o que sobe verde, saudável e convicto, servindo o mundo de uma vida passada.
+
+<Terminal
+  commands={[
+    { label: 'estado velho', cmd: 'cat estado.json  # instruções da vida anterior' },
+    { label: 'fonte única', cmd: 'unidade: Listen definido em 1 lugar, toda partida' },
+    { label: 'rede', cmd: 'anúncio: ouve eth0 E eth1, publica em quem vive' },
+    { label: 'auditoria', cmd: 'grep -rn "herdar estado" --include="*.conf"' },
+  ]}
+/>
