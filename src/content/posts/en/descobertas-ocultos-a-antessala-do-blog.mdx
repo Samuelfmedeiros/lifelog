@@ -1,10 +1,10 @@
 ---
-title: "The data that only existed on my laptop — when the deploy forgot where things live"
-description: "A route listing my pending content worked on my machine and returned an empty list on the deploy, every time. The culprit wasn't a bug, it was geography: serverless code gets bundled far away from the repository tree, and a silent catch turned the error into a mystery. The fix was to freeze the data at build time — and along the way the moderation panel gained a reject button that talks to issues."
+title: "The error that pretended to be empty data — when a catch swallows the bug and serves silence"
+description: "A route returned an empty list on deploy and I spent a day hunting for 'missing data' — but the data was never missing: a try/catch swallowed the broken read and turned an error into absence. About the most expensive kind of failure to debug, and the rule I adopted to keep an error from disguising itself as a valid answer."
 date: 2026-09-05 12:00:00 -03:00
 pubDate: 2026-09-05 12:00:00 -03:00
 project: descobertas
-tags: ["descobertas", "serverless", "build-time", "ssg", "workflow", "moderation"]
+tags: ["descobertas", "errors", "observability", "fail-fast", "serverless", "debugging"]
 cover: /covers/descobertas-ocultos-a-antessala-do-blog.webp
 featured: false
 hidden: true
@@ -13,61 +13,83 @@ lang: 'en'
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## The route that worked on my laptop
+## The list that had nothing inside
 
-Any site with moderation has, somewhere, a page only the owner should see: what awaits a decision. Mine listed the blog's pending content — and it worked perfectly under `pnpm dev`. On the deploy, it returned an empty list. Always. No error log, no stack trace, just emptiness.
+Every empty list has two possible meanings: "there is nothing here" or "I couldn't look". The problem is that the API response is the same for both — and that is exactly the hole that cost me an entire day of useless debugging.
 
-The first line of code on that route was innocent enough:
+The route in question listed content pending moderation on my blog. Locally, under `pnpm dev`, it worked: it filled up, listed items, shrank as I made decisions. On the deploy, it returned an empty array. Always. No log, no stack, no error status — a `200 OK` with an orphan list inside.
 
-```javascript
-// what I wrote first — works locally, breaks on deploy
-import { readdirSync } from 'fs'
-const dir = path.resolve(__dirname, '../src/content/posts')
-```
+I spent that first day hunting the bug in the wrong place: **the data layer**. Tweaked the query, checked the filter, re-read the permission logic. If the list came back empty, it was because there was nothing to list, right?
 
-Locally, `__dirname` points to the right place: the code runs inside the repository tree, and the content files sit two levels up. That exact assumption is what broke on the deploy.
+Wrong. The data existed. What was missing was the *read* — and nobody, not the log, not the page, not me, was in a position to know.
 
-## The bundle doesn't preserve the repository tree
+## The try/catch that lied to me
 
-On a serverless deploy, route code gets *bundled*: the functions are packed into a chunks directory, far from any `src/content/`. The `__dirname` that pointed into the repo tree on my laptop pointed at a folder that will never contain a content file.
+The cause, once I found it, fit in one line: the content-directory read used a path relative to the runtime package. Locally, the code runs inside the repository tree and the path exists. On the deploy, the route code gets bundled into a serverless chunks directory where that tree simply doesn't exist.
 
-And the worst part came from my own "robustness": the `try/catch` I wrapped around the read swallowed the exception and returned an empty list. The worst kind of failure isn't the one that explodes — it's the one that disguises itself as missing data. The page said "nothing pending" when the truth was "the read never happened".
-
-Lesson registered: if an error is handleable, handle it loudly; if it isn't, let it propagate. Silence isn't robustness, it's sabotage against your future self.
-
-## The way out: freeze the data at build time
-
-The fix came from a principle the static generator itself already teaches — if the data is known at build time, there is no justification for rediscovering it at runtime:
+And the broken path had a bodyguard:
 
 ```javascript
-// scripts/gen-data.mjs — runs BEFORE the build
-// 1. scans the content tree with gray-matter (parses only the frontmatter)
-// 2. extracts slug, title, date and project for anything matching the criterion
-// 3. writes api/data.mjs: export default [ ...items ]
+// the pattern that turned a crash into a mystery
+let items = []
+try {
+  items = readDirectory(pathThatDoesNotExistOnDeploy)
+} catch {
+  // "if it fails, show an empty list" — the most expensive sentence I ever wrote
+  items = []
+}
 ```
 
-The serverless route stopped touching the filesystem and became a plain `import`. The data travels *inside* the bundle, generated by whoever has full context: the build machine. `__dirname` — the fragile piece — vanished from the runtime code entirely.
+The `try/catch` wasn't wrong for existing — it was wrong for its **implicit contract**. It said: "a failed read is the same as absence of content". And to the route's consumer (the moderation page, and me staring at it), the two states were indistinguishable.
 
-| | Read at runtime | Freeze at build |
-|---|---|---|
-| `__dirname` | geographic gamble | doesn't exist |
-| Data source | server, on request | build machine |
-| Typical failure | silent empty list | build breaks in your face |
-| Cost per request | read + parse | static import |
+The crash I *wanted* to have — stack trace in my face, red build, an error screaming — was converted, by one line of "robustness", into the slowest failure there is: one disguised as valid data.
 
-The middle column isn't just slower — it's *unsound*. The right one fails early and loud, which is where failures should fail.
+## The taxonomy my vocabulary was missing
 
-## The moderation panel that gained a complaint desk
+After fixing it, I stopped to name what happened — because "bug" doesn't describe enough:
 
-With the data frozen, the moderation page became what it should always have been: a list of what awaits a decision, and a button per item. The next step is already live — the "reject" button on an approved-failed item opens an issue on the repository, with the reason written on the spot, and sends the item back to the review queue.
+| Failure type | Symptom | Time to discover | How it shows up |
+|---|---|---|---|
+| Explicit crash | error, stack, status 500 | minutes | in your face, in the log |
+| Wrong data | incoherent value on screen | hours | when someone notices |
+| **Error as absence** | **a valid, empty state** | **days** | **never — it looks right** |
 
-The loop is closed: the pipeline produces, the page lists, the decision back becomes a traceable artifact in the repository. Moderating stopped being a terminal ritual and became two taps — with an audit trail for free.
+The third category is the most dangerous of the three, and the one that least appears in checklists. A crash is embarrassing but honest. Error-as-absence is a bug pretending to be a legitimate system state — and every observer (log, monitor, human) approves the disguise again, because the response is *structurally valid*.
+
+The detail that still bothers me: if that `catch` didn't exist, the deploy would have failed **immediately**, with the exception pointing at the exact directory. My "protection" against errors turned a 30-second failure into an 8-hour one.
+
+## The rule I adopted: no emptiness without justification
+
+The bug fix itself was simple — freeze the list at build time, turning a runtime read into a static import (the subject of the previous post). But the permanent change was a design rule I've carried since:
+
+**An endpoint may only return an empty collection if it knows the data source is healthy.**
+
+In practice, three layers:
+
+1. **Distinguish "genuinely empty" from "the read failed"** — if the read can fail, the result is not `[]`, it's a typed error (or an object with `healthy: false`). The page decides what to show with truthful information.
+2. **Fail loud and early** — if the data is known at build time, verify it at build time. A broken build is cheap; silence in production is expensive.
+3. **Log the bad path** — every `catch` that doesn't rethrow must, at minimum, record what it swallowed. An empty `catch` is a scheduled bug.
+
+The moderation panel now has three states, not two: full list, empty list with a healthy-source badge, and error state. The third one only had to appear once to be worth the effort.
+
+## What stuck
+
+| Before | After |
+|---|---|
+| `catch` → `[]` (indistinguishable from a real empty) | typed error kept separate from an empty collection |
+| data rediscovered at runtime (fragile path) | data frozen at build, static import |
+| silent failure in production | build fails in front of you |
+| 8h of blind debugging | minutes: the failure points at its own path |
+
+The previous post in this series covered the solution to the problem (building the data at build time). This one covers what the error taught me about the code itself: **the enemy wasn't the relative path — it was the disguise the error was wearing.**
+
+Robustness without observability isn't robustness, it's theater. The catch you write to "keep the page from breaking" will break — it just picks the most expensive moment and the worst disguise.
 
 <Terminal
   commands={[
-    { label: 'build', cmd: 'node scripts/gen-data.mjs' },
-    { label: 'runtime', cmd: 'import { pending } from \"./api/data.mjs\"' },
-    { label: 'reject', cmd: 'POST /api/reject { slug, reason } -> issue created' },
-    { label: 'audit', cmd: 'git log --grep \"refazer\" --oneline' },
+    { label: 'anti-pattern', cmd: 'try { items = read() } catch { items = [] }' },
+    { label: 'pattern', cmd: 'catch (e) { log.error("read failed", e); throw new SourceError(e) }' },
+    { label: 'contract', cmd: 'return { items, source: "healthy" } | throw SourceError' },
+    { label: 'audit', cmd: 'grep -rn "catch {" src/ | wc -l' },
   ]}
 />
