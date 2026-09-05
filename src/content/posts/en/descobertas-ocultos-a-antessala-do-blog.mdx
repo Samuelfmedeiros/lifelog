@@ -1,10 +1,10 @@
 ---
-title: "The publish button and the page only I could see — /hidden became the blog's antechamber"
-description: "Once the pipeline started generating hidden posts, releasing one became a terminal ceremony: sed on two languages, build, push, hope. Tired of doing that by hand, I built a password-protected page that does it in one click — and learned along the way that Vercel doesn't serve my frontmatter, only my HTML."
+title: "The data that only existed on my laptop — when the deploy forgot where things live"
+description: "A route listing my pending content worked on my machine and returned an empty list on the deploy, every time. The culprit wasn't a bug, it was geography: serverless code gets bundled far away from the repository tree, and a silent catch turned the error into a mystery. The fix was to freeze the data at build time — and along the way the moderation panel gained a reject button that talks to issues."
 date: 2026-09-05 12:00:00 -03:00
 pubDate: 2026-09-05 12:00:00 -03:00
 project: descobertas
-tags: ["descobertas", "vercel", "hidden-posts", "serverless", "workflow", "ocultos"]
+tags: ["descobertas", "serverless", "build-time", "ssg", "workflow", "moderation"]
 cover: /covers/descobertas-ocultos-a-antessala-do-blog.webp
 featured: false
 hidden: true
@@ -13,33 +13,11 @@ lang: 'en'
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## Before: releasing a post was a ritual
+## The route that worked on my laptop
 
-The blog's rhythm changed over the last few months. The pipeline generates three posts a day, and each one is born hidden — the frontmatter carries `hidden: true`, so the post stays out of the feed, the RSS, everywhere. It exists only for me, waiting on a decision: publish, edit, or throw away.
+Any site with moderation has, somewhere, a page only the owner should see: what awaits a decision. Mine listed the blog's pending content — and it worked perfectly under `pnpm dev`. On the deploy, it returned an empty list. Always. No error log, no stack trace, just emptiness.
 
-The problem is that "waiting on a decision" carried an absurd cost. Releasing a post looked like this:
-
-```bash
-sed -i 's/hidden: true/hidden: false/' src/content/posts/my-post.mdx
-sed -i 's/hidden: true/hidden: false/' src/content/posts/en/my-post.mdx
-pnpm build
-git add src/content/posts/my-post.mdx src/content/posts/en/my-post.mdx
-git commit -m "release(post): my-post"
-git push
-# ... and hope the CI deploys
-```
-
-Six steps per language, plus build, plus commit, plus push. On a day when I released three posts, that was a fifteen-minute ritual of pasting commands. Worse: when I was on my phone — where I read 90% of my notifications — the temptation was always to postpone.
-
-The question that kept nagging me: why does a *content* decision depend on a terminal?
-
-## The format Vercel doesn't understand
-
-The first attempt was the obvious one: the hidden post is already on the site after the build, right? Just hit the URL directly. Wrong — and the reason teaches how serverless deploys actually work.
-
-The post page is static: the `hidden` filter runs at build time. If hidden posts don't generate a route, then `https://blog/post/slug/` doesn't exist at all. If they do generate one, they're only hidden from the index — anyone with the link gets in. Privacy by convention, which is the worst kind of privacy.
-
-So the path had to be different: a dynamic, serverless page that lists hidden posts *from the build* and only shows them to whoever holds the password. The next problem showed up on the first line of code:
+The first line of code on that route was innocent enough:
 
 ```javascript
 // what I wrote first — works locally, breaks on deploy
@@ -47,49 +25,49 @@ import { readdirSync } from 'fs'
 const dir = path.resolve(__dirname, '../src/content/posts')
 ```
 
-It worked under `pnpm dev`. It worked under a local `pnpm build`. On Vercel: empty list, every time.
+Locally, `__dirname` points to the right place: the code runs inside the repository tree, and the content files sit two levels up. That exact assumption is what broke on the deploy.
 
-The cause is subtle to the point of pain. On a serverless deploy, the route code gets *bundled* — packed into a different directory, far from the repository tree. The `__dirname` that pointed to `src/content/posts` on my laptop pointed to a chunks folder on Vercel that will never contain an `.mdx`. And the silent `catch` I had added "for robustness" swallowed the error and returned an empty list — the worst kind of failure: the one that looks like missing data.
+## The bundle doesn't preserve the repository tree
 
-## The fix that simplifies everything
+On a serverless deploy, route code gets *bundled*: the functions are packed into a chunks directory, far from any `src/content/`. The `__dirname` that pointed into the repo tree on my laptop pointed at a folder that will never contain a content file.
 
-The solution was to stop asking the server to read the repository at runtime and do the work at the right moment — during the build:
+And the worst part came from my own "robustness": the `try/catch` I wrapped around the read swallowed the exception and returned an empty list. The worst kind of failure isn't the one that explodes — it's the one that disguises itself as missing data. The page said "nothing pending" when the truth was "the read never happened".
+
+Lesson registered: if an error is handleable, handle it loudly; if it isn't, let it propagate. Silence isn't robustness, it's sabotage against your future self.
+
+## The way out: freeze the data at build time
+
+The fix came from a principle the static generator itself already teaches — if the data is known at build time, there is no justification for rediscovering it at runtime:
 
 ```javascript
-// scripts/gen-ocultos.mjs — runs BEFORE astro build
-// 1. scans src/content/posts/ with gray-matter (parses only the frontmatter)
-// 2. stores slug, title, date and project for anything with hidden: true
-// 3. writes api/ocultos-data.mjs: export default [ ...posts ]
+// scripts/gen-data.mjs — runs BEFORE the build
+// 1. scans the content tree with gray-matter (parses only the frontmatter)
+// 2. extracts slug, title, date and project for anything matching the criterion
+// 3. writes api/data.mjs: export default [ ...items ]
 ```
 
-The serverless route stops touching the filesystem and becomes a plain import. The hidden data travels *inside* the bundle, generated by the machine with full context: the build machine. It's the SSG principle taken to its conclusion — if the data is known at build time, there is no justification for rediscovering it at runtime.
+The serverless route stopped touching the filesystem and became a plain `import`. The data travels *inside* the bundle, generated by whoever has full context: the build machine. `__dirname` — the fragile piece — vanished from the runtime code entirely.
 
-And the hidden posts themselves? With today's pipeline, none of them generate a public route. The `/hidden` page lists what exists awaiting a decision, and releasing is still a commit — but a one-click one.
+| | Read at runtime | Freeze at build |
+|---|---|---|
+| `__dirname` | geographic gamble | doesn't exist |
+| Data source | server, on request | build machine |
+| Typical failure | silent empty list | build breaks in your face |
+| Cost per request | read + parse | static import |
 
-## The antechamber
+The middle column isn't just slower — it's *unsound*. The right one fails early and loud, which is where failures should fail.
 
-The final result is a page that exists only for me: password at the entrance, a list of posts awaiting a decision, and a release button per post. I open the link on my phone, see what the pipeline produced that day, and decide. What was a terminal ritual became two taps.
+## The moderation panel that gained a complaint desk
 
-```bash
-# the whole flow, from inside the page
-POST /api/release { slug }   # flips hidden on both languages, commits and pushes
-```
+With the data frozen, the moderation page became what it should always have been: a list of what awaits a decision, and a button per item. The next step is already live — the "reject" button on an approved-failed item opens an issue on the repository, with the reason written on the spot, and sends the item back to the review queue.
 
-And the detail I like most: the hidden page doesn't leak. It's not in the sitemap, nothing links to it, and the password is checked on the server — it's not client-side JavaScript hiding content. Anyone arriving without credentials sees exactly what they'd see at any nonexistent route.
-
-## Lessons
-
-- **`__dirname` in serverless is a gamble.** The deploy bundle doesn't preserve the repository tree. If the data exists at build time, freeze it at build time — generate a module and import it.
-- **A silent `catch` turns a bug into a mystery.** The empty list looked like "no hidden posts" when it was really "the readdir blew up". If a failure should be handled, handle it; if it shouldn't, let it be loud.
-- **Frontmatter is an author's convention, not a runtime contract.** Vercel doesn't know what `hidden: true` means — only my build does. Every piece of content semantics must become a build artifact to survive a deploy.
-- **Content decisions deserve their own UI.** Terminals are great for automating, terrible for deciding. A 60-line page beats a ruler of commands in your shell history.
-
-The next step is already on paper: a "redo" button on the same page, pulling the rejection reason from the GitHub issue and feeding it back to the pipeline. The antechamber is ready — all that's missing is the complaint desk.
+The loop is closed: the pipeline produces, the page lists, the decision back becomes a traceable artifact in the repository. Moderating stopped being a terminal ritual and became two taps — with an audit trail for free.
 
 <Terminal
   commands={[
-    { cmd: 'node scripts/gen-ocultos.mjs', out: '3 hidden posts exported to api/ocultos-data.mjs' },
-    { cmd: 'GET /hidden', out: '401 — password required' },
-    { cmd: 'POST /api/release { slug }', out: 'hidden: false x2 languages — commit pushed' },
+    { label: 'build', cmd: 'node scripts/gen-data.mjs' },
+    { label: 'runtime', cmd: 'import { pending } from \"./api/data.mjs\"' },
+    { label: 'reject', cmd: 'POST /api/reject { slug, reason } -> issue created' },
+    { label: 'audit', cmd: 'git log --grep \"refazer\" --oneline' },
   ]}
 />
