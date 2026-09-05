@@ -1,5 +1,14 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-04] — 6 posts novos + capas Yurumi aprovadas + fix i18n cron
+- **post(estudos)**: a metrica que ninguem confessa — reranker latency vs recall, hidden (ac63173) · o polidor de janelas 120s — transcricao com invariante anti-alucinacao (4ea8412) · fix i18n EN duplicado no slot PT (272e834)
+- **post(dogwalk/arachne)**: o F5 que desligava o passeador — persistencia status online, hidden (e4f03ae) · a guerra da porta 9000 — tres bugs encadeados, hidden (e2b0e2d)
+- **release(post)**: capivara-o-cadeado-verde PT+EN (b9671da, 9fb98f5)
+- **feat(covers)**: capas Yurumi aprovadas — heroico no post memoria-agente + 2 fogueiras (578d065)
+- 8 commits no dia · push origin OK · HEAD: e4f03ae
+
+
+
 ## [2026-09-03] — 3 posts novos (seguranca/tatuengine/capivara CI) + recusa->refazer + capas watchdog
 - **feat(post)**: seguranca — a fila que ninguem atende, supply chain, hidden PT+EN + capa AI (`1702214`); releases (`377fe57`, `516b85c`)
 - **feat(post)**: tatuengine — o-step-322, morte silenciosa + VRAM fantasma, hidden PT+EN, capa NIM (`57b86ef`); fix capa flatline issue #31 (`bff8035`); releases (`6fce316`, `c2ddc3f`)

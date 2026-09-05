@@ -33,6 +33,14 @@ dá pra cobrir.
 
 Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega completa.
 
+
+## Sessão 2026-09-04 (fim de dia) — 6 posts novos + capas Yurumi aprovadas + fix i18n cron
+- **posts estudos**: a metrica que ninguem confessa — reranker latency vs recall (ac63173, hidden) · o polidor de janelas 120s — polir transcricao com invariante anti-alucinacao (4ea8412) · fix i18n: cron duplicou EN no slot PT do post metrica (272e834)
+- **posts dogwalk/arachne**: o F5 que desligava o passeador — persistencia do status online (e4f03ae, hidden) · a guerra da porta 9000 — tres bugs encadeados num so diagnostico (e2b0e2d, hidden)
+- **releases**: capivara-o-cadeado-verde PT (b9671da) + EN (9fb98f5)
+- **capas Yurumi aprovadas** (578d065): heroico no post memoria-agente + 2 fogueiras para proximos posts
+- 8 commits no dia · push origin OK · HEAD: e4f03ae
+
 ## Sessão 2026-08-28 — Recusar com nota no /ocultos + refazer pipeline
 - **feat(ocultos)**: botão **Recusar** com textarea de nota em cada card — POST `/api/recusar` (`api/recusar.mjs`, commit `5560caf`)
 - **feat(api)**: recusa persiste em 2 vias — GitHub Issue (label `refazer`) + arquivo `docs/recusas/<slug>.md` no repo; sanitização + rate limit 3/30s
