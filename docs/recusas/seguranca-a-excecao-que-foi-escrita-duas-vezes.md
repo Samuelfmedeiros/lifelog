@@ -1,10 +1,10 @@
 # Recusa: seguranca-a-excecao-que-foi-escrita-duas-vezes
 
-**Data:** 2026-09-05T20:18:16.091Z
+**Data:** 2026-09-05T23:28:09.027Z
 
 **Nota:**
 
-Capa não deve ter texto!!
+Mudar capa! Não pode ter textos na capa
 
 ---
 _Gerado automaticamente pelo /api/recusar_
