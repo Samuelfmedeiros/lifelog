@@ -1,0 +1,95 @@
+---
+title: "O botão de liberar e a página que só eu via — o /ocultos virou antessala do blog"
+description: "Quando o pipeline passou a gerar posts escondidos, liberar um deles virou uma cerimônia de terminal: sed nos dois idiomas, build, push, torcer. Cansado de fazer isso à mão, montei uma página oculta com senha que faz o trabalho em um clique — e descobri no caminho que o Vercel não serve o meu frontmatter, só o meu HTML."
+date: 2026-09-05 12:00:00 -03:00
+pubDate: 2026-09-05 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "vercel", "hidden-posts", "serverless", "workflow", "ocultos"]
+cover: /covers/descobertas-ocultos-a-antessala-do-blog.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Antes: liberar um post era um ritual
+
+Nos últimos meses o blog mudou de ritmo. O pipeline gera três posts por dia, e cada um nasce escondido — o frontmatter carrega `hidden: true`, e o post não entra no feed, no RSS, em lugar nenhum. Ele só existe pra mim, esperando uma decisão: publicar, editar ou jogar fora.
+
+Só que "esperar uma decisão" tinha um custo absurdo. Liberar um post era isso aqui:
+
+```bash
+sed -i 's/hidden: true/hidden: false/' src/content/posts/meu-post.mdx
+sed -i 's/hidden: true/hidden: false/' src/content/posts/en/meu-post.mdx
+pnpm build
+git add src/content/posts/meu-post.mdx src/content/posts/en/meu-post.mdx
+git commit -m "release(post): meu-post"
+git push
+# ... e torcer pro CI deployar
+```
+
+Seis passos por idioma, mais build, mais commit, mais push. Num dia em que eu liberava três posts, era um ritual de quinze minutos de colar comando. E pior: se eu tava no celular — que é onde eu leio 90% das minhas notificações — dava vontade de deixar pra depois.
+
+A pergunta que ficou martelando: por que uma decisão de *conteúdo* depende de um terminal?
+
+## O formato que o Vercel não entende
+
+A primeira tentativa foi a mais óbvia: o post oculto já tá no site depois do build, não tá? Basta acessar a URL direto. Errado — e o motivo ensina como o deploy serverless funciona de verdade.
+
+A página do post é estática: o filtro de `hidden` roda em build time. Se o post oculto não gera rota, nem `https://blog/post/slug/` existe. Se gera rota, ele tá "escondido" só do índice — qualquer um com o link acessa. Feito de privacidade por convenção, que é a pior das privacidades.
+
+Então o caminho era outro: uma página dinâmica, serverless, que lista os posts ocultos *do build* e só mostra pra quem tem a senha. O problema seguinte apareceu na primeira linha de código:
+
+```javascript
+// o que eu escrevi primeiro — funciona local, quebra no deploy
+import { readdirSync } from 'fs'
+const dir = path.resolve(__dirname, '../src/content/posts')
+```
+
+Funcionou no `pnpm dev`. Funcionou no `pnpm build` local. No Vercel: lista vazia, sempre.
+
+A causa é sutil até doer. No deploy serverless, o código da rota é *bundled* — empacotado em outro diretório, longe da árvore do repositório. O `__dirname` que no meu laptop apontava pra `src/content/posts`, no Vercel apontava pra uma pasta de chunks que nunca vai ter um `.mdx` dentro. E o `catch` silencioso que eu tinha colocado pra "robustez" engolia o erro e devolvia lista vazia, que é o pior tipo de falha: a que parece ausência de dado.
+
+## A correção que simplifica tudo
+
+A solução foi parar de pedir pro servidor ler o repositório em runtime e fazer o trabalho no momento certo — no build:
+
+```javascript
+// scripts/gen-ocultos.mjs — roda ANTES do astro build
+// 1. varre src/content/posts/ com gray-matter (parseia só o frontmatter)
+// 2. guarda slug, título, data e projeto de quem tem hidden: true
+// 3. escreve api/ocultos-data.mjs: export default [ ...posts ]
+```
+
+A rota serverless deixa de tocar filesystem e vira um import simples. O dado oculto viaja *dentro* do bundle, gerado por quem tem contexto completo: a máquina de build. É o mesmo princípio do SSG levado ao extremo — se o dado é conhecido em build time, não existe justificativa pra descobri-lo em runtime.
+
+E os posts ocultos em si? Com o pipeline de hoje, nenhum deles gera rota pública. O `/ocultos` lista o que existe esperando decisão, e a liberação em si segue sendo um commit — mas de um clique.
+
+## A antessala
+
+O resultado final é uma página que só existe pra mim: senha na entrada, lista de posts esperando decisão, e um botão de liberar por post. Abro o link no celular, vejo o que o pipeline produziu no dia, decido. O que era um ritual de terminal virou dois toques.
+
+```bash
+# o fluxo todo, de dentro da página
+POST /api/liberar { slug }   # flipa hidden nos dois idiomas, commita e empurra
+```
+
+E o detalhe que eu mais gosto: a página oculta não vaza. Ela não entra no sitemap, não tem link apontando pra ela, e a senha é checada no servidor — não é um javascript que esconde o conteúdo no cliente. Quem chegar lá sem credencial vê o mesmo que veria qualquer rota inexistente.
+
+## Aprendizados
+
+- **`__dirname` em serverless é uma aposta.** O bundle do deploy não preserva a árvore do repositório. Se o dado existe em build time, congele ele em build time — gere um módulo e importe.
+- **`catch` silencioso transforma bug em mistério.** A lista vazia parecia "não tem posts ocultos" quando era "o readdir explodiu". Se uma falha deve ser tratada, trate; se não deve, deixe ela barulhenta.
+- **Frontmatter é convenção de autor, não contrato de runtime.** O Vercel não sabe o que `hidden: true` quer dizer — só o meu build sabe. Toda semântica de conteúdo precisa virar artefato no build pra sobreviver ao deploy.
+- **Decisões de conteúdo merecem UI própria.** O terminal é ótimo pra automatizar, péssimo pra decidir. Uma página de 60 linhas vale mais que uma régua de comandos no histórico.
+
+O próximo passo que já tá no papel: o botão de "refazer" na mesma página, puxando o motivo da recusa do issue no GitHub e devolvendo pro pipeline. A antessala tá pronta — falta o balcão de reclamações.
+
+<Terminal
+  commands={[
+    { cmd: 'node scripts/gen-ocultos.mjs', out: '3 posts ocultos exportados para api/ocultos-data.mjs' },
+    { cmd: 'GET /ocultos', out: '401 — senha obrigatoria' },
+    { cmd: 'POST /api/liberar { slug }', out: 'hidden: false x2 idiomas — commit enviado' },
+  ]}
+/>
