@@ -34,6 +34,15 @@ dá pra cobrir.
 Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega completa.
 
 
+
+## Sessão 2026-09-05 (fim de dia) — refazer caps/posts (OCR limpo), releases e fix cache-bust
+- **refazer(#33/#34/#35/#36)**: posts descobertas-ocultos e seguranca-a-excecao refeitos do zero — temas novos, PT+EN, hidden mantido; caps sem texto (OCR 0 hits em 2 escalas x 2 PSMs, brightness 216/240/112)
+- **refazer(#36-2)**: capa seguranca cache-bust - URL nova (-v2) quando rework; immutable 1y congelava capa velha no browser (1fd77d9)
+- **post(hidden)**: o rodape que mentia duas vezes — hydration #418 e o copyright duplicado (PT+EN) (3211d7d) · /ocultos virou antessala do blog — release de posts ocultos em um clique (ac34fee) · a excecao que foi escrita duas vezes (52c25c8)
+- **releases publicadas**: rodape, polidor de janelas 120s, metrica que ninguem confessa, F5 do passeador, guerra da porta 9000, seguranca-a-excecao, estado-congelado (PT+EN)
+- **fix(covers)**: capas watchdog — capa AI de portfolio-o-rodape-que-mentia-duas-vezes (a430dad) e seguranca-a-excecao (51b0890)
+- 30 commits no dia · pull origin (4 releases remote) + push origin OK · HEAD: `8523ad3`
+
 ## Sessão 2026-09-04 (fim de dia) — 6 posts novos + capas Yurumi aprovadas + fix i18n cron
 - **posts estudos**: a metrica que ninguem confessa — reranker latency vs recall (ac63173, hidden) · o polidor de janelas 120s — polir transcricao com invariante anti-alucinacao (4ea8412) · fix i18n: cron duplicou EN no slot PT do post metrica (272e834)
 - **posts dogwalk/arachne**: o F5 que desligava o passeador — persistencia do status online (e4f03ae, hidden) · a guerra da porta 9000 — tres bugs encadeados num so diagnostico (e2b0e2d, hidden)

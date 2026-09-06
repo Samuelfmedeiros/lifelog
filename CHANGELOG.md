@@ -1,5 +1,13 @@
 # 📋 CHANGELOG — LifeLog
 
+
+
+## [2026-09-05] — refazer caps/posts OCR-limpo + releases + cache-bust caps
+- **refazer posts**: descobertas-ocultos refeito (novo tema erro disfarçado de ausência, PT+EN hidden) (5c6a409, adfcefa) · seguranca-a-excecao refeito (52c25c8, e336c7c, fff0d81)
+- **refazer caps**: sem texto — OCR 0 hits 2 escalas x 2 PSMs, brilho 216/240/112 (df3f67e, eee4fb1, a8f64bf); cache-bust URL -v2 quando rework — immutable 1y congelava capa velha (1fd77d9)
+- **post(hidden)**: o rodape que mentia duas vezes — hydration #418 + copyright duplicado (3211d7d); /ocultos virou antessala (ac34fee); a excecao que foi escrita duas vezes (52c25c8)
+- **releases**: rodape, polidor, metrica, F5 dogwalk, guerra 9000, seguranca-a-excecao, estado-congelado (PT+EN)
+- 30 commits no dia · pull origin + push origin OK · HEAD: `8523ad3`
 ## [2026-09-04] — 6 posts novos + capas Yurumi aprovadas + fix i18n cron
 - **post(estudos)**: a metrica que ninguem confessa — reranker latency vs recall, hidden (ac63173) · o polidor de janelas 120s — transcricao com invariante anti-alucinacao (4ea8412) · fix i18n EN duplicado no slot PT (272e834)
 - **post(dogwalk/arachne)**: o F5 que desligava o passeador — persistencia status online, hidden (e4f03ae) · a guerra da porta 9000 — tres bugs encadeados, hidden (e2b0e2d)
