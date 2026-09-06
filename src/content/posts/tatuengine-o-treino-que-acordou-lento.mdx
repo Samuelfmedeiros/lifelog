@@ -1,0 +1,85 @@
+---
+title: "O treino que acordou lento — a herança escondida dentro do checkpoint"
+description: "Retomei uma rodada do zero do último checkpoint e ela seguiu firme — steps passando, gradiente saudável, nenhuma mensagem de erro. Só que a taxa de aprendizado tinha encolhido três ordens de grandeza sem pedir licença. A causa: o agendador de LR restaura mais do que deveria ao carregar estado antigo, e a correção foram duas linhas."
+date: 2026-09-06 12:00:00 -03:00
+pubDate: 2026-09-06 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, fase4, pytorch, scheduler, learning-rate, checkpoint, ml]
+icon: "🌊"
+cover: /covers/tatuengine-o-treino-que-acordou-lento.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A retomada que parecia perfeita
+
+A rodada anterior da Fase 4 tinha morrido — a história do crash silencioso e da memória de GPU órfã já tá contada aqui no blog. Reiniciei a máquina virtual, limpei o fantasma do driver e relancei o treino do último checkpoint bom.
+
+E aí veio aquela sensação boa de retomada sã: os steps voltaram a passar, o gradiente dentro da faixa, o loss descendo devagar mas descendo. Nenhum traceback. Nenhum `CUDA out of memory`. O processo vivo, telemetria fluindo. Deixei rolando e fui cuidar da vida.
+
+Foi só quando abri a telemetria com calma que o detalhe apareceu. O número da taxa de aprendizado que o treino estava usando era **~5e-7**. O valor que eu tinha configurado na linha de comando era **1e-4** — três ordens de grandeza acima. O treino não tinha falhado em nada. Ele só tinha acordado aprendendo mil vezes mais devagar do que deveria.
+
+A metáfora mais honesta: era como dar fisioterapia a alguém que precisa reaprender a andar, e descobrir que o instrutor está corrigindo os exercícios pela ficha de um paciente *outro* — a ficha de alguém que já estava no fim do tratamento.
+
+## A aritmética do plano
+
+O que de fato aconteceu, reconstruído depois:
+
+| Camada | Valor que chega ao treino |
+|--------|---------------------------|
+| CLI (`--lr 1e-4`) | 1e-4 |
+| Scheduler fresco | baseia os patamares no CLI — correto |
+| `scheduler.load_state_dict(ckpt)` | baseia os patamares no **checkpoint** — 1e-6 |
+| LR efetivo no step seguinte | ~5e-7 |
+
+O scheduler é um plano de redução do LR ao longo dos steps: divisões por 10 em marcos definidos. O CLI declara o teto inicial; o checkpoint guarda uma cópia do plano *da época em que foi salvo*. Se o checkpoint é de uma run que começou com LR seis ordens menor, restaurar o estado dele sobrescreve o teto da sessão atual — e nenhuma mensagem avisa. Todo pipeline de treino que guarda o scheduler no checkpoint convive com esse risco; resta saber se vai descobrir isso lendo telemetria ou lendo código.
+
+## O conserto de duas linhas
+
+Depois de restaurar o estado, **reimpor os patamares declarados na sessão atual**:
+
+```python
+if tstate.get("scheduler") is not None and scheduler is not None:
+    try:
+        scheduler.load_state_dict(tstate["scheduler"])
+        scheduler.base_lrs = [args.lr for _ in scheduler.base_lrs]  # fix LR~0: ckpt carregava base_lrs de run antigo (1e-6)
+        print(f"  base_lrs reforcados para CLI: {args.lr:.2e}")
+    except Exception as e:
+        print(f"  scheduler.load_state_dict falhou ({e}); usando scheduler fresco")
+```
+
+Duas linhas: a reimposição e um print de confirmação. O resto do bloco já existia — só ninguém tinha percebido que o `load_state_dict` derrubava o valor logo abaixo do try. E uma decisão de projeto embutida ali: **a sessão atual é quem manda no LR**. Um checkpoint antigo carrega o progresso dos steps, não a política de LR de uma época que já passou. Se um dia eu quiser retomar com outro valor de CLI, o pipeline obedece o CLI.
+## O que a telemetria quase não mostrou
+
+A parte que me deixa sem jeito: se eu tivesse olhado só o **loss**, teria demorado semanas. Loss com LR três ordens menor desce *mais devagar* — e na fase em que a rodada estava, a curva já era lenta por natureza. Uma lentidão dentro de uma curva lenta é quase indistinguível do normal a olho nu.
+
+O que denunciou foi justamente a métrica operacional: o LR impresso a cada step. Ele era o único número que podia estar "errado" sem afetar imediatamente qualquer outro — e por isso era o único que contava a verdade completa: *você pediu 1e-4 e está rodando 5e-7*.
+
+Isso fecha um padrão com o crash anterior. Lá, o processo morreu e a memória ficou; a lição foi que log parado não é morte. Aqui, o processo viveu e o LR encolheu; a lição é que treino vivo não é treino saudável. Os dois juntos desenham a regra que eu levo pra qualquer pipeline de treino daqui pra frente: **o watchdog vigia a vida do processo; a telemetria de parâmetros vigia a sanidade. São dois sistemas, e um não substitui o outro.**
+
+## Quanto custou não ter visto antes
+
+Dá pra estimar. A rodada tinha sido retomada no fim de semana; o fix entrou na segunda à tarde. Todas as steps nesse intervalo avançaram com o LR do checkpoint antigo — talvez um dia inteiro e pouco de GPU rodando a um milésimo da velocidade de aprendizado pretendida. A conta honesta: um dia de eletricidade e VRAM produzindo progresso que umas poucas horas teriam produzido.
+
+O alívio é que nada foi perdido de verdade: o checkpoint guardava os pesos de onde a run antiga parou, e o progresso real da otimização foi preservado. O que ficou de lição é que a "retomada perfeita" tinha um defeito silencioso — e defeito silencioso é o único tipo que não dispara alerta.
+
+## O que fica
+
+- **Checkpoint carrega progresso, não política.** O que é da sessão atual — LR, limites, decisões de configuração — deve ser reafirmado a cada retomada.
+- **Toda carga de estado é uma superfície de override.** Restaurar `state_dict` de qualquer componente (scheduler, optimizer, AMP) traz consigo os valores de outra época.
+- **A métrica da configuração é parte da telemetria.** Imprimir o LR efetivo a cada step não é verbosidade — é a única forma de ver divergência entre o pedido e o entregue.
+- **Custo de retomada com defeito silencioso é tempo diluído.** Nada quebra; tudo demora mil vezes mais.
+
+O próximo marco da Fase 4 continua sendo atravessar a zona onde a rodada anterior morreu — com o scheduler agora obedecendo a sessão, e o watchdog duplo cobrindo tanto morte quanto lentidão.
+
+<Terminal
+  title="resumo-da-correcao"
+  commands={[
+    { cmd: 'git log --oneline -1 0497d85', output: '0497d85 fix: forcar base_lrs do scheduler apos load de ckpt (ckpt antigo carregava lr 1e-6 -> LR ~5e-7)' },
+    { cmd: 'tail -2 telemetria.log | grep lr', output: 'step=1180 loss=2.417 grad=2.9 lr=5.00e-07  # antes do fix: LR do ckpt antigo' },
+    { cmd: 'tail -2 telemetria.log | grep lr  # apos o fix', output: 'step=1181 loss=2.402 grad=3.1 lr=1.00e-04  # base_lrs reforcados para CLI' },
+  ]}
+/>

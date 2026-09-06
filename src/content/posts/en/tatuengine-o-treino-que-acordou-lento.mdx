@@ -1,0 +1,86 @@
+---
+title: "The training that woke up slow — the inheritance hidden inside a checkpoint"
+description: "I resumed a run from the last checkpoint and it looked healthy — steps advancing, gradient in range, zero errors. Except the learning rate had quietly shrunk by three orders of magnitude. The cause: the LR scheduler restores more than it should when loading old state, and the fix was two lines."
+date: 2026-09-06 12:00:00 -03:00
+pubDate: 2026-09-06 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, fase4, pytorch, scheduler, learning-rate, checkpoint, ml]
+icon: "🌊"
+cover: /covers/tatuengine-o-treino-que-acordou-lento.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The resumption that looked perfect
+
+The previous Phase 4 round had died — the story of the silent crash and the orphaned GPU memory is already on the blog. I rebooted the virtual machine, cleared the driver's ghost, and relaunched training from the last good checkpoint.
+
+Then came that pleasant feeling of a healthy resumption: steps moving again, gradient inside the band, loss going down slowly but going down. No traceback. No `CUDA out of memory`. Process alive, telemetry flowing. I left it running and went on with my day.
+
+It was only when I opened the telemetry calmly that the detail showed up. The learning rate the training was actually using was **~5e-7**. The value I had configured on the command line was **1e-4** — three orders of magnitude higher. The training hadn't failed at anything. It had simply woken up learning a thousand times slower than it should.
+
+The most honest metaphor: it was like giving physiotherapy to someone relearning how to walk, and discovering the instructor is correcting the exercises against *another* patient's chart — the chart of someone already at the end of their treatment.
+
+## The arithmetic of the plan
+
+What actually happened, reconstructed afterwards:
+
+| Layer | Value that reaches training |
+|-------|------------------------------|
+| CLI (`--lr 1e-4`) | 1e-4 |
+| Fresh scheduler | builds its levels from the CLI — correct |
+| `scheduler.load_state_dict(ckpt)` | builds its levels from the **checkpoint** — 1e-6 |
+| Effective LR at the next step | ~5e-7 |
+
+The scheduler is a plan for reducing the LR across steps: divisions by 10 at fixed milestones. The CLI declares the initial ceiling; the checkpoint stores a copy of the plan *from the era when it was saved*. If the checkpoint comes from a run that started six orders of magnitude lower, restoring its state overwrites the current session's ceiling — and no message warns you. Every training pipeline that stores the scheduler inside the checkpoint lives with this risk; the only question is whether you'll find out by reading telemetry or by reading code.
+
+## The two-line fix
+
+After restoring the state, **re-impose the levels declared by the current session**:
+
+```python
+if tstate.get("scheduler") is not None and scheduler is not None:
+    try:
+        scheduler.load_state_dict(tstate["scheduler"])
+        scheduler.base_lrs = [args.lr for _ in scheduler.base_lrs]  # fix LR~0: ckpt carried base_lrs from an old run (1e-6)
+        print(f"  base_lrs reforced to CLI: {args.lr:.2e}")
+    except Exception as e:
+        print(f"  scheduler.load_state_dict failed ({e}); using fresh scheduler")
+```
+
+Two lines: the re-imposition and a confirmation print. The rest of the block already existed — nobody had noticed that `load_state_dict` clobbered the value right below the try. And a project decision is embedded there: **the current session owns the LR**. An old checkpoint carries step progress, not the LR policy of an era that's over. If someday I want to resume with a different CLI value, the pipeline obeys the CLI.
+
+## What telemetry almost didn't show
+
+The part that embarrasses me: if I had only watched the **loss**, it would have taken weeks. Loss with an LR three orders smaller descends *more slowly* — and at the stage the run was in, the curve was already slow by nature. Slowness inside a slow curve is nearly indistinguishable from normal to the naked eye.
+
+What gave it away was precisely the operational metric: the LR printed at every step. It was the only number that could be "wrong" without immediately affecting any other — and that's exactly why it was the only one telling the full truth: *you asked for 1e-4 and you're running 5e-7*.
+
+This closes a pattern with the previous crash. There, the process died and the memory stayed; the lesson was that a stalled log is not death. Here, the process lived and the LR shrank; the lesson is that a live training is not a healthy training. Together they sketch the rule I'll carry into any training pipeline from now on: **the watchdog watches the process's life; parameter telemetry watches its sanity. They are two systems, and one cannot replace the other.**
+
+## What it cost not to see it earlier
+
+It can be estimated. The run had been resumed over the weekend; the fix landed on Monday afternoon. Every step in that interval advanced with the old checkpoint's LR — maybe a day and a bit of GPU running at one thousandth of the intended learning speed. The honest math: a day of electricity and VRAM producing progress that a few hours would have produced.
+
+The relief is that nothing was truly lost: the checkpoint held the weights from where the old run stopped, and the real optimization progress was preserved. The lesson is that the "perfect resumption" had a silent defect — and a silent defect is the only kind that never fires an alert.
+
+## What stays
+
+- **A checkpoint carries progress, not policy.** What belongs to the current session — LR, limits, configuration decisions — must be reasserted on every resumption.
+- **Every state load is an override surface.** Restoring the `state_dict` of any component (scheduler, optimizer, AMP) brings along values from another era.
+- **Configuration metrics are part of telemetry.** Printing the effective LR every step isn't verbosity — it's the only way to see divergence between what you asked for and what you got.
+- **The cost of a silent-defect resumption is diluted time.** Nothing breaks; everything takes a thousand times longer.
+
+The next Phase 4 milestone is still crossing the zone where the previous round died — with the scheduler now obeying the session, and the double watchdog covering both death and slowness.
+
+<Terminal
+  title="fix-summary"
+  commands={[
+    { cmd: 'git log --oneline -1 0497d85', output: '0497d85 fix: force scheduler base_lrs after ckpt load (old ckpt carried lr 1e-6 -> LR ~5e-7)' },
+    { cmd: 'tail -2 telemetry.log | grep lr', output: 'step=1180 loss=2.417 grad=2.9 lr=5.00e-07  # before the fix: old ckpt LR' },
+    { cmd: 'tail -2 telemetry.log | grep lr  # after the fix', output: 'step=1181 loss=2.402 grad=3.1 lr=1.00e-04  # base_lrs reforced to CLI' },
+  ]}
+/>
