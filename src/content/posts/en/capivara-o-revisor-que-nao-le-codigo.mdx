@@ -1,0 +1,95 @@
+---
+title: "The reviewer who can't read code — when a vision AI caught the bug everyone else missed"
+description: "The Capivara light theme had washed-out text and a truncated email in the header. Static scanners stayed green, because none of them can see pixels. The one that caught it was a vision AI running screenshots of the real dashboard — and the patch was swapping hardcoded values for theme tokens and giving the layout room to breathe."
+date: 2026-09-06 16:00:00 -03:00
+pubDate: 2026-09-06 16:00:00 -03:00
+project: capivara
+tags: [capivara, ui, theming, design-tokens, vlm, code-review, accessibility]
+icon: "🐷"
+cover: /covers/capivara-o-revisor-que-nao-le-codigo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The bug no linter can catch
+
+Capivara got a light theme in the second design iteration: a `ThemeProvider`, design tokens (`--text-primary`, `--text-muted`, `--accent`), and an anti-flash script in the HTML so it wouldn't blink the wrong theme on load. In dark mode, gorgeous. In light mode... supporting text had a gray that melted into the background.
+
+The ironic part: the **opposite of what I expected** happened in `InvitesSection`. I had written colors as hardcoded rgba — values I had tuned against the dark background and deemed "good enough". Against a light background, rgba text tuned for dark becomes nearly invisible.
+
+No scanner flagged it. Gitleaks doesn't look at that. Bandit doesn't look at that. Static analysis never executes the interface — and color isn't a type error, isn't a secret, isn't anything grep can tell apart from "works fine".
+
+## The new reviewer: an AI that sees
+
+Capivara's review process already had AI layers — a code reviewer that pushes back when my patch is bad. That round, I added a different reviewer: **a vision AI** (the same image engine I use to analyze covers and screenshots), connected through a model router I run. It got real screenshots of the dashboard in light mode, and I asked the obvious: *what's illegible here?*
+
+The answer stung a little. It found two things:
+
+1. **Labels and text in `InvitesSection` with broken contrast** — exactly the hardcoded rgba values.
+2. **The user's email truncated in the header** — `max-w-[240px]` cut addresses mid-string, and with no `title` attribute there wasn't even a tooltip to recover the full value.
+
+The funny thing is both bugs had been on screen for days. I looked at the panel every day and my brain had already learned to ignore them.
+
+## The patches: one of design, one of process
+
+The `InvitesSection` fix wasn't swapping hex for hex. It was accepting that **hardcoded color values in a themed component are latent bugs**:
+
+```tsx
+// before — nailed-down color, inherits from chance
+<label className="block text-[10px] text-[rgba(...)] mb-1">Email</label>
+
+// after — theme token, inherits from the ThemeProvider
+<label className="block text-[10px] text-[var(--text-muted)] mb-1">Email</label>
+```
+
+Nine replacements in the file, all in the same category: any color describing a *role* (supporting text, secondary text, accent) becomes a token — `var(--text-muted)`, `var(--text-secondary)`, `var(--text-primary)`. Brand *identity* colors can stay hardcoded; *hierarchy* colors can't.
+
+The header one was subtler, and I like documenting it because it looks trivial but packs three decisions:
+
+```tsx
+// before — 240px on desktop, hidden on tablet, no tooltip
+<span className="hidden sm:inline text-xs sm:text-sm ... truncate max-w-[120px] sm:max-w-[240px]">
+  {userLabel || user.email}
+</span>
+
+// after — more room, md breakpoint, and the full value in the tooltip
+<span title={userLabel || user.email} className="hidden md:inline text-xs sm:text-sm ... truncate max-w-[160px] sm:max-w-[300px]">
+  {userLabel || user.email}
+</span>
+```
+
+Three decisions in one line: `sm:inline` became `md:inline` (on small screens the email doesn't fit — hide it instead of cutting it), the width ceiling went from 240 to 300px, and the `title` guarantees that **truncating the display never truncates the information** — hover returns the whole value.
+
+## What a VLM doesn't replace
+
+Before I turn into a fanboy, an honest assessment. The visual reviewer is great at things code review can't reach: contrast, truncation, overlap, broken spacing, visual states that only appear with real data. It's bad (for now) at: logic, security, behavior regression. It looked at the screenshot with no way to know that button fires the wrong query.
+
+So the pipeline settled like this, each layer watching what only it can see:
+
+| Layer | What it catches | What it misses |
+|---|---|---|
+| Static scanners (leaks, lint) | secrets, dangerous patterns | everything visual |
+| Code reviewer (LLM) | logic, edge cases, API | pixels, contrast |
+| **Visual reviewer (VLM)** | contrast, truncation, overlap | logic, behavior |
+| Me, day to day | context and judgment | fatigue, habit blindness |
+
+The lesson I took from that round: **the most expensive blindness isn't the scanner's — it's mine.** I looked at the panel every day and stopped seeing it. The visual reviewer has no memory of "it's always been like this", and that's exactly why it can see.
+
+| Fix | Finding | Cost |
+|---|---|---|
+| `InvitesSection` | 9 hardcoded colors → theme tokens | 18 lines |
+| `Header` | truncated email, no tooltip → max-w 300 + title + md | 1 line |
+
+The next review round starts with this layer already on. Dark theme, light theme, and the phone Samuel opens the panel with — now they have a pair of eyes that never gets tired.
+
+<Terminal
+  title="visual-audit-recap"
+  commands={[
+    { cmd: 'git log --oneline --grep="VLM" -2', output: '633a140 fix(header): email truncated on light theme — max-w 240->300 + title tooltip + md breakpoint (found by VLM)\nf38a9ea fix(contrast): light theme tokens in InvitesSection (hardcoded rgba -> var)' },
+    { cmd: 'grep -c "var(--text" frontend/src/components/dashboard/InvitesSection.tsx', output: '9' },
+    { cmd: 'grep -o "max-w-\\[300px\\]" frontend/src/components/ui/Header.tsx', output: 'max-w-[300px]' },
+  ]}
+/>

@@ -1,0 +1,95 @@
+---
+title: "O revisor que não lê código — quando uma IA de visão achou o bug que passou por todos"
+description: "O tema claro do Capivara estava com textos apagados e um email cortado no header. Os scanners estáticos seguiam verdes, porque nenhum deles enxerga pixels. Quem achou foi uma IA de visão rodando screenshots do dashboard de verdade — e o patch foi trocar valor hardcoded por token de tema e dar respiro ao layout."
+date: 2026-09-06 16:00:00 -03:00
+pubDate: 2026-09-06 16:00:00 -03:00
+project: capivara
+tags: [capivara, ui, theming, design-tokens, vlm, code-review, acessibilidade]
+icon: "🐷"
+cover: /covers/capivara-o-revisor-que-nao-le-codigo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O bug que nenhum linter pega
+
+O Capivara ganhou tema claro na segunda versão do design: um `ThemeProvider`, tokens de design (`--text-primary`, `--text-muted`, `--accent`) e um script anti-flash no HTML pra não piscar tema errado no load. No escuro, tudo lindíssimo. No claro... os textos de apoio tinham um cinza que somia contra o fundo.
+
+O detalhe irônico: o **invés do que eu esperava** aconteceu na `InvitesSection`. Eu tinha escrito cores em rgba hardcoded — valores que eu tinha ajustado no tema escuro e achado "bons o suficiente". No tema claro, `rgba` de texto pensado pro fundo escuro vira quase invisível.
+
+Nenhum scanner avisou. Gitleaks não olha pra isso. Bandit não olha pra isso. Análise estática não executa a interface — e cor não é um erro de tipo, não é um secret, não é nada que grep consiga distinguir de "funciona".
+
+## O revisor novo: uma IA que vê
+
+O processo de revisão do Capivara já tinha camadas de IA — um revisor de código que discorda de mim quando o patch está ruim. Naquela rodada eu acrescentei um revisor diferente: **uma IA de visão** (o mesmo motor de imagem que uso pra analisar capas e screenshots), conectada via um roteador de modelos que eu mantenho. Ela recebeu screenshots reais do dashboard, tema claro, e pedi o óbvio: *o que está ilegível aqui?*
+
+A resposta me constrangeu um pouquinho. Ela apontou duas coisas:
+
+1. **Labels e textos da `InvitesSection` com contraste quebrado** — exatamente os rgba hardcoded.
+2. **O email do usuário truncado no header** — `max-w-[240px]` cortava endereços no meio, e sem `title` não tinha nem tooltip pra recuperar o valor completo.
+
+O engraçado é que os dois bugs estavam na tela há dias. Eu passava por eles todo dia e o cérebro já tinha aprendido a ignorar.
+
+## Os patches: um de design, um de processo
+
+O fix da `InvitesSection` não foi trocar hex por hex. Foi aceitar que **valor de cor hardcoded em componente de tema é bug latente**:
+
+```tsx
+// antes — cor cravada, herda do acaso
+<label className="block text-[10px] text-[rgba(...)] mb-1">Email</label>
+
+// depois — token do tema, herda do ThemeProvider
+<label className="block text-[10px] text-[var(--text-muted)] mb-1">Email</label>
+```
+
+Nove substituições no arquivo, todas na mesma categoria: qualquer cor que descreve *papel* (texto de apoio, texto secundário, acento) vira token — `var(--text-muted)`, `var(--text-secondary)`, `var(--text-primary)`. Cor de *identidade* da marca pode ficar cravada; cor de *hierarquia* não.
+
+O do header foi mais sutil, e é o tipo de correção que eu gosto de documentar porque parece trivial mas carrega três decisões:
+
+```tsx
+// antes — 240px no desktop, some no tablet, sem tooltip
+<span className="hidden sm:inline text-xs sm:text-sm ... truncate max-w-[120px] sm:max-w-[240px]">
+  {userLabel || user.email}
+</span>
+
+// depois — respiro maior, breakpoint md, e o valor completo no tooltip
+<span title={userLabel || user.email} className="hidden md:inline text-xs sm:text-sm ... truncate max-w-[160px] sm:max-w-[300px]">
+  {userLabel || user.email}
+</span>
+```
+
+Três decisões numa linha: `sm:inline` virou `md:inline` (em tela pequena, o email não cabe — esconde em vez de cortar), o teto de largura subiu de 240 pra 300px, e o `title` garante que **truncar a exibição nunca trunca a informação** — hover devolve o valor inteiro.
+
+## O que a VLM não substitui
+
+Antes de virar fã, um balanço honesto. O revisor visual é bom em coisas que revisão de código não alcança: contraste, truncamento, sobreposição, espaçamento quebrado, estado visual que só aparece com dado real. É péssimo (por enquanto) em: lógica, segurança, regressão de comportamento. Ela olhou o screenshot e não tem como saber que aquele botão dispara a query errada.
+
+Então o pipeline ficou assim, cada camada olhando o que só ela enxerga:
+
+| Camada | O que pega | O que escapa |
+|---|---|---|
+| Scanners estáticos (leaks, lint) | secrets, padrões perigosos | tudo que é visual |
+| Revisor de código (LLM) | lógica, edge cases, API | pixels, contraste |
+| **Revisor visual (VLM)** | contraste, truncamento, overlap | lógica, comportamento |
+| Eu, no dia a dia | contexto e decisão | cansaço, cegueira de hábito |
+
+A lição que levantei daquela rodada: **a cegueira mais cara não é do scanner — é minha.** Eu olhava o painel todo dia e não via mais. O revisor visual não tem memória do "sempre foi assim", e é exatamente por isso que ele enxerga.
+
+| Correção | Achado | Custo |
+|---|---|---|
+| `InvitesSection` | 9 cores hardcoded → tokens de tema | 18 linhas |
+| `Header` | email truncado sem tooltip → max-w 300 + title + md | 1 linha |
+
+A próxima rodada de revisão já nasce com essa camada ligada. Tema escuro, claro, e o celular que o Samuel usa pra abrir o painel — agora tem um par de olhos que não cansa.
+
+<Terminal
+  title="auditoria-visual-resumida"
+  commands={[
+    { cmd: 'git log --oneline --grep="VLM" -2', output: '633a140 fix(header): email truncado no tema claro — max-w 240->300 + title tooltip + md breakpoint (achado pela VLM)\nf38a9ea fix(contraste): tokens do tema claro em InvitesSection (rgba hardcoded -> var)' },
+    { cmd: 'grep -c "var(--text" frontend/src/components/dashboard/InvitesSection.tsx', output: '9' },
+    { cmd: 'grep -o "max-w-\\[300px\\]" frontend/src/components/ui/Header.tsx', output: 'max-w-[300px]' },
+  ]}
+/>
