@@ -1,0 +1,145 @@
+---
+title: "O link que a gente mandava pra você — tracking público de passeio sem login"
+description: "Compartilhar o rastreamento ao vivo de um passeio parecia simples: um botão, um link, pronto. Mas esse link precisava funcionar pra quem não tem conta, não pode vazar dados do tutor nem do passeador, e precisava de um ETA que não mentisse. O caminho foi um token idempotente e um payload público que só mostra o essencial."
+date: 2026-09-05 15:00:00 -03:00
+pubDate: 2026-09-07 16:00:00 -03:00
+project: dogwalk
+hidden: true
+lang: 'pt'
+tags: ["dogwalk", "fastapi", "react", "seguranca", "produto"]
+icon: "🐶"
+cover: /covers/dogwalk-o-link-que-a-gente-mandava-pra-voce.webp
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O que faltava
+
+O tutor já acompanhava o passeio ao vivo dentro do app: mapa, GPS, fotos de check-in e check-out. O que ele não conseguia fazer era **mandar esse acompanhamento pra alguém de fora** — a namorada, o vizinho que cuida da casa, a filha que quer ver o Thor passeando.
+
+E a alternativa era feia: dar o login, ou mandar print. Print morre no segundo seguinte — o passeio continua e o print é passado.
+
+O pedido do share público parece trivial: "gera um link". Mas um link público de tracking carrega três armadilhas que não se resolvem num commit só:
+
+1. **Quem abre não tem conta** — não pode cair num redirect de login.
+2. **O que aparece tem que ser mínimo** — nome do pet, status, última posição. Nunca dados do tutor ou do passeador.
+3. **O link não pode ser regenerável infinitamente** — senão vira brinquedo de endpoint.
+
+## O token idempotente
+
+A decisão central do backend: cada passeio tem **um** token de compartilhamento. Se já existe, reutiliza; se não existe, gera na hora. Idempotente significa que apertar o botão dez vezes não cria dez links — cria um, sempre o mesmo.
+
+```python
+@router.post("/{walk_id}/share", status_code=200)
+async def create_walk_share_token(
+    walk_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gera (ou reutiliza) o token público de compartilhamento do passeio.
+
+    Idempotente: se o walk já tem share_token, devolve o mesmo.
+    Apenas tutor ou walker dono do booking pode compartilhar.
+    """
+    result = await db.execute(select(Walk).where(Walk.id == walk_id))
+    walk = result.scalar_one_or_none()
+    if not walk:
+        raise HTTPException(404, "Passeio não encontrado")
+
+    # ... validação de posse (tutor ou walker do booking) ...
+
+    if not walk.share_token:
+        walk.share_token = secrets.token_urlsafe(24)
+        walk.updated_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(walk)
+
+    return {"walk_id": walk.id, "share_token": walk.share_token}
+```
+
+O `secrets.token_urlsafe(24)` gera 32 caracteres de URL-safe — inviável de adivinhar por força bruta. E a rota guarda o token na própria linha do passeio: não é uma tabela nova, não é cache, não é sessão. O link morre junto com o passeio.
+
+A leitura pública é a cara espelhada:
+
+```python
+@router.get("/{walk_id}/share/{token}")
+async def get_public_walk_share(walk_id: str, token: str, ...):
+    """Página pública de tracking (sem auth) — só com o token do compartilhamento."""
+    if not walk or not walk.share_token or walk.share_token != token:
+        raise HTTPException(404, "Link de compartilhamento inválido ou expirado")
+```
+
+Sem token válido: **404**. Não 403 — porque 403 confirma que o recurso existe. O link compartilhado é a única credencial, e a checagem é uma comparação de igualdade simples.
+
+## O payload que se recusa a vazar
+
+O endpoint público devolve um dicionário fechado: `status`, `pet_name`, `last_gps`, `check_in_at`, `check_out_at`, fotos de check-in/check-out, duração contratada e o ETA. O docstring manda a regra: *"Nunca expõe dados do tutor/passeador."*
+
+O `pet_name` vem do booking, não do perfil — quem abre o link sabe que "Thor está em passeio", não quem contratou nem quem anda.
+
+A posição GPS é só o último ponto:
+
+```python
+gps_res = await db.execute(
+    select(GpsPoint)
+    .where(GpsPoint.walk_id == walk_id)
+    .order_by(desc(GpsPoint.timestamp))
+    .limit(1)
+)
+last_gps = gps_res.scalar_one_or_none()
+```
+
+Nada de histórico de rota no payload público. A pessoa de fora vê *onde o pet está agora*, não o mapa completo do trajeto — que, combinado com o endereço de check-in, desenharia a rotina da casa.
+
+## O ETA honesto
+
+O detalhe que me fez rir depois de pronto: um ETA de passeio é uma promessa fácil de quebrar. Se o passeador estende o passeio em 10 minutos porque o Thor achou o parque mais bonito, o "faltam 5 minutos" vira mentira a cada tick.
+
+A regra que implementei: **o ETA só existe enquanto o passeio está em andamento, e é a duração contratada menos o decorrido** — nunca abaixo de zero, nunca fora de passeio ativo:
+
+```python
+eta_minutes = None
+if walk.status == "in_progress" and walk.started_at and booking.duration:
+    started = walk.started_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    elapsed_min = (datetime.now(timezone.utc) - started).total_seconds() / 60.0
+    eta = max(0, round(booking.duration - elapsed_min))
+    if eta > 0:
+        eta_minutes = eta
+```
+
+Repara no comportamento: passeio atrasado? `eta` bate em 0 e **some** — o link não mostra "faltam -3 minutos", mostra nada. Passeio acabou? `eta_minutes` volta como `None` e a página mostra check-out com foto. Honestidade aqui foi menos sobre cálculo e mais sobre **quando calar**.
+
+O front acompanha: o `TrackShare` público faz polling de 30 segundos — mas só enquanto o passeio está vivo. Terminou? O timer morre e a página congela no estado final com as fotos.
+
+## O botão que estava órfão
+
+A parte que me ensinou mais sobre o próprio código: a **Fase 3A** do polimento descobriu que o botão "Compartilhar ao vivo" existia num componente que **a UI real do tutor não importava**. Órfão de componente — funcionava, era bonito, e ninguém nunca viu.
+
+O fix não foi técnico: foi apontar o `TrackShare` real (`TutorLiveTab`) e ligar o botão onde o tutor de verdade clica. Mais um caso de feature pronta que só precisava de endereço. A lição que ficou: componente orfão em teste verde é dívida invisível — os 5 testes do `TrackShare` passavam enquanto nenhum usuário chegava nele.
+
+## Números da entrega
+
+| Métrica | Valor |
+|---------|-------|
+| Insertions Fase 3 A+B | 586 |
+| Arquivos no commit do share | 12 |
+| Linhas só do router de walks | 94 |
+| Testes backend (share) | 9 |
+| Testes front (TrackShare) | 5 |
+| Polling do share público | 30s |
+
+## O que vem a seguir
+
+O token ainda não tem expiração própria — ele vive enquanto o passeio vive, e morre com ele. O próximo passo natural é um TTL de compartilhamento configurável (48h pós-checkout, por exemplo), pra quem quiser guardar o link como lembrança sem abrir uma janela eterna. E o polling de 30s pede um SSE — polling é o protótipo honesto de todo streaming.
+
+<Terminal
+  lines={[
+  { cmd: 'grep -n "share_token" backend/app/routers/walks.py | head -4', output: '402:create  427:if not walk.share_token  428:token_urlsafe(24)  436:get public' },
+  { cmd: 'grep -c "def test_" backend/tests/test_walk_share.py', output: '9' },
+  { cmd: 'grep -n "setInterval" src/pages/TrackShare/index.jsx', output: '50: if (!timer) timer = setInterval(load, 30000);' },
+  { cmd: 'git log --oneline -2 --format="%h %s" | head -2', output: 'cce3c7ce Fase 3A polish - tracking share ao vivo real / f44d4c96 share de tracking publico' },
+  ]}
+/>
