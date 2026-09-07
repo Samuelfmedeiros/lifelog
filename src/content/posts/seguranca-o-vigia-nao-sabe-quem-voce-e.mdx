@@ -1,0 +1,105 @@
+---
+title: "O vigia não sabe quem você é — quando a integridade aponta pro próprio administrador"
+description: "Na madrugada de sábado editei um script vigiado pelo monitor de integridade e atualizei a baseline dele no mesmo bloco. Seis horas depois o alarme disparou de novo, apontando exatamente a mudança que eu mesmo tinha aprovado. O monitor não falhou: ele fez o único trabalho que pode fazer. O que faltava era um processo que soubesse separar edição legítima de alteração suspeita."
+date: 2026-09-07 08:00:00 -03:00
+pubDate: 2026-09-07 08:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "integridade", "baseline", "hash", "processo", "falso-positivo"]
+cover: /covers/seguranca-o-vigia-nao-sabe-quem-voce-e.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O alarme que apontava pra mim
+
+Sábado à noite eu reorganizei um script de manutenção que faz parte da minha esteira. Tarefa comum: melhorar a rotina, salvar, seguir o dia. Como esse script vive num diretório vigiado pelo meu sistema de integridade de arquivos, segui o próprio processo que eu tinha definido: atualizei a baseline de hashes no mesmo bloco de trabalho, com backup, e conferi o resultado.
+
+Seis horas depois, às quatro da manhã, o alarme de integridade disparou. O motivo: o mesmo script, no mesmo caminho, com exatamente a alteração que eu tinha acabado de fazer e documentar.
+
+Ninguém invadiu nada. Nenhum arquivo foi corrompido. O vigia estava apontando pro dono da casa.
+
+## O que a baseline realmente é
+
+Um monitor de integridade funciona com uma premissa brutalmente simples: existe um estado conhecido e bom, e qualquer coisa diferente dele é suspeita.
+
+```bash
+# A baseline é só uma lista de impressões digitais
+sha256sum /home/eu/.hermes/scripts/*.sh > baseline.sha256
+
+# O monitor recalcula e compara
+sha256sum -c baseline.sha256
+# monitorado.sh: FALHOU
+```
+
+O problema é que essa premissa não tem noção de autor. O monitor não sabe a diferença entre:
+
+- um invasor que substituiu o script por uma versão com uma porta dos fundos;
+- o próprio administrador que fez uma melhoria legítima às onze da noite.
+
+Para o hash, os dois casos são idênticos: o arquivo de hoje é diferente do arquivo da baseline. E é pra isso que ele serve. Um monitor que "soubesse" que o admin editou de vez em quando seria um monitor que pode ser convencido a não alarmar — exatamente o que um invasor tentaria.
+
+## A regra que eu tinha, e onde ela falhou
+
+O processo que eu mesmo escrevi diz: **toda edição de arquivo vigiado atualiza a baseline no mesmo bloco**. Sábado eu segui a regra à risca. E mesmo assim o alarme disparou seis horas depois.
+
+Quando fui investigar, encontrei a armadilha: havia **duas rotinas de correção** rodando na esteira — uma que re-executa tarefas de casa quando um serviço reinicia, e outra que monitora o relógio e o memória para manter tudo de pé. As duas rodavam mais ou menos na mesma janela. A que re-executa tarefas também mantém cópia da baseline. E quando ela rodou depois da minha edição, re-aplicou o estado antigo por cima do meu re-baseline — re-escrevendo o script com o conteúdo antigo, ou restaurando a baseline antiga sobre a nova, dependendo de qual cópia venceu a corrida.
+
+O resultado prático: meu re-baseline durou minutos. Às quatro da manhã, o monitor olhou, viu o hash divergente, e alarumou. Corretamente.
+
+## O diagnóstico que vale pra qualquer esteira
+
+Três lições que saem desse incidente, todas transferíveis:
+
+**1. Re-baseline no mesmo bloco é necessário, mas não suficiente.** Se outra rotina da sua esteira restaura estado (e quase toda esteira madura tem alguma rotina de auto-reparo), o seu re-baseline pode ser desfeito minutos depois. A regra precisa ser: re-baseline **e** verificar, dez minutos depois, que o hash ainda bate. Se não bater, o problema não é mais a edição — é a corrida entre rotinas.
+
+**2. Toda restauração automática precisa saber de onde restaura.** Uma rotina de auto-reparo que restaura de uma cópia antiga é uma máquina de desfazer trabalho legítimo. Hoje eu trato qualquer fonte de restauração como parte do escopo da baseline: se ela pode reescrever arquivos vigiados, ela precisa estar ciente da baseline, ou pelo menos nunca restaurar algo que a baseline acabou de absorver.
+
+**3. O falso alarme não foi o erro — a ausência de processo foi.** A tentação aqui é "adicionar uma exceção pro admin". Isso seria o mesmo erro do alarme silenciado: calar o vigia em vez de definir escopo. O que eu fiz foi o oposto — mantive o alarme gritando (ele gritou certo!), e corrigi o processo que gerava o estado divergente.
+
+## O protocolo atual
+
+Depois do incidente, o fluxo de edição ficou assim:
+
+```bash
+# 1. Editar o script vigiado
+nano ~/.hermes/scripts/rotina.sh
+
+# 2. Re-baseline no MESMO bloco, com backup da anterior
+cp baseline.sha256 baseline.sha256.bak
+sha256sum /home/eu/.hermes/scripts/*.sh > baseline.sha256
+
+# 3. Confirmação tardia — o passo que faltava
+sleep 600
+sha256sum -c baseline.sha256 > /dev/null 2>&1 \
+  && echo "re-baseline estável" \
+  || echo "CONFLITO: outra rotina restaurou estado antigo"
+```
+
+O passo 3 é o que transforma o re-baseline de uma ação em um **processo verificado**. Sem ele, eu tinha uma janela de algumas horas onde o estado real (restaurado pela outra rotina) e o estado esperado (a minha baseline) divergiam em silêncio — e o único que percebia era o vigia, às quatro da manhã.
+
+## Aprendizados
+
+- Monitor de integridade não tem noção de autoridade — e não deveria ter. A separação entre admin e invasor mora no **processo**, nunca no vigia.
+- Auto-reparo sem consciência de baseline é uma máquina de desfazer trabalho legítimo. Mapeie todas as rotinas da esteira que restauram estado.
+- Re-baseline sem confirmação tardia é só uma esperança. Dez minutos depois, confirme que o hash ainda bate.
+- O alarme que acorda você às 4h apontando pra sua própria edição de ontem não está com ciúmes: está dizendo que existe uma corrida entre rotinas que você não conhecia.
+
+A próxima evolução que eu quero testar: fazer a própria confirmação tardia virar parte da rotina de re-baseline, com o alarme silenciado **só** pela janela de verificação — nunca pela identidade de quem editou.
+
+<Terminal
+  client:load
+  title="samuel@lifelog: ~/seguranca"
+  commands={[
+    { cmd: 'sha256sum -c baseline.sha256 2>&1 | grep -v OK || true' },
+    { cmd: 'monitorado.sh: FALHOU' },
+    { cmd: 'sha256sum monitorado.sh && grep monitorado baseline.sha256' },
+    { cmd: 'abc123...  !=  def456...  # estado real != baseline' },
+    { cmd: '# restauração automática da esteira aplicou estado antigo' },
+    { cmd: 'cp baseline.sha256{,.bak} && sha256sum *.sh > baseline.sha256' },
+    { cmd: 'sleep 600 && sha256sum -c baseline.sha256' },
+    { cmd: 'monitorado.sh: OK  # re-baseline sobreviveu à janela' },
+  ]}
+/>
