@@ -35,6 +35,11 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-06 (fim de dia) — posts tatuengine/capivara revisor + releases
+- **post(tatuengine)**: o treino que acordou lento — fix base_lrs do scheduler após load de ckpt (PT+EN, hidden, capa NIM 17.6KB brilho 225 OCR limpo) (85c2d29) + release PT (`9b861e2`) + release EN (`64f1788`)
+- **post(capivara)**: o revisor que não lia código — tema claro auditado por VLM: tokens vs rgba + email truncado no header (PT+EN, hidden, capa NIM seed 2028 webp 42KB brilho 181 OCR zero) (f60f7e6)
+- 4 commits no dia · push origin OK · HEAD: `f60f7e6`
+
 ## Sessão 2026-09-05 (fim de dia) — refazer caps/posts (OCR limpo), releases e fix cache-bust
 - **refazer(#33/#34/#35/#36)**: posts descobertas-ocultos e seguranca-a-excecao refeitos do zero — temas novos, PT+EN, hidden mantido; caps sem texto (OCR 0 hits em 2 escalas x 2 PSMs, brightness 216/240/112)
 - **refazer(#36-2)**: capa seguranca cache-bust - URL nova (-v2) quando rework; immutable 1y congelava capa velha no browser (1fd77d9)

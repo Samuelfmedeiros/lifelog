@@ -1,6 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
 
+## [2026-09-06] — posts tatuengine/capivara revisor + releases
+- **post(tatuengine)**: o treino que acordou lento — fix base_lrs pós-ckpt, PT+EN hidden + capa NIM (85c2d29) · releases PT+EN (9b861e2, 64f1788)
+- **post(capivara)**: o revisor que não lia código — VLM audit tema claro, PT+EN hidden + capa NIM (f60f7e6)
+- 4 commits no dia · push origin OK · HEAD: `f60f7e6`
+
+
 
 ## [2026-09-05] — refazer caps/posts OCR-limpo + releases + cache-bust caps
 - **refazer posts**: descobertas-ocultos refeito (novo tema erro disfarçado de ausência, PT+EN hidden) (5c6a409, adfcefa) · seguranca-a-excecao refeito (52c25c8, e336c7c, fff0d81)
