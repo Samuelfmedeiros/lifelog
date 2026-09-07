@@ -4,7 +4,7 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog-sepia.vercel.app
-> **Status:** ✅ Operacional — 52 posts bilíngues (104 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
+> **Status:** ✅ Operacional — 54 posts bilíngues (108 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — **3 posts/dia hidden: 08:00/12:00/16:00 → /ocultos** (28/08; liberação manual do Samuel)
 
 ---
@@ -39,6 +39,12 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 - **post(tatuengine)**: o treino que acordou lento — fix base_lrs do scheduler após load de ckpt (PT+EN, hidden, capa NIM 17.6KB brilho 225 OCR limpo) (85c2d29) + release PT (`9b861e2`) + release EN (`64f1788`)
 - **post(capivara)**: o revisor que não lia código — tema claro auditado por VLM: tokens vs rgba + email truncado no header (PT+EN, hidden, capa NIM seed 2028 webp 42KB brilho 181 OCR zero) (f60f7e6)
 - 4 commits no dia · push origin OK · HEAD: `f60f7e6`
+
+## Sessão 2026-09-06 (fim de dia) — post capivara + release tatuengine
+- **post(c)**: capivara-o-revisor-que-nao-le-codigo (PT+EN, hidden) — tema claro auditado por VLM (tokens vs rgba + email truncado no header); capa NIM seed 2028 webp 42KB, OCR zero (f60f7e6)
+- **release(post)**: tatuengine-o-treino-que-acordou-lento PT+EN (9b861e2, 64f1788)
+- **post(b)**: tatuengine-o-treino-que-acordou-lento (PT+EN, hidden) — fix base_lrs do scheduler pós load de ckpt; capa NIM 17.6KB brilho 225 OCR limpo (85c2d29)
+- 4 commits no dia · push origin OK · HEAD: f60f7e6
 
 ## Sessão 2026-09-05 (fim de dia) — refazer caps/posts (OCR limpo), releases e fix cache-bust
 - **refazer(#33/#34/#35/#36)**: posts descobertas-ocultos e seguranca-a-excecao refeitos do zero — temas novos, PT+EN, hidden mantido; caps sem texto (OCR 0 hits em 2 escalas x 2 PSMs, brightness 216/240/112)

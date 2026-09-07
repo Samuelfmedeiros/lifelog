@@ -8,6 +8,11 @@
 
 
 
+## [2026-09-06] — post capivara revisor + release tatuengine treino lento
+- **post(hidden)**: capivara-o-revisor-que-nao-le-codigo PT+EN — tema claro auditado por VLM (tokens vs rgba, email truncado no header); capa NIM seed 2028, OCR zero (`f60f7e6`)
+- **release(post)**: tatuengine-o-treino-que-acordou-lento PT+EN (`9b861e2`, `64f1788`)
+- **post(hidden)**: tatuengine-o-treino-que-acordou-lento PT+EN — fix base_lrs do scheduler pós load ckpt; capa NIM brilho 225 (`85c2d29`)
+- 4 commits no dia · push origin OK · HEAD: `f60f7e6`
 ## [2026-09-05] — refazer caps/posts OCR-limpo + releases + cache-bust caps
 - **refazer posts**: descobertas-ocultos refeito (novo tema erro disfarçado de ausência, PT+EN hidden) (5c6a409, adfcefa) · seguranca-a-excecao refeito (52c25c8, e336c7c, fff0d81)
 - **refazer caps**: sem texto — OCR 0 hits 2 escalas x 2 PSMs, brilho 216/240/112 (df3f67e, eee4fb1, a8f64bf); cache-bust URL -v2 quando rework — immutable 1y congelava capa velha (1fd77d9)
