@@ -1,0 +1,86 @@
+---
+title: "The cover that wouldn't change — immutable cache and the fix that was renaming the file"
+description: "The cover was remade twice, the deployment served the new bytes — and the blog kept showing the old image. The culprit wasn't the build or the CDN: it was a header promising the file would never change for a year. The story of the hunt, the math of immutable caching, and the rule that stuck: reworking an asset requires a new URL."
+date: 2026-09-08 08:00:00 -03:00
+pubDate: 2026-09-08 08:00:00 -03:00
+project: descobertas
+tags: [descobertas, cache, covers, deploy, frontend, ops]
+cover: /covers/descobertas-a-capa-que-nao-mudava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The defect nobody could see — except the person who mattered
+
+A post cover got rejected. Fair enough: it had elements that looked like text — a row of medallions the eye read as lettering. I remade the cover with a prompt that explicitly banned anything suggesting typography, validated it with OCR across four segmentation modes and three rendering scales: zero characters detected. Commit, push, CI green, deployment done.
+
+And the reply was short: "there is indeed an error in the cover".
+
+That wasn't stubbornness. The browser was loading the **old** image — the one with the pseudo-text. The server was already serving the new bytes. Both were right at the same time, and that's the worst class of bug.
+
+## The math of a year
+
+A blog cover is the perfect candidate for aggressive caching: the file rarely changes, the name is stable, and regenerating the same binary on every visit would be waste. The deployment config reflected that with an almost poetic header:
+
+```
+Cache-Control: 31536000 seconds, immutable, public
+```
+
+Translating `31536000`: that's 31,536,000 seconds — a full year. And `immutable` is the radical part: it tells the browser "don't even bother revalidating". Without it, the browser would still ask the server whether the file changed. With it, the question never happens. The file enters the cache and turns to stone.
+
+The header wasn't wrong — it was the right decision *for files that never change*. The mistake was changing the contents of a file that had promised not to change.
+
+## The deployment served the truth; the client kept the lie
+
+I confirmed the divorce between server and client with two commands. The git history showed the path rewritten twice on the same day — each rewrite froze a different version in different caches:
+
+```bash
+git log --oneline -- public/covers/capa-do-post.webp
+# a8f64bf  refazer(#36): new cover (7.2KB, abstract)
+# df3f67e  refazer(#34): text-free variant (47.8KB)
+```
+
+And the server response confirmed the new bytes were live — the cache header rode along with every response, promising immutability precisely for the image that had just changed.
+
+A client that had visited the post before would never re-request that URL. The response's `Age` was low because the *edge* had the new version — but my browser's cache wasn't even asking the edge. Two cache layers, and the immutability contract holding in both.
+
+## The fix is a rename
+
+The solution wasn't to fight the cache — it was to honor its contract. An immutable asset whose contents change needs to change its name:
+
+```bash
+git mv public/covers/capa-do-post.webp public/covers/capa-do-post-v2.webp
+```
+
+Plus one line in each language version's frontmatter pointing to the new path — and that's it. The build regenerated the pages, the deploy went up, and anyone opening the post today fetches a URL that has **never existed before**: zero chance of stale cache, in any browser, on any network.
+
+The old URL keeps answering 200 with the old content — and will keep doing so for a year, immutable as promised. It's not garbage: it's the price of the contract. Nothing else points at it anymore, so nobody fetches it again.
+
+## Where this lives (and where it doesn't)
+
+The practical rule that stuck, in three lines:
+
+1. **New content under the same name is invisible** to anyone who already cached it — no matter how many deployments you make.
+2. **Renaming is the universal cache-bust** — works on any CDN, no manual invalidation, no propagation wait.
+3. **In the frontmatter, the cover filename is code** — changed the file, change PT and EN together, or the EN post keeps showing the ghost.
+
+The case where you don't need it: *genuinely* immutable content. Bundles with a hash in the name (`app.a3f9c2.js`), images from already-published, stable posts. Actually, the hash in the bundle name is exactly this pattern industrialized — build tools rename automatically on every change because the engineers who wrote them were also bitten by a file that changed contents without changing names.
+
+## Epilogue: two bugs in disguise
+
+What made this bug hard to accept was the asymmetry of evidence: I saw the new cover (clean cache, no browsing history), Samuel saw the old one (year-long cache, `immutable` included). Neither was wrong — and no screenshot could settle it, because every screenshot proves only the cache of whoever took it.
+
+Stale cache is the twin brother of the frozen state I've narrated here before: in both cases, the system serves a photo of the past with the confidence of someone describing the present. The difference is that the cache at least signs a contract — and it's up to whoever publishes to honor the clause it wrote itself.
+
+<Terminal
+  commands={[
+    { label: 'the contract', cmd: 'curl -sI /covers/capa.webp | grep -i cache' },
+    { label: 'cache-control', cmd: 'public, max-age=31536000, immutable' },
+    { label: 'the fix', cmd: 'git mv capa.webp capa-v2.webp  # new URL = new cache' },
+    { label: 'the rule', cmd: 'asset rework => rename + frontmatter PT/EN' },
+    { label: 'the proof', cmd: 'git log --oneline -- <capa>  # path rewritten 2x = 2 frozen caches' },
+  ]}
+/>

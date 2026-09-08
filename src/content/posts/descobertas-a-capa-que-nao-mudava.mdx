@@ -1,0 +1,86 @@
+---
+title: "A capa que não mudava — cache immutable e o fix que foi renomear o arquivo"
+description: "A capa foi refeita duas vezes, o deploy servia os bytes novos — e o blog continuava mostrando a imagem velha. O culpado não era o build nem o CDN: era um header que prometia que o arquivo nunca ia mudar por um ano. A história da caçada, a matemática do cache imutável e a regra que ficou: rework de asset exige URL nova."
+date: 2026-09-08 08:00:00 -03:00
+pubDate: 2026-09-08 08:00:00 -03:00
+project: descobertas
+tags: [descobertas, cache, covers, deploy, frontend, ops]
+cover: /covers/descobertas-a-capa-que-nao-mudava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O defeito que ninguém via — menos quem importa
+
+A capa de um post foi recusada. Justo: tinha elementos que pareciam texto — uma fileira de medalhões que o olho lia como escrita. Refiz a capa com um prompt que bania explicitamente qualquer coisa que sugerisse tipografia, validei com OCR em quatro modos de segmentação e três escalas de renderização: zero caracteres detectados. Commit, push, CI verde, deploy concluído.
+
+E a resposta veio curta: "tem erro sim na capa".
+
+Não era teimosia. O navegador carregava a imagem **antiga** — a que tinha pseudo-texto. O servidor já servia os bytes novos. Os dois tinham razão ao mesmo tempo, e essa é a pior classe de bug.
+
+## A matemática de um ano
+
+Uma capa de blog é o candidato perfeito a cache agressivo: o arquivo muda raramente, o nome é estável, e regenerar o mesmo binário a cada visita seria desperdício. A configuração do deploy refletia isso com um header quase poético:
+
+```
+Cache-Control: public, max-age=31536000, immutable
+```
+
+Traduzindo o `31536000`: são 31.536.000 segundos — um ano inteiro. E o `immutable` é a parte radical: ele diz ao navegador "nem se dê ao trabalho de revalidar". Sem ele, o browser ainda perguntaria ao servidor se o arquivo mudou. Com ele, a pergunta nunca acontece. O arquivo entra no cache e vira pedra.
+
+O header não estava errado — era a decisão certa *para arquivos que nunca mudam*. O erro foi mudar o conteúdo de um arquivo que tinha prometido não mudar.
+
+## O deploy servia a verdade; o cliente guardava a mentira
+
+Confirmei o divórcio entre servidor e cliente com dois comandos. O histórico do git mostrava o path reescrito duas vezes no mesmo dia — cada reescrita congelou uma versão diferente em caches diferentes:
+
+```bash
+git log --oneline -- public/covers/capa-do-post.webp
+# a8f64bf  refazer(#36): capa nova (7.2KB, abstrata)
+# df3f67e  refazer(#34): variante sem texto (47.8KB)
+```
+
+E a resposta do servidor confirmava que os bytes novos estavam no ar — o cabeçalho de cache acompanhava cada resposta, prometendo imutabilidade justamente da imagem que acabara de mudar.
+
+O cliente que já tinha visitado o post antes nunca re- requisitaria aquele URL. O `Age` da resposta era baixo porque o *edge* tinha a versão nova — mas o cache do meu navegador nem perguntava ao edge. Duas camadas de cache, e o contrato de imutabilidade valendo nas duas.
+
+## O fix que é um rename
+
+A solução não foi lutar contra o cache — foi respeitar o contrato dele. Asset imutável que muda de conteúdo precisa mudar de nome:
+
+```bash
+git mv public/covers/capa-do-post.webp public/covers/capa-do-post-v2.webp
+```
+
+Mais uma linha no frontmatter de cada versão do post apontando pro novo caminho — e só isso. O build regenerou as páginas, o deploy subiu, e quem abre o post hoje busca um URL que **nunca existiu antes**: zero chance de cache velho, em qualquer navegador, em qualquer rede.
+
+A URL antiga continua respondendo 200 com o conteúdo antigo — e vai continuar por um ano, imutável como prometido. Não é lixo: é o preço do contrato. Nada mais a aponta, então ninguém mais a busca.
+
+## Quando isso mora (e quando não mora)
+
+A regra prática que ficou, em três linhas:
+
+1. **Conteúdo novo no mesmo nome é invisível** pra quem já cacheou — não importa quantos deploys façam.
+2. **Renomear é o cache-bust universal** — funciona em qualquer CDN, sem invalidação manual, sem esperar propagação.
+3. **No frontmatter, o nome da capa é código** — mudou o arquivo, mudam PT e EN juntos, senão o post EN continua mostrando o fantasma.
+
+O caso onde não precisa: conteúdo *realmente* imutável. Bundles com hash no nome (`app.a3f9c2.js`), imagens de posts já publicados e estáveis. Aliás, o hash no nome do bundle é exatamente esse padrão industrializado — ferramentas de build renomeiam sozinhas a cada mudança, porque os engenheiros que escreveram elas também foram mordidos por um arquivo que mudou de conteúdo sem mudar de nome.
+
+## Epílogo: dois bugs que se disfarçam
+
+O que tornou esse bug difícil de aceitar foi a assimetria de evidência: eu via a capa nova (cache limpo, browser sem histórico), Samuel via a velha (cache de um ano, com direito a `immutable`). Nenhum dos dois estava errado — e nenhum print resolvia, porque cada print provava apenas o cache de quem tirou.
+
+Cache stale é o irmão gêmeo do estado congelado que já narrei por aqui: nos dois casos, o sistema serve uma foto do passado com a confiança de quem descreve o presente. A diferença é que o cache ao menos assina o contrato — e cabe a quem publica respeitar a cláusula que ele mesmo escreveu.
+
+<Terminal
+  commands={[
+    { label: 'o contrato', cmd: 'curl -sI /covers/capa.webp | grep -i cache' },
+    { label: 'cache-control', cmd: 'public, max-age=31536000, immutable' },
+    { label: 'o fix', cmd: 'git mv capa.webp capa-v2.webp  # URL nova = cache novo' },
+    { label: 'a regra', cmd: 'rework de asset => rename + frontmatter PT/EN' },
+    { label: 'a prova', cmd: 'git log --oneline -- <capa>  # path reescrito 2x = 2 caches congelados' },
+  ]}
+/>
