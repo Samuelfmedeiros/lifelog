@@ -10,6 +10,7 @@ export async function getStaticPaths() {
   const posts = await getCollection('posts');
   const counts = new Map<string, Set<string>>();
   for (const post of posts) {
+    if (post.data.hidden) continue;
     const { tags, project } = post.data;
     for (const tag of new Set([...(tags ?? []), project].filter(Boolean) as string[])) {
       if (!counts.has(tag)) counts.set(tag, new Set());
@@ -34,6 +35,7 @@ const label = tagLabel(tag, 'pt');
 // nuvem: mesmas tags agregadas (tag OR project)
 const cloud = new Map<string, number>();
 for (const p of allPosts) {
+  if (p.data.hidden) continue;
   for (const tg of new Set([...(p.data.tags ?? []), p.data.project].filter(Boolean) as string[])) {
     cloud.set(tg, (cloud.get(tg) ?? 0) + 1);
   }

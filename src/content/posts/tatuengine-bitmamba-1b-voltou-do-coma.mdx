@@ -1,0 +1,61 @@
+---
+title: "O modelo que voltou do coma"
+description: "Um BitMamba 1B catatônico — tokenizador quebrado, gradientes a 10^18, ENOMEM no meio da madrugada e um wedge de CUDA que fingia ser GPU morta — fechou 500 steps e a validação reproduziu o eval loss até o quarto dígito. O diário da Fase 4B numa RTX 3060 de 12 GB."
+date: 2026-09-08 17:40:00 -03:00
+pubDate: 2026-09-08 17:40:00 -03:00
+project: tatuengine
+tags: [tatuengine, mamba, ssm, training, gpu, debugging]
+cover: /covers/tatuengine-bitmamba-1b-voltou-do-coma.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+Quando a Fase 4B começou, o aluno — um BitMamba de 1.018 bilhão de parâmetros, 32 camadas, d_model 2048, vocabulário 50257, tudo em bf16 — estava tecnicamente vivo e praticamente morto. Loss flutuando no patamar de um modelo que não aprendeu nada, gradientes estourando na casa de 10^18, e a suspeita inicial pior possível: e se o tokenizador estiver quebrado e todo o treino for ruído?
+
+Este post é o diário do resgate. Não é um tutorial — é a autópsia de um treino que quase não sobreviveu à própria máquina.
+
+## O diagnóstico: não era o modelo, era o mundo dele
+
+A primeira lição veio cedo: o modelo não estava doente. O *ecossistema* em volta dele estava. Cada sintoma "de treino" que aparecia tinha uma causa embaixo da camada de Python:
+
+- **Gradientes a 10^18** com perda congelada apontavam para tokenizador — mas o vilão real era uma mistura de inicialização mal calibrada com dados que escapavam do esperado. Corrigir a calibração e sanear o pipeline devolveu os gradientes ao mundo dos mortais.
+- **ENOMEM no torch.load** tinha duas caras. A óbvia: RAM do host abaixo de 1 GB virava loteria. A sorrateira: o `SystemError: readinto` mascarava o Errno 12 original — o erro real só aparecia quando você insistia em ler a stack inteira.
+- **DrvFs (a ponte com o disco Windows) corrompendo checkpoints no torch.save** — o arquivo saía truncado e o resume morria no meio. A cura foi quarentena: salvar em disco nativo, verificar integridade, promover o checkpoint só depois de aprovado.
+
+Cada um desses, isolado, parece um bug comum. Somados, em uma RTX 3060 de 12 GB com 32 GB de RAM dividida com o resto do sistema, formavam um ambiente onde *o treino morria de causas ambientais* e o diagnóstico apontava sempre para o lugar errado.
+
+## O wedge que fingia ser hardware morto
+
+O capítulo mais insidioso: depois de um boot do WSL, a GPU aparecia com `nvidia-smi` marcando 100% de utilização a 60 W — números mutuamente absurdos (nenhuma carga real consome tão pouco; nenhum idle marca 100%). O PID do processo dominante: `[Not Found]`.
+
+Traduzindo: um contexto CUDA zumbi sobreviveu ao processo que o criou e estava segurando a GPU por dentro, sem ferramenta de linha de comando que o alcançasse. Os relançamentos automáticos do watcher abortavam silenciosamente porque o lock do treino — um `flock` — pertencia ao próprio zumbi. O sistema achava que o treino estava vivo; o treino era um fantasma.
+
+A cura: matar o grupo de processo inteiro (`kill -9` no PGID), confirmar que a VRAM despencou de 12 GB para 400 MiB, e só então relançar. O bench de matmul separado virou o detector: se a GPU sã fizer mais de 2 TFLOPS, o problema nunca foi hardware.
+
+## Onde a memória morava
+
+A aritmética de uma RTX 3060 é implacável: 12 GB de VRAM para modelo, otimizador, ativações e o resto do sistema disputando. A descoberta que destravou a fase foi que o load do modelo só passa com RAM de host folgada — menos de 3 GB livres e o `torch.load` falha mesmo com VRAM de sobra. O Windows, por sua vez, não devolve memória do WSL de boa vontade: o processo da VM segura o que agarrou, e a cura é interna (reclamar os ~6 GB de cache de volta via cgroup) antes de relançar qualquer coisa.
+
+Os checkpoints, então, quase afundaram o disco: com checkpoint a cada step, 43 diretórios de 3,9 GB encheram o drive a 94% durante a madrugada. O Disk Guard acionou, a limpeza manteve só os dois últimos steps e o disco voltou a respirar.
+
+## O fechamento: a validação que não mente
+
+E no fim, o momento que paga a fase inteira. A validação independente rodou o checkpoint final:
+
+- **291 tensores** inspecionados — **0 NaN, 0 Inf**.
+- Arquitetura conferida dígito a dígito: 32 camadas, d_model 2048, vocabulário 50257, 1.018 B de parâmetros em bf16.
+- Eval loss de **10.2338** reproduzido **no quarto dígito decimal** pela suite de validação, em 167 segundos de GPU.
+- Pacote final íntegro: 297 entradas no arquivo, checksums conferidos.
+
+Reproduzir uma métrica até o quarto dígito é o tipo de silêncio que só existe quando tudo está certo. Não tem comemoração — tem alívio.
+
+## O que fica
+
+1. **Diagnóstico por baixo pra cima.** Sintoma "de treino" quase sempre tem causa de infraestrutura: memória, disco, drivers, contexto órfão. Antes de culpar o modelo, interrogue o mundo dele.
+2. **Zumbis existem e seguram locks.** Estado "vivo" segundo o monitor pode ser fantasma segundo a realidade. Validar com prova física (bench, VRAM, PID) antes de qualquer relançamento.
+3. **Erros mascarados são o inimigo real.** O `SystemError` genérico escondendo o `Errno 12` custou horas; o erro original importava, o disfarce não.
+4. **Quarentena + verificação antes de promover.** Checkpoint escrito é checkpoint *candidato*. Só confie depois da integridade verificada.
+5. **Watchdogs com critério de morte.** Relançar cegamente alimenta zumbis. O monitor precisa saber distinguir "morreu" de "está fingindo que está vivo".
+
+A Fase 4B termina com 500/500 steps e o aluno fora do coma. A 4C já tem plano na mesa: destilação com professor maior e um pipeline de coleta de dados novo. Mas essa é outra história — e, provavelmente, outro diário de autópsia.
