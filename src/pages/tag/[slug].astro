@@ -4,7 +4,7 @@ import PostCard from '../../components/PostCard.astro';
 import TagCloud from '../../components/TagCloud.astro';
 import { getCollection } from 'astro:content';
 import { getTranslations } from '../../lib/i18n';
-import { TAG_VOCAB, tagLabel } from '../../lib/tag-vocab';
+import { tagLabel } from '../../lib/tag-vocab';
 
 export async function getStaticPaths() {
   const posts = await getCollection('posts');
@@ -39,7 +39,7 @@ for (const p of allPosts) {
   }
 }
 const cloudTags = [...cloud.entries()].map(([name, count]) => ({ name, count }));
-const homeHref = '/';
+// homeHref removido — breadcrumb usa / direto (lint no-unused-vars)
 ---
 
 <BaseLayout title={`${label} — ${t.home.title}`} description={`Posts com a tag ${label}`} locale={locale}>

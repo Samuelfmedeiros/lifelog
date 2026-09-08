@@ -11,7 +11,7 @@ export interface Props {
 const { tags, locale } = Astro.props;
 const isEn = locale === 'en';
 const title = isEn ? 'Browse by tags' : 'Navegar por tags';
-const homeHref = isEn ? '/en/' : '/';
+// homeHref removido — TagCloud nao linka pra home (lint no-unused-vars)
 const emptyText = isEn ? 'No tags yet' : 'Nenhuma tag ainda';
 
 // Ordena por frequência (mais usada primeiro) e limita a 50

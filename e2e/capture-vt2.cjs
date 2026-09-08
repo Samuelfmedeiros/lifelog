@@ -29,7 +29,7 @@ const { chromium } = require('@playwright/test');
   // Dispara VT
   await page.evaluate(() => {
     window.__frameData = [];
-    const t0 = performance.now();
+    
     const origStart = document.startViewTransition;
     document.startViewTransition = function(cb) {
       window.__vtTs = performance.now();

@@ -16,7 +16,7 @@ export interface Props {
 }
 
 import { tagLabel } from '../lib/tag-vocab';
-const { title, description, date, project, tags, slug, icon, cover, index, locale } = Astro.props;
+const { title, description, date, project, tags, slug, cover, index, locale } = Astro.props;
 const isEn = locale === 'en';
 const dateLocale = isEn ? 'en-US' : 'pt-BR';
 const formattedDate = date.toLocaleDateString(dateLocale, {
