@@ -1,0 +1,57 @@
+---
+title: "O erro que salvou o banco de dados"
+description: "Um teste apagava as tabelas RAG no teardown. Numa rodada, a variável de ambiente apontando pro banco isolado foi ignorada pelo engine — e o DELETE caiu no arachne.db de produção, com o server vivo escrevendo nele. O que salvou os dados foi uma mensagem de erro."
+date: 2026-09-08 21:30:00 -03:00
+pubDate: 2026-09-08 21:30:00 -03:00
+lang: "pt"
+project: "arachne"
+tags: [arachne, testing, production, debugging, guardrails]
+cover: "/covers/arachne-o-erro-que-salvou-o-banco.webp"
+featured: false
+hidden: true
+---
+
+Aqui vai um confessionário de backend. Na quarta-feira passada, quase apaguei o banco de dados do Arachne em produção. E o que salvou os dados não foi um backup, nem um guard planejado — foi uma mensagem de erro, do tipo que a gente xinga sem ler.
+
+## O que o teste fazia
+
+O Arachne tem uma suíte que valida o grafo de conhecimento cruzado — o teste cria uma base de conhecimento temporária, roda as consultas e, no teardown, limpa tudo. O teardown varria o metadata do SQLModel e executava `DELETE` em todas as tabelas que começavam com `rag_`, mais três tabelas auxiliares: os templates de KB, as sessões de conversação e os compartilhamentos. Higiene padrão de fixture: o teste nasce limpo, o teste morre limpo.
+
+Para isolar o teste do banco real, o setup apontava `RAG_DATABASE_URL` pra um banco temporário. A variável estava lá. O banco tmp era criado. No papel, perfeito.
+
+## O que deu errado
+
+Só que existe uma diferença entre *setar* uma variável de ambiente e *alguém a ler*. O engine global do app — aquele que a fixture não controla, importado no boot — usa a `database_url` das settings, que aponta pro `sqlite:///arachne.db`. De produção. Com o server na porta 9000, vivo, servindo requisições, escrevendo nele naquele exato momento.
+
+Na rodada da tarde, o teardown executou o DELETE. Não no banco tmp. No banco de produção.
+
+E então aconteceu a coisa mais estranha possível: **o erro salvou tudo**. O SQLite abortou com `database disk image is malformed` — a escrita concorrente do server tinha invalidado a imagem do banco sob o cursor do DELETE, e o mecanismo do SQLite, mais uma barreira do que uma cortesia, recusou continuar. Nenhuma tabela foi tocada. Os dados reais — toda a base de conhecimento indexada, os chunks, os metadados de KB — sobreviveram.
+
+Salvos por sorte. Porque a mesma escrita concorrente que abortou o DELETE podia, num timing diferente, ter deixado o DELETE passar. Ninguém escolheu isso. Não havia guarda, havia coincidência.
+
+## O fix
+
+Duas horas depois, o guard estava no lugar (commit `33529ddd`): o teardown agora compara o path do banco contra a `DATABASE_URL` que o engine **realmente** importa, e só executa o cleanup se o engine apontar pro banco temporário. Se apontar pra qualquer outra coisa — produção, outro ambiente, o que for — o teardown falha alto e não apaga nada.
+
+```python
+from app.database import DATABASE_URL as _db_url
+if str(db_path) in str(_db_url or ""):
+    # só limpa se o engine estiver no banco tmp
+    ...
+```
+
+Uma comparação de string. Cinco linhas. A diferença entre "salvo por sorte" e "impossível por design".
+
+## As lições que ficaram
+
+**Variável de ambiente não é contrato.** O teste setava `RAG_DATABASE_URL` com a melhor das intenções, mas quem decide o destino do `engine.begin()` é o módulo que *consome* a configuração — e esse módulo lia outra coisa. Antes de confiar num env var, ler quem a consome. Intenção não roda código.
+
+**Operação destrutiva em fixture precisa de guarda explícita.** "O teste limpa o que criou" é uma boa regra até o dia em que o cleanup apaga o que *outro processo* criou. A guarda certa é fail-closed: só execute a destruição quando você puder provar que está no lugar certo. Em caso de dúvida, abortar é o comportamento correto.
+
+**Salvo por sorte é dívida.** O incidente não causou dano — dessa vez. Mas o mecanismo que salvou (concorrência de escrita) era aleatório, e aleatoriedade que protege dados é uma loteria rodando contra você. O guard transformou a loteria em determinismo.
+
+**Os erros que a gente xinga são os melhores funcionários.** O `malformed` do SQLite é feio, genérico e parece bug. Naquele dia foi um guarda-costas. Prefiro esse erro barulhento em dev do que o silêncio elegante que apaga produção sem avisar.
+
+## O que vem depois
+
+A suíte agora roda com a guarda em todos os teardowns destrutivos, e o padrão virou checklist: qualquer fixture que apague algo prova primeiro *onde* está apagando. A próxima fase de endurecimento do Arachne ataca exatamente essa classe de risco — configuração que parece isolar mas não isola.

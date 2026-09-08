@@ -1,0 +1,57 @@
+---
+title: "The error that saved the database"
+description: "A test was deleting RAG tables on teardown. One run, the environment variable pointing at the isolated database was ignored by the engine — and the DELETE landed on the production arachne.db, with the live server writing to it. What saved the data was an error message."
+date: 2026-09-08 21:30:00 -03:00
+pubDate: 2026-09-08 21:30:00 -03:00
+lang: "en"
+project: "arachne"
+tags: [arachne, testing, production, debugging, guardrails]
+cover: "/covers/arachne-o-erro-que-salvou-o-banco.webp"
+featured: false
+hidden: true
+---
+
+Here's a backend confession. Last Wednesday I nearly deleted the Arachne production database. And what saved the data wasn't a backup, nor a planned guard — it was an error message, the kind you curse without reading.
+
+## What the test did
+
+Arachne has a suite that validates the cross-referenced knowledge graph — the test creates a temporary knowledge base, runs the queries, and cleans everything up on teardown. The teardown walked the SQLModel metadata and issued `DELETE` against every table starting with `rag_`, plus three helper tables: KB templates, conversation sessions, and shares. Standard fixture hygiene: the test is born clean, the test dies clean.
+
+To isolate the test from the real database, the setup pointed `RAG_DATABASE_URL` at a temporary database. The variable was there. The tmp database was created. On paper, flawless.
+
+## What went wrong
+
+There's a difference between *setting* an environment variable and *someone reading it*. The app's global engine — the one the fixture doesn't control, imported at boot — uses the settings' `database_url`, which points at `sqlite:///arachne.db`. Production. With the server on port 9000, alive, serving requests, writing to it at that exact moment.
+
+That afternoon run, the teardown executed the DELETE. Not on the tmp database. On production.
+
+And then the strangest thing happened: **the error saved everything**. SQLite aborted with `database disk image is malformed` — the server's concurrent write had invalidated the database image under the DELETE's cursor, and SQLite's mechanism, more of a barrier than a courtesy, refused to continue. Not a single table was touched. The real data — the whole indexed knowledge base, the chunks, the KB metadata — survived.
+
+Saved by luck. Because the same concurrent write that aborted the DELETE could, on a different timing, have let the DELETE through. Nobody chose that. There was no guard, there was coincidence.
+
+## The fix
+
+Two hours later the guard was in place (commit `33529ddd`): the teardown now compares the database path against the `DATABASE_URL` the engine **actually** imports, and only runs the cleanup if the engine points at the temporary database. If it points anywhere else — production, another environment, whatever — the teardown fails loudly and deletes nothing.
+
+```python
+from app.database import DATABASE_URL as _db_url
+if str(db_path) in str(_db_url or ""):
+    # only clean up if the engine is on the tmp database
+    ...
+```
+
+A string comparison. Five lines. The difference between "saved by luck" and "impossible by design".
+
+## The lessons
+
+**An environment variable is not a contract.** The test set `RAG_DATABASE_URL` with the best of intentions, but what decides where `engine.begin()` lands is the module that *consumes* the configuration — and that module read something else. Before trusting an env var, read who consumes it. Intent doesn't run code.
+
+**Destructive fixtures need explicit guards.** "The test cleans up what it created" is a good rule until the cleanup deletes what *another process* created. The right guard is fail-closed: only execute destruction when you can prove you're in the right place. In doubt, aborting is the correct behavior.
+
+**Saved by luck is debt.** The incident caused no damage — this time. But the mechanism that saved it (write concurrency) was random, and randomness that protects data is a lottery running against you. The guard turned the lottery into determinism.
+
+**The errors we curse are the best employees.** SQLite's `malformed` is ugly, generic and looks like a bug. That day it was a bodyguard. I'll take that loud error in dev over the elegant silence that wipes production without a word.
+
+## What's next
+
+The suite now runs with the guard on every destructive teardown, and the pattern became a checklist: any fixture that deletes something first proves *where* it is deleting. The next hardening phase for Arachne targets exactly this class of risk — configuration that looks isolating but isn't.
