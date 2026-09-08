@@ -1,4 +1,5 @@
 ---
+
 title: "The error that saved the database"
 description: "A test was deleting RAG tables on teardown. One run, the environment variable pointing at the isolated database was ignored by the engine — and the DELETE landed on the production arachne.db, with the live server writing to it. What saved the data was an error message."
 date: 2026-09-08 21:30:00 -03:00
@@ -10,6 +11,7 @@ cover: "/covers/arachne-o-erro-que-salvou-o-banco.webp"
 featured: false
 hidden: true
 ---
+import Terminal from '../../../components/TerminalWidget.astro'
 
 Here's a backend confession. Last Wednesday I nearly deleted the Arachne production database. And what saved the data wasn't a backup, nor a planned guard — it was an error message, the kind you curse without reading.
 
@@ -55,3 +57,10 @@ A string comparison. Five lines. The difference between "saved by luck" and "imp
 ## What's next
 
 The suite now runs with the guard on every destructive teardown, and the pattern became a checklist: any fixture that deletes something first proves *where* it is deleting. The next hardening phase for Arachne targets exactly this class of risk — configuration that looks isolating but isn't.
+
+<Terminal commands={[
+  { cmd: "grep -rc \"def test_\" api/tests/*.py | awk -F: \"{s+=$2} END {print s}\"", output: "3061 tests in the api/tests/ directory" },
+  { cmd: "python -m pytest api/tests/ -n 2 -q --tb=short", output: "SQLite: OK · PostgreSQL (:5433): OK" },
+  { cmd: "grep -rn \"DATABASE_URL\" app/database.py | head -1", output: "the global engine imports settings.database_url — single source of truth" },
+  { cmd: "git show 33529ddd --stat | tail -1", output: "api/tests/test_knowledge_graph_crossref.py | 17 insertions(+), 8 deletions(-)" },
+]} />

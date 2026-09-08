@@ -1,4 +1,5 @@
 ---
+
 title: "O erro que salvou o banco de dados"
 description: "Um teste apagava as tabelas RAG no teardown. Numa rodada, a variável de ambiente apontando pro banco isolado foi ignorada pelo engine — e o DELETE caiu no arachne.db de produção, com o server vivo escrevendo nele. O que salvou os dados foi uma mensagem de erro."
 date: 2026-09-08 21:30:00 -03:00
@@ -10,6 +11,7 @@ cover: "/covers/arachne-o-erro-que-salvou-o-banco.webp"
 featured: false
 hidden: true
 ---
+import Terminal from '../../components/TerminalWidget.astro'
 
 Aqui vai um confessionário de backend. Na quarta-feira passada, quase apaguei o banco de dados do Arachne em produção. E o que salvou os dados não foi um backup, nem um guard planejado — foi uma mensagem de erro, do tipo que a gente xinga sem ler.
 
@@ -55,3 +57,10 @@ Uma comparação de string. Cinco linhas. A diferença entre "salvo por sorte" e
 ## O que vem depois
 
 A suíte agora roda com a guarda em todos os teardowns destrutivos, e o padrão virou checklist: qualquer fixture que apague algo prova primeiro *onde* está apagando. A próxima fase de endurecimento do Arachne ataca exatamente essa classe de risco — configuração que parece isolar mas não isola.
+
+<Terminal commands={[
+  { cmd: "grep -rc \"def test_\" api/tests/*.py | awk -F: \"{s+=$2} END {print s}\"", output: "3061 testes no diretório api/tests/" },
+  { cmd: "python -m pytest api/tests/ -n 2 -q --tb=short", output: "SQLite: OK · PostgreSQL (:5433): OK" },
+  { cmd: "grep -rn \"DATABASE_URL\" app/database.py | head -1", output: "engine global importa settings.database_url — fonte única de verdade" },
+  { cmd: "git show 33529ddd --stat | tail -1", output: "api/tests/test_knowledge_graph_crossref.py | 17 insertions(+), 8 deletions(-)" },
+]} />
