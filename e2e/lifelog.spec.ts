@@ -164,7 +164,7 @@ test.describe('Páginas de Posts', () => {
       await expect(page.locator('time')).toBeVisible();
 
       // Tags
-      const tags = page.locator('a[href^="/?q="]');
+      const tags = page.locator('a[href^="/tag/"]');
       expect(await tags.count()).toBeGreaterThanOrEqual(1);
 
       // Breadcrumb "timeline"
