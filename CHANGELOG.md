@@ -1,5 +1,15 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-07] — 3 posts pipeline + releases + fix tags + recusa #37
+- **post(a)** (`fdcc173`): seguranca-o-vigia-nao-sabe-quem-voce-e (PT+EN, hidden) — corrida de auto-reparo, protocolo com confirmação tardia; capa Worker 456KB
+- **releases** (`7ac1da7`, `a424d3a`, `101a14b`, `8369110`): capivara-o-revisor-que-nao-le-codigo + seguranca-o-vigia (PT+EN)
+- **post(b)** (`9718315`): arachne-trinta-commits-ate-o-verde (PT+EN, hidden) — campanha do CI (-n 4 engolido, FK ON na fixture, cap xdist 4)
+- **fix(tags)** (`fc1dce2`): normaliza e completa tags dos posts (PT+EN) — 67 arquivos
+- **post(c)** (`5b87ae5`): dogwalk-o-link-que-a-gente-mandava-pra-voce (PT+EN, hidden) — share de tracking público (token idempotente, payload mínimo)
+- **refazer(#37)** (`bb01cbc`, `52d69f3`): recusa do post dogwalk-o-link — remoção total
+- 12 commits no dia · push origin OK · HEAD: `8b51a11`
+
+
 
 ## [2026-09-06] — posts tatuengine/capivara revisor + releases
 - **post(tatuengine)**: o treino que acordou lento — fix base_lrs pós-ckpt, PT+EN hidden + capa NIM (85c2d29) · releases PT+EN (9b861e2, 64f1788)

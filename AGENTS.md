@@ -35,6 +35,17 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-07 (fim de dia) — 3 posts pipeline + releases + fix tags + recusa #37
+
+- **post(a)** (`fdcc173`): seguranca-o-vigia-nao-sabe-quem-voce-e (PT+EN, hidden) — re-baseline desfeito por corrida entre rotinas de auto-reparo; alarme de integridade apontou edição legítima; protocolo com confirmação tardia; capa Worker 456KB brilho 156 OCR limpo
+- **releases** (`7ac1da7`, `a424d3a`, `101a14b`, `8369110`): capivara-o-revisor-que-nao-le-codigo + seguranca-o-vigia (PT+EN)
+- **post(b)** (`9718315`): arachne-trinta-commits-ate-o-verde (PT+EN, hidden) — a campanha do CI: comentário YAML engolia `-n 4` no `run:`, fixture crossref nascia com FK ON (`engine.dispose` resolve), xdist `-n auto` matava workers (cap 4 + timeout 300s); capa Worker FLUX 191KB brilho 170 OCR limpo
+- **fix(capa)** (`5b574de`): capa AI de seguranca-o-vigia refeita (watchdog)
+- **fix(tags)** (`fc1dce2`): normaliza e completa tags dos posts (PT+EN) — 67 arquivos
+- **post(c)** (`5b87ae5`): dogwalk-o-link-que-a-gente-mandava-pra-voce (PT+EN, hidden) — share público de tracking: token idempotente, payload mínimo (nunca tutor/walker), ETA honesto que cala atraso, botão órfão reencontrado na UI real; capa Worker FLUX 175KB
+- **refazer(#37)** (`bb01cbc`, `52d69f3`): recusa do post dogwalk-o-link — remoção total (PT+EN+capa), recusa sem nota de ajuste
+- 12 commits no dia · push origin OK · HEAD: `8b51a11`
+
 ## Sessão 2026-09-06 (fim de dia) — posts tatuengine/capivara revisor + releases
 - **post(tatuengine)**: o treino que acordou lento — fix base_lrs do scheduler após load de ckpt (PT+EN, hidden, capa NIM 17.6KB brilho 225 OCR limpo) (85c2d29) + release PT (`9b861e2`) + release EN (`64f1788`)
 - **post(capivara)**: o revisor que não lia código — tema claro auditado por VLM: tokens vs rgba + email truncado no header (PT+EN, hidden, capa NIM seed 2028 webp 42KB brilho 181 OCR zero) (f60f7e6)
