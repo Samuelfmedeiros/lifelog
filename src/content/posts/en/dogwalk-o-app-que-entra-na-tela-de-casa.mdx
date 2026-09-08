@@ -1,0 +1,201 @@
+---
+title: "The app that makes it to the home screen"
+description: "PataPass was a website wearing an app costume — and the browser made that obvious at the worst possible moment: inside an elevator with no signal. The story of Phase 4F: an install banner driven by beforeinstallprompt, an offline page served by the service worker, and the decision to never cache HTML."
+date: 2026-09-05 19:30:00 -03:00
+pubDate: 2026-09-08 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, progressive-web-app, service-worker, offline, workbox, react, frontend]
+cover: /covers/dogwalk-o-app-que-entra-na-tela-de-casa.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The proof test arrived in an elevator
+
+There's a test no staging environment can reproduce: the elevator ride. PataPass
+already had a service worker, tile caching for the map in IndexedDB, push
+notifications. On a laptop, everything worked. But "working" on a laptop is the
+most generous scenario there is: stable network, app open in a tab, warm cache.
+
+The real test is a walker in the elevator, no signal, opening the app to check
+next week's schedule. And the browser answers the way it always does: the
+"dinosaur" no-connection screen, and the user closes the tab. On mobile the site
+was still just a visitor — it opened in a Chrome tab, with no icon on the home
+screen, no presence. A site the user never installs never becomes a habit.
+
+Phase 4F (commit `978f4e75`, Sep 5) existed to solve both problems at once:
+**make the app genuinely installable** and **give offline navigation a decent
+place to land**.
+
+## Before designing any screen: use what the browser already offers
+
+The temptation is to build a hand-rolled "add to home screen" flow: a pretty
+modal with per-platform instructions (iOS on one side, Android on the other).
+Someone had already solved this — the only criterion was to use what the
+standard provides.
+
+In Chromium the mechanism is the `beforeinstallprompt` event. The browser fires
+it when **it** decides the site is installable (a decent manifest, a registered
+service worker, icons in place). Before that happens, no modal: the component
+stays asleep. That order matters — if the modal shows up without the event,
+you're asking the user to install something the browser doesn't even consider
+installable yet.
+
+```jsx
+// The banner decides nothing on its own: it only wakes up when the browser authorizes it
+useEffect(() => {
+  if (localStorage.getItem(DISMISS_KEY) === '1') return undefined;
+
+  const onPrompt = (e) => {
+    e.preventDefault(); // suppress the native mini-infobar
+    setDeferredPrompt(e);
+    setVisible(true);
+  };
+  const onInstalled = () => {
+    setVisible(false);
+    setDeferredPrompt(null);
+    localStorage.setItem(DISMISS_KEY, '1');
+  };
+  window.addEventListener('beforeinstallprompt', onPrompt);
+  window.addEventListener('appinstalled', onInstalled);
+  return () => {
+    window.removeEventListener('beforeinstallprompt', onPrompt);
+    window.removeEventListener('appinstalled', onInstalled);
+  };
+}, []);
+```
+
+A note on `e.preventDefault()`: without it, the browser shows its own
+mini-infobar (that little "add to home screen" bubble) on top of our banner.
+Two invitations competing on the same screen is worse than none.
+
+And the `deferredPrompt` we stash in state isn't decorative. It's what allows
+the native install dialog to fire from **our** button, with our copy, on our
+schedule:
+
+```jsx
+const install = async () => {
+  deferredPrompt.prompt();
+  try {
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') localStorage.setItem(DISMISS_KEY, '1');
+  } catch {
+    // user closed the native dialog — nothing to do
+  }
+  setVisible(false);
+  setDeferredPrompt(null);
+};
+```
+
+The `userChoice` that comes back ("accepted" or "dismissed") decides the
+banner's fate: accepted, it never shows again; native dialog closed, the banner
+goes away but returns on the next visit. Dismissing via the X persists the
+choice in `localStorage` — the regression test covers exactly that case: "does
+not reappear once dismissed".
+
+## The offline.html and the sin of caching HTML
+
+The offline page itself is trivial: 31 lines of static HTML with a "Try again"
+button and two listeners that reload once connectivity returns. The hard part
+was the decision around it.
+
+Workbox makes it far too easy to cache everything, and the most common PWA
+recipe ("navigateFallback: /index.html") solves offline by serving the app
+shell. The problem: that turns the cache into a time machine. After a deploy,
+the user who navigated offline gets the **old** `index.html`, which loads the
+new version's assets — breaking at runtime. On a platform with a high deploy
+cadence this isn't a rare bug, it's a guaranteed one.
+
+The decision in `vite.config.js` was radical and deliberate:
+
+```js
+workbox: {
+  maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+  // NEVER cache HTML — it causes a stale page after deploy
+  // offline.html goes into precache as a LITERAL entry (not **/*.html — that
+  // would cache index.html, which navigateFallback=null avoids by design).
+  globPatterns: ['**/*.{js,css,ico,png,svg,ttf,woff2}', 'offline.html'],
+  navigateFallback: null,
+  skipWaiting: true,
+  clientsClaim: true,
+}
+```
+
+Note the detail: `offline.html` lands in `globPatterns` **as a literal entry**,
+never through an `**/*.html` glob. An HTML glob would grab `index.html` too —
+exactly what the policy forbids. Literal means only the file we want, revisioned
+by Workbox like any other asset.
+
+And since the app's HTML is never cached, what holds offline navigation is the
+`setCatchHandler` over in the service worker:
+
+```js
+// Failed navigation → serve /offline.html (precached)
+setCatchHandler(({ event }) => {
+  if (event.request.mode === 'navigate') {
+    return caches
+      .match('/offline.html', { ignoreSearch: true })
+      .then((resp) => resp || Response.error());
+  }
+  return Response.error();
+});
+```
+
+`mode === 'navigate'` is the filter that splits the waters: a document
+navigation with no network gets the offline page; a failing API request, tile
+or asset follows its own path (tiles, for instance, have their own IndexedDB
+strategy with a gray-grid fallback). A network error is no longer a white
+abyss — every resource type has a plan B.
+
+## Tests: a banner is a component, and components lie less under test
+
+A banner that insists on showing up is the worst possible experience — worse
+than having no banner. So the guarantee bar was set high: 5 tests covering the
+states that matter.
+
+```bash
+PASS  src/components/UI/__tests__/InstallPromptBanner.test.jsx
+  InstallPromptBanner
+    - does not render without beforeinstallprompt
+    - renders after the event and install calls prompt()
+    - dismiss hides it and persists to localStorage
+    - does not reappear once dismissed before
+    - hides when the app is installed (appinstalled)
+
+# The whole of Phase 4, same commit:
+#  backend 6/6 (test_profile_work_schedule) + front 5/5 (banner)
+#  + hooks regression 21/21 + TypeCheck 0 errors
+```
+
+The fifth test closes the loop: when the `appinstalled` event arrives (the user
+installed through another path — the address bar, say), the banner disappears
+and marks the decision. No code path leaves the invitation hanging on the
+screen of someone who's already in.
+
+## What remains
+
+Phase 4F shipped the PWA trinity in a single commit: **installation** (a
+well-behaved banner that respects refusal), **offline** (a dedicated page that
+auto-reloads when the network returns) and **deploy integrity** (offline
+navigation never serves stale code). The elevator test now ends differently: no
+signal, the installed app opens its shell, navigation lands on the offline page
+explaining the situation, and the reload happens automatically once the signal
+is back. Nobody sees the browser's dinosaur, and nobody gets a broken page made
+of mixed versions.
+
+The lesson that stuck: a PWA isn't a feature, it's a contract. Installing is
+the user saying "treat me as an app from now on" — and an app that opens
+offline showing stale code broke the contract before any screen could load.
+
+<Terminal
+  client:load
+  commands={[
+    { cmd: 'git show 978f4e75 --stat | tail -5' },
+    { cmd: '12 files changed, 443 insertions(+), 6 deletions(-)' },
+    { cmd: 'grep -n "navigateFallback" vite.config.js' },
+    { cmd: 'navigateFallback: null,   # NEVER cache HTML' },
+  ]}
+/>
