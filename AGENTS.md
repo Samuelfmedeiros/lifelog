@@ -35,6 +35,17 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-08 — 🏷️ Tags Opção C: vocab canônico + /tag/[slug] + guard CI
+
+- **fonte única de verdade** `src/lib/tag-vocab.ts` (TAG_VOCAB + TAG_ALIASES + canonicalizeTag + tagLabel): 332 slugs canônicos EN (língua franca técnica) com label PT (`pt: 'Segurança'`); 96 aliases PT→EN (`seguranca→security`, `automacao→automation`…); projects structural ficam PT (arachne/yurumi/seguranca/estudos…)
+- **guardião** `scripts/check-tags.py`: `--report` | `--fix` | `--strict` (CI). Parseia o vocab do .ts (não duplica lista); checa: tag fora do vocab, tag do projeto ausente, PT/EN divergentes, multi-line, duplicatas, aliases não canonizados; IGNORE_FILES = posts em edição por outra sessão
+- **migração** 272 frontmatters PT/EN idênticos (união PT+EN, ordem PT primeiro), flow single-line, CRLF preservado (`open(newline='')` obrigatório — universal newlines infla diff CRLF→LF)
+- **páginas estáticas** `src/pages/tag/[slug].astro` + `src/pages/en/tag/[slug].astro`: getStaticPaths do vocab real, getCollection PT/EN + união de projetos cross-locale, TagCloud + grid de PostCards; `?q=` segue como fallback na home
+- **chips clicáveis**: PostCard (`a.tag` → `/tag/<slug>` com `tagLabel`), TagCloud (`/tag/<slug>`), PostLayout (href era `?q=` → agora `/en/tag/<slug>`; display `#{tagLabel}`); `<section>` (BaseLayout já tem `<main>` — aninhado quebra build)
+- **testes**: `src/lib/tag-vocab.test.ts` (5/5: invariantes, canonicalize, aliases↔vocab, labels, CI_CD/Segurança) + `e2e/tags.spec.ts` (7/7: yurumi 200 agrega PT+EN, amostra 8 tags, chips clicáveis, TagCloud, 404). Rodar playwright SEMPRE com `--config e2e/playwright.config.ts` (baseURL 4321)
+- **CI**: deploy.yml — `Tag vocabulary check (Opção C)`: `python3 scripts/check-tags.py --strict` após PT/EN sync
+- commit: **pendente** (deploy gate: só "pode subir")
+
 ## Sessão 2026-09-07 (fim de dia) — 3 posts pipeline + releases + fix tags + recusa #37
 
 - **post(a)** (`fdcc173`): seguranca-o-vigia-nao-sabe-quem-voce-e (PT+EN, hidden) — re-baseline desfeito por corrida entre rotinas de auto-reparo; alarme de integridade apontou edição legítima; protocolo com confirmação tardia; capa Worker 456KB brilho 156 OCR limpo

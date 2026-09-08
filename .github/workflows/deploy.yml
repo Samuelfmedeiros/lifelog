@@ -97,6 +97,8 @@ jobs:
 
     - name: PT/EN Sync check
       run: python3 scripts/check-lang-sync.py
+    - name: Tag vocabulary check (Opção C)
+      run: python3 scripts/check-tags.py --strict
 
     - name: Astro type check
       continue-on-error: true
