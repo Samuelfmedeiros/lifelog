@@ -1,0 +1,78 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import TagCloud from '../../components/TagCloud.astro';
+import { getCollection } from 'astro:content';
+import { getTranslations } from '../../lib/i18n';
+import { TAG_VOCAB, tagLabel } from '../../lib/tag-vocab';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts');
+  const counts = new Map<string, Set<string>>();
+  for (const post of posts) {
+    const { tags, project } = post.data;
+    for (const tag of new Set([...(tags ?? []), project].filter(Boolean) as string[])) {
+      if (!counts.has(tag)) counts.set(tag, new Set());
+      counts.get(tag)!.add(post.id);
+    }
+  }
+  return [...counts.keys()].map((tag) => ({
+    params: { slug: tag },
+    props: { tag, postIds: [...counts.get(tag)!] },
+  }));
+}
+
+const { tag, postIds } = Astro.props;
+const locale = 'pt';
+const allPosts = await getCollection('posts');
+const posts = allPosts
+  .filter((p) => postIds.includes(p.id))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+
+const t = getTranslations(locale);
+const label = tagLabel(tag, 'pt');
+// nuvem: mesmas tags agregadas (tag OR project)
+const cloud = new Map<string, number>();
+for (const p of allPosts) {
+  for (const tg of new Set([...(p.data.tags ?? []), p.data.project].filter(Boolean) as string[])) {
+    cloud.set(tg, (cloud.get(tg) ?? 0) + 1);
+  }
+}
+const cloudTags = [...cloud.entries()].map(([name, count]) => ({ name, count }));
+const homeHref = '/';
+---
+
+<BaseLayout title={`${label} — ${t.home.title}`} description={`Posts com a tag ${label}`} locale={locale}>
+  <section class="container">
+    <nav class="crumb"><a href="/">← {t.home.title}</a></nav>
+    <header class="tag-header">
+      <h1>{label}</h1>
+      <p class="tag-count-line">{posts.length} post{posts.length !== 1 ? 's' : ''}</p>
+    </header>
+    <TagCloud tags={cloudTags} locale={locale} />
+    <div class="post-grid">
+      {posts.map((post, i) => (
+        <PostCard
+          title={post.data.title}
+          description={post.data.description}
+          date={post.data.date}
+          project={post.data.project}
+          tags={post.data.tags ?? []}
+          slug={post.id}
+          locale={locale}
+          index={i}
+        />
+      ))}
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .crumb a { color: var(--color-text-muted); text-decoration: none; font-size: 0.85rem; }
+  .crumb a:hover { color: var(--color-accent); }
+  .tag-header { margin: 1.5rem 0 2rem; }
+  .tag-header h1 { font-size: 2rem; margin: 0; }
+  .tag-count-line { color: var(--color-text-muted); margin: 0.25rem 0 0; font-size: 0.9rem; }
+  .post-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+</style>

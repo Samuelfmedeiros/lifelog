@@ -15,6 +15,7 @@ export interface Props {
   locale?: string;
 }
 
+import { tagLabel } from '../lib/tag-vocab';
 const { title, description, date, project, tags, slug, icon, cover, index, locale } = Astro.props;
 const isEn = locale === 'en';
 const dateLocale = isEn ? 'en-US' : 'pt-BR';
@@ -68,7 +69,7 @@ const postHref = isEn ? `/en/post/${postSlug}/` : `/post/${slug}/`;
 
       <div class="flex items-center gap-2 flex-wrap mt-3">
         {tags.slice(0, 3).map((tag) => (
-          <span class="tag">{tag}</span>
+          <a class="tag" href={`${locale === 'en' ? '/en/tag/' : '/tag/'}${tag}`}>{tagLabel(tag, locale)}</a>
         ))}
       </div>
 

@@ -1,6 +1,7 @@
 ---
 // PostLayout — Template compartilhado de post (PT e EN)
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { tagLabel } from '../lib/tag-vocab';
 import ProjectIcon from './ProjectIcon.astro';
 import { render } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
@@ -71,9 +72,9 @@ const { Content } = await render(post);
           {post.data.tags.map((tag) => (
             <a
               ref={el => { if (el) el.style.cssText = `border-color:var(--color-accent);color:var(--color-accent);background:color-mix(in srgb,var(--color-accent) 20%,var(--color-bg))` }}
-              href={`/${locale === 'en' ? 'en/' : ''}?q=${tag}`}
+              href={`${locale === 'en' ? '/en/tag/' : '/tag/'}${encodeURIComponent(tag)}`}
               class="px-3 py-1 text-xs rounded-full border border-solid no-underline! transition-[background,opacity] duration-200 hover:opacity-80"
-            >#{tag}</a>
+            >#{tagLabel(tag, locale)}</a>
           ))}
         </div>
       </header>

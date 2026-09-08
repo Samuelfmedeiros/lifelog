@@ -1,5 +1,6 @@
 ---
-// TagCloud — Nuvem de tags clicáveis, estilo glass
+import { tagLabel } from '../lib/tag-vocab';
+// TagCloud — Nuvem de tags clicáveis, estilo glass (Opção C: aponta /tag/<slug>)
 // Props: tags: { name: string; count: number }[], locale?: string
 
 export interface Props {
@@ -23,12 +24,12 @@ const sorted = [...tags].sort((a, b) => b.count - a.count).slice(0, 50);
     <div class="tag-cloud-pills">
       {sorted.map((tag) => (
         <a
-          href={`${homeHref}?q=${encodeURIComponent(tag.name)}`}
+          href={`${isEn ? '/en/tag/' : '/tag/'}${encodeURIComponent(tag.name)}`}
           class="tag-cloud-pill"
           style={`--tag-count: ${Math.min(tag.count / 10, 1)}`}
           title={`${tag.count} post${tag.count !== 1 ? 's' : ''}`}
         >
-          {tag.name}
+          {tagLabel(tag.name, locale)}
           <span class="tag-count">{tag.count}</span>
         </a>
       ))}
