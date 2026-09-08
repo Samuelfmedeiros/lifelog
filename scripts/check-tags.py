@@ -27,7 +27,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path("/home/samuel/projetos/lifelog")
+ROOT = Path(__file__).resolve().parents[1]  # raiz do repo — funciona local E no CI (checkout em /home/runner/work/...)
 POSTS_PT = ROOT / "src" / "content" / "posts"
 POSTS_EN = POSTS_PT / "en"
 VOCAB_TS = ROOT / "src" / "lib" / "tag-vocab.ts"
