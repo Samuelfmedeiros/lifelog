@@ -103,3 +103,9 @@ rules:
   severity: ERROR
   patterns:
     - pattern-regex: (?i)(pickle\.load|joblib\.load|torch\.load)\([^)]*(request|input|file_obj|data)
+- id: cv-file-serve-route
+  languages: [python, javascript, typescript]
+  message: "Entrega de arquivo do filesystem (upload/public/static) — verificar guard: auth/consent/rate-limit na rota OU proxy bloqueando acesso direto (caso CV; scanner semanal cv-leak-scan cobre assets em disco)"
+  severity: WARNING
+  patterns:
+    - pattern-regex: (?i)(FileResponse\(|send_file\(|send_from_directory\(|StreamingResponse\(|createReadStream\(|fs\.readFileSync\(|fs\.readFile\()
