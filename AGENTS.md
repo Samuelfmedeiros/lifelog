@@ -318,7 +318,7 @@ Posts com `hidden: true` no frontmatter vão para o ar (deploy) mas ficam **invi
 1. **Frontmatter**: `hidden: true` (schema em `src/content.config.ts`).
 2. **Filtro global**: TODAS as páginas filtram `!p.data.draft && !p.data.hidden` — home, arquivo, sobre, RSS, sitemap, busca, prev/next e `getStaticPaths` (rota direta vira 404).
 3. **Admin**: `/ocultos` (não linkada) lista posts ocultos, mostra o conteúdo e tem botão "Liberar".
-4. **Liberação**: `api/liberar.mjs` (Vercel Function) flipa `hidden: true` → `false` no MDX via GitHub API e commita → CI roda → post aparece.
+4. **Liberação**: `api/liberar.mjs` (Vercel Function) flipa `hidden: true` → `false` no MDX (PT+EN) **E regenera `api/ocultos-data.mjs` — TUDO num ÚNICO commit atômico** (Git Data API: blobs→tree→commit→ref; retry x3 re-buscando conteúdo fresco; cura de data stale em re-click) → CI roda → post aparece e painel atualiza no mesmo deploy. Self-heal no `deploy.yml`: data divergente do HEAD → commit de sync `[skip ci]`.
 5. **Listagem**: `api/ocultos.mjs` lê o filesystem do deploy e retorna os ocultos (protegido por segredo).
 
 ### Env vars obrigatórias (Vercel)
@@ -433,3 +433,10 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **Pipeline recusa→refazer:** 3 recusas com nota funcionando — tatuengine ×2 (capa alinhada ao texto "onda que flatline", issue #31, `bff8035`), capivara ×1 (tema trocado p/ seguranca path traversal, issue #32, `67234de`).
 - **Capas watchdog:** regeneradas estudos/dogwalk/portfolio (`9752717`, `20866f5`, `79ac99b`).
 - **Docs:** CHANGELOG [2026-09-03] já cobre o dia (commit `2797068`); esta seção completa o AGENTS.md.
+
+## Sessão 2026-09-08 (noite) — Release atômico: liberar + ocultos-data em 1 commit
+- **feat(release)**: `/api/liberar` agora faz UM commit útico atômico (mdx PT+EN + `api/ocultos-data.mjs`) via Git Data API (`d2efa0c`, branch `feat/release-atomic`) — painel nunca mais lista post já público após liberação (bug do 067da21). Retry x3 com re-busca de conteúdo fresco (nunca overwrite cego se main andou); twin candidates cobre nomenclatura `en/slug.mdx` e `en/en-slug.mdx`.
+- **scripts/ocultos-core.mjs**: fonte única do formato do ocultos-data (parse/serialize byte-idêntico, provado por sha256 no build) — usado por `gen-ocultos.mjs` (build) e `api/liberar.mjs` (release).
+- **deploy.yml**: step self-heal — se o data divergir do HEAD no build, commita `chore(ocultos): sync ocultos-data [skip ci]`.
+- **Testes**: +15 unit (`src/lib/ocultos-core.test.ts`: round-trip, flip CRLF/LF, remoção do par, twin candidates) — suíte 89/89; lint 0 errors; build 1227 páginas; dry-run da coreografia Git Data 7/7 na API real (branch descartável, deletada).
+- **Pendente**: Roger (gate `roger-lifelog-after-campaign.py` + cron 15m dispara quando RAM libera do treino Tatu) + push com OK do Samuel.
