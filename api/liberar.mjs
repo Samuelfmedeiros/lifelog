@@ -1,16 +1,17 @@
 // Vercel Function: POST /api/liberar
-// Libera um post oculto: flipa hidden:true -> hidden:false no frontmatter do MDX
-// e commita via GitHub API (push em main dispara o CI -> deploy).
+// Libera um post oculto: flipa hidden:true -> hidden:false nos MDX (PT+EN)
+// E regenera api/ocultos-data.mjs — TUDO NUM ÚNICO COMMIT (Git Data API).
 //
-// Libera o PAR PT+EN num unico clique: post do LifeLog e bilingue, e liberar
-// so o PT (ou so o EN) deixava a lingua irma presa em hidden:true para sempre.
+// Por quê: o painel (/ocultos) lê api/ocultos-data.mjs do bundle. Se o commit
+// da liberação mexe só no frontmatter, o arquivo de dados fica stale no repo
+// e o painel segue listando post já público (bug de 08/09, fix manual 067da21).
+// Commit atômico = painel correto no MESMO deploy, sem race de CI.
 //
-// MODE 1 (novo, preferido): proxy para o endpoint centralizado do Capivara
-//   POST $LIFELOG_RELEASE_API_URL/api/lifelog/release  { slug }
-//   com Bearer $LIFELOG_RELEASE_TOKEN — o Capivara flipa hidden e commita
-//   (PT e EN), com fallback git local quando a GitHub API falha por auth.
-// MODE 2 (fallback): se as envs do Capivara não existirem, mantém o
-//   comportamento legado: GitHub API direta com GH_TOKEN (flipa PT+EN juntos).
+// MODE 1 (planejado, NAO implementado neste arquivo): proxy para o endpoint
+//   centralizado do Capivara — POST $LIFELOG_RELEASE_API_URL/api/lifelog/release
+//   { slug } com Bearer $LIFELOG_RELEASE_TOKEN.
+// MODE 2 (implementado aqui): GitHub Git Data API direta — UM commit atômico
+//   com os mdx (PT+EN e variantes) + api/ocultos-data.mjs.
 //
 // Requer ADMIN_SECRET (env na Vercel) via header Authorization: Bearer ***
 import { timingSafeEqual } from 'node:crypto';
@@ -44,113 +45,129 @@ async function readBody(req) {
   });
 }
 
-// Aceita path nos formatos que o /ocultos envia:
-//   "slug.mdx", "en/slug.mdx", "src/content/posts/slug.mdx",
-//   "src/content/posts/en/slug.mdx", ou slug puro.
-// RETORNA o path relativo SEM a extensão, PRESERVANDO o prefixo "en/"
-// (ex: "en/slug" ou "slug") — sem isso, liberar um post EN liberaria o PT.
+// Aceita "slug.mdx", "en/slug.mdx", "src/content/posts/slug.mdx", slug puro.
+// RETORNA path relativo a src/content/posts/ SEM extensão, preservando "en/".
 function slugFromPath(p) {
   const raw = String(p || '').trim();
   if (!raw) return '';
   const noExt = raw.replace(/\.mdx?$/, '').trim();
-  // remove prefixos redundantes
   return noExt.replace(/^src\/content\/posts\//, '').replace(/^posts\//, '');
 }
 
-// ── Modo 2 (legado): GitHub API direta ──────────────────────────────
-async function gh(path, opts = {}) {
-  const token = process.env.GH_TOKEN;
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'lifelog-release',
-    ...(opts.headers || {}),
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${GITHUB_API}${path}`, { ...opts, headers });
-  const data = await res.json().catch(() => ({}));
-  return { status: res.status, data };
+// Gemêas EN do repo: maioria = mesmo nome em en/, minoria = prefixo en- no
+// arquivo (ex: en/en-lifelog-o-ciclo-do-nao.mdx → data path en/en-...mdx).
+// O twin lookup antigo errava a minoria; aqui viram candidatos (try-all).
+// Candidato inexistente = no-op seguro (missing) — flip só age em real.
+export function twinCandidates(base) {
+  if (base.startsWith('en/')) {
+    const bare = base.slice(3);
+    const pts = bare.startsWith('en-') ? [bare, bare.slice(3)] : [bare];
+    return [...new Set(pts)];
+  }
+  return [...new Set([`en/${base}`, `en/en-${base}`])];
 }
 
-async function flipFile(slug) {
-  // Flipa hidden:true -> false de UM arquivo. present=false = arquivo nao existe
-  // (post only-PT, por exemplo). Retorna { status, json, present, already }.
-  // already=true = arquivo existia mas ja estava hidden:false (release repetida
-  // do par irmao) — NAO e erro, e idempotencia.
+// ── MODE 2: commit único via Git Data API ────────────────────────────
+// Tenta até 3x; em cada tentativa RE-BUSCA os arquivos frescos do main
+// (flip e remoção re-aplicados sobre conteúdo recente — nunca overwrite cego).
+async function releaseAtomic(base) {
   if (!process.env.GH_TOKEN) {
-    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' }, present: true, already: false };
+    return { status: 500, json: { error: 'GH_TOKEN nao configurado (env da Vercel) — impossivel liberar' } };
   }
-  const filePath = `src/content/posts/${slug}.mdx`;
-  const enc = encodeURIComponent(filePath);
-  const getRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}?ref=${BRANCH}`);
-  if (getRes.status === 404) {
-    return { status: 404, json: { error: `Arquivo nao encontrado: ${slug}` }, present: false, already: false };
-  }
-  if (getRes.status !== 200) {
-    return { status: 502, json: { error: `Falha ao ler arquivo no GitHub (${getRes.status})` }, present: true, already: false };
-  }
-  const { content, sha } = getRes.data;
-  const decoded = Buffer.from(content, 'base64').toString('utf-8');
+  const core = await import('../scripts/ocultos-core.mjs');
+  const committer = core.createGithubCommitter({ token: process.env.GH_TOKEN, owner: OWNER, repo: REPO, branch: BRANCH });
 
-  // Flipa SOMENTE o campo hidden no frontmatter (primeiro bloco --- ---)
-  const fmMatch = decoded.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fmMatch) {
-    return { status: 422, json: { error: 'Frontmatter nao encontrado' }, present: true, already: false };
-  }
-  const fm = fmMatch[1];
-  const updatedFm = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
-  if (updatedFm === fm) {
-    if (/^(\s*hidden:\s*)false(\s*)$/m.test(fm)) {
-      return { status: 200, json: { ok: true, slug, already: true }, present: true, already: true };
+  // Par + variantes de nomenclatura (repo tem en/slug.mdx E en/en-slug.mdx).
+  const targets = [...new Set([base, ...twinCandidates(base)])];
+  const lastError = [];
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const files = [];          // [{ path, content }] pro commit
+    const released = [];       // flips aplicados nesta tentativa
+    const already = [];        // já estavam hidden:false
+    const missing = [];        // arquivos que não existem (post only-PT/EN)
+    // Entrada sai do ocultos-data se o mdx está liberado — flipado AGORA ou já
+    // liberado antes (estado meio-liberado de uma liberação anterior quebrada).
+    const dataEntryPaths = targets.map((t) => `${t}.mdx`);
+
+    // 1) Re-busca os mdx frescos do main e aplica os flips
+    for (const t of targets) {
+      const repoPath = `src/content/posts/${t}.mdx`;
+      const f = await committer.getFile(repoPath);
+      if (!f.present) { missing.push(t); continue; }
+      const r = core.flipHidden(f.content);
+      if (r.missing) {
+        lastError.push({ slug: t, error: 'Post nao esta oculto (hidden nao e true)' });
+        continue;
+      }
+      if (r.flipped) { files.push({ path: repoPath, content: r.raw }); released.push(t); }
+      else if (r.already) already.push(t);
     }
-    return { status: 422, json: { error: 'Post nao esta oculto (hidden nao e true)' }, present: true, already: false };
-  }
-  const newContent = decoded.replace(fm, updatedFm);
-  const newContentB64 = Buffer.from(newContent, 'utf-8').toString('base64');
 
-  const putRes = await gh(`/repos/${OWNER}/${REPO}/contents/${enc}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: `release(post): ${slug}`,
-      content: newContentB64,
-      sha,
-      branch: BRANCH,
-    }),
-  });
-  if (putRes.status !== 200 && putRes.status !== 201) {
-    return { status: 502, json: { error: `Falha no commit no GitHub (${putRes.status})` }, present: true };
-  }
-  return { status: 200, json: { ok: true, slug, commit: putRes.data.commit?.sha, mode: 'github' }, present: true };
-}
+    // 2) ocultos-data: remove entradas dos targets a partir do CONTEÚDO do main
+    let dataSynced = false;
+    const dataFile = await committer.getFile('api/ocultos-data.mjs');
+    if (dataFile.present) {
+      try {
+        const posts = core.parseOcultos(dataFile.content);
+        const remaining = core.removePosts(posts, dataEntryPaths);
+        if (remaining.length !== posts.length) {
+          files.push({ path: 'api/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
+        }
+        dataSynced = true;
+      } catch (e) {
+        // data corrompido/parse falhou: commita só os mdx; self-heal do CI regenera
+        lastError.push({ error: `ocultos-data parse falhou: ${e.message}` });
+      }
+    }
 
-// Libera o PAR PT+EN num unico clique. Post do LifeLog e bilingue; liberar so o
-// PT (ou so o EN) deixava a lingua irma presa em hidden:true para sempre.
-async function releaseBoth(base) {
-  const twin = base.startsWith('en/') ? base.slice(3) : 'en/' + base;
-  const targets = [...new Set([base, twin])];
-  let released = [];
-  let already = [];
-  let missing = [];
-  let errors = [];
-  for (const t of targets) {
-    const r = await flipFile(t);
-    if (!r.present) missing.push(t);
-    else if (r.status === 200 && r.already) already.push(t); // ja estava hidden:false — idempotente
-    else if (r.status === 200) released.push(t);
-    else errors.push({ slug: t, error: r.json?.error || ('HTTP ' + r.status) });
+    // 3) Nada a fazer → idempotência + CURA do data stale: re-click no par
+    //    já liberado — só a entrada do data precisa sair (commit de sync).
+    if (files.length === 0) {
+      if (already.length > 0 && dataSynced && dataFile?.present) {
+        try {
+          const cur = core.parseOcultos(dataFile.content);
+          const remaining = core.removePosts(cur, dataEntryPaths);
+          if (remaining.length !== cur.length) {
+            files.push({ path: 'api/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
+          }
+        } catch {
+          // data ilegível → sem cura; self-heal do CI regenera no deploy.
+        }
+      }
+      if (files.length === 0) {
+        if (already.length > 0) {
+          return { status: 200, json: { ok: true, released: [], already, missing, mode: 'atomic', commit: null, dataSynced } };
+        }
+        return { status: 422, json: { error: 'Nada foi liberado (todos os arquivos ja estavam liberados ou nao existem)', lastError } };
+      }
+      // files só tem o data (cura stale) → cai pro commit com message de sync
+    }
+
+    // 4) Commit ÚNICO: mdx PT+EN + ocultos-data
+    const cureOnly = files.length === 1 && files[0].path === 'api/ocultos-data.mjs';
+    const message = cureOnly
+      ? `chore(ocultos): sync data pós-liberação de ${base} (stale cure)`
+      : `release(post): ${base} (PT+EN + ocultos-data)`;
+    try {
+      const result = await committer.commitFiles({ message, files });
+      return { status: 200, json: { ok: true, released, already, missing, mode: 'atomic', commit: result.commit, dataSynced } };
+    } catch (e) {
+      if (e.moved) { lastError.push({ error: e.message }); continue; } // main andeu → retry re-buscando conteúdo fresco
+      throw e;
+    }
   }
-  if (errors.length > 0) {
-    return { status: 502, json: { error: errors[0].error, errors, released } };
-  }
-  if (released.length > 0 || already.length > 0) {
-    // missing = lingua irma inexistente (post only-PT/only-EN) — nao e erro.
-    // already = par irmao ja tinha sido liberado junto — NAO e erro (idempotencia).
-    return { status: 200, json: { ok: true, released, already, missing, mode: 'github' } };
-  }
-  return { status: 422, json: { error: 'Nada foi liberado (todos os arquivos ja estavam liberados ou nao existem)' } };
+  return { status: 502, json: { error: 'Falha apos 3 tentativas (main mudando durante release)', lastError } };
 }
 
 export default async function handler(req, res) {
-  const check = secretOk(req);
+  let check;
+  try {
+    check = secretOk(req);
+  } catch {
+    res.status(500).json({ error: 'Erro interno' });
+    return;
+  }
   if (!check.ok) {
     res.status(401).json({ error: check.error || 'Segredo invalido' });
     return;
@@ -166,6 +183,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  const result = await releaseBoth(base);
+  let result;
+  try {
+    result = await releaseAtomic(base);
+  } catch (e) {
+    console.error('liberar: releaseAtomic falhou:', e?.message || e);
+    result = { status: 502, json: { error: `Falha na liberacao: ${e?.message || 'erro desconhecido'}` } };
+  }
   res.status(result.status).json(result.json);
 }
