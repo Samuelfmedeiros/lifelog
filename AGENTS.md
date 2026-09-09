@@ -35,6 +35,15 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-08 (fim de dia) — Tags Opção C live + 4 releases + recusas #38/#39
+
+- **feat(tags) Opção C live**: vocabulário canônico (tag-vocab.ts) + guardião check-tags.py + /tag/[slug] PT+EN + guard --strict no CI (eb60e94→0fe6bf7); fix lint 6 erros + check-tags ROOT relativo (bd47418, 973ee1f)
+- **posts**: tatuengine-bitmamba-1b-voltou-do-coma (Fase 4B, fix /tag/ hidden vazava), dogwalk-o-app-que-entra-na-tela-de-casa (PWA), descobertas-a-capa-que-nao-mudava (cache-bust), arachne-o-erro-que-salvou-o-banco — PT+EN + capas Worker FLUX (bc02d2d, 751c871, 641218e, 23943a7)
+- **releases**: os 4 posts liberados PT+EN (bdc15a3, 2648fd1, fb00a41, 10affa5, 28d4d9b, 52621a9, c66df1e, 23a8d4d)
+- **refazer**: recusas #38 (trinta-commits) e #39→novo arachne-o-erro; fix ocultos-data pós-liberação (067da21); capa watchdog (b28a423)
+- **feat(release)**: commit atômico na liberação (mdx PT+EN + ocultos-data num commit só) + docs do fluxo (d2efa0c, 3d96e60)
+- 28 commits no dia · push origin OK · HEAD: `3d96e60`
+
 ## Sessão 2026-09-08 — 🏷️ Tags Opção C: vocab canônico + /tag/[slug] + guard CI
 
 - **fonte única de verdade** `src/lib/tag-vocab.ts` (TAG_VOCAB + TAG_ALIASES + canonicalizeTag + tagLabel): 332 slugs canônicos EN (língua franca técnica) com label PT (`pt: 'Segurança'`); 96 aliases PT→EN (`seguranca→security`, `automacao→automation`…); projects structural ficam PT (arachne/yurumi/seguranca/estudos…)
