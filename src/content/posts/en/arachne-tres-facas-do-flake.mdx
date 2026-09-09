@@ -1,0 +1,99 @@
+---
+
+title: "Three Knives of the Flaky Test"
+description: "79 tests green one day, 4 failing the next, zero production changes. Arachne stacked three different flavors of flakiness in 48 hours — and each one required a different knife: random vectors, network escaping the mock, and an assert that never ran."
+date: 2026-09-09 12:00:00 -03:00
+pubDate: 2026-09-09 12:00:00 -03:00
+lang: "en"
+project: "arachne"
+tags: [arachne, testing, pytest, xdist, debugging]
+cover: "/covers/arachne-tres-facas-do-flake.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There is a kind of CI silence that is worse than red: today's green turning into tomorrow's red with not a single commit in between. Arachne went through that three times in 48 hours. Three intermittent failures, three completely different causes, and none of them was a bug in production code. Every one was a test lying — each in its own way.
+
+## Knife one: the randomness nobody seeded
+
+The first flake showed up in a search test. The suite ingests ten noise documents and one target document, searches for a term that only matches the target, and caps `top_k` at three. The test wanted to answer a single question: *does the truncation pick the top three?*
+
+The problem was everything around the question. The noise documents' vectors were generated with library randomness — re-randomized on every process run. And the vector index applies a default `min_score >= 0` filter before truncating. In a lucky process, three noise vectors landed above zero and the cut returned three results. In another, only two stayed above and the `len(results) == 3` broke. Whether the test passed depended on the random number generator's mood.
+
+The fix commit changed two things. Noise vectors became **deterministic by hash** — same process, same vectors, every time. And the test disables the score filter explicitly, because what is under test is `top_k` truncation, not the filter:
+
+```python
+results = ssm.search("something", top_k=3, min_score=-1.0)
+# noise vectors are hash-randomized per process; disable the >=0
+# filter so top_k truncation is what is under test
+assert len(results) == 3
+```
+
+One commit, one changed line. The cost was not the line — it was discovering that "fails sometimes" means "there is randomness you do not control."
+
+## Knife two: the network that escapes the mock
+
+The second was sneakier, because it only bit when the network blinked. The universal extraction suite had an `offline_net` fixture that mocked the HTTP client — but the fixture was `autouse` and intercepted **always**, even in tests that exercised pure file upload and never touched the network.
+
+That sounds harmless until you look closely: with the global mock on, a URL test that needed the real client would never get it. `offline_net` covered everything indiscriminately — and when the CI machine's real network trembled, the tests depending on it trembled too. The fix commit inverted the logic: the fixture became **opt-in via marker**.
+
+```python
+@pytest.fixture(autouse=True)
+def offline_net(request, monkeypatch):
+    if not request.node.get_closest_marker("offline_net"):
+        yield
+        return
+    import httpx
+    # ... httpx mocks, SSRF guard and parsers ...
+```
+
+```python
+@pytest.mark.offline_net
+class TestURLErrors:
+    ...
+```
+
+Five URL test classes got the marker; the rest run with no mocks at all. The positive side effect: file upload tests stopped paying the cost of assembling mocks they would never use. And CI stopped inheriting network health as an implicit dependency.
+
+## Knife three: the assert that never ran
+
+The third knife is the most uncomfortable, because the test never failed — and that is precisely the problem. In a malformed-URL rejection test, the assert checking that the error message was not empty sat **inside** the `pytest.raises` block, right after the call that raises:
+
+```python
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+    assert str(exc_info.value) != ""   # never runs
+```
+
+When `normalize_quickstart_url` raises, control jumps to the except handler and the next line inside the block dies without ever executing. The assert is decorative. The test verified "raises ValueError" and **believed** it also verified "with a useful message" — a verification that never existed.
+
+The test-loop critic flagged that gap as a tautology: the test confirms what `pytest.raises` already guarantees and nothing beyond. The fix commit created a URL security suite with asserts placed **after** the block, where they actually run, plus edge cases the original never covered — malformed port, oversized port, invalid hyphen hostname, `ftp://` scheme:
+
+```python
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+assert str(exc_info.value) != ""   # now runs, outside the block
+```
+
+## The pattern behind the three
+
+None of the three flakes was mystical randomness. Each had a mechanical cause and a transferable lesson:
+
+| Knife | Mechanical cause | Lesson |
+|-------|------------------|--------|
+| Random | Unseeded RNG + implicit score filter | A test cannot depend on generator luck |
+| Network | Global `autouse` mock instead of opt-in | Mock fixtures should be selective, not omnipresent |
+| Tautology | Assert inside `pytest.raises` | An assert only verifies if it runs outside the raising block |
+
+The meta-lesson: a flake is not "an annoying test", it is **compressed information**. The test that sometimes fails is telling you exactly where your code depends on something you do not control — a seed, the network, or an execution flow you believe you understand. Ignoring the flake lets that information rot; suppressing it with retries is betting against yourself three times in a row.
+
+With all three knives resolved, the Arachne suite runs deterministically again — and every future flake will have to explain its own mechanics before becoming dashboard noise.
+
+<Terminal commands={[
+  { cmd: "git log --oneline -3 -- api/tests/", output: "267b1408 fix(test): universal_extract URL tests offline (mock httpx/ssrf/parsers)" },
+  { cmd: "git log --oneline -- api/tests/test_ssm_state.py | head -1", output: "30178f3f fix(test): make test_search_top_k deterministic (hash-randomized noise vectors)" },
+  { cmd: "grep -c 'pytest.mark.offline_net' api/tests/test_universal_extract_extra.py", output: "5" },
+  { cmd: ".venv/bin/python -m pytest api/tests/test_ssm_state.py api/tests/test_universal_extract_extra.py api/tests/test_quickstart_url_security.py -q", output: "79 passed, 18 warnings in 44.87s" },
+  { cmd: "grep -rc \"def test_\" api/tests/*.py | awk -F: \"{s+=$2} END {print s}\"", output: "3032" },
+]} />
