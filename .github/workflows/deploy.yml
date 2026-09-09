@@ -108,6 +108,23 @@ jobs:
       run: pnpm build
       # Astro build catches MDX syntax errors, broken imports, missing components
 
+    # ── Self-heal: ocultos-data síncrono ────────────────────────────
+    # Se o build regenerou api/ocultos-data.mjs diferente do HEAD (drift de
+    # qualquer origem), commita a cura em main com [skip ci] — o deploy desta
+    # run já sai com o data fresco; o repo nunca fica stale pro painel.
+    - name: Self-heal ocultos-data
+      if: github.ref_name == 'main' && github.event_name != 'pull_request'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        if ! git diff --quiet -- api/ocultos-data.mjs; then
+          git add api/ocultos-data.mjs
+          git commit -m "chore(ocultos): sync ocultos-data [skip ci]"
+          git push origin main || echo "⚠️ push falhou (main mudou) — próximo release/cura sincroniza"
+          echo "✅ ocultos-data re-sincronizado (commit de cura)"
+        else
+          echo "✅ ocultos-data em sincronia — nada a fazer"
+        fi
     - name: Cleanup post-publish
       run: |
         bash scripts/cleanup-post.sh --dist
