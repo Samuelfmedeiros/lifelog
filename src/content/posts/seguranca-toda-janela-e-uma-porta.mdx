@@ -1,0 +1,100 @@
+---
+title: "Toda janela é uma porta — como um post invisível vazou pelo próprio índice"
+description: "O post estava oculto, a rota dele respondia 404, o feed não o mencionava. Mesmo assim ele aparecia no site: no cabeçalho de uma página de tag que contava os posts errados. A lição é mais velha do que parece — cada página nova que lista conteúdo é uma porta nova, e o frontmatter não se protege sozinho."
+date: 2026-09-09 08:00:00 -03:00
+pubDate: 2026-09-09 08:00:00 -03:00
+project: seguranca
+tags: [seguranca, security, blog, privacy, astro, e2e]
+cover: /covers/seguranca-toda-janela-e-uma-porta.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A porta da frente eu já trancava havia tempo
+
+Minha segurança aqui em casa tem uma lógica de casa. Tem um alarme que caça, um portão que lê o diff antes de deixar entrar, um atacante autorizado que bate na porta uma vez por semana, e uma fila de atualização de dependências que espera dono. Todo mundo que escreve sobre proteção de site começa pelo mesmo lugar: tranca a porta da frente. Formulário com rate limit, download com validação, segredo que não entra no histórico.
+
+Nos últimos dias eu mexi numa parte da casa que não é porta da frente: o jeito como o blog publica.
+
+O fluxo é o seguinte. Um post nasce oculto — marcado como rascunho público, visível só num painel interno de revisão. Eu leio, decido, e só então ele é liberado. Enquanto está oculto, três coisas precisam ser verdade: a rota pública do post não existe, o feed não menciona, e a home não lista.
+
+Esse desenho funcionou por semanas. E foi exatamente por funcionar que eu parei de testar as outras três superfícies.
+
+## O verde que veio com uma anotação
+
+No fim da tarde de terça, o post do dia passou pela revisão automática obrigatória. Nota máxima. O portão abriu, o build subiu, tudo verde.
+
+No campo de melhorias do mesmo relatório — aquele espaço que o revisor usa para o que ele viu mas que não barra entrega — veio uma linha seca: as páginas de etiqueta estavam contando posts que ainda não deviam existir.
+
+Vale registrar a forma como isso aconteceu, porque ela desmente uma ideia confortável. "Passou no gate" não significa "não tem achado". Significa que o achado, se existir, vai morar num campo que ninguém lê por obrigação. Eu li por sorte de estar com o relatório aberto.
+
+## O diagnóstico: um 404 que mentia por omissão
+
+Fui testar do jeito óbvio. Peguei o post oculto mais recente, abri a rota pública dele: 404. Abriste o feed: nada. A home: nada. Teste concluído, tudo certo, falso alarme.
+
+Só que tinha uma quarta superfície, e eu fui nela direto pela URL, sem querer. A página de etiqueta — aquela lista de posts agrupados por tema, que o índice de tags gera em versão português e inglês. No topo dela mora uma contagem: quantos posts têm esta etiqueta. E nessa contagem, o post oculto estava lá, com título e resumo completos, servido numa página pública, indexável, cacheável.
+
+A rota do post respondia 404. A *descrição* dele respondia 200.
+
+É o tipo de bug que sobrevive porque o teste padrão dá verde. Quem valida ocultação testa se o artigo abre. Ninguém testa se o artigo é *citado* — e é na citação que mora o conteúdo que interessa.
+
+## Causa raiz: o filtro morava em um lugar só
+
+O gerador de páginas tem duas cabeças e eu só tinha alimentado uma.
+
+A primeira cabeça é o inventário de rotas: ela percorre todos os posts, coleta as etiquetas de cada um e decide quais páginas de etiqueta vão nascer e quais posts vão para dentro de cada uma. A segunda é a montagem da página: ela recebe a lista de identidades, busca os posts correspondentes e desenha os cards.
+
+O filtro de ocultos existia só na segunda. Como a primeira já tinha reservado a rota e anexado a identidade do post àquela etiqueta, a segunda cabeça recebia uma lista com um ID cujo post ela não podia mais ver. Resultado: rota criada, card filtrado, contagem no cabeçalho vinda de uma terceira fonte — a nuvem de etiquetas — que também não filtrava nada. Três caminhos, uma regra, duas exceções.
+
+E tinha o par de idiomas. Todo este sistema nasce duplo, português e inglês, e as duas páginas de etiqueta tinham exatamente o mesmo defeito. Corrigir uma e esquecer a outra é o falso-verde mais barato que existe.
+
+## O conserto, e o que mudou depois dele
+
+A correção em si é de duas linhas por arquivo: filtrar ocultos no inventário de rotas, e filtrar ocultos na nuvem de etiquetas. Feito no par português e inglês, no mesmo commit que subia o post do dia.
+
+Mas o conserto que importa foi o outro, e ele virou regra escrita no arquivo de instruções do projeto:
+
+> Qualquer página nova que liste posts — etiqueta, arquivo, relacionados, feed, busca — precisa filtrar conteúdo oculto no inventário de rotas **e** em toda lista renderizada. Frontmatter não se propaga sozinho.
+
+E junto da regra, a validação, que é o que separa regra de intenção. Antes de declarar a entrega pronta: buildar, extrair o HTML público de cada superfície, buscar o **título** do post oculto dentro dele — tem que dar zero. Depois confirmar o 404 da rota. Depois repetir tudo no idioma espelho. Buscar o título, não o endereço, porque o endereço é justamente o que costuma estar protegido.
+
+| Item | Estado |
+|------|--------|
+| Rota pública do post oculto | 404 antes e depois do achado |
+| Feed e home | limpos antes e depois |
+| Página de etiqueta, versão português | vazava título e resumo |
+| Página de etiqueta, versão inglês | vazava título e resumo |
+| Nuvem de etiquetas | contava post oculto |
+| Caminhos com regra de ocultação antes | 1 de 3 |
+| Depois | 3 de 3, nos 2 idiomas |
+| Barreira de entrega | nenhuma — o achado não era bloqueante |
+| Regra nova no arquivo de instruções | 1, com validação obrigatória |
+
+## Aprendizados
+
+1. **Testar se o conteúdo abre é o teste errado.** O teste certo é: o conteúdo *aparece* em algum lugar? Título, resumo, contagem, thumbnail, texto alternativo — tudo isso é conteúdo. Uma página que diz "existem 28 posts sobre este tema" e mostra o nome de um deles acabou de publicar esse post.
+2. **Filtro único é filtro quebrado.** Quando a mesma decisão — o que pode ser visto — precisa ser tomada em três momentos diferentes do pipeline, ela precisa de uma função compartilhada, não de três decisões individuais. A correção de verdade aqui não foi adicionar dois `filter`, foi nomear a regra.
+3. **Um gate verde é uma asserção sobre um subconjunto.** O revisor automático mede o que foi combinado que ele mede. A nota máxima e o alerta conviveram no mesmo documento, lado a lado, em campos de importância muito diferente — e só um dos dois tinha peso institucional.
+4. **Sistema espelhado dobra a chance de erro.** Português e inglês, claro e escuro, desktop e mobile: quando o projeto tem gêmeos, a correção tem de ser aplicada aos dois no mesmo movimento, ou o teste de uma das variantes vai passar sempre que pegar a variante certa.
+5. **A superfície nasce do recurso, não da intenção.** Ninguém fez uma página de etiqueta para expor rascunho. Ela é filha legítima de uma melhoria de navegação, entregue dentro do prazo, aprovada com nota máxima. Cada página que agrega conteúdo é uma porta nova que o dono do conteúdo não lembrou de trancar, e é por isso que a regra agora mora no checklist de criação, não no de correção.
+
+## O que vem depois
+
+- **Um único ponto de decisão.** A regra de visibilidade deveria virar um filtro compartilhado, importado por todas as páginas que agregam post, em vez de viver copiada em cada uma delas.
+- **Teste de vazamento no portão de entrada.** Uma suíte que percorre o HTML público gerado e procura, por título, qualquer conteúdo marcado como oculto. Não como teste de página específica — como teste transversal, do tipo que falha quando alguém cria uma superfície nova amanhã.
+- **Leitura obrigatória do campo de melhorias.** Se o revisor entrega achado não-bloqueante, o achado tem de virar tarefa com dono. Não lido é a mesma coisa que inexistente.
+
+A casa continua com a porta da frente trancada. O que mudou é que agora eu sei que ela não é a única porta — e que a mais perigosa é a que eu mesmo acabei de abrir, achando que estava só abrindo uma janela.
+
+<Terminal
+  commands={[
+    { label: 'teste-obvio', cmd: '# rota do post oculto -> 404 (passa, e mente)' },
+    { label: 'teste-certo', cmd: '# grepar TITULO do oculto no html publico -> 0 hits' },
+    { label: 'superficies', cmd: '# etiqueta, arquivo, relacionados, feed, busca' },
+    { label: 'espelho', cmd: '# repetir tudo no idioma gemeo, no mesmo commit' },
+    { label: 'regra', cmd: '# frontmatter nao se propaga sozinho -> filtro compartilhado' },
+  ]}
+/>

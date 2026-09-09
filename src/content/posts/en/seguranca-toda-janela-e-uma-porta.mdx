@@ -1,0 +1,100 @@
+---
+title: "Every window is a door — how an invisible post leaked through its own index"
+description: "The post was hidden, its route returned 404, the feed didn't mention it. It still showed up on the site: in the header of a tag page that was counting the wrong posts. The lesson is older than it looks — every new page that lists content is a new door, and frontmatter doesn't protect itself."
+date: 2026-09-09 08:00:00 -03:00
+pubDate: 2026-09-09 08:00:00 -03:00
+project: seguranca
+tags: [seguranca, security, blog, privacy, astro, e2e]
+cover: /covers/seguranca-toda-janela-e-uma-porta.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The front door I had been locking for a while
+
+My home security has a house-shaped logic. An alarm that hunts, a gate that reads the diff before letting anything in, an authorized attacker who knocks once a week, and a dependency update queue that keeps waiting for an owner. Everyone who writes about site protection starts in the same place: lock the front door. Rate limit on the form, validation on the download, secrets that never enter history.
+
+Lately I've been working on a part of the house that isn't the front door: how the blog publishes.
+
+The flow goes like this. A post is born hidden — flagged as a public draft, visible only in an internal review panel. I read it, decide, and only then is it released. While hidden, three things must be true: the post's public route doesn't exist, the feed doesn't mention it, and the home page doesn't list it.
+
+That design worked for weeks. And it was precisely because it worked that I stopped testing the other three surfaces.
+
+## The green that came with a note
+
+Late Tuesday afternoon, the day's post went through the mandatory automated review. Top marks. The gate opened, the build went up, all green.
+
+In the improvement notes of that same report — the field the reviewer uses for what it saw but doesn't block on — came one dry line: the tag pages were counting posts that shouldn't exist yet.
+
+It's worth recording how this happened, because it disproves a comfortable idea. "Passed the gate" doesn't mean "no findings". It means the finding, if one exists, will live in a field nobody is obligated to read. I read it by sheer luck of having the report open.
+
+## The diagnosis: a 404 that lied by omission
+
+I tested the obvious way. I took the most recent hidden post, opened its public route: 404. The feed: nothing. The home: nothing. Test done, all good, false alarm.
+
+Except there was a fourth surface, and I landed on it directly by typing a URL. The tag page — that list of posts grouped by topic, which the tag index generates in Portuguese and English. At the top lives a count: how many posts carry this tag. And in that count, the hidden post was there, with full title and summary, served on a public, indexable, cacheable page.
+
+The post's route returned 404. The post's *description* returned 200.
+
+It's the kind of bug that survives because the default test comes back green. Whoever validates hiding tests whether the article opens. Nobody tests whether the article is *quoted* — and it's in the quoting that the interesting content lives.
+
+## Root cause: the filter lived in one place only
+
+The page generator has two heads, and I had only fed one.
+
+The first head is the route inventory: it walks every post, collects each one's tags, and decides which tag pages get born and which posts go inside each. The second head is page assembly: it receives a list of identities, fetches the matching posts, and draws the cards.
+
+The hidden filter existed only in the second. Since the first had already reserved the route and attached the post's identity to that tag, the second head received a list with an ID whose post it could no longer see. Result: route created, card filtered, and the header count coming from a third source — the tag cloud — which also filtered nothing. Three paths, one rule, two exceptions.
+
+And there was the language pair. This whole system is born doubled, Portuguese and English, and both tag pages had exactly the same defect. Fixing one and forgetting the other is the cheapest false green there is.
+
+## The fix, and what changed after it
+
+The fix itself is two lines per file: filter hidden posts in the route inventory, and filter hidden posts in the tag cloud. Done for the Portuguese and English pair, in the same commit that shipped the day's post.
+
+But the fix that matters was the other one, and it became a written rule in the project's instruction file:
+
+> Any new page that lists posts — tags, archive, related, feed, search — must filter hidden content in the route inventory **and** in every rendered list. Frontmatter doesn't propagate by itself.
+
+And along with the rule, the validation, which is what separates a rule from an intention. Before declaring the delivery done: build, extract the public HTML of every surface, search inside it for the **title** of the hidden post — it must be zero. Then confirm the route's 404. Then repeat everything in the mirror language. Search by title, not by address, because the address is exactly what tends to be protected.
+
+| Item | State |
+|------|--------|
+| Hidden post's public route | 404 before and after the finding |
+| Feed and home | clean before and after |
+| Tag page, Portuguese version | leaked title and summary |
+| Tag page, English version | leaked title and summary |
+| Tag cloud | counted the hidden post |
+| Paths honoring the hiding rule before | 1 of 3 |
+| After | 3 of 3, in both languages |
+| Delivery gate | none — the finding wasn't blocking |
+| New rule in the instruction file | 1, with mandatory validation |
+
+## Lessons
+
+1. **Testing whether content opens is the wrong test.** The right test is: does the content *appear* anywhere? Title, summary, count, thumbnail, alt text — all of it is content. A page that says "there are 28 posts on this topic" and shows the name of one of them just published that post.
+2. **A single filter is a broken filter.** When the same decision — what may be seen — has to be made at three different points in the pipeline, it needs a shared function, not three individual decisions. The real fix here wasn't adding two `filter` calls; it was naming the rule.
+3. **A green gate is an assertion about a subset.** The automated reviewer measures what it was agreed it would measure. The top grade and the warning coexisted in the same document, side by side, in fields of very different weight — and only one of them carried institutional weight.
+4. **A mirrored system doubles the chance of error.** Portuguese and English, light and dark, desktop and mobile: when the project has twins, the fix must land on both in the same motion, or the test of one variant will always pass whenever it picks the right variant.
+5. **The surface is born from the feature, not from intent.** Nobody built a tag page to expose drafts. It is the legitimate child of a navigation improvement, delivered on schedule, approved with top marks. Every page that aggregates content is a new door the content owner forgot to lock — which is why the rule now lives in the creation checklist, not the remediation one.
+
+## What comes next
+
+- **One single point of decision.** The visibility rule should become a shared filter, imported by every page that aggregates posts, instead of living copy-pasted in each one.
+- **Leak testing at the gate.** A suite that walks the generated public HTML and searches, by title, for anything flagged as hidden. Not as a page-specific test — as a transversal one, the kind that fails when someone creates a new surface tomorrow.
+- **Mandatory reading of the improvement notes.** If the reviewer delivers a non-blocking finding, the finding must become a task with an owner. Unread is the same as nonexistent.
+
+The house still has the front door locked. What changed is that I now know it isn't the only door — and that the most dangerous one is the one I opened myself, thinking I was just adding a window.
+
+<Terminal
+  commands={[
+    { label: 'obvious-test', cmd: '# hidden post route -> 404 (passes, and lies)' },
+    { label: 'right-test', cmd: '# grep HIDDEN TITLE in public html -> 0 hits' },
+    { label: 'surfaces', cmd: '# tags, archive, related, feed, search' },
+    { label: 'mirror', cmd: '# repeat everything in the twin language, same commit' },
+    { label: 'rule', cmd: '# frontmatter does not propagate alone -> shared filter' },
+  ]}
+/>
