@@ -1,0 +1,72 @@
+---
+title: "The Ten Seconds of Silence — when the model thinks and returns nothing"
+description: "An LLM call ends in 200 OK with empty content and the pipeline moves on like nothing happened. Diagnosis: reasoning models burn the token budget thinking and nothing is left for the answer. The fixes: a token ceiling with real margin, and a parser that tolerates a data: [DONE] glued to the JSON."
+date: 2026-09-09 16:00:00 -03:00
+pubDate: 2026-09-11 16:00:00 -03:00
+project: estudos
+tags: [estudos, studies, llm, reasoning, tokens, debugging, api, patterns, lessons]
+icon: "📚"
+cover: /covers/estudos-os-dez-segundos-de-silencio.webp
+featured: false
+hidden: true
+lang: "en"
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There are failures that scream and failures that say thank you. The most dangerous one this week belonged to the second kind: an LLM call that ends in 200 OK, with valid JSON, a civilized `finish_reason` — and an empty `content`. No error, no traceback. The job reports success, the queue advances, and what was supposed to be a paragraph of analysis becomes ten seconds of silence billed as if they were words.
+
+## The symptom: success that produces nothing
+
+The pattern repeated enough times to become a suspect: short answers vanished. Simple prompts — one line of context, one expected paragraph — came back empty. Long prompts came back complete. If it were the network, it would drop sometimes. If it were the prompt, it would fail every time. The dividing line was the **size of the answer**.
+
+## The math that closed the case
+
+Reasoning models spend tokens thinking before answering — and those reasoning tokens share the same ceiling as the answer. When the budget is tight, the model can burn nearly everything on thinking and have nothing left for the output. The server does not call it an error: the limit was respected, the JSON is valid, it is the `content` that was born empty.
+
+And here is the cruel detail: reasoning tokens are billed too. I paid for the thoughts and got the receipt of an answer that never existed. Ten seconds of silence invoiced as text.
+
+## Fix 1 — a ceiling with margin, not an eyeballed squeeze
+
+The temptation is to lower `max_tokens` to save money. The actual effect is manufacturing the bug more often: reasoning is not decoration, it is part of the job. The rule that stuck:
+
+- the ceiling must fit the **whole thought plus the whole answer**;
+- margin, not precision — too tight means clipping the answer in production;
+- boring answers (short ones, close to the ceiling) deserve more attention than long ones: they are the ones hiding the drain.
+
+## Fix 2 — a parser that tolerates dirty SSE
+
+The second finding came on the way back. Streaming SSE closes the stream with a marker like `data: [DONE]`, and I assumed that marker arrived alone, on its own line. It does not: sometimes it arrives **glued to the tail of the same JSON chunk** — `}{ "data": "[DONE]" }` with no newline. A naive parser that feeds the whole buffer to `JSON.parse` explodes, takes the consumer down with it, and kills an answer that was already complete.
+
+The fix is to scrape the marker before parsing: find `data: [DONE]` anywhere inside the chunk, remove it, and only then interpret the rest. The legitimate JSON survives, the marker disappears, and the stream becomes deterministic again.
+
+```python
+# before: json.loads(chunk) — explodes when DONE arrives glued
+def clean_chunk(chunk: str) -> str:
+    if "[DONE]" in chunk:
+        chunk = chunk.replace("data: [DONE]", "").strip()
+    return chunk
+```
+
+## The cost of not knowing
+
+Between the first empty 200 and the hardened parser, the bug cost hours of reading raw payloads, one misleading retry (the retry re-processed the already-consumed chunk) and a false "model is down" alert — which was the consumer dying, not the model. In a pipeline with multiple stages, an empty `content` in the middle propagates: every following stage treats absence as input, and the error drifts further and further from its cause.
+
+## What I learned
+
+**200 OK is not confirmation of content.** For an LLM call, the minimum contract of success has three parts: HTTP ok, JSON parseable, and non-empty `content`. Every pipeline I write from now on validates all three — and treats empty `content` as a domain failure, with its own retry and metric, not as data.
+
+**Reasoning is production cost, not a detail.** The token budget of a model that thinks has two parts with opposite needs: reasoning wants room, the answer wants a guarantee. Sizing for the worst case of both is the only way to avoid randomly choosing which one dies.
+
+**Never assume a format between systems.** `data: [DONE]` on its own line was my assumption about a protocol I did not write. Between two systems, the only contract that matters is what arrives on the wire — and the parser that survives is the one that accepts the wire as it is.
+
+## The honest table
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| 200 OK, empty `content` | token budget consumed by reasoning | ceiling with margin to think + answer |
+| Cost rises with no answer | reasoning tokens billed | budget margin + content validation |
+| JSON.parse explodes at stream end | `data: [DONE]` glued to the JSON chunk | scrape the marker before parsing |
+| False "model down" alert | consumer dies on parse, not the model | separate transport failure from content failure |
+
+Here is the lesson that stays: silence in a pipeline is not peace. Where there should be text and there is none, something paid the bill — and the engineering job is to find out who.

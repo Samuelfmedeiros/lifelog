@@ -1,0 +1,72 @@
+---
+title: "Os 10 segundos de silêncio — quando o modelo pensa e devolve o nada"
+description: "Chamada LLM termina em 200 OK com content vazio, a fila segue e ninguém reclama. Diagnóstico: reasoning models gastam o budget de tokens pensando e sobra zero pra resposta. Os consertos: teto de tokens com margem e parser que aceita SSE sujo."
+date: 2026-09-09 16:00:00 -03:00
+pubDate: 2026-09-11 16:00:00 -03:00
+project: estudos
+tags: [estudos, studies, llm, reasoning, tokens, debugging, api, patterns, lessons]
+icon: "📚"
+cover: /covers/estudos-os-dez-segundos-de-silencio.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Existem falhas que gritam e falhas que agradecem. A mais perigosa da minha semana foi do segundo tipo: uma chamada de LLM que termina em 200 OK, com JSON válido, `finish_reason` civilizado — e `content` vazio. Nenhum erro, nenhum traceback. O job marca sucesso, a fila anda, e o que devia ser um parágrafo de análise vira dez segundos de silêncio cobrado como se fossem palavras.
+
+## O sintoma: sucesso que não produz nada
+
+O padrão se repetiu o suficiente pra virar suspeita: respostas curtas somiam. Perguntas simples — uma linha de contexto, um parágrafo esperado — voltavam vazias. Perguntas longas voltavam completas. Se fosse rede, cairia às vezes. Se fosse prompt, falharia sempre. O divisor era o **tamanho da resposta**.
+
+## A conta que fechou
+
+Modelos de reasoning gastam tokens pensando antes de responder — e esses tokens de raciocínio entram no mesmo teto que a resposta. Quando o budget é apertado, o modelo pode queimar quase tudo pensando e não sobra nada pra saída. O servidor não considera erro: o limite foi respeitado, o JSON é válido, o `content` é que nasceu vazio.
+
+E olha o detalhe cruel: os tokens de raciocínio contam no custo. Paguei pelos pensamentos e recebi o recibo de uma resposta que nunca existiu. Dez segundos de silêncio faturados como texto.
+
+## Conserto 1 — teto com margem, não aperto no olho
+
+A tentação é reduzir o `max_tokens` pra economizar. O efeito real é fabricar o bug com mais frequência: reasoning não é decoração, é parte do trabalho. A regra que ficou:
+
+- o teto tem que caber no **pensamento inteiro mais a resposta inteira**;
+- margem, não exatidão — apertado demais é podar a resposta em produção;
+- respostas chatas (curtas, em cima do limite) merecem mais atenção que as longas: são elas que escondem o esvaziamento.
+
+## Conserto 2 — parser que aceita SSE sujo
+
+O segundo achado veio no caminho de volta. Streaming SSE fecha o stream com um marcador do tipo `data: [DONE]`, e eu assumi que esse marcador chegava sozinho, numa linha própria. Ele não chega: às vezes vem **colado no fim do mesmo chunk do JSON** — `}{ "data": "[DONE]" }` sem quebra de linha. Um parser ingênuo que alimenta o buffer inteiro ao `JSON.parse` explode, derruba o consumidor e mata a resposta que já estava completa.
+
+O conserto é raspar o marcador antes do parse: achar `data: [DONE]` em qualquer posição do chunk, remover, e só então interpretar o resto. O JSON legítimo sobrevive, o marcador some, e o stream vira determinismo.
+
+```python
+# antes: json.loads(chunk) — explode quando o DONE vem colado
+def limpar_chunk(chunk: str) -> str:
+    if "[DONE]" in chunk:
+        chunk = chunk.replace("data: [DONE]", "").strip()
+    return chunk
+```
+
+## O custo de não ter dado conta
+
+Entre o primeiro 200 vazio e o parser blindado, o bug custou horas de leitura de payload bruto, um retry que enganou (o retry re-processava o chunk já consumido) e um alerta falso de "modelo fora do ar" — que era o consumidor caindo, não o modelo. Em fila com vários estágios, um `content` vazio no meio da cadeia propaga: cada estágio seguinte trata ausência como entrada, e o erro fica cada vez mais longe da causa.
+
+## O que aprendi
+
+**200 OK não é confirmação de conteúdo.** Em chamada de LLM, o contrato mínimo de sucesso é três partes: HTTP ok, JSON parseável e `content` não-vazio. As pipelines que eu escrevo a partir de agora validam as três — e tratam `content` vazio como falha de domínio, com retry e métrica própria, não como dado.
+
+**Reasoning é custo de produção, não detalhe.** O orçamento de tokens de um modelo que pensa tem duas partes com necessidades opostas: raciocínio quer espaço, resposta quer garantia. Dimensionar pro pior caso dos dois é o único jeito de não escolher aleatoriamente qual dos dois morre.
+
+**Nada de assumir formato entre sistemas.** O `data: [DONE]` numa linha própria era uma suposição minha sobre um protocolo que eu não escrevi. Entre dois sistemas, o único contrato que vale é o que chega no cabo — e o parser que sobrevive é o que aceita o cabo como ele é.
+
+## Tabela honesta
+
+| Sintoma | Causa | Conserto |
+| --- | --- | --- |
+| 200 OK, `content` vazio | budget de tokens consumido pelo raciocínio | teto com margem pra pensar + responder |
+| Custo sobe sem resposta | tokens de reasoning faturados | margem de budget + validação de conteúdo |
+| JSON.parse explode no fim do stream | `data: [DONE]` colado no chunk do JSON | raspar o marcador antes do parse |
+| Alerta falso de modelo fora | consumidor cai no parse, não no modelo | distinguir falha de transporte de falha de conteúdo |
+
+Aí está a lição que fica: silêncio em pipeline não é paz. Onde devia ter texto e não tem, algo pagou a conta — e o trabalho de engenharia é descobrir quem.
