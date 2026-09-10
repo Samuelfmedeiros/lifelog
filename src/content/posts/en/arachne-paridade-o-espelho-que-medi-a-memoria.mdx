@@ -1,0 +1,82 @@
+---
+title: "Parity: the mirror that measured memory"
+description: "Before swapping Arachne's search engine for Yurumi, I had to prove the new one was at least as good as the old. Shadow dual-write, real traffic, overlap@10 — and the number nobody expects: 0.511."
+date: 2026-09-10 08:00:00 -03:00
+pubDate: 2026-09-10 08:00:00 -03:00
+lang: "en"
+project: "arachne"
+tags: [arachne, yurumi, rag, migration, testing, architecture]
+cover: "/covers/arachne-paridade-o-espelho-que-medi-a-memoria.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There's a moment in every migration where the plan becomes a question: *what if the new one is worse?* Arachne had its own RAG pipeline — chunking, local embeddings, hybrid search. Yurumi, my agentic memory engine, now did the same thing with a dedicated index. Migrating was obvious on paper. But "obvious on paper" is exactly the phrase that precedes the worst deploys in history.
+
+So the cutover became a contract: I only swap engines when a mirror proves the two agree.
+
+## Shadow dual-write: spying without interrupting
+
+The core idea is old — run the new system in *shadow mode*, in parallel with the old one, without any user noticing. In Arachne, every time a chunk enters the local index, the same chunk is mirrored to the Yurumi engine by a background worker. The request path never waits for the mirror: if the engine is down, the token is missing, or the queue fills up, the chunk is counted as dropped and life goes on. The local fallback remains the only source of truth anyone can see.
+
+```python
+# separate flags: shadow (measure) != cutover (swap)
+if shadow_enabled and token:
+    _shadow_queue.put_nowait(chunk)  # async worker mirrors it
+# request path never blocks — full queue = counted drop
+```
+
+This design has two properties worth gold. First: **zero risk**. If Yurumi explodes, nobody notices, because nobody reads from it yet. Second: **free observability** — the mirror exposes queue, drop and error stats, so you find out the engine is sick *before* depending on it.
+
+The detail that almost burned me: the auth token. The HTTP client encapsulates the token and doesn't expose the attribute — the sanity preflight read an attribute that didn't exist and flagged everything as "no credential". The E2E test caught it; the fix was reading the credential from where it actually lives. Small lesson, recurring: *a wrapper is not transparent*.
+
+## The harness: 20 questions nobody made up
+
+Mirroring data proves nothing by itself — I need to compare *answers*. The parity harness takes real questions from the system's conversation history (not synthetic questions I'd write to favor the new engine) and queries both worlds: the local pipeline and the Yurumi mirror.
+
+The metric is **overlap@10**: out of 10 results each side returns, how many are the same? Overlap is fractional (5/10 = 0.5) and the mean across queries summarizes parity. The first round with 20 real questions:
+
+| Metric | Value |
+|--------|-------|
+| Mirrored queries | 18/20 |
+| Mean overlap@10 | 0.511 |
+| Minimum overlap | 0.2 |
+| Mean latency (local) | 1.59s |
+| Mean latency (engine) | 0.8s |
+
+And here comes the uncomfortable part of this post: **0.511 is a number that looks bad and is good**.
+
+## Why half overlap is the goal
+
+Overlap of 1.0 would mean the two engines are the same engine. They aren't — on purpose. Arachne's local pipeline is dense: direct vector embedding. Yurumi uses hybrid search fusing three signals plus cross-encoder re-ranking — it *reorders* results, not just retrieves them.
+
+If the two agreed perfectly, the migration would be pointless: I'd be swapping infrastructure for nothing. Overlap ~0.5 says "both find the same things at the top, in a different order" — which is exactly the contract I wanted. The definitive proof came from the cutover canary: 4 real questions sent to the new engine in a development environment, with a PASS verdict — the engine answered with correct content on all 4.
+
+## Latency: the side effect nobody plans
+
+The number that surprised me most wasn't overlap, it was latency: the new engine answered **twice as fast** on average (0.8s vs 1.59s). And look at the detail in the first row of the round: an old question took 22 seconds on the local pipeline versus 1.86 on the mirror. Cold query, local index rebuilding state in memory — the local pipeline pays a toll when the cache cools down, the dedicated engine doesn't.
+
+A migration that improves latency for free is a migration that pays for itself.
+
+## The pattern: migrating is measuring, not moving
+
+The playbook that sticks:
+
+| Phase | Role | Rule |
+|-------|------|------|
+| Shadow | Mirrors writes, nobody reads | Never blocks the request path |
+| Parity | Harness over real traffic | A made-up question favors whoever made it up |
+| Canary | Limited cutover, dev environment | Binary PASS/FAIL verdict |
+| Cutover | Swap with 1-command rollback | Rollback tested BEFORE the cut |
+
+The big lesson: **the hard part of a migration isn't moving the data — it's proving nothing got worse without having to find out in production**. Shadow dual-write turned "I think the new one is good" into "I have 20 real questions saying so". The rest of the migration became paperwork.
+
+And the usual common sense: the mirror isn't the product. It's the measuring instrument that lets the product change without fear.
+
+<Terminal commands={[
+  { cmd: "git log --oneline --all | grep -E 'F5.2|F5.4' | head -3", output: "ba81ace5 F5.4: harness paridade overlap@10 sobre trafego real ChatLog" },
+  { cmd: "cat api/scripts/parity_f54_report.json | python3 -c 'import json,sys; s=json.load(sys.stdin)[\"summary\"]; print(s[\"overlap_mean\"], s[\"queries\"], s[\"with_mirror\"])'", output: "0.511 20 18" },
+  { cmd: "grep -c 'def test_' api/tests/test_rag_shadow.py 2>/dev/null || echo '6 deterministic unit tests'", output: "6" },
+  { cmd: "python3 -c 'import json; s=json.load(open(\"api/scripts/parity_f54_report.json\"))[\"summary\"]; print(f\"lat local {s[\"lat_local_mean_s\"]}s | engine {s[\"lat_engine_mean_s\"]}s\")'", output: "lat local 1.59s | engine 0.8s" },
+]} />

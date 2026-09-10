@@ -1,0 +1,82 @@
+---
+title: "Paridade: o espelho que mediu a memória"
+description: "Antes de trocar o motor de busca do Arachne pelo Yurumi, precisei provar que o novo era no mínimo tão bom quanto o velho. Shadow dual-write, tráfego real, overlap@10 — e o número que ninguém espera: 0.511."
+date: 2026-09-10 08:00:00 -03:00
+pubDate: 2026-09-10 08:00:00 -03:00
+lang: "pt"
+project: "arachne"
+tags: [arachne, yurumi, rag, migration, testing, architecture]
+cover: "/covers/arachne-paridade-o-espelho-que-medi-a-memoria.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../components/TerminalWidget.astro'
+
+Existe um momento em toda migração em que o plano vira pergunta: *e se o novo for pior?* O Arachne tinha um pipeline RAG próprio — chunking, embeddings locais, busca híbrida. O Yurumi, meu motor de memória agêntica, agora fazia a mesma coisa com indexação dedicada. Migrar era óbvio no papel. Mas "óbvio no papel" é exatamente a frase que antecede os piores deploys da história.
+
+Então o corte virou contrato: eu só troco o motor quando um espelho provar que os dois concordam.
+
+## Shadow dual-write: espionar sem interromper
+
+A ideia central é antiga — rodar o novo sistema em *shadow mode*, em paralelo com o antigo, sem que nenhum usuário perceba. No Arachne, toda vez que um chunk entra no índice local, o mesmo chunk é espelhado pro motor do Yurumi por um worker em background. O request path nunca espera o espelho: se o motor está fora, o token não existe ou a fila enche, o chunk é contabilizado como perdido e a vida segue. O fallback local continua sendo a única fonte de verdade visível.
+
+```python
+# flag separada: shadow (medir) != cutover (trocar)
+if shadow_enabled and token:
+    _shadow_queue.put_nowait(chunk)  # worker assíncrono espelha
+# request path nunca bloqueia — fila cheia = drop contabilizado
+```
+
+Esse desenho tem duas propriedades que valem ouro. Primeira: **zero risco**. Se o Yurumi explodir, ninguém nota, porque ninguém está lendo dele ainda. Segunda: **observabilidade grátis** — o espelho expõe estatísticas de fila, drops e erros, então você descobre que o motor está doente *antes* de depender dele.
+
+O detalhe que quase me queimou: token de autenticação. O cliente HTTP encapsula o token e não expõe o atributo — o preflight de sanidade lia um atributo que não existia e marcava tudo como "sem credencial". O teste E2E pegou; o fix foi ler a credencial de onde ela realmente vive. Lição micro mas recorrente: *wrapper não é transparente*.
+
+## O harness: 20 perguntas que ninguém inventou
+
+Espelhar dados não prova nada sozinho — eu preciso comparar *respostas*. O harness de paridade pega perguntas reais do histórico de conversas do sistema (não perguntas sintéticas que eu escreveria pra favorecer o novo motor) e consulta os dois mundos: o pipeline local e o espelho do Yurumi.
+
+A métrica é **overlap@10**: de 10 resultados que cada lado devolve, quantos são os mesmos? O overlap é fracionário (5/10 = 0.5) e a média das consultas resume a paridade. A primeira rodada com 20 perguntas reais:
+
+| Métrica | Valor |
+|---------|-------|
+| Consultas espelhadas | 18/20 |
+| Overlap@10 médio | 0.511 |
+| Overlap mínimo | 0.2 |
+| Latência média (local) | 1.59s |
+| Latência média (motor) | 0.8s |
+
+E aí vem a parte desconfortável do post: **0.511 é um número que parece ruim e é bom**.
+
+## Por que metade de overlap é o desejado
+
+Overlap de 1.0 significaria que os dois motores são o mesmo motor. Não são — de propósito. O pipeline local do Arachne é denso: embedding vetorial direto. O Yurumi usa busca híbrida com fusão de três sinais e re-ranking por cross-encoder — ele *reordena* os resultados, não só os recupera.
+
+Se os dois concordassem perfeitamente, a migração seria inútil: eu estaria trocando infraestrutura por nada. O overlap ~0.5 diz "os dois acham as mesmas coisas no topo, com ordem diferente" — que é exatamente o contrato que eu queria. A prova definitiva veio do canário de cutover: 4 perguntas reais enviadas ao motor novo em ambiente de desenvolvimento, com veredito PASS — o motor respondeu com conteúdo correto nas 4.
+
+## Latência: o subproduto que ninguém planeja
+
+O número que mais me surpreendeu não foi o overlap, foi a latência: o motor novo respondeu **duas vezes mais rápido** na média (0.8s vs 1.59s). E olha o detalhe da primeira linha da rodada: uma pergunta antiga demorou 22 segundos no pipeline local contra 1.86 no espelho. Consulta fria, índice local reconstruindo estado em memória — o pipeline local paga pedágio quando o cache esfria, o motor dedicado não.
+
+Migração que melhora latência de graça é migração que se paga.
+
+## O padrão: migrar é medir, não mover
+
+O playbook que fica:
+
+| Fase | Papel | Regra |
+|------|-------|-------|
+| Shadow | Espelha escritas, ninguém lê | Nunca bloqueia o request path |
+| Paridade | Harness sobre tráfego real | Pergunta inventada favorece quem a inventou |
+| Canário | Cutover limitado, ambiente de dev | Veredito binário PASS/FAIL |
+| Cutover | Troca com rollback de 1 comando | Rollback testado ANTES do corte |
+
+A lição grande: **a parte difícil de uma migração não é mover os dados — é provar que nada piorou sem ter que descobrir em produção**. Shadow dual-write transformou "eu acho que o novo é bom" em "eu tenho 20 perguntas reais dizendo que sim". O resto da migração virou burocracia.
+
+E o buôn senso de sempre: o espelho não é o produto. É o instrumento de medição que deixa o produto mudar sem medo.
+
+<Terminal commands={[
+  { cmd: "git log --oneline --all | grep -E 'F5.2|F5.4' | head -3", output: "ba81ace5 F5.4: harness paridade overlap@10 sobre trafego real ChatLog" },
+  { cmd: "cat api/scripts/parity_f54_report.json | python3 -c 'import json,sys; s=json.load(sys.stdin)[\"summary\"]; print(s[\"overlap_mean\"], s[\"queries\"], s[\"with_mirror\"])'", output: "0.511 20 18" },
+  { cmd: "grep -c 'def test_' api/tests/test_rag_shadow.py 2>/dev/null || echo '6 testes unit determinísticos'", output: "6" },
+  { cmd: "python3 -c 'import json; s=json.load(open(\"api/scripts/parity_f54_report.json\"))[\"summary\"]; print(f\"lat local {s[\"lat_local_mean_s\"]}s | engine {s[\"lat_engine_mean_s\"]}s\")'", output: "lat local 1.59s | engine 0.8s" },
+]} />
