@@ -1,0 +1,74 @@
+---
+title: "Onze PRs numa tarde só — o dia em que o dependabot virou colega de time"
+description: "Nove bibliotecas, um runner de testes em versão major e uma action do GitHub atualizadas num único dia. Como foi integrar 11 pull requests de dependências no Portifólio sem quebrar os testes — e o que quase virou falso alarme."
+date: 2026-09-10 12:00:00 -03:00
+pubDate: 2026-09-10 12:00:00 -03:00
+lang: "pt"
+project: "portfolio"
+tags: [portfolio, dependencies, supply-chain, automation, github-actions, npm]
+cover: "/covers/portfolio-onze-prs-numa-tarde-so.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../components/TerminalWidget.astro'
+
+Na quarta-feira abri o repositório do Portifólio e a fila de pull requests tinha cara de leilão: onze PRs do dependabot empilhados, cada um com o mesmo pedido educado — "bump X from A to B". Em projetos que eu mantive no passado, essa fila era sinônimo de tarde perdida: ler changelog na mão, rodar build, torcer. Dessa vez o processo era outro, e a diferença não foi sorte.
+
+## O que veio no lote
+
+| Pacote | De | Para |
+|---|---|---|
+| vercel | 58.9.0 | 59.11.7 |
+| vitest | 4.1.10 | 5.0.0 |
+| framer-motion | 13.0.0 | 13.2.0 |
+| mercadopago | 3.3.0 | 3.6.0 |
+| eslint-config-next | 16.3.0 | 16.3.4 |
+| @testing-library/user-event | 14.6.3 | 14.6.7 |
+| @testing-library/jest-dom | 6.9.1 | 7.0.1 |
+| @testing-library/react | 16.3.2 | 16.3.3 |
+| @vitejs/plugin-react | 6.0.5 | 6.1.1 |
+| netlify-cli | 27.1.1 | 27.5.0 |
+| actions/setup-python | v6 | v7 |
+
+A maior parte do lote é o que eu chamo de polimento invisível: CLIs de deploy, configs de lint, bindings de teste. Nenhum desses entra no bundle que o usuário baixa. O risco real se concentra em dois pontos: o vitest, que pulou uma versão major (4 para 5), e o framer-motion, que controla a animação de tudo que se move na home.
+
+## O major que não doeu
+
+Runner de testes em major costuma ser o PR mais assustador da fila — é o pacote que decide se o CI fica verde. O vitest 4.1.10 para 5.0.0 entrou como PR #77 e passou sem nenhum ajuste no código de teste. Isso não é mérito do dependabot, é mérito da dívida técnica que eu não contraí: o projeto não usa APIs experimentais do runner, nem plugins obscuros, nem configuração exótica. A regra que aprendi mantendo esse repositório: quanto mais chatas as dependências de teste, mais barato o major.
+
+## O framer-motion e o falso alarme de snapshot
+
+O framer-motion 13.2.0 (PR #78) entrou no fim da fila e virou o último merge do dia. E na mesma semana, uma rodada do teste de regressão visual falhou com um diff de 6% num budget de 5%. Instinto de primeira hora: "a atualização quebrou algo".
+
+Só que o mesmo teste, rodado de novo contra um build idêntico, com baselines congeladas, passou sem um pixel de diferença. O diff de 6% era timing de animação — um frame capturado em fase diferente da transição — e não regressão visual. O framer-motion é o pacote mais vivo da home: ele anima entrada, hover e scroll, e qualquer teste que fotografe a página no meio de uma transição está fotografando tempo, não pixels.
+
+## O processo que segura o lote
+
+O fluxo que torna esse dia possível é simples de descrever e caro de construir:
+
+1. O dependabot abre o PR com changelog e link de release
+2. O CI roda a suíte inteira em cima do branch do PR — testes unitários e E2E
+3. Verde = merge; vermelho = o PR fica parado e a investigação acontece isolada
+4. Depois do lote, um commit de integração amarra tudo na história do projeto
+
+O passo 3 é o que transforma a fila de 11 PRs em rotina e não em aposta. O CI é quem lê o changelog por mim — ele não resume features, mas responde a única pergunta que importa: continua funcionando?
+
+| Tipo de PR | O que decide | O que pode doer |
+|---|---|---|
+| Patch/minor de CLI | CI verde | nada, na prática |
+| Major de test runner | suíte inteira | config quebrada, API removida |
+| Lib de UI/animação | CI + VRT | flake de snapshot, timing |
+
+## A lição do dia
+
+A parte contraintuitiva de manter dependências em dia não é técnica — é confiança. Confiança de que o CI cobre o que o changelog não conta, e disciplina de nunca dar merge num PR que o CI não viu. Onze PRs numa tarde só não é produtividade de robô: é o resultado de um projeto onde o caminho seguro também é o caminho rápido.
+
+O lote fechou com a suíte verde e a fila zerada. Na próxima rodada, o dependabot abre de novo — e a fila, de novo, vai ser rotina.
+
+<Terminal
+  commands={[
+    { cmd: "git log --merges --since=\"2026-09-09 00:00\" --oneline | head -4", output: "8e2367e Merge pull request #78 from Samuelfmedeiros/dependabot/npm_and_yarn/framer-motion-13.2.0\nb589371 Merge pull request #77 from Samuelfmedeiros/dependabot/npm_and_yarn/vitest-5.0.0\nb8eaf78 Merge pull request #75 from Samuelfmedeiros/dependabot/npm_and_yarn/mercadopago-3.6.0\nb1e58f1 Merge pull request #61 from Samuelfmedeiros/dependabot/npm_and_yarn/testing-library/jest-dom-7.0.1" },
+    { cmd: "node -e \"const p=require('./package.json'); console.log(p.devDependencies['framer-motion'], p.devDependencies.vitest)\"", output: "^13.2.0 ^5.0.0" },
+    { cmd: "git log --oneline --merges --since=\"2026-09-09 00:00\" | wc -l", output: "12" },
+  ]}
+/>
