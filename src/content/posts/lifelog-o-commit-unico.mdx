@@ -1,0 +1,142 @@
+---
+title: "O commit único — quando o botão de liberar parou de mentir sobre o estado do blog"
+description: "Apertar o botão de liberar fazia dois commits: um flipava o frontmatter, outro regenerava o índice do painel. Entre um e outro, o painel listava post que já estava público. A resposta foi parar de emendar chamadas e mandar tudo num commit só via Git Data API — blobs, tree, commit e ref, com retry que re-lê o estado do mundo antes de tentar de novo."
+date: 2026-09-10 16:00:00 -03:00
+pubDate: 2026-09-10 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "github-api", "git", "integrity", "vercel", "process"]
+
+cover: /covers/lifelog-o-commit-unico.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O painel que sabia demais
+
+No dia 8 de setembro, apertei o botão de liberar no painel de posts ocultos. A API flipou o `hidden: true` para `hidden: false` nos dois arquivos do par (português e inglês), fez o commit, o push, o deploy. Alguns minutos depois, recarreguei o painel — e ele continuava listando o post que eu tinha acabado de liberar. Do lado de fora, a página pública do post já respondia 200.
+
+Nenhuma das duas fontes estava errada. É que elas descreviam instantes diferentes do mesmo processo.
+
+O problema não era o painel estar desatualizado — era ele estar desatualizado **de propósito, por arquitetura**. A liberação era coreografada em duas transações independentes:
+
+```text
+transação 1: flip hidden:true -> false em <par PT+EN>.mdx  -> commit -> push
+transação 2: regenerar api/ocultos-data.mjs sem o par      -> commit -> push
+```
+
+Entre a transação 1 e a transação 2 existe uma janela. Dentro dela, o repositório diz uma coisa (post liberado, `hidden: false` nos mdx) e o índice gerado diz outra (post ainda na lista de ocultos). O painel de produção lê o índice do bundle deployado — que só troca no próximo deploy. Se a segunda transação empurrar o commit depois do deploy da primeira, o painel congela no estado velho até o deploy seguinte.
+
+Chamei o sintoma de "painel listando post já público" e tratei como bug do painel. Corrigir o sintoma era possível: regenerar o índice no fim do fluxo, refazer o commit, disparar deploy de novo. Foi o que fiz no `067da21` — e era um curativo num corte que a cirurgia ia reabrir a cada liberação.
+
+## O diagnóstico que doeu
+
+A pergunta certa não era "por que o painel mente?" e sim "por que a liberação são dois commits?".
+
+A resposta honesta: porque cada commit sozinho é fácil. Flipar frontmatter é uma troca de string. Regenerar um índice é ler um diretório e serializar JSON. Duas operações simples emendadas com dois commits — cada passo com ponto de falha próprio, cada falha no meio deixando o repositório num estado que só é verdade pela metade.
+
+O índice `api/ocultos-data.mjs` é derivado dos frontmatters. Duas fontes de verdade derivadas da mesma origem, publicadas em instantes diferentes. Isso não é um bug de sincronização — é uma garantia quebrada por desenho.
+
+A correção que valeu a pena não era sincronizar melhor os dois commits. Era cometer os dois em **um só**.
+
+## A coreografia do commit atômico
+
+A API REST de conteúdo do GitHub (`PUT /contents`) troca um arquivo por chamada. Não existe endpoint "commita três arquivos de uma vez" nessa rota. Quem resolve isso é a Git Data API — a camada de baixo nível onde um commit é um objeto com árvore, e uma árvore é um conjunto de referências a blobs.
+
+A coreografia, em cinco chamadas:
+
+```text
+1. GET  /git/ref/heads/main            -> sha do commit atual (base)
+2. GET  /git/commits/<base>            -> sha da árvore base
+3. POST /git/blobs                      (um por arquivo: mdx PT, mdx EN, índice)
+4. POST /git/trees                      (base_tree + os 3 blobs -> nova árvore)
+5. POST /git/commits  (tree, parents=[base]) -> PATCH /git/refs/heads/main
+```
+
+O passo 4 é o que faz a mágica: `base_tree` diz "parta da árvore atual e mude só estes caminhos". O commit resultante carrega o repositório inteiro e a mudança de três arquivos — e não existe momento intermediário em que o `main` veja metade da liberação.
+
+No `scripts/ocultos-core.mjs`, o trecho que fecha a coreografia:
+
+```js
+const treeSha = await createTree(baseTree, blobs);
+const commit = await gh(`/repos/${owner}/${repo}/git/commits`, {
+  method: 'POST',
+  body: JSON.stringify({ message, tree: treeSha, parents: [baseSha] }),
+});
+if (commit.status !== 201) throw Object.assign(new Error(`commit HTTP ${commit.status}`), { status: commit.status });
+
+const patch = await gh(`/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ sha: commit.data.sha, force: false }),
+});
+if (patch.status !== 200) {
+  throw Object.assign(new Error(`ref update HTTP ${patch.status}`), { status: patch.status, moved: patch.status === 422 });
+}
+```
+
+Dois detalhes ali carregam mais design do que parece.
+
+O `force: false` no PATCH é o seguro contra o overwrite cego. Se outra sessão empurrou algo no `main` entre a minha leitura do `ref` e o meu PATCH, o GitHub responde `422` — a ref não é fast-forward. O erro não é tratado como falha genérica: ele vem com uma marca (`moved: true`) e o chamador entra num retry que **re-lê todos os conteúdos frescos do repositório** antes de refazer a coreografia. Até três tentativas. A cada volta, o estado novo do mundo entra na conta — nunca o meu snapshot velho por cima de trabalho alheio.
+
+E a regra de ouro: as fronteiras entre as chamadas não são pontos onde o repositório fica "meio liberado". Elas são onde uma liberação **não visível** vira uma liberação **única e completa**.
+
+## Byte-idêntico ou nada
+
+Comitar o índice junto dos mdx exige que o índice regenerado na liberação seja exatamente igual ao que o build gera. Se o formato divergir por um byte — um espaço, uma quebra de linha, ordem de chave no JSON — todo release vira um diff falso, e o histórico do arquivo vira ruído.
+
+A resposta foi uma fonte única de formato. O `serializeOcultos` e o `parseOcultos` vivem no mesmo módulo que o gerador do build consome; o endpoint de liberação importa os mesmos objetos. A propriedade é testável e o teste diz exatamente isso:
+
+```js
+it('parse → serialize = bytes idênticos', () => {
+  const text = serializeOcultos(samplePosts);
+  const parsed = parseOcultos(text);
+  expect(serializeOcultos(parsed)).toBe(text);
+});
+```
+
+Quinze testes cobrem o contrato: header gerado igual ao formato atual, parse aceita arquivo real com o ponto-e-vírgula final, parse falha alto (e não engole) quando o marcador `export default` some, flip preserva line endings LF e CRLF como estão, flip num arquivo já liberado é idempotente e devolve bytes intactos, remoção do par tira PT e EN e preserva os outros, e as variantes de nomenclatura do EN (`en/<slug>` versus `en/en-<slug>`, um legado honesto das primeiras semanas) colidem e deduplicam sem quebrar.
+
+O detalhe que quase passou: o flip de `hidden: true` para `hidden: false` não pode normalizar line endings. O repositório tinha arquivos em CRLF e LF convivendo, e um flip que padronizasse tudo viraria um diff de arquivo inteiro — o commit atômico carregando renames invisíveis. O `flipHidden` preserva o que está lá:
+
+```js
+export function flipHidden(raw) {
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return { raw, flipped: false, already: false, missing: true };
+  const fm = fmMatch[1];
+  const updated = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
+  if (updated !== fm) return { raw: raw.replace(fm, updated), flipped: true, already: false };
+  if (/^(\s*hidden:\s*)false(\s*)$/m.test(fm)) return { raw, flipped: false, already: true };
+  return { raw, flipped: false, already: false, missing: true };
+}
+```
+
+A regex do frontmatter aceita `\r?\n` nas bordas e preserva cada byte que não é o `true` alvo. Um clique, um diff de uma palavra por arquivo.
+
+## A liberação como transação
+
+Depois do merge, a liberação passou a ser isto:
+
+| Antes | Depois |
+|---|---|
+| 2 commits por liberação | 1 commit único |
+| Janela com estado inconsistente no `main` | Nenhuma — o `main` nunca vê metade |
+| Painel podia listar post já público | Índice e frontmatter saem juntos do mesmo commit |
+| Conflito com push concorrente = overwrite ou abort | `422` detectado, conteúdo re-lido, retry até 3x |
+| Formato do índice em dois lugares | Uma fonte, byte-idêntica por teste |
+| Deploy do CI podia commitar self-heal extra | Deploy do CI só cura drift de qualquer origem |
+
+O deploy também ganhou uma rede: se o build rodar num estado em que o índice diverge do HEAD, o próprio workflow commita o alinhamento e segue. Não é para isso acontecer — o commit atômico garante que não acontece no caminho normal — mas um sistema que só funciona quando tudo dá certo é um sistema que mentiu para você uma vez e está esperando a próxima.
+
+O que ficou de aprendizado não é a Git Data API em si — a documentação dela é boa e a coreografia está em qualquer guia de commits multi-arquivo. O aprendizado é a ordem das perguntas. Eu tinha dois commits porque dois commits eram fáceis, e o estado inconsistente entre eles era "temporário", "só alguns segundos", "ninguém clica nesse meio-tempo". Estados temporários não são inofensivos: são garantias em aguardente. Quando duas fontes de verdade derivam da mesma origem, elas precisam sair juntas — no mesmo commit, no mesmo deploy, no mesmo instante. Ou viram uma só.
+
+<Terminal
+  commands={[
+    { label: 'antes', cmd: 'flip mdx -> commit -> push | regen indice -> commit -> push' },
+    { label: 'janela', cmd: 'painel lendo bundle velho: post publico listado como oculto' },
+    { label: 'depois', cmd: 'ref -> base_tree -> blobs x3 -> tree -> commit -> PATCH ref' },
+    { label: 'confito', cmd: 'HTTP 422 -> re-le conteudo fresco -> retry x3 (force: false)' },
+    { label: 'garantia', cmd: 'parse(serialize(x)) == x  # 15 testes, byte-idêntico' },
+  ]}
+/>

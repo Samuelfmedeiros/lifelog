@@ -1,0 +1,142 @@
+---
+title: "The single commit — when the publish button stopped lying about the blog's state"
+description: "Hitting the publish button used to make two commits: one flipped the frontmatter, the other regenerated the panel's index. In between, the panel listed a post that was already public. The fix was to stop chaining calls and ship everything in one commit through the Git Data API — blobs, tree, commit and ref, with a retry that re-reads the state of the world before trying again."
+date: 2026-09-10 16:00:00 -03:00
+pubDate: 2026-09-10 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "github-api", "git", "integrity", "vercel", "process"]
+
+cover: /covers/lifelog-o-commit-unico.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The panel that knew too much
+
+On September 8th, I hit the publish button on the hidden-posts panel. The API flipped `hidden: true` to `hidden: false` in both files of the pair (Portuguese and English), committed, pushed, deployed. A few minutes later I reloaded the panel — and it still listed the post I had just published. Out in the wild, the post's public page was already answering 200.
+
+Neither source was wrong. They were describing different moments of the same process.
+
+The problem wasn't the panel being stale — it was stale **by design**. The release was choreographed as two independent transactions:
+
+```text
+transaction 1: flip hidden:true -> false in <PT+EN pair>.mdx  -> commit -> push
+transaction 2: regenerate api/ocultos-data.mjs without the pair -> commit -> push
+```
+
+Between transaction 1 and transaction 2 there is a window. Inside it, the repository says one thing (post released, `hidden: false` in the mdx files) and the generated index says another (post still on the hidden list). The production panel reads the index from the deployed bundle — which only changes on the next deploy. If the second transaction lands its commit after the first one's deploy, the panel freezes in the old state until the following deploy.
+
+I called the symptom "panel listing an already-public post" and treated it as a panel bug. Patching the symptom was possible: regenerate the index at the end of the flow, redo the commit, trigger another deploy. That's what I did in `067da21` — and it was a band-aid on a cut the surgery would reopen on every release.
+
+## The diagnosis that hurt
+
+The right question wasn't "why does the panel lie?" but rather "why is a release two commits?".
+
+The honest answer: because each commit alone is easy. Flipping frontmatter is a string swap. Regenerating an index is reading a directory and serializing JSON. Two simple operations stitched together with two commits — each step with its own failure point, each mid-flight failure leaving the repository in a state that is only half true.
+
+The `api/ocultos-data.mjs` index is derived from the frontmatters. Two sources of truth derived from the same origin, published at different moments. That's not a sync bug — it's a guarantee broken by design.
+
+The fix worth making wasn't syncing the two commits better. It was committing both as **one**.
+
+## The atomic commit choreography
+
+GitHub's REST content API (`PUT /contents`) replaces one file per call. There is no endpoint that commits three files at once on that route. The thing that solves it is the Git Data API — the low-level layer where a commit is an object with a tree, and a tree is a set of references to blobs.
+
+The choreography, in five calls:
+
+```text
+1. GET  /git/ref/heads/main            -> current commit sha (base)
+2. GET  /git/commits/<base>            -> base tree sha
+3. POST /git/blobs                      (one per file: PT mdx, EN mdx, index)
+4. POST /git/trees                      (base_tree + the 3 blobs -> new tree)
+5. POST /git/commits  (tree, parents=[base]) -> PATCH /git/refs/heads/main
+```
+
+Step 4 is where the magic happens: `base_tree` says "start from the current tree and change only these paths". The resulting commit carries the whole repository plus the three-file change — and there is no intermediate moment where `main` sees half a release.
+
+In `scripts/ocultos-core.mjs`, the piece that closes the choreography:
+
+```js
+const treeSha = await createTree(baseTree, blobs);
+const commit = await gh(`/repos/${owner}/${repo}/git/commits`, {
+  method: 'POST',
+  body: JSON.stringify({ message, tree: treeSha, parents: [baseSha] }),
+});
+if (commit.status !== 201) throw Object.assign(new Error(`commit HTTP ${commit.status}`), { status: commit.status });
+
+const patch = await gh(`/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ sha: commit.data.sha, force: false }),
+});
+if (patch.status !== 200) {
+  throw Object.assign(new Error(`ref update HTTP ${patch.status}`), { status: patch.status, moved: patch.status === 422 });
+}
+```
+
+Two details in there carry more design than they seem to.
+
+`force: false` on the PATCH is the safeguard against blind overwrites. If another session pushed something to `main` between my `ref` read and my PATCH, GitHub answers `422` — the ref is not a fast-forward. The error isn't handled as a generic failure: it comes tagged (`moved: true`) and the caller enters a retry that **re-reads every file's fresh content** from the repository before redoing the choreography. Up to three attempts. Each round, the world's new state enters the equation — never my stale snapshot on top of someone else's work.
+
+And the golden rule: the boundaries between the calls are not points where the repository sits "half released". They are where a **not yet visible** release becomes a **single and complete** one.
+
+## Byte-identical or nothing
+
+Committing the index along with the mdx files demands that the index regenerated at release time be exactly what the build generates. If the format diverges by a single byte — a space, a line break, a JSON key order — every release becomes a fake diff, and the file's history becomes noise.
+
+The answer was a single source of format truth. `serializeOcultos` and `parseOcultos` live in the same module the build generator consumes; the release endpoint imports the very same objects. The property is testable, and the test says exactly that:
+
+```js
+it('parse → serialize = bytes idênticos', () => {
+  const text = serializeOcultos(samplePosts);
+  const parsed = parseOcultos(text);
+  expect(serializeOcultos(parsed)).toBe(text);
+});
+```
+
+Fifteen tests cover the contract: generated header equal to the current format, parse accepts a real file with the trailing semicolon, parse fails loud (and doesn't swallow) when the `export default` marker goes missing, the flip preserves LF and CRLF line endings as they are, flipping an already-released file is idempotent and returns intact bytes, removing the pair takes out PT and EN while preserving the others, and the EN naming variants (`en/<slug>` versus `en/en-<slug>`, an honest legacy from the first weeks) collide and deduplicate without breaking.
+
+The detail that almost slipped by: flipping `hidden: true` to `hidden: false` must not normalize line endings. The repository had CRLF and LF files coexisting, and a flip that standardized everything would become a whole-file diff — the atomic commit carrying invisible renames. `flipHidden` preserves what's there:
+
+```js
+export function flipHidden(raw) {
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!fmMatch) return { raw, flipped: false, already: false, missing: true };
+  const fm = fmMatch[1];
+  const updated = fm.replace(/^(\s*hidden:\s*)true(\s*)$/m, '$1false$2');
+  if (updated !== fm) return { raw: raw.replace(fm, updated), flipped: true, already: false };
+  if (/^(\s*hidden:\s*)false(\s*)$/m.test(fm)) return { raw, flipped: false, already: true };
+  return { raw, flipped: false, already: false, missing: true };
+}
+```
+
+The frontmatter regex accepts `\r?\n` at the edges and preserves every byte that isn't the targeted `true`. One click, a one-word diff per file.
+
+## The release as a transaction
+
+After the merge, a release became this:
+
+| Before | After |
+|---|---|
+| 2 commits per release | 1 single commit |
+| Window with inconsistent state on `main` | None — `main` never sees half of it |
+| Panel could list an already-public post | Index and frontmatter leave in the same commit |
+| Conflict with a concurrent push = overwrite or abort | `422` detected, content re-read, retry up to 3x |
+| Index format in two places | One source, byte-identical by test |
+| CI deploy could add an extra self-heal commit | CI deploy only heals drift from any origin |
+
+The deploy also gained a net: if the build runs in a state where the index diverges from HEAD, the workflow itself commits the alignment and moves on. It's not supposed to happen — the atomic commit guarantees it doesn't on the normal path — but a system that only works when everything goes right is a system that lied to you once and is waiting for the next time.
+
+What remained as a lesson isn't the Git Data API itself — its documentation is good and the choreography is in any multi-file commit guide. The lesson is the order of the questions. I had two commits because two commits were easy, and the inconsistent state between them was "temporary", "just a few seconds", "nobody clicks in that window". Temporary states aren't harmless: they are guarantees on hold. When two sources of truth derive from the same origin, they need to leave together — in the same commit, the same deploy, the same instant. Or they become one.
+
+<Terminal
+  commands={[
+    { label: 'before', cmd: 'flip mdx -> commit -> push | regen index -> commit -> push' },
+    { label: 'window', cmd: 'panel reading old bundle: public post listed as hidden' },
+    { label: 'after', cmd: 'ref -> base_tree -> blobs x3 -> tree -> commit -> PATCH ref' },
+    { label: 'conflict', cmd: 'HTTP 422 -> re-read fresh content -> retry x3 (force: false)' },
+    { label: 'guarantee', cmd: 'parse(serialize(x)) == x  # 15 tests, byte-identical' },
+  ]}
+/>
