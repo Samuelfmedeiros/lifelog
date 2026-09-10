@@ -35,6 +35,13 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-09 (fim de dia) — pipeline A/B/C do dia + fix LLM content vazio
+
+- **post(a)**: seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava título e resumo de post oculto pelo getStaticPaths e pela nuvem de tags; achado não-bloqueante do Roger com nota máxima no gate; regras: filtro compartilhado + teste por título no HTML público + par PT/EN (ff185ac); release atômica (075b3b0)
+- **post(b)**: arachne-tres-facas-do-flake (PT+EN, hidden) — 3 flakes reais: RNG sem semente no test_search_top_k, offline_net autouse virando opt-in por marker, asserts tautológicos dentro do pytest.raises (critic R3); 79 passed no venv (0afb19d)
+- **post(c)**: estudos-os-dez-segundos-de-silencio (PT+EN, hidden) — chamada LLM 200 OK com content vazio: reasoning models queimam o budget de tokens pensando; consertos: teto de tokens com margem (pensamento+resposta) + parser SSE que raspa `data: [DONE]` colado no chunk do JSON; capa Worker FLUX v3 (gradiente, OCR 0 hits, brightness 199) (3bafb5b)
+- pipeline 3 posts (A 08:00 / B 12:00 / C 16:00) + deploy p/ incluir post b no bundle do painel (ab0d8d8) · push origin feat/release-atomic · HEAD: `3bafb5b`
+
 ## Sessão 2026-09-08 (fim de dia) — Tags Opção C live + 4 releases + recusas #38/#39
 
 - **feat(tags) Opção C live**: vocabulário canônico (tag-vocab.ts) + guardião check-tags.py + /tag/[slug] PT+EN + guard --strict no CI (eb60e94→0fe6bf7); fix lint 6 erros + check-tags ROOT relativo (bd47418, 973ee1f)
@@ -449,3 +456,10 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **deploy.yml**: step self-heal — se o data divergir do HEAD no build, commita `chore(ocultos): sync ocultos-data [skip ci]`.
 - **Testes**: +15 unit (`src/lib/ocultos-core.test.ts`: round-trip, flip CRLF/LF, remoção do par, twin candidates) — suíte 89/89; lint 0 errors; build 1227 páginas; dry-run da coreografia Git Data 7/7 na API real (branch descartável, deletada).
 - **Pendente**: Roger (gate `roger-lifelog-after-campaign.py` + cron 15m dispara quando RAM libera do treino Tatu) + push com OK do Samuel.
+
+## Sessão 2026-09-09 — 3 posts no pipeline + releases atômicas
+- **post(a)**: seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava título e resumo de post oculto pelo getStaticPaths e pela nuvem de tags; achado não-bloqueante do Roger com nota máxima no gate; filtro compartilhado + teste por título no HTML público + par PT/EN (ff185ac).
+- **post(b)**: arachne-tres-facas-do-flake (PT+EN, hidden) — 3 flakes reais da suíte: RNG sem semente no test_search_top_k, offline_net autouse virando opt-in por marker, asserts tautológicos dentro do pytest.raises (critic R3); 79 passed verificado no venv (0afb19d).
+- **post(c)**: estudos-os-dez-segundos-de-silencio (PT+EN, hidden) — chamada LLM 200 OK com content vazio: reasoning models queimam o budget de tokens pensando e sobra zero pra resposta; teto de tokens com margem (pensamento+resposta) + parser SSE raspando data: [DONE] colado no chunk do JSON; capa AI Worker FLUX v3 com gate OCR (3bafb5b).
+- **Releases**: post(a) liberado localmente (075b3b0); posts(b) e (c) liberados via release atômica Git Data direto no origin (96b0124, c76928c) — local realinhado por FF.
+- 10 commits locais no dia · push origin OK pós-FF · HEAD: `c76928c`.

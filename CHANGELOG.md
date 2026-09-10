@@ -1,5 +1,17 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-09] - 3 posts no pipeline + 3 releases
+- **post(a)** (ff185ac): seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava post oculto; Roger nota máxima no gate
+- **post(b)** (0afb19d): arachne-tres-facas-do-flake — 3 flakes reais (RNG sem semente, offline_net opt-in, asserts tautológicos)
+- **post(c)** (3bafb5b): estudos-os-dez-segundos-de-silencio — reasoning model zerava o content; teto de tokens + parser SSE data: [DONE]
+- **releases**: post(a) 075b3b0; posts(b)(c) via release atômica Git Data (96b0124, c76928c)
+- 10 commits no dia · push origin OK pós-FF · HEAD: `c76928c`
+
+## [2026-09-09] - pipeline A/B/C + fix LLM content vazio
+- **posts(a/b/c)**: seguranca-toda-janela-e-uma-porta (fix leak /tag hidden), arachne-tres-facas-do-flake, estudos-os-dez-segundos-de-silencio — PT+EN hidden (ff185ac, 0afb19d, 3bafb5b) + release a (075b3b0)
+- **fix(llm)**: reasoning models queimavam o budget e devolviam content vazio — teto de tokens c/ margem + parser SSE `data: [DONE]`; capa Worker FLUX v3
+- 3 posts do dia · push origin (feat/release-atomic) · HEAD: `3bafb5b`
+
 ## [2026-09-08] - Tags Opção C live + 4 releases + recusas #38/#39
 - **feat(tags) Opção C live**: vocabulário canônico (tag-vocab.ts) + guardião check-tags.py + /tag/[slug] PT+EN + guard --strict no CI (eb60e94→0fe6bf7); fix lint 6 erros + check-tags ROOT relativo (bd47418, 973ee1f)
 - **posts**: tatuengine-bitmamba-1b-voltou-do-coma (Fase 4B, fix /tag/ hidden vazava), dogwalk-o-app-que-entra-na-tela-de-casa (PWA), descobertas-a-capa-que-nao-mudava (cache-bust), arachne-o-erro-que-salvou-o-banco — PT+EN + capas Worker FLUX (bc02d2d, 751c871, 641218e, 23943a7)
