@@ -63,12 +63,15 @@ test.describe('páginas de tag /tag/<slug>', () => {
     const cards = page.locator('main a[href^="/post/"], main a[href^="/en/post/"]');
     const count = await cards.count();
     expect(count).toBeGreaterThanOrEqual(10);
+    // regressao 11/09: pagina PT nao lista cards EN (lang filter)
+    expect(await page.locator('a[href^="/en/post/"]').count()).toBe(0);
   });
 
   test('/en/tag/yurumi/ existe e agrega os mesmos posts', async ({ page }) => {
     const resp = await page.goto('/en/tag/yurumi/');
     expect(resp?.status()).toBe(200);
-    const cards = page.locator('main a[href^="/post/"], main a[href^="/en/post/"]');
+    // regressao 11/09: pagina EN nao lista cards PT
+    expect(await page.locator('main a[href^="/post/"]').count()).toBe(0);
     const countPT = await (async () => {
       const p = await page.goto('/tag/yurumi/');
       expect(p?.status()).toBe(200);

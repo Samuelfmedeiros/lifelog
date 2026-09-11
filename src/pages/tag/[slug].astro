@@ -27,7 +27,7 @@ const { tag, postIds } = Astro.props;
 const locale = 'pt';
 const allPosts = await getCollection('posts');
 const posts = allPosts
-  .filter((p) => postIds.includes(p.id))
+  .filter((p) => postIds.includes(p.id) && !p.id.startsWith('en/'))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 
 const t = getTranslations(locale);
