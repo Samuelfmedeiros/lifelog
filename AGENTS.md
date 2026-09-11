@@ -463,3 +463,10 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **post(c)**: estudos-os-dez-segundos-de-silencio (PT+EN, hidden) — chamada LLM 200 OK com content vazio: reasoning models queimam o budget de tokens pensando e sobra zero pra resposta; teto de tokens com margem (pensamento+resposta) + parser SSE raspando data: [DONE] colado no chunk do JSON; capa AI Worker FLUX v3 com gate OCR (3bafb5b).
 - **Releases**: post(a) liberado localmente (075b3b0); posts(b) e (c) liberados via release atômica Git Data direto no origin (96b0124, c76928c) — local realinhado por FF.
 - 10 commits locais no dia · push origin OK pós-FF · HEAD: `c76928c`.
+
+## Fix 11/09 — filtro de lingua nas paginas de tag (535ec0c)
+
+- **Regra do site:** PT lista `!p.id.startsWith('en/')`, EN lista `p.id.startsWith('en/')`. TODA pagina que lista posts precisa do filtro — tag/[slug].astro e en/tag/[slug].astro nao tinham (listava PT+EN misturado desde sempre; ficou visivel quando as capas entraram). Nova pagina de listagem = copiar o filtro.
+- **E2E:** e2e/tags.spec.ts agora tem asserts de regressao (0 links EN na tag PT, 0 links PT na tag EN). Os contagens de yurumi continuam validas (10 PT + 10 EN par-perfeito).
+- **Pitfall commit compartilhado:** staging alheio entrou 2x no meu commit (deletes do post refazer #44) — commit cirurgico: `git add <arquivos meus>` explicito + conferir `git show --stat HEAD` ANTES de pushar; se sujou: reset --soft HEAD~1 + restore --staged dos alheios + recommit.
+- **E2e local:** precisa preview server :4321 no ar + `--config e2e/playwright.config.ts` (sem isso baseURL falta = "Cannot navigate to invalid URL").
