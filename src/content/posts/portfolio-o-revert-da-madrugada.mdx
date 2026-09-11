@@ -1,0 +1,185 @@
+---
+title: "O revert das 3h55 de sábado"
+description: "Um commit de madrugada removeu a maior feature do portfólio da árvore. Seis dias depois ela voltou — com outra arquitetura, falha honesta e um guard que rejeita alucinação de LLM. Sobre o que um revert limpa, e o que ele deixa pendente."
+category: samuel-projects
+date: 2026-09-11 09:00:00 -03:00
+pubDate: 2026-09-11 17:40:00 -03:00
+project: portfolio
+tags: [portfolio, llm, fallback, guardrails, reliability, lessons]
+cover: /covers/portfolio-o-revert-da-madrugada.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Sábado, 03h55
+
+Existe um tipo de commit que só acontece de madrugada. Ninguém discute ele numa call, ninguém revisa com calma — é aquele commit executivo, de quem decidiu que aquilo precisa sair da árvore *agora*, antes de dormir.
+
+No sábado, 03h55 da manhã, o portfólio ganhou um desses:
+
+```bash
+$ git log -1 --format="%h %ad%n%s"
+4dd1a99 Sat Sep 5 03:55:42 2026 -0300
+Revert "Merge pull request #72 from Samuelfmedeiros/feat/perf-bundle"
+```
+
+O PR #72 era o V5 do resume tailor — a ferramenta que analisa um currículo contra uma vaga com IA e gera um PDF personalizado. O revert removeu ela inteira. Não desligou, não escondeu atrás de flag: **tirou da árvore**.
+
+## O que saiu da árvore
+
+O `--stat` do revert conta o tamanho da coisa:
+
+```text
+ 20 files changed, 2363 insertions(+), 4819 deletions(-)
+```
+
+Quatro mil e oitocentas linhas pra fora. A rota da API (`route.ts`, 360 linhas), o modal completo com testes (386 + 195), os guardrails com testes (412 + 296), o gerador de PDF com testes (588 + 160), os dados do currículo, as cores de marca, um hook de hidratação. Tudo que a feature era, mais tudo que a provava.
+
+Revert não é delete — o histórico continua lá, uma linha de `git log` de distância. Mas o efeito prático é o mesmo de apagar: o deploy seguinte não conhece a feature. O projeto inteiro seguiu a semana sem ela.
+
+## A semana sem a feature
+
+Aqui mora a parte que ninguém documenta: o que fica pra trás depois de um revert limpo.
+
+O site funcionava. Nenhuma rota quebrada, nenhum import órfão — o revert foi cirúrgico. Mas a feature deixava três dívidas no ar:
+
+- **Os testes saíram junto.** Quase mil linhas de teste deixaram de rodar. Cobertura não é só número: era a prova de que PDF, guardrails e modal se comportavam.
+- **A pergunta ficou em aberto.** O revert não diz "essa feature é ruim" — diz "essa versão não fica". A diferença entre as duas frases é o trabalho da semana seguinte.
+- **O problema original continuou de pé.** A rota de IA que o V5 resolvia não deixou de existir; deixou de ter solução na árvore.
+
+Um revert bem-feito é uma promessa implícita: *isso volta, mas não volta assim*. Se ele fosse definitivo, seria remoção com Enterro — changelog, deprecação, aviso. Revert de madrugada é o oposto: pressa de tirar, convicção de que dá pra fazer melhor.
+
+## Sexta, 00:18 — a volta
+
+Seis dias depois, de madrugada de novo (aparentemente é o horário oficial desse tipo de decisão), o V5 voltou:
+
+```bash
+$ git log -1 --format="%h %ad%n%s"
+d247a55 Fri Sep 11 00:18:59 2026 -0300
+feat(resume-tailor): V5 reintroduzido com cadeia LLM e falha alta
+```
+
+```text
+ 14 files changed, 3242 insertions(+), 172 deletions(-)
+```
+
+Se o commit tivesse sido um `git revert 4dd1a99`, a história acabaria aqui e não valeria um post. Mas a reintrodução trouxe 14 arquivos com decisões diferentes — voltou **melhor**, não igual. Três delas valem registro.
+
+## Decisão 1: a corrida de modelos acabou
+
+A versão removida mantinha, hardcoded na rota, uma lista de modelos gratuitos de um agregador — e os corria em paralelo, torcendo pra algum responder dentro do timeout:
+
+```typescript
+const LLM_MODELS: { model: string; maxTokens: number }[] = [
+  { model: "minimax/minimax-m3:free", maxTokens: 2200 },
+  { model: "nvidia/nemotron-3.5-lightning:free", maxTokens: 2200 },
+  { model: "cohere/north-mini-code:free", maxTokens: 2200 },
+];
+// corrida paralela: o primeiro que responder vence,
+// timeout individual de 20s — um modelo free congestionado
+// não pode pendurar a fila
+```
+
+Funciona até não funcionar. Modelo free suma, muda de nome ou amanhece congestionado — e a rota é um código de corrida com lista de participantes desatualizada. Cada modelo novo era uma linha a mais pra manter, e o fallback pago só entrava quando *todos* os frees falhavam (proteção de saldo que também era uma aposta).
+
+A versão nova trocou a corrida por uma **cadeia de provedores**:
+
+```typescript
+async function tryProviders(prompt: string): Promise<string> {
+  try {
+    const out = await callArachneLLM(prompt);   // gateway do ecossistema
+    return out;
+  } catch (err) {
+    errors.push(`arachne: ${err.message}`);
+  }
+  if (process.env.RESUME_LLM_URL) {
+    const out = await callDirectLLM(prompt);    // fallback direto (dev)
+    return out;
+  }
+  throw new LLMUnavailableError(errors.join(" | "));
+}
+```
+
+O portfólio não sabe mais quais modelos existem. Ele fala com um gateway — que por sua vez orquestra provedores, rotação e rate limit — e tem um fallback direto de URL só pro ambiente de desenvolvimento. Quando um modelo morre, morre no gateway; a rota nem fica sabendo. **Integração com infraestrutura de IA é um endereço, não uma lista.**
+
+## Decisão 2: falhar alto
+
+A versão antiga tinha um comportamento que eu hoje considero crime: quando a resposta do LLM vinha imperfeita, o código tentava *sanear* o que veio — aparar highlights, ajustar campos — e devolvia o PDF assim mesmo. O usuário recebia um documento plausível construído em cima de dados parciais. A mensagem do commit da reintrodução resume: "LLM indisponível agora responde 502 (antes: PDF placeholder com HTTP 200)".
+
+A versão nova separa dois mundos:
+
+```typescript
+// LLM indisponível → erro explícito
+throw new LLMUnavailableError("gateway não respondeu");
+
+// ...
+} catch (err) {
+  if (err instanceof LLMUnavailableError) {
+    return NextResponse.json({ error: "A IA não está disponível agora." },
+      { status: 502 });
+  }
+}
+```
+
+502 é mais feio que um PDF placeholder — no sentimento de quem testa. Mas placeholder é dívida composta: o usuário acha que aquele documento vazio é a capacidade real do produto, e você descobre o problema pelo relatório de um recruiter. **Falha honesta é feature. O erro explícito de hoje é o ticket bem preenchido de amanhã.**
+
+## Decisão 3: o guard anti-eco
+
+LLM pequeno e gratuito às vezes "responde" uma coisa específica: o próprio template do prompt. Você pede um JSON com exemplo — `"cargo ajustado para a vaga"`, `"skill1"`, `"bullet1"` — e ele devolve o exemplo, formatado, convencido de que fez a tarefa.
+
+O perigoso é que esse eco passa fácil pela validação estrutural: todos os campos estão lá, o JSON parseia, o PDF renderiza. Só que é teatro — um currículo com `skill1` como competência.
+
+A versão nova carrega a lista de marcas de eco e trata como falha da IA:
+
+```typescript
+const PROMPT_ECHO_MARKERS = [
+  "ajustado para a vaga",
+  "resumo profissional reescrito",
+  "skill1", "skill2",
+  "bullet1", "bullet2",
+  "competência1",
+];
+
+export function looksLikePromptEcho(text: string): boolean {
+  const t = (text ?? "").toLowerCase();
+  if (!t.trim()) return false;
+  return PROMPT_ECHO_MARKERS.some((m) => t.includes(m));
+}
+```
+
+Na rota, o fluxo é: detectou eco, repete o pedido com um reforço no prompt ("NÃO repita os valores de exemplo — preencha com os dados REAIS"). Ecoou de novo? 502, sem PDF. A regra que ficou: **validar conteúdo é diferente de validar estrutura — e o segundo nunca substitui o primeiro.**
+
+## O que um revert compra
+
+| | Revert (sábado) | Reintrodução (sexta) |
+|---|---|---|
+| Horário | 03h55 | 00:18 |
+| Commit | `4dd1a99` | `d247a55` |
+| Linhas | −4.819 | +3.242 |
+| Arquivos | 20 | 14 |
+| Integração IA | corrida de modelos free hardcoded | cadeia de provedores via gateway |
+| LLM fora do ar | PDF parcial sanitized | 502 explícito |
+| Eco do prompt | virava PDF teatral | guard + retry + 502 |
+
+O revert e a reintrodução não se cancelam. O primeiro limpou a árvore e comprou tempo; o segundo usou o tempo pra voltar com arquitetura diferente. Se o V5 tivesse voltado idêntico, os seis dias não teriam ensinado nada — teria sido só um undo com passos extras.
+
+Aprendizado que fica pra próxima feature que crescer rápido demais: o revert não é o oposto do ship. É a metade do ciclo que garante que a outra metade possa acontecer de novo.
+
+<Terminal
+  client:visible
+  title="samuel@dev:~/portifolio"
+  commands={[
+    { cmd: 'git log -1 --format="%h %s" 4dd1a99' },
+    { cmd: '# Revert "Merge pull request #72" — 20 files, -4819' },
+    { cmd: 'git log -1 --format="%h %s" d247a55' },
+    { cmd: '# V5 reintroduzido — 14 files, +3242' },
+    { cmd: 'curl -s -X POST /api/resume-tailor -H "Content-Type: application/json" \\' },
+    { cmd: '  -d \'{"input":"vaga inexistente"}\'' },
+    { cmd: '# {"error":"A IA não está disponível agora."} — HTTP 502' },
+    { cmd: 'pnpm test -- resumeGuardrails' },
+    { cmd: '# Test Files  1 passed — eco de prompt = falha da IA' },
+  ]}
+/>
