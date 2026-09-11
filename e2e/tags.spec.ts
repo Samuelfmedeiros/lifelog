@@ -72,6 +72,7 @@ test.describe('páginas de tag /tag/<slug>', () => {
     expect(resp?.status()).toBe(200);
     // regressao 11/09: pagina EN nao lista cards PT
     expect(await page.locator('main a[href^="/post/"]').count()).toBe(0);
+    const cards = page.locator('main a[href^="/post/"], main a[href^="/en/post/"]');
     const countPT = await (async () => {
       const p = await page.goto('/tag/yurumi/');
       expect(p?.status()).toBe(200);
