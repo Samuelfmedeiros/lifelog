@@ -1,0 +1,101 @@
+---
+title: "A impressão digital que ninguém ensinou a ler — quando a rede reconhece seu cliente pelo aperto de mão"
+description: "Duas máquinas, o mesmo código, a mesma chave. Uma recebia 200, a outra tomava 403 com error code: 1010. Nenhum token errado, nenhuma regra de firewall visível: o filtro olhou para o aperto de mão TLS e reconheceu a assinatura de um cliente automatizado antes de qualquer requisição existir. Este post é sobre a camada de identidade que não aparece nos logs de aplicação."
+date: 2026-09-11 16:00:00 -03:00
+pubDate: 2026-09-11 16:00:00 -03:00
+project: seguranca
+tags: [seguranca, tls, fingerprint, http, security, debugging, cloudflare, wsl]
+cover: /covers/seguranca-o-aperto-de-mao-que-delatou-o-cliente.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Duas máquinas, um 403 sem explicação
+
+O incidente começou com um sintoma banal: um script de geração de capas, que roda chamando uma API protegida por Cloudflare, passou a tomar **403 com error code: 1010** — mas só de dentro do meu ambiente Linux de trabalho. O mesmo script, rodando no Windows ao lado, recebia 200 na hora.
+
+A primeira hipótese foi a mais óbvia: token expirado, ou token diferente. Chequei: **a mesma chave, byte a byte**. A segunda hipótese: a rede do Linux estava bloqueada por firewall. Chequei: as conexões TCP abriam normalmente, DNS resolvia, outros domínios respondiam.
+
+O que tornava o caso interessante é que o 403 não vinha com nenhum detalhe. Sem corpo explicativo, sem apontar regra violada. Só o código 1010 — que, na documentação do Cloudflare, significa **"o dono do site baniu a sua assinatura de navegador"**.
+
+Nesse ponto vale parar e traduzir: *assinatura de navegador*. Não header, não IP, não credencial. Assinatura.
+
+## O que o error 1010 realmente olha
+
+O filtro por trás do 1010 é um *browser integrity check* que classifica o cliente **antes de qualquer lógica da aplicação rodar**. Ele não precisa ver sua requisição "de verdade": o suficiente para ele já existe na fase de handshake — o TLS ClientHello.
+
+Dentro do ClientHello existem dezenas de campos que um cliente comum nunca pensa: a lista e a ordem dos cipher suites, a lista e a ordem das extensões, os grupos de curvas elípticas, os algoritmos de assinatura suportados, formatos de ponto na curva, versões suportadas. A combinação e a sequência desses campos formam uma impressão digital — o conceito por trás do que a indústria chama de fingerprint TLS (o clássico é o JA3: um hash MD5 sobre uma concatenação desses campos).
+
+```text
+TLS ClientHello — o que forma a impressão digital
+├── versões suportadas
+├── cipher suites (quais, e EM QUE ORDEM)
+├── extensões (quais, e EM QUE ORDEM)
+├── grupos ECDH / curvas
+├── pontos suportados, assinaturas, ALPN
+└── hash de tudo isso = "quem" está falando com você
+```
+
+Cada pilha TLS tem a sua: a biblioteca nativa do Windows, o Python com `urllib`, o `curl` compilado com OpenSSL, um browser de verdade. São pilhas diferentes com preferências diferentes, e a ordem dos campos muda de biblioteca para biblioteca.
+
+## A armadilha: a mesma VM, a chave certa, a pilha errada
+
+No meu caso, o detalhe que enganava a intuição era o ambiente. Meu Linux de trabalho é uma máquina virtual integrada ao Windows — rede espelhada, IP compartilhado, tokens nos mesmos arquivos. Na cabeça de qualquer um, "mesma máquina, mesma rede, mesmo resultado".
+
+Mas a **rede não era o critério — a pilha de criptografia era**. O script dentro da VM usava a biblioteca TLS da distribuição; o teste de confirmação no Windows usava outra. Duas pilhas diferentes produziam dois handshakes diferentes, e o filtro na borda lia essas duas impressões digitais como dois clientes distintos: um aceito, outro banido.
+
+E o plot twist clássico: **trocando o User-Agent, nada mudou**. Porque o User-Agent é um campo HTTP que só existe *depois* do handshake — o veredito de 1010 já tinha sido dado na camada anterior, sobre a assinatura criptográfica. Um header de aplicação não consegue disfarçar a voz com que o cliente negociou a conexão.
+
+Foi assim que o diagnóstico fechou: mesmo host, mesma chave, 403 só em uma das pilhas → **a identidade em jogo era a da pilha TLS, não a do usuário**.
+
+## O teste de três passos (que agora faço sempre)
+
+```bash
+# 1. Mesma URL, mesma chave, clientes diferentes na MESMA máquina
+curl -s -o /dev/null -w "%{http_code}\n" https://api.exemplo.com/v1/rota -H "Authorization: Bearer $KEY"
+python3 -c "import urllib.request;print(urllib.request.urlopen('https://api.exemplo.com/v1/rota').status)"
+
+# 2. Códigos divergentes (200 vs 403/1010) com credencial idêntica
+#    => o diferencial não é auth nem rede: é a pilha do cliente
+
+# 3. Confirmação: a pilha que falha falha SEMPRE, em qualquer endpoint do domínio
+#    a pilha que passa passa em todos — inclusive com UA trocado
+```
+
+Três lições desse método:
+
+**1. Quando o erro é de borda, mude a pilha, não o payload.** Se dois clientes com a mesma credencial recebem verdades diferentes, a variável que importa é o cliente — a biblioteca TLS que ele usa — e não o conteúdo da requisição.
+
+**2. Erro 1010 não é bloqueio de IP.** Existe o 1006 (IP banido), o 1015 (rate limit). O 1010 é outro animal: ban de assinatura. Saber decodificar a tabela de erros do provedor economiza horas de caça a firewall inexistente.
+
+**3. Ambientes integrados não são o mesmo ambiente.** VM com rede espelhada compartilha IP e tokens — mas não compartilha a biblioteca de criptografia. Cada runtime carrega a própria identidade de rede, e é ela que a borda vê.
+
+## O que isso muda no dia a dia
+
+Depois desse episódio, o playbook de "API que só funciona em uma das minhas máquinas" ganhou uma etapa nova, antes de qualquer mexida em token ou regra de rede:
+
+1. **Comparar handshakes, não headers** — mesmo endpoint, clientes diferentes, mesma credencial;
+2. **Tratar divergência como impressão digital** — e decidir conscientemente: trocar a pilha do lado do cliente, ou pedir liberação da assinatura no painel do provedor;
+3. **Registrar o fingerprint aceito** — quando um provedor aceita determinada pilha, anotar qual é, porque o dia em que ela mudar (update de biblioteca, novo runtime), o sintoma vai ser exatamente esse 403 sem explicação.
+
+O mais desconfortável — e fascinante — dessa camada: ela funciona nos dois sentidos. Do lado de quem opera a borda, é uma defesa barata e eficaz contra os bots mais preguiçosos. Do lado de quem escreve clientes, é uma identidade que você não escolheu, não vê nos logs e só descobre existir quando ela é negada.
+
+A impressão digital do seu cliente existe desde o primeiro pacote. A pergunta é se você conhece ela antes do 403 — ou depois.
+
+<Terminal
+  client:load
+  title="samuel@lifelog: ~/seguranca"
+  commands={[
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://api.exemplo.com/v1/gen -H "Authorization: Bearer $KEY"' },
+    { cmd: '403' },
+    { cmd: '# mesma chave, host irmão, mesma rede:' },
+    { cmd: 'python3 -c "import urllib.request as u; print(u.urlopen(\\"https://api.exemplo.com/v1/gen\\").status)"' },
+    { cmd: '200' },
+    { cmd: '# trocando User-Agent na pilha que falha...' },
+    { cmd: '403  # error code: 1010 — assinatura banida no handshake' },
+    { cmd: '# veredito: a identidade em jogo é a pilha TLS, nao o header' },
+  ]}
+/>

@@ -1,0 +1,101 @@
+---
+title: "The fingerprint nobody taught you to read — when the network recognizes your client by its handshake"
+description: "Two machines, the same code, the same key. One got 200, the other took a 403 with error code: 1010. No wrong token, no visible firewall rule: the filter looked at the TLS handshake and recognized the signature of an automated client before any request even existed. This post is about the identity layer that never shows up in application logs."
+date: 2026-09-11 16:00:00 -03:00
+pubDate: 2026-09-11 16:00:00 -03:00
+project: seguranca
+tags: [seguranca, tls, fingerprint, http, security, debugging, cloudflare, wsl]
+cover: /covers/seguranca-o-aperto-de-mao-que-delatou-o-cliente.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Two machines, one unexplained 403
+
+The incident started with a mundane symptom: a cover-generation script that calls a Cloudflare-protected API started taking **403 with error code: 1010** — but only from inside my Linux work environment. The same script, running on the Windows side, got 200 right away.
+
+The first hypothesis was the obvious one: expired token, or a different token. I checked: **the same key, byte for byte**. Second hypothesis: the Linux side was blocked by a firewall. I checked: TCP connections opened normally, DNS resolved, other domains answered.
+
+What made the case interesting is that the 403 came with no detail at all. No explanatory body, no violated rule named. Just the 1010 code — which, per Cloudflare's documentation, means **"the site owner has banned your browser signature"**.
+
+Worth pausing to translate that: *browser signature*. Not header, not IP, not credential. Signature.
+
+## What error 1010 actually looks at
+
+The filter behind 1010 is a *browser integrity check* that classifies the client **before any application logic runs**. It doesn't need to see your "real" request: enough about it already exists at the handshake phase — the TLS ClientHello.
+
+Inside the ClientHello there are dozens of fields a regular client never thinks about: the list and order of cipher suites, the list and order of extensions, elliptic curve groups, supported signature algorithms, point formats, supported versions. The combination and sequence of these fields form a fingerprint — the concept behind what the industry calls TLS fingerprinting (the classic is JA3: an MD5 hash over a concatenation of those fields).
+
+```text
+TLS ClientHello — what forms the fingerprint
+├── supported versions
+├── cipher suites (which ones, and IN WHAT ORDER)
+├── extensions (which ones, and IN WHAT ORDER)
+├── ECDH groups / curves
+├── supported points, signatures, ALPN
+└── hash of all of that = "who" is talking to you
+```
+
+Every TLS stack has its own: the Windows native library, Python's `urllib`, a `curl` built against OpenSSL, a real browser. Different stacks with different preferences, and the ordering of fields changes from library to library.
+
+## The trap: same VM, right key, wrong stack
+
+In my case, the detail that fooled intuition was the environment. My Linux work environment is a virtual machine integrated with Windows — mirrored networking, shared IP, tokens in the same files. In anyone's head: "same machine, same network, same result".
+
+But **the network wasn't the criterion — the cryptographic stack was**. The script inside the VM used the distribution's TLS library; the confirmation test on Windows used another one. Two different stacks produce two different handshakes, and the filter at the edge read those two fingerprints as two distinct clients: one accepted, one banned.
+
+And the classic plot twist: **changing the User-Agent changed nothing**. Because the User-Agent is an HTTP field that only exists *after* the handshake — the 1010 verdict had already been handed down at the previous layer, over the cryptographic signature. An application header cannot disguise the voice with which the client negotiated the connection.
+
+That's how the diagnosis closed: same host, same key, 403 from only one of the stacks → **the identity at play was the TLS stack's, not the user's**.
+
+## The three-step test (which I now always run)
+
+```bash
+# 1. Same URL, same key, different clients on the SAME machine
+curl -s -o /dev/null -w "%{http_code}\n" https://api.example.com/v1/route -H "Authorization: Bearer $KEY"
+python3 -c "import urllib.request;print(urllib.request.urlopen('https://api.example.com/v1/route').status)"
+
+# 2. Divergent codes (200 vs 403/1010) with an identical credential
+#    => the differentiator isn't auth nor network: it's the client's stack
+
+# 3. Confirmation: the failing stack fails ALWAYS, on every endpoint of the domain
+#    the passing stack passes everywhere — including with a swapped UA
+```
+
+Three lessons from this method:
+
+**1. When the error is at the edge, change the stack, not the payload.** If two clients with the same credential receive different truths, the variable that matters is the client — the TLS library it uses — not the request's content.
+
+**2. Error 1010 is not an IP block.** There's 1006 (banned IP), 1015 (rate limit). 1010 is a different animal: a signature ban. Knowing how to decode the provider's error table saves hours of hunting for a firewall that doesn't exist.
+
+**3. Integrated environments are not the same environment.** A VM with mirrored networking shares the IP and the tokens — but not the cryptography library. Every runtime carries its own network identity, and that's what the edge sees.
+
+## What this changes day to day
+
+After this episode, the playbook for "the API that only works on one of my machines" gained a new step, before touching tokens or network rules:
+
+1. **Compare handshakes, not headers** — same endpoint, different clients, same credential;
+2. **Treat divergence as a fingerprint** — and decide consciously: swap the stack on the client side, or ask for the signature to be allowed on the provider's panel;
+3. **Record the accepted fingerprint** — when a provider accepts a given stack, write down which one, because the day it changes (library update, new runtime), the symptom will be exactly this unexplained 403.
+
+The most uncomfortable — and fascinating — part of this layer: it works both ways. For whoever operates the edge, it's a cheap and effective defense against the lazier bots. For whoever writes clients, it's an identity you didn't choose, don't see in logs, and only discover exists when it gets denied.
+
+Your client's fingerprint exists from the very first packet. The question is whether you know it before the 403 — or after.
+
+<Terminal
+  client:load
+  title="samuel@lifelog: ~/security"
+  commands={[
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://api.example.com/v1/gen -H "Authorization: Bearer $KEY"' },
+    { cmd: '403' },
+    { cmd: '# same key, sibling host, same network:' },
+    { cmd: 'python3 -c "import urllib.request as u; print(u.urlopen(\\"https://api.example.com/v1/gen\\").status)"' },
+    { cmd: '200' },
+    { cmd: '# swapping the User-Agent on the failing stack...' },
+    { cmd: '403  # error code: 1010 — signature banned at the handshake' },
+    { cmd: '# verdict: the identity at play is the TLS stack, not the header' },
+  ]}
+/>
