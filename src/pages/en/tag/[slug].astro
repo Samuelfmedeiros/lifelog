@@ -59,6 +59,8 @@ const cloudTags = [...cloud.entries()].map(([name, count]) => ({ name, count }))
           project={post.data.project}
           tags={post.data.tags ?? []}
           slug={post.id}
+          icon={post.data.icon}
+          cover={post.data.cover}
           locale={locale}
           index={i}
         />
