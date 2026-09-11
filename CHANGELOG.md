@@ -1,5 +1,13 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-10] — pipeline A/B/C: 3 posts (2 no dia) + release + capa
+- **post(a)** (`fdb86b1`): arachne-paridade-o-espelho-que-medi-a-memoria (PT+EN hidden + capa AI) — refeito após recusa #42 (`71d76b8`) + fix typo buôn→bom senso (`6b93be4`); release atômica (`475d133`)
+- **post(b)** (`3639169`): portfolio-onze-prs-numa-tarde-so (PT+EN hidden + capa AI)
+- **post(c)** (`545d127`): lifelog-o-commit-unico (PT+EN hidden + capa AI) + fix capa AI via watchdog (`5b2d202`)
+- **chore(ocultos)**: sync ocultos-data (`16a9fce`, `c4c84a2`, `c067650`)
+- 10 commits no dia · HEAD: `5b2d202`
+
+
 ## [2026-09-09] - 3 posts no pipeline + 3 releases
 - **post(a)** (ff185ac): seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava post oculto; Roger nota máxima no gate
 - **post(b)** (0afb19d): arachne-tres-facas-do-flake — 3 flakes reais (RNG sem semente, offline_net opt-in, asserts tautológicos)
