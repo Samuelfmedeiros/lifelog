@@ -1,0 +1,152 @@
+---
+title: "Arachne — the cache that answered the wrong question: Brasília for France"
+description: "Arachne's response cache returned 'Brasília' to anyone asking about France — cosine 0.8531 against a 0.85 threshold. The story of a bug born in a CI investigation, the math that hid it, and the entity guard that fixed it without sacrificing recall."
+date: 2026-09-10 19:27:00 -03:00
+pubDate: 2026-09-11 08:00:00 -03:00
+project: arachne
+tags: [arachne, cache, embeddings, memory, bug, false-positive, reliability, testing, ollama, python]
+cover: /covers/arachne-o-cache-que-respondeu-a-pergunta-errada.webp
+hidden: true
+lang: en
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The right answer, to the wrong question
+
+Every memory system carries an implicit promise: if I already answered something similar, I'll return that answer again — fast, without burning LLM tokens. Arachne has exactly that: a response cache that compares the incoming question against cached questions using embeddings, and when similarity crosses a threshold, it skips the model entirely and returns the stored answer.
+
+It works beautifully. Until someone asks "What is the capital of France?" and the system replies **Brasília**.
+
+Not a model hallucination. Not a corrupted prompt. It's the cache working exactly as designed — and that's what makes this bug beautiful to study.
+
+## Where it came from: a CI run that wasn't a flake
+
+The bug didn't arrive through a user complaint. It was born inside a CI investigation: an intermittently red test I was about to file away as a flake — the kind you learn to ignore after years of maintaining large suites. Before closing the tab, I decided to follow the thread all the way down.
+
+The thread didn't lead to the test. It led to the cache.
+
+And when I opened the `ResponseCache` with the real problem in mind, the picture became clear: this wasn't an infrastructure failure or a race between processes. It was a mathematical collision living comfortably inside the threshold I had chosen to separate "same question" from "different question".
+
+## The math of equivalence
+
+The cache's main path uses embeddings (nomic-embed-text, via Ollama) and cosine similarity. Before the fix, the decision rule fit on one line:
+
+```python
+if score >= SIMILARITY_THRESHOLD:  # 0.85
+    return cached_answer  # hit: skip the LLM, return the stored answer
+```
+
+The intent is sound. Semantically equivalent questions — "What is the capital of Brazil?" and "capital of brazil?" — produce nearly identical vectors, cosine close to 1.0. Questions about different topics should land far below that. The 0.85 threshold existed to draw that line.
+
+The problem is that "capital of Brazil" and "capital of France" are not different worlds for an embedding model. They are the **same sentence with one entity swapped** — and embeddings capture the syntactic and semantic frame of a sentence far more strongly than they capture the specific entity living inside that frame. When I measured the collision with the real Ollama, the number showed up on screen:
+
+```python
+cosine("What is the capital of Brazil?", "What is the capital of France?")
+# 0.8531
+```
+
+**0.8531 >= 0.85.** A margin of 0.003. The cache returned the answer to the Brazil question for any question sharing the same frame. Swap the entity, and the cosine barely moves.
+
+## Why raising the threshold doesn't fix it
+
+The first reaction is always the same: raise the threshold to 0.90 and move on. But 0.8531 is not an isolated case — it's the visible tip of a distribution. Genuinely equivalent questions with different phrasings ("Can you explain X to me?" versus "Explain X") live precisely in the 0.85–0.90 band.
+
+Raising the threshold fixes the false hit on one side and kills recall on the other: the cache stops recognizing real equivalences, every hit becomes an LLM call, and the cost the cache existed to save comes back in full. That means trading a loud, visible error (wrong answer) for a quiet, expensive one (a cache that almost never hits).
+
+The correct criterion was never numeric. It's semantic: **if the new question carries content the cached question doesn't have, it's not a hit** — no matter what the cosine says.
+
+## The fix: a content guard
+
+The implementation came down to two small functions. First, extract what matters from the question — content tokens, with Portuguese and English stopwords removed (the same set the TF-IDF fallback already used):
+
+```python
+@classmethod
+def _content_tokens(cls, text: str) -> set[str]:
+    """CONTENT tokens (no stopwords) — the entities/subjects of the question."""
+    return {w for w in cls._normalize(text).split() if w and w not in cls._STOPWORDS}
+
+@classmethod
+def _introduz_conteudo_novo(cls, nova: str, cacheada: str) -> bool:
+    """True if the new question has a content token the cached one doesn't."""
+    novos = cls._content_tokens(nova) - cls._content_tokens(cacheada)
+    return bool(novos)
+```
+
+Then the hit decision became a conjunction. High similarity **and** no exclusive entity in the new question:
+
+```python
+if (
+    score > best_score
+    and score >= SIMILARITY_THRESHOLD
+    and not self._introduz_conteudo_novo(question, row["question"])
+):
+    best_score = score
+    best_row = row
+```
+
+The effect is surgical. "What is the capital of France?" carries the token `frança`, which doesn't exist in the cached question about Brazil — the guard fires, the hit is blocked, the LLM answers properly. Meanwhile "capital of brazil?" in lowercase has exactly the same content tokens as the cached question — nothing new introduced, the hit is preserved, and the cache keeps saving calls.
+
+## The fallback trap
+
+The cache has a second path for when Ollama is unavailable: TF-IDF/Jaccard similarity. And a second, subtler trap lived there: **Jaccard is not cosine**. They are measures on different scales with different distributions — a 0.4 score on the fallback does not mean what 0.4 means on cosine.
+
+The entity guard went into both paths, but the fallback gained an additional floor: a minimum score of 0.5, on top of its own threshold. Below that, it's collision by generic word overlap — questions sharing the frame ("what", "capital") but none of the substance — exactly the case where the guard alone would still accept a weak false hit.
+
+The lesson that stuck: when a system has two decision paths, the same class of bug usually lives in both, wearing different clothes. Fixing only the main path would leave the hole open through the fallback's back door.
+
+## Regression without depending on Ollama
+
+Testing this bug has an annoying detail: the collision depends on the embedding model. Running Ollama inside a test is slow, heavy and non-deterministic — a suite that wobbles is a suite nobody trusts.
+
+The solution was to freeze the embedding. The test injects a fixed 768-dimensional vector (nomic-embed-text's size) — first component 1.0, the rest zero:
+
+```python
+vetor = [1.0] + [0.0] * 767
+monkeypatch.setattr(cache, "_make_embedding", lambda text: list(vetor))
+
+cache.save("What is the capital of Brazil?", "Brasília")
+
+# different entity, identical embedding: the guard must block it
+assert cache.check("What is the capital of France?") is None
+
+# an equivalent question still hits the cache
+hit = cache.check("What is the capital of Brazil?")
+assert "Brasília" in hit.answer
+```
+
+With the vector frozen, every question produces the same embedding — cosine 1.0 with everything. It's the worst possible case: **perfect** similarity with the wrong entity. If the guard holds here, it holds in the real world, where the collision was "only" 0.8531.
+
+Two regression tests joined the 09/10 flake file — and the irony is pleasing: the file that exists to record CI flakes now documents a bug that looked like a flake and wasn't. The full memory suite (`test_memory_f3.py`) keeps its 18 tests passing, proving the guard didn't knock down a single legitimate hit.
+
+## Lessons
+
+**A higher threshold doesn't fix semantic collision.** Embedding similarity measures how alike the sentences are, not whether they talk about the same thing. Identical syntactic frames with a swapped entity produce high cosine — it always did; nobody had measured it.
+
+**Conjunctive guards beat sharp numbers.** The conjunction (high similarity **and** no new entity) is robust where a single number is fragile. Each condition covers the other's blind spot.
+
+**Two decision paths means two places to look.** The fallback carried the same class of bug on a different scale. When the main path breaks over a mathematical property, the alternate path almost certainly breaks over a close relative of it.
+
+**Deterministic tests beat realistic tests.** Freezing the embedding turned a stochastic bug into an exact assertion that runs on any CI, in milliseconds, without Ollama.
+
+| Measurement | Value |
+|---|---|
+| Cosine Brazil x France | 0.8531 |
+| Cache hit threshold | 0.85 |
+| False-hit margin | 0.0031 |
+| Embedding dimensions (nomic-embed-text) | 768 |
+| Frozen test vector | 1 component + 767 zeros |
+| New regression tests | 2 |
+| Memory suite (`test_memory_f3.py`) | 18 passed |
+
+## What comes next
+
+The cache now blocks entity collisions on both paths, and the suite proves both sides: the false hit is blocked, the real hit is preserved. The natural next step is to take the same lens to every place where similarity decides something on its own — content deduplication, for instance, lives on the same math and carries the same risk: similar is not the same as equal.
+
+<Terminal commands={[
+  { cmd: 'pytest api/tests/test_regressao_ci_flakes_20260910.py -k response_cache -q', output: '2 passed' },
+  { cmd: 'pytest api/tests/test_memory_f3.py -q', output: '18 passed' },
+  { cmd: 'python3 -c "print(0.8531 >= 0.85)"', output: 'True' },
+  { cmd: 'git log --oneline -1 -- api/app/memory/response_cache.py', output: '865d5e3 fix(memory): ResponseCache servia resposta de OUTRA pergunta (cosine 0.853 >= 0.85)' },
+]} />
