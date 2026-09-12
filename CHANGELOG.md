@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-11] — filtro de lingua nas tags + 3 posts no pipeline + fix i18n
+- **fix(tags)** (`535ec0c`): filtro de lingua nas paginas de tag — PT lista so PT, EN so EN; testes de regressao (`45d3579`) + docs pitfall commit compartilhado (`1b7aa46`)
+- **fix(tags/cover)** (`b4aace0`): PostCard recebe cover e icon nas paginas de tag (cards estavam sempre no placeholder)
+- **posts (pipeline)**: arachne-o-cache-que-respondeu-a-pergunta-errada (`e5e00a6`, release `20946d2`); portfolio-o-rastro-que-sobrou (`e0d5be0`); seguranca-o-aperto-de-mao-que-delatou-o-cliente (`e7d4a6f`, release `6f8c8c7`); refazer #43 portfolio-o-revert-da-madrugada (`567b5be`) e #44 portfolio-o-curriculo-que-ainda-nao-existe (`3f8a8af`, remocao do #44 recusado `3fa6ab7`)
+- **fix(i18n)** (`32841d2`): troca de idioma mantem a pagina atual (era hardcoded pra home)
+- 19 commits no dia · push origin OK · HEAD: `32841d2`
+
 ## [2026-09-10] — pipeline A/B/C: 3 posts (2 no dia) + release + capa
 - **post(a)** (`fdb86b1`): arachne-paridade-o-espelho-que-medi-a-memoria (PT+EN hidden + capa AI) — refeito após recusa #42 (`71d76b8`) + fix typo buôn→bom senso (`6b93be4`); release atômica (`475d133`)
 - **post(b)** (`3639169`): portfolio-onze-prs-numa-tarde-so (PT+EN hidden + capa AI)
