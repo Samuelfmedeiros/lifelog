@@ -1,0 +1,186 @@
+---
+title: "The one-way door — the restart that kept the service mute"
+description: "Capivara's chat started answering without sources: HTTP 200, a polished sentence, zero memory. Restarting the embedding service looked like the obvious fix — and was precisely what kept it from coming back. Underneath, two defects from the same family: a process that only opens its port after waking up, and a fallback that doesn't know how to undo itself."
+category: samuel-projects
+date: 2026-09-11 09:00:00 -03:00
+pubDate: 2026-09-12 08:00:00 -03:00
+project: capivara
+tags: [capivara, yurumi, memory, rag, watchdog, reliability, debugging, lessons]
+cover: /covers/capivara-a-porta-de-mao-unica.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The polite failure
+
+Capivara's chat stopped answering with context. It didn't stop answering.
+
+It kept returning 200, kept writing a coherent sentence, kept being fast. The difference lived in one field of the payload: `sources: []`. Zero sources. The ecosystem memory — the part that gives the answer its substance — had vanished without making a sound.
+
+This is the kind of failure I dread most, because it doesn't compete for attention. A 500 wakes me up. An empty 200 lets me sleep and wake up three days later with a dashboard that's been quietly broken the whole time.
+
+## The five-second diagnosis
+
+I went to look at the embedding service — the component that turns text into vectors and without which semantic search doesn't exist. Port closed, connection refused.
+
+The five-second diagnosis is obvious: **"it's dead, restart it"**. I restarted it.
+
+The port didn't open. I waited a bit, saw the same closed port, concluded the restart hadn't taken — so I restarted again. What I didn't know is that a second agent session, staring at the same closed port, was doing exactly the same thing on the other side.
+
+Two sessions restarting the same container, each restart zeroing the previous one's clock, both concluding "dead" because the port wouldn't open. The service was never dead. It was being interrupted every single time it tried to wake up.
+
+## Why restarting was the problem
+
+The embedding service only opens its port **after** finishing its startup benchmark. It loads the model, measures real inference throughput, and only then brings up the server that listens for connections. In that order.
+
+On an idle machine that takes a few minutes. That night the host had a heavy training run competing for resources, and the cold load had slid into the ten-to-forty-minute range. Measured later, in a less hostile stretch: thirteen minutes on two and a half cores.
+
+In other words — a closed port with the container `Up` and CPU pegged **is the normal state of a process doing its job**. Each restart cured nothing: it killed the load's progress and started the clock from zero. The thing "healing" was the very thing keeping the service mute.
+
+Finding that out required inverting the question. Instead of "why did it die?", asking "who keeps restarting it?". And the answer was me.
+
+## The second one-way door
+
+Once the embedder finally stood up on its own, the chat still had no sources. That's where the real bug was, and it was on my side.
+
+The memory core has a sensible fallback: if the embedder doesn't answer, degrade to keyword search in SQLite. The problem is that this degradation is a **one-way latch** — a flag that flips to true and never flips back.
+
+A thirty-second outage degraded the entire process. And because nothing in the read path ever tested whether the embedder had come back, the only way to restore vector memory was restarting the hub's backend. A transient event became permanent state, with an exit door only I could open, manually, at the exact moment I remembered it existed.
+
+Both defects were the same defect in different clothes: a system treating **"not yet"** as **"never"**.
+
+## The auto-heal
+
+The fix landed in `brain.py`, in the function that hands the store to everyone (`_get_store`). Instead of accepting degradation as final, a degraded store now gets revalidated every so often with a cheap probe — one that asks the embedder whether it's available without touching the vector store.
+
+```python
+_STORE_RETRY_SECS = float(os.getenv("BRAIN_STORE_RETRY_SECS", "120"))
+
+
+def _embedder_ok(store) -> bool:
+    """Probe barato no embedder do store (nao toca no Qdrant)."""
+    emb = getattr(store, "_embedder", None)
+    if emb is None:
+        return False
+    try:
+        probe = getattr(emb, "is_available", None)
+        if callable(probe):
+            return bool(probe(timeout=2.0))
+        emb.embed(["ping"])
+        return True
+    except Exception as exc:  # qualquer falha = ainda degradado
+        log.info("brain: embedder ainda indisponivel (%s)", type(exc).__name__)
+        return False
+```
+
+```python
+def _get_store():
+    global _store, _store_degraded_since
+
+    with _store_lock:
+        if _store is not None and getattr(_store, "_use_sqlite", False):
+            if _store_degraded_since is None:
+                _store_degraded_since = time.time()
+            elif time.time() - _store_degraded_since >= _STORE_RETRY_SECS:
+                if _embedder_ok(_store):
+                    log.warning("brain: embedder recuperado — reconstruindo store (Qdrant)")
+                    _store = None
+                else:
+                    _store_degraded_since = time.time()
+
+        if _store is None:
+            from core.store import MemoryStore
+
+            store = MemoryStore(backend="auto", group=YURUMI_GROUP)
+            if getattr(store, "_use_sqlite", False):
+                _store_degraded_since = time.time()
+                log.warning("brain: store iniciou degradado (SQLite) — retry em %.0fs", _STORE_RETRY_SECS)
+            else:
+                _store_degraded_since = None
+            _store = store
+        return _store
+```
+
+*(kept verbatim — the source comments are in Portuguese; I don't translate code, I translate the prose around it.)*
+
+Four decisions inside sixteen lines, and each one exists because its naive version burned:
+
+1. **Stamp the moment of degradation** instead of trying to recover right away. Immediate retry only adds thrash.
+2. **Don't rebuild before the interval.** The embedder may be mid thirty-minute cold load — probing on every request would have reinvented the loop that caused the incident.
+3. **Embedder back means dropping the store** (`_store = None`) and letting the next build create a clean one, returning to the vector store.
+4. **Embedder still out re-arms the timer** — SQLite keeps serving and we try again later. The fallback stays useful; it just loses the right to be forever.
+
+The `with _store_lock` exists because two concurrent requests can enter the same diagnosis at the same time. Without the lock, both rebuild.
+
+## The tests that close the door
+
+Eight cases in `tests/test_brain_store_heal.py`, and they use no real embedder and no real vector store — the store is an injected fake with a fake embedder that answers a flag. That keeps the tests deterministic and fast enough for CI.
+
+| Case | What it guarantees |
+|---|---|
+| healthy store | starts without the degradation flag |
+| born degraded | records the timestamp |
+| degraded at runtime | detected and stamped the same way |
+| before the interval | no rebuild (no thrash) |
+| embedder came back | rebuilds and clears the flag |
+| embedder still out | keeps SQLite and re-arms the timer |
+| no embedder at all | probe returns false |
+| probe raises | exception counts as unavailable, not as a crash |
+
+Those last two are the ones I almost skipped. They're the cost of asking "what if the probe breaks?" instead of only "what if the embedder is down?".
+
+## The diagnosis sequence that became a rule
+
+I wrote, in caps, in Capivara's AGENTS.md, the rule that incident spent the whole night producing:
+
+> **Never restart the embedder container to "fix" it.**
+
+And underneath it, the order I wish I'd followed:
+
+1. Measure the embedder directly — a minimal embedding call with a short timeout. That answers "is it processing?" instead of "did the port open?".
+2. Healthy embedder + answer without sources = the problem is the **degraded store**. The cure is restarting the hub backend (seconds), not the container (half an hour).
+3. Mute embedder with short uptime = **wait**. Uptime under thirty minutes means loading, not hung.
+
+I also planted prevention at the other failure point: every healer in the ecosystem became *warming-aware* — it measures uptime before restarting and refuses to kill a cold load in progress. Restarting became a last resort with criteria instead of a reflex.
+
+## The rest of the same day
+
+September 11th wasn't only the embedder, and the other two fixes are the same species:
+
+- **Backup mirror sync.** Two runs of the same sync (cron + manual) interleaved writes and produced a unique-key violation at the destination. It became `INSERT OR REPLACE` plus a single-instance lock with orphan-lock detection — and, most importantly, a failed table now makes the whole process exit with an error code. A hot backup that lies about "success" is worse than one that confesses.
+- **Self-hosted runner CI.** A config bootstrap read an `.env` file unconditionally at import time. On the self-hosted runner that file doesn't exist, and every job importing the module died with `FileNotFoundError` — for two days. A two-line adjustment, and the embarrassment of two days of red CI written off as "runner being flaky".
+
+## Metrics
+
+| Item | Before | After |
+|---|---|---|
+| Sources in `/api/chat/ask` | 0 | 5 |
+| Vector memory recovery | manual backend restart | automatic, within ~2 min |
+| Tests on the heal path | 0 | 8 |
+| Backend suite | — | 243 passed |
+| Embedder cold load during the incident | killed on every restart | ~13 min and converges |
+
+The number that matters isn't the test count: it's that, for the first time, the memory service recovers on its own from a failure that isn't even its own.
+
+## What stays
+
+**A closed port is not a diagnosis — uptime is.** "No answer" spans everything from a dead process to a process loading a model. Separating the two is the difference between a cure and sabotage with good intentions.
+
+**A fallback without a return path isn't resilience, it's a leak.** Every degrade needs a re-promote policy, even if it's just a cheap probe every two minutes. A one-way latch turns any transient into permanent.
+
+**A healer without criteria is an attacker with a badge.** The more automated your healing loop, the more damage it does when it's wrong — and the harder it is to see that it's the cause. This was literally two intelligent sessions helping each other keep a service on the floor.
+
+**When two sessions work on the same system, what's missing is protocol, not intelligence.** The concurrent restarts weren't anyone's stupidity: they were two correct actors with the same fast heuristic and no visibility into each other's clock.
+
+<Terminal
+  title="the-latch-investigation"
+  commands={[
+    { cmd: 'git show --stat 9e7763e | head -12', output: 'fix(brain): auto-heal do store Yurumi — degradacao por falha transitoria do embedder nao era permanente\n backend/brain.py                       |  58 ++++++++++++++\n backend/tests/test_brain_store_heal.py | 122 ++++++++++++++++++' },
+    { cmd: 'grep -n "BRAIN_STORE_RETRY_SECS" backend/brain.py', output: '132:_STORE_RETRY_SECS = float(os.getenv("BRAIN_STORE_RETRY_SECS", "120"))' },
+    { cmd: 'grep -c "def test_" backend/tests/test_brain_store_heal.py', output: '8' },
+    { cmd: 'python -m pytest backend/tests -q | tail -1', output: '243 passed' },
+  ]}
+/>
