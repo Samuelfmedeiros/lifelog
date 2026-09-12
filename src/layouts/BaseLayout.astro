@@ -30,6 +30,23 @@ const homeHref = dataLocale === 'en' ? '/en/' : '/';
 const archiveHref = dataLocale === 'en' ? '/en/archive' : '/arquivo';
 const aboutHref = dataLocale === 'en' ? '/en/about' : '/sobre';
 const portfolioHref = 'https://samuelmedeiros.vercel.app';
+
+// Language switcher: stay on the SAME page when changing locale.
+// (was hardcoded to home — switching language from /tag/... or /post/...
+// always landed back on the front page)
+const langHref = (() => {
+  const p = Astro.url.pathname;
+  const trailing = p.endsWith('/') ? '/' : '';
+  const norm = p.replace(/\/+$/, '') || '/';
+  if (dataLocale === 'en') {
+    const rest = norm === '/en' ? '/' : norm.slice(3);
+    const alias: Record<string, string> = { '/archive': '/arquivo', '/about': '/sobre' };
+    return alias[rest] || (rest === '/' ? '/' : rest + trailing);
+  }
+  if (norm === '/' || norm.startsWith('/ocultos')) return '/en/';
+  const alias: Record<string, string> = { '/arquivo': '/en/archive', '/sobre': '/en/about' };
+  return alias[norm] || ('/en' + norm + trailing);
+})();
 const footerText = dataLocale === 'en'
   ? `LifeLog © ${new Date().getFullYear()} — Samuel Medeiros' learning journey`
   : `LifeLog © ${new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros`;
@@ -159,7 +176,7 @@ const footerText = dataLocale === 'en'
           {/* Toggle de idioma: mostra a OUTRA língua (destino). O idioma atual
               já é evidente pelo texto da página — Samuel 15/08/2026. */}
           <a
-            href={dataLocale === 'en' ? '/' : '/en/'}
+            href={langHref}
             class="navbar-link navbar-lang"
             aria-label={dataLocale === 'en' ? 'Ver em português' : 'View in English'}
             title={dataLocale === 'en' ? 'PT — Português' : 'EN — English'}
