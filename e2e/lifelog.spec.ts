@@ -267,13 +267,28 @@ test.describe('RSS Feed', () => {
 
     const items = (text.match(/<item>/g) || []).length;
     const ptCount = POSTS.length;
-    // RSS inclui PT + EN = 64 (32+32)
-    expect(items).toBe(ptCount * 2);
+    // Cacada 13/09 (PR seo-hunt): /rss.xml e so PT; EN vive em /en/rss.xml.
+    // O antigo "PT + EN" no mesmo feed era o bug B5 (assinante recebia misto).
+    expect(items).toBe(ptCount);
+    expect(text).toContain('<language>pt-br</language>');
+    expect(text).not.toContain('<link>https://lifelog-sepia.vercel.app/en/post/');
 
     // Todos os slugs e contexto de títulos presentes
     for (const post of POSTS) {
       expect(text).toContain(post.slug);
     }
+  });
+
+  test('/en/rss.xml so EN', async ({ goto }) => {
+    const response = await goto('/en/rss.xml');
+    expect(response?.ok()).toBeTruthy();
+    const text = await response!.text();
+    const items = (text.match(/<item>/g) || []).length;
+    expect(items).toBe(POSTS.length);
+    expect(text).toContain('<language>en-us</language>');
+    expect(text).not.toContain('<link>https://lifelog-sepia.vercel.app/post/');
+    // slugs EN sao traduzidos (ex.: bitmamba-1b-training... vs treinando...),
+    // entao nao da pra exigir o slug PT aqui; a contagem + prefixo /en/post/ garante.
   });
 });
 
