@@ -1,0 +1,128 @@
+---
+title: "O WebSocket que apertava a mão duas vezes"
+description: "Uma semana depois de consertar os endpoints que não conectavam, o Dogwalk descobriu que aperto de mão repetido é pior que nenhum: o segundo accept() derrubava a conexão logo depois de abrir. E o primeiro conserto ainda deixou um socket morto entrando na sala."
+date: 2026-09-13 05:15:00 -03:00
+pubDate: 2026-09-13 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "websocket", "starlette", "testing", "debugging"]
+cover: /covers/dogwalk-o-websocket-que-apertava-a-mao-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O oposto do problema anterior
+
+Contei aqui a história do handshake que nunca acontecia: os cinco endpoints de WebSocket do Dogwalk retornavam HTTP 500 na abertura porque alguém chamou `receive_text()` sem o `accept()` que o Starlette exige. Aquele conserto entrou, os endpoints voltaram a viver, e o assunto pareceu encerrado.
+
+Na sexta-feira seguinte o assunto voltou com o sobrenome trocado. A conexão abria. Durava meio segundo. Morria.
+
+Não era erro 500 — era pior de diagnosticar, porque o handshake **funcionava**. O cliente recebia a confirmação, o navegador marcava a conexão como aberta, e só então o servidor explodia do próprio lado com uma exceção de protocolo. Chat, rastreamento GPS do passeio e notificações em tempo real: de novo tudo mudo, agora com a porta formalmente aberta.
+
+## O contrato que ninguém escreve no README
+
+WebSocket em ASGI tem uma regra que só aparece quando você viola: o `accept()` só é válido enquanto a conexão está em `CONNECTING`. Depois disso, o servidor não pode mais dizer "aceito" — o momento passou.
+
+O uvicorn é literal sobre isso. Mandar um segundo `websocket.accept` devolve exatamente isto:
+
+```
+RuntimeError: Expected ASGI message "websocket.send" or "websocket.close",
+but got 'websocket.accept'
+```
+
+O Dogwalk tinha dois lugares que apertavam a mão do mesmo cliente. Um deles nasceu do conserto da semana anterior.
+
+## Um mês de distância entre os dois apertos
+
+A autenticação dos WebSockets do Dogwalk lê um primeiro frame com o token antes de liberar a sessão. Para ler frame, é preciso ter aceitado a conexão. Então o helper de auth passou a chamar `accept()` — foi o conserto dos 500.
+
+O `ConnectionManager.connect()`, que registra o socket na sala, também sempre chamou `accept()`. Ele foi escrito antes, quando essa era a única porta de entrada.
+
+```python
+async def connect(self, room: str, ws: WebSocket):
+    if ws.application_state == WebSocketState.CONNECTING:
+        await ws.accept()
+```
+
+Duas linhas, duas camadas, cada uma certa isolada. Juntas, a segunda era sempre o segundo aperto de mão. O `accept()` do manager não era mais dono do gesto — era só um eco atrasado dele.
+
+O conserto foi tirar a decisão do lugar errado e deixar o estado do protocolo decidir: aceita se (e somente se) ainda estiver conectando. O merge entrou no dia 12/09 com um teste de regressão que falha sem a guarda.
+
+## Testar o servidor, não a minha opinião sobre o servidor
+
+Aqui está a parte que vale mais que o fix.
+
+Reproduzir esse bug em teste não é óbvio. Um `WebSocket` falso que aceita tudo o que você mandar prova que seu código chama `accept()` — e nada sobre se ele **pode** chamar. O teste precisava mentir menos que o mock.
+
+Então o arquivo de regressão monta um `send()` que se comporta como o uvicorn:
+
+```python
+def _uvicorn_like_send():
+    """Mimics uvicorn: 'websocket.accept' is only valid while CONNECTING."""
+    state = {"accepted": False}
+
+    async def _send(message):
+        if message["type"] == "websocket.accept":
+            if state["accepted"]:
+                raise RuntimeError(
+                    'Expected ASGI message "websocket.send" or "websocket.close", '
+                    "but got 'websocket.accept'"
+                )
+            state["accepted"] = True
+
+    return _send, state
+```
+
+É o Starlette real, com o `send()` do servidor real por baixo. O teste faz o que a produção faz: aceita na auth, chama `connect()` em seguida, e exige que nada lance exceção — e que o socket termine dentro da sala.
+
+Quatro casos nesse arquivo, e a suíte inteira fechou em 148 testes passando. O critério do caso de erro é o mesmo que o uvicorn usa. Se alguém reinstalar o `accept()` duplicado amanhã, o teste não discorda de opinião; ele bate de frente com o contrato.
+
+## O conserto deixou uma porta aberta
+
+Domingo de madrugada, a rodada de qualidade do Roger passou por cima do `connect()` e devolveu um achado que o meu fix tinha criado.
+
+Olhando de novo, com a guarda no lugar:
+
+```python
+if ws.application_state == WebSocketState.CONNECTING:
+    await ws.accept()
+if ws.application_state != WebSocketState.CONNECTED:
+    logger.warning("WS not added to room '%s': application_state invalid", room)
+    return
+```
+
+A primeira linha resolve o aperto duplo. A segunda não existia ainda no dia 12 — e sem ela, `connect()` aceitava na sala qualquer socket que não estava em `CONNECTING`. Isso inclui `DISCONNECTED` e `ERROR`: o cliente que cai no meio da autenticação, o socket que já morreu.
+
+Ele entrava na sala, e a sala não sabia que ele estava morto. O próximo broadcast ia tentar enviar para um defunto, capturar exceção, marcar como morto e limpar — no ciclo seguinte. Um desperdício por mensagem, silencioso, que só existia porque o conserto anterior tratou "não está conectando" como se significasse "está conectado".
+
+A correção é de duas linhas e virou o PR #21, com teste de regressão cobrindo especificamente o socket zumbi.
+
+## Métricas da semana
+
+| Item | Valor |
+|------|-------|
+| Endpoints de tempo real afetados | 5 |
+| Casos no arquivo de regressão do accept | 4 |
+| Suíte completa após o fix | 148 testes |
+| Dias entre o primeiro e o segundo fix | 1 (12 e 13/09) |
+| Linhas de código no fix do `connect()` | 6 |
+| Commits do arco completo | 2 PRs (#20 e #21) |
+
+## O que essas três semanas ensinaram
+
+- **Corrigir um bug é também remover o que o conserto tornou obsoleto.** O `accept()` do manager não era errado quando foi escrito; ficou errado no dia em que a auth passou a aceitar primeiro. Código que sobrevive à própria premissa vira ruído que ninguém questiona.
+- **Estado de protocolo é a única fonte confiável de "o que já aconteceu".** `application_state` diz a verdade; a ordem dos `await` no arquivo, não.
+- **Um mock que aceita tudo só prova que você chama a função.** Se o comportamento que importa está na recusa, o teste precisa recusar também.
+- **"Não está conectando" não é "está conectado".** Toda guarda precisa do lado de fora: o que ela permite passar quando a condição é falsa?
+
+Uma porta que abre sozinha duas vezes não é uma porta mais gentil. É uma porta que quebra a dobradiça na segunda batida.
+
+## Próximos passos
+
+O `broadcast()` ainda limpa socket morto por tentativa e erro a cada envio — agora é caminho raro, mas existe. A fila natural é o `ConnectionManager` assumir o descarte por estado, não por exceção. E os cinco endpoints seguem sem um teste de contrato ponta a ponta que valide a sequência auth → sala → primeira mensagem. É o próximo capítulo.
+
+<Terminal command="git log --oneline -3" output="d03995f fix(ws): nao adicionar a sala socket que nao chegou em CONNECTED (#21)
+f078776 Merge pull request #20 from Samuelfmedeiros/fix/ws-double-accept
+52653c9 fix(ws): nao chamar accept() duas vezes em ConnectionManager.connect" />

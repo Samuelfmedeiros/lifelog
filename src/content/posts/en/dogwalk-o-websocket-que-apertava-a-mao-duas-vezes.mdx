@@ -1,0 +1,128 @@
+---
+title: "The WebSocket that shook hands twice"
+description: "A week after fixing the Dogwalk endpoints that refused to connect, I learned a repeated handshake is worse than none: the second accept() killed the connection right after it opened. And the first fix still let a dead socket into the room."
+date: 2026-09-13 05:15:00 -03:00
+pubDate: 2026-09-13 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "websocket", "starlette", "testing", "debugging"]
+cover: /covers/dogwalk-o-websocket-que-apertava-a-mao-duas-vezes.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The opposite of the previous bug
+
+I told the story here once: all five of the Dogwalk's WebSocket endpoints were returning HTTP 500 on open, because somebody called `receive_text()` without the `accept()` that Starlette requires. The fix landed, the endpoints came back to life, and I considered the topic closed.
+
+The following Friday the topic came back with the sign flipped. The connection opened. It lasted half a second. It died.
+
+There was no 500 this time — and that made it harder to see, because the handshake **worked**. The client got its confirmation, the browser reported the socket as open, and only then did the server blow up on its own side with a protocol exception. Chat, live GPS tracking of the walk, real-time notifications: silent again, this time with the door formally unlocked.
+
+## The rule nobody writes in the README
+
+WebSocket over ASGI has a rule that only surfaces when you break it: `accept()` is legal only while the connection sits in `CONNECTING`. After that moment passes, the server gets no second chance to say "accepted".
+
+uvicorn is literal about it. Sending a second `websocket.accept` returns exactly this:
+
+```
+RuntimeError: Expected ASGI message "websocket.send" or "websocket.close",
+but got 'websocket.accept'
+```
+
+The Dogwalk had two places shaking hands with the same client. One of them had been born from the previous week's fix.
+
+## A month of drift between the two handshakes
+
+WebSocket auth in the Dogwalk reads a first frame carrying the token before it unlocks the session. To read a frame you must already have accepted the connection. So the auth helper started calling `accept()` — that was the fix for the 500s.
+
+`ConnectionManager.connect()`, which registers the socket into a room, had also been calling `accept()` since the day it was written, when it was the only door in.
+
+```python
+async def connect(self, room: str, ws: WebSocket):
+    if ws.application_state == WebSocketState.CONNECTING:
+        await ws.accept()
+```
+
+Two lines, two layers, each one correct on its own. Together, the manager's call was always the second handshake. It no longer owned the gesture — it was just an echo of it, arriving late.
+
+The fix moved the decision out of the wrong place and handed it to protocol state: accept if, and only if, we are still connecting. That merged on 09/12 with a regression test that fails without the guard.
+
+## Testing the server, not my opinion of the server
+
+This is the part worth more than the fix.
+
+Reproducing this bug in a test is not obvious. A fake `WebSocket` that accepts whatever you send proves your code calls `accept()` — and tells you nothing about whether it is **allowed** to. The test had to lie less than the mock.
+
+So the regression file builds a `send()` that behaves like uvicorn:
+
+```python
+def _uvicorn_like_send():
+    """Mimics uvicorn: 'websocket.accept' is only valid while CONNECTING."""
+    state = {"accepted": False}
+
+    async def _send(message):
+        if message["type"] == "websocket.accept":
+            if state["accepted"]:
+                raise RuntimeError(
+                    'Expected ASGI message "websocket.send" or "websocket.close", '
+                    "but got 'websocket.accept'"
+                )
+            state["accepted"] = True
+
+    return _send, state
+```
+
+Real Starlette object, real server `send()` underneath. The test does what production does: accept during auth, call `connect()` right after, and assert that nothing raises — and that the socket ends up inside the room.
+
+Four cases in that file, whole suite green at 148 tests. The oracle for the failure case is the same one uvicorn uses. If somebody reinstalls the duplicated `accept()` tomorrow, the test does not disagree with their opinion; it collides with the contract.
+
+## The fix left a door open
+
+Early Sunday morning, the Roger quality pass ran over `connect()` and came back with a finding that my own fix had created.
+
+Look again, with the guard in place:
+
+```python
+if ws.application_state == WebSocketState.CONNECTING:
+    await ws.accept()
+if ws.application_state != WebSocketState.CONNECTED:
+    logger.warning("WS not added to room '%s': application_state invalid", room)
+    return
+```
+
+The first line solves the double handshake. The second did not exist on 09/12 — and without it, `connect()` registered into the room any socket that was not in `CONNECTING`. Which includes `DISCONNECTED` and `ERROR`: the client that drops mid-authentication, the socket that is already gone.
+
+It joined the room, and the room had no idea it was dead. The next broadcast would try to send to a corpse, catch the exception, flag it as dead, and clean it up — on the following cycle. Waste per message, silent, existing only because the earlier fix had treated "not connecting" as if it meant "connected".
+
+The correction is two lines and became PR #21, with a regression test aimed specifically at the zombie socket.
+
+## The numbers for the week
+
+| Item | Value |
+|------|-------|
+| Realtime endpoints affected | 5 |
+| Cases in the accept regression file | 4 |
+| Full suite after the fix | 148 tests |
+| Days between first and second fix | 1 (09/12 and 09/13) |
+| Lines in the `connect()` fix | 6 |
+| Commits across the whole arc | 2 PRs (#20 and #21) |
+
+## What three weeks taught me
+
+- **Fixing a bug also means deleting what your fix made obsolete.** The manager's `accept()` was not wrong when it was written; it became wrong the day auth started accepting first. Code that outlives its own premise turns into noise nobody questions.
+- **Protocol state is the only trustworthy source of "what already happened".** `application_state` tells the truth; the order of `await` statements in the file does not.
+- **A mock that accepts everything only proves you call the function.** If the behaviour that matters lives in the refusal, the test has to refuse too.
+- **"Not connecting" is not "connected".** Every guard needs an outside look: what does it let through when the condition is false?
+
+A door that opens itself twice is not a friendlier door. It is a door that snaps the hinge on the second knock.
+
+## What comes next
+
+`broadcast()` still clears dead sockets by trial and error on every send — now a rare path, but a path. The natural queue is for `ConnectionManager` to discard by state instead of by exception. And the five endpoints still have no end-to-end contract test covering the auth → room → first message sequence. That is the next chapter.
+
+<Terminal command="git log --oneline -3" output="d03995f fix(ws): nao adicionar a sala socket que nao chegou em CONNECTED (#21)
+f078776 Merge pull request #20 from Samuelfmedeiros/fix/ws-double-accept
+52653c9 fix(ws): nao chamar accept() duas vezes em ConnectionManager.connect" />
