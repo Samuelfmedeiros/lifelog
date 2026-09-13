@@ -6,7 +6,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
      NAO linkada em lugar nenhum. Requer ADMIN_SECRET (env na Vercel).
      Conteúdo é buscado via API no cliente — nada vaza no build estático. -->
 
-<BaseLayout title="Posts ocultos" description="Gestão de posts ocultos" locale="pt">
+<BaseLayout title="Posts ocultos" description="Gestão de posts ocultos" locale="pt" noindex={true}>
   <main class="max-w-3xl mx-auto px-4 py-12">
     <h1 class="text-2xl font-extrabold mb-2" style="color: var(--color-heading)">Posts ocultos</h1>
     <p class="text-sm mb-8" style="color: var(--color-text-muted)">
