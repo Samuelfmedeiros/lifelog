@@ -38,6 +38,10 @@ const langHref = (() => {
   const p = Astro.url.pathname;
   const trailing = p.endsWith('/') ? '/' : '';
   const norm = p.replace(/\/+$/, '') || '/';
+  // Previews ocultos existem nos dois idiomas — trocar idioma NA PAGINA mantem o slug.
+  // (bug 13/09: no PT caia em '/en/' home; no EN virava href relativo 'ultos/...' = 404)
+  const m = norm.match(/^\/ocultos\/preview\/(pt|en)\/(.+)$/);
+  if (m) return '/ocultos/preview/' + (m[1] === 'pt' ? 'en' : 'pt') + '/' + m[2] + trailing;
   if (dataLocale === 'en') {
     const rest = norm === '/en' ? '/' : norm.slice(3);
     const alias: Record<string, string> = { '/archive': '/arquivo', '/about': '/sobre' };
