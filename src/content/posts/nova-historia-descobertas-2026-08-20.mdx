@@ -20,7 +20,7 @@ Não era falta de código. Era a ordem errada de mexer no que já funcionava.
 
 ## O primeiro passo: a logo precisava sair
 
-O LifeLog sempre teve a navbar começando pelo logo `[LifeLog · Samuel]`. Foi o primeiro a ser removido. O commit `6e9b303` resumia a intenção:
+O LifeLog sempre teve a navbar começando pelo logo `[LifeLog · Samuel]`. Foi o primeiro a ser removido. O commit resumia a intenção:
 
 ```text
 fix(nav): remove rail-lang duplicado e logo — navbar começa com botão Portfólio
@@ -50,7 +50,7 @@ feat(nav): polish A-F — cta hover darker, focus-visible a11y, refined transiti
 
 E eu caí na armadilha clássica: pra deixar a transição suave, botei `transition: all` num bloco maior. Resultado: o efeito de *scroll reveal* dos cards e os hovers dos botões ficaram com atraso perceptível e micro-stutter. O que era pra ser brilho virou atrito.
 
-O quarto e último commit — `5fb9f21` — foi o que finalmente resolveu a estrutura do selecionador de paleta:
+O quarto e último commit foi o que finalmente resolveu a estrutura do selecionador de paleta:
 
 ```text
 feat(navbar): Bloco 1 tema/cores — PalettePicker e tema global
@@ -76,7 +76,7 @@ No fim, a navbar ficou exatamente onde a mantive por erro durante quatro commits
 
 <Terminal commands={[
   { cmd: 'git log --oneline -- src/components/navbar' },
-  { cmd: 'git show 6e9b303 --stat   # remove rail-lang e logo' },
-  { cmd: 'git show a9b0d2e --stat   # polish: hover, focus-visible, transitions' },
-  { cmd: 'git show 5fb9f21 --stat   # PalettePicker e tema global' }
+  { cmd: 'git show COMMIT_REF --stat   # remove rail-lang e logo' },
+  { cmd: 'git show COMMIT_REF --stat   # polish: hover, focus-visible, transitions' },
+  { cmd: 'git show COMMIT_REF --stat   # PalettePicker e tema global' }
 ]}/>

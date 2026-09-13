@@ -64,7 +64,7 @@ Intermitente porque dependia de **quando** o import acontecia e **em qual thread
 
 ##  A resolução: lazy init — nascer no loop certo
 
-O fix (commit `457326e`, 09/08 02:59): o lock deixa de ser criado no import e passa a ser criado **dentro do loop corrente**, na primeira vez que é usado.
+O fix (09/08 02:59): o lock deixa de ser criado no import e passa a ser criado **dentro do loop corrente**, na primeira vez que é usado.
 
 ```python
 #  Antes — nascia preso ao loop do import
@@ -94,7 +94,7 @@ A história de ontem foi um generator que não fechava a sessão do Postgres. Ho
 
 | Métrica | Valor |
 |---------|-------|
-| Commit | `457326e` (09/08 02:59) |
+| Commit | o commit do fix (09/08 02:59) |
 | Arquivo | `api/app/browser_agent/engine.py` |
 | Diff | +16 / -3 |
 | Usos do lock corrigidos | 2 (`_maybe_gc`, `_get_browser`) |
@@ -115,7 +115,7 @@ A história de ontem foi um generator que não fechava a sessão do Postgres. Ho
 <Terminal
   lines={[
   { cmd: 'grep -n "bound to a different event loop" /tmp/arachne-workflow.log', output: 'RuntimeError: <asyncio.locks.Lock> is bound to a different event loop' },
-  { cmd: 'git show 457326e -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
+  { cmd: 'git show COMMIT_REF -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
   { cmd: 'grep -n "async with await _get_lock()" api/app/browser_agent/engine.py', output: 'Linhas 140 e 177: os 2 usos corrigidos' },
   { cmd: 'grep -c "def test_" api/tests/test_*.py | awk -F: \'{s+=$2} END {print s}\'', output: '2732 testes — suíte completa do Arachne' },
   ]}

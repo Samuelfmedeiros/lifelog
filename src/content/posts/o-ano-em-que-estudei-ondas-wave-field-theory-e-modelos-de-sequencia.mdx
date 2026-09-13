@@ -15,7 +15,7 @@ import Terminal from '../../components/TerminalWidget.astro'
 
 Quando o LifeLog fez um ano, a seção **Estudos** tinha 2 posts: o loop de truncamento do Ollama (`ollama-truncation-loop-4096`) e a história dos estudos (`a-historia-do-estudos`). Dois posts. Mas se você olhasse o que rodava por baixo — o TatuEngine, o BitMamba-2 1B, o Mamba SSM treinado em GPU — a origem de tudo estava ali.
 
-O paradoxo: a seção mais "parada" do blog era a que gerava o projeto mais ambicioso. Não porque eu planejava — mas porque **estudo não avisa quando vira código**. Você lê um paper, faz anotação no vault, testa um notebook, e seis meses depois aquilo vira o kernel de travessia que roda a 41.9 µs por token.
+O paradoxo: a seção mais "parada" do blog era a que gerava o projeto mais ambicioso. Não porque eu planejava — mas porque **estudo não avisa quando vira código**. Você lê um paper, faz anotação no vault, testa um notebook, e seis meses depois aquilo vira o kernel de travessia que roda em microssegundos por token.
 
 ##  Contexto — o paper que mudou a direção
 
@@ -79,7 +79,7 @@ A seção Estudos não precisa de post "perfeito". Precisa de **registro honesto
 |--------|-----------|----------------|
 | num_ctx Ollama (4096 → 32768) | Regra Docs First global | Todos os 7 projetos |
 | Wave field theory (paper + notebooks) | TatuEngine + BitMamba-2 1B | Projeto de pesquisa ativo |
-| Mamba SSM (estudo + implementação) | Modelo 1.4B, inferência 41.9 µs/tok | GPU pipeline funcional |
+| Mamba SSM (estudo + implementação) | Modelo 1.4B, inferência em µs/tok | GPU pipeline funcional |
 | Experimentos descartados (atenção, FTS5, embedding) | Zero posts até agora | ← o erro que o blog corrige |
 
 ##  Aprendizados

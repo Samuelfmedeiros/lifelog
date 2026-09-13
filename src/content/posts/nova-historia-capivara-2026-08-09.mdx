@@ -48,7 +48,7 @@ O rate limit do Capivara usava o IP do request pra montar o bucket. O problema? 
 A correção foi documentada e direta:
 
 ```bash
-ae08d24 fix(ratelimit): CF-Connecting-IP p/ bucket real + API key 120/min
+COMMIT_REF fix(ratelimit): CF-Connecting-IP p/ bucket real + API key 120/min
 ```
 
 Usar o header **`CF-Connecting-IP`** — o IP real do cliente, que o Cloudflare injeta de forma confiável — em vez de tentar adivinhar a partir da conexão. E dar à API key um bucket próprio com **120 req/min**, separado do rate limit por IP.

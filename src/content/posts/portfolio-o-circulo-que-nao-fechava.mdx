@@ -50,7 +50,7 @@ const apply = () => {
 
 O `flushSync` força o React a commitar o estado **sincronamente** dentro do callback. Quando o browser tira o snapshot "novo", o tema ja foi aplicado e o DOM ja reflete `data-theme="light"`. O circulo revela o tema certo, sem flash.
 
-Foi um commit de 14 linhas (`58ba720`) que resolveu um problema que existia ha meses. A linha chave:
+Foi um commit de 14 linhas que resolveu um problema que existia ha meses. A linha chave:
 
 ```tsx
 // flushSync: o snapshot "novo" do ViewTransition so e capturado
@@ -63,7 +63,7 @@ flushSync(() => {
 
 ## O resto da maratona de qualidade
 
-A restauracao da View Transition circular veio acompanhada de um mutirao de qualidade no mesmo dia (`91dd9c5`):
+A restauracao da View Transition circular veio acompanhada de um mutirao de qualidade no mesmo dia:
 
 **Botoes icon-only na navbar.** Samuel reportou que os botoes de tema, paleta e lingua tinham fundo glass desnecessario — ocupavam espaco visual sem agregar. Solucao: `icon-only` — sem fundo, sem padding extra, so o icone. A navbar respirou.
 
@@ -75,7 +75,7 @@ A restauracao da View Transition circular veio acompanhada de um mutirao de qual
   commands={[
     {
       cmd: 'git log --oneline --since="2026-08-24" --until="2026-08-26"',
-      output: '58ba720 fix(theme): flushSync no startViewTransition + origem do circulo no clique\n91dd9c5 feat: restaura View Transition circular no toggle de tema + botoes icon-only\n1192e65 fix: hydration mismatch #418 no carregamento (MissionClock + Footer)'
+      output: 'COMMIT_REF fix(theme): flushSync no startViewTransition + origem do circulo no clique\nCOMMIT_REF feat: restaura View Transition circular no toggle de tema + botoes icon-only\n1192e65 fix: hydration mismatch #418 no carregamento (MissionClock + Footer)'
     },
     {
       cmd: 'cd portifolio && npx vitest run tests/theme-toggle.spec.ts',
