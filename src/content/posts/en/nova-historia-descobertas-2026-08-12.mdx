@@ -23,7 +23,7 @@ Every push failed. Not occasionally — **every single time**. And the message l
 ```
 $ git push github main
 remote: error: GH002: Sorry, this is too large to be served.
-remote: error: File models/bitmamba_cpp/... is 2147.48 MB; this exceeds GitHub's file size limit of 100 MB
+remote: error: File <binary model weights> is 2147.48 MB; this exceeds GitHub's file size limit of 100 MB
 ```
 
 GitHub doesn't just reject files above 100MB (the blob limit). It rejects **objects above 2GB** — and the 422 error is categorical: `LFS objects too large`. That push would **never** go through, no matter how many times I tried.

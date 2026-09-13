@@ -102,6 +102,6 @@ After that: **242 passed, 0 failed**. Whole suite back to green.
   { cmd: "grep -n \"if (fm.draft)\" e2e/lifelog.spec.ts", output: "the helper line — the hidden filter was missing right beside it" },
   { cmd: "file src/content/posts/estudos-308-skills-e-o-hub-de-reuso.mdx", output: "ASCII text, with CRLF line terminators" },
   { cmd: "sed -n '1,3p' e2e/lifelog.spec.ts | od -c | head", output: "see the raw \\r\\n in the lines" },
-  { cmd: "git show 1cb9771 --stat", output: "e2e/lifelog.spec.ts | 7 ++++++- — the one-file fix" },
+  { cmd: "git show COMMIT_REF --stat", output: "e2e/lifelog.spec.ts | 7 ++++++- — the one-file fix" },
   ]}
 />

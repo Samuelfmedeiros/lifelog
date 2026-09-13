@@ -44,7 +44,7 @@ Instead of converting EVERYTHING to geometry (impossible for 1B params), I split
 |------|--------------|-----|
 | Embedding lookup | CPU | Linear table access — no GPU gain |
 | RMSNorm | CPU | Simple vector operation |
-| **in_proj / out_proj / lm_head** | **GPU (bridge_matmul)** | **Heavy matmul — 99% of FLOPs** |
+| **Heavy projections + output head** | **GPU** | **Heavy matmul — 99% of FLOPs** |
 | Conv1d + SiLU | CPU | Small sequential state |
 | SSM step | CPU | Inherently sequential — `h(t) = f(h(t-1), x(t))` |
 | Residual add | CPU | Trivial vector sum |
@@ -65,21 +65,21 @@ Each block:
 Total: a fraction of a byte per weight (well under the 1:1 scheme)
 ```
 
-**128× compression.** And the best part: the traversal kernel can process entire blocks in parallel with 32 threads in the same warp.
+**Two orders of magnitude of compression.** And the best part: the traversal can process entire blocks in parallel.
 
 ## GPU Block-Traversal: the first real result
 
-With Block Codec working, I wrote the CUDA traversal kernel — each thread processes one row of the block, warp shuffle for partial sum, shared memory for accumulator.
+With Block Codec working, I wrote the GPU traversal — parallel per block, with the reduction happening inside the hardware itself.
 
 The result was surprising:
 
 | Pipeline | CPU | GPU | Speedup |
 |----------|-----|-----|---------|
-| 1 token inference | 10.552 ms | **41.9 µs** | **252×** |
-| Bake 100K cells | ~70 ms | 4.8 ms | **15×** |
-| 16-ray traversal | 74.2 ms | 0.52 ms | **146×** |
+| 1 token inference | milliseconds | **microseconds** | **orders of magnitude** |
+| Bake 100K cells | ~70 ms | ~5 ms | **one order of magnitude** |
+| 16-ray traversal | tens of ms | sub-millisecond | **orders of magnitude** |
 
-252 microseconds per token on a GPU that also runs CUDA Cores. For comparison, a Transformer of similar size takes 3-5ms on the same hardware.
+A whole token in a fraction of a millisecond, on a GPU that still has CUDA Cores to spare. For comparison, a Transformer of similar size takes a few milliseconds on the same hardware.
 
 ## What I learned from these experiments
 
@@ -89,7 +89,7 @@ The model I tested (BitMamba-1B) was already natively ternary — trained with w
 
 ### 2. Softplus with float32 silently overflows
 
-`expf(89.0f) = +inf`. This broke my SSM step tests for 2 days until I realized the `softplus` of A_log was generating `inf` in the last batches. The fix is the numerically stable formulation (`log1pf(expf(-abs(x)))`).
+In float32, `exp()` blows up near the type's upper bound. This broke my SSM step tests for 2 days until I realized the `softplus` on A_log was overflowing in the last batches. The fix is the numerically stable softplus formulation.
 
 ### 3. SSM doesn't carry history in the hidden state
 
@@ -108,8 +108,8 @@ Instead of computing gradient by finite differences (expensive, unstable), the A
 | Metric | June (start) | July (today) |
 |--------|-------------|--------------|
 | Tests | 0 | 400+ (30 suites) |
-| GPU speedup |  | 252× |
-| Compression | 27.26 GB | 245 MB (114×) |
+| GPU speedup |  | orders of magnitude |
+| Compression | tens of GB | hundreds of MB |
 | Pipeline | Conceptual | Hybrid CPU/GPU |
 | Agent | 0 | 8 subsystems |
 | Model | Mamba 2.8B (planned) | BitMamba-1B (functional) |
@@ -118,6 +118,6 @@ Instead of computing gradient by finite differences (expensive, unstable), the A
 
 The hybrid pipeline is functional, but the original vision hasn't been **fully** realized: the weights aren't real geometry during inference — Block Codec is a compressed representation, not an actual optical traversal.
 
-The next step is connecting the **MotorGPU** (parallel traversal kernel) with the agent pipeline we built afterward — Immunosystem, associative LTM, GoalStack, ToolUseBuffer. The agent should be able to call tools, remember past sessions, and self-correct the phase field based on feedback.
+The next step is connecting the **MotorGPU** (parallel traversal) with the agent pipeline — Immunosystem, associative LTM, GoalStack, ToolUseBuffer. The agent should be able to call tools, remember past sessions, and self-correct the phase field based on feedback.
 
-> TL;DR: Started wanting to do ray tracing for neural networks, discovered hybrid SSM is the real path, compressed 36 GB to 245 MB with Block Codec (128×), and achieved 252× GPU speedup. TatuEngine is no longer a crazy idea — it's a functional inference engine that treats network weights as a phase field. And yes, I still think one day RT Cores will process neural geometry for real.
+> TL;DR: Started wanting to do ray tracing for neural networks, discovered hybrid SSM is the real path, compressed tens of GB down to a few hundred MB with Block Codec, and achieved orders of magnitude of GPU speedup. TatuEngine is no longer a crazy idea — it's a functional inference engine that treats network weights as a phase field. And yes, I still think one day RT Cores will process neural geometry for real.

@@ -26,7 +26,7 @@ next week's schedule. And the browser answers the way it always does: the
 was still just a visitor — it opened in a Chrome tab, with no icon on the home
 screen, no presence. A site the user never installs never becomes a habit.
 
-Phase 4F (commit `978f4e75`, Sep 5) existed to solve both problems at once:
+Phase 4F (Sep 5) existed to solve both problems at once:
 **make the app genuinely installable** and **give offline navigation a decent
 place to land**.
 
@@ -193,7 +193,7 @@ offline showing stale code broke the contract before any screen could load.
 <Terminal
   client:load
   commands={[
-    { cmd: 'git show 978f4e75 --stat | tail -5' },
+    { cmd: 'git show COMMIT_REF --stat | tail -5' },
     { cmd: '12 files changed, 443 insertions(+), 6 deletions(-)' },
     { cmd: 'grep -n "navigateFallback" vite.config.js' },
     { cmd: 'navigateFallback: null,   # NEVER cache HTML' },

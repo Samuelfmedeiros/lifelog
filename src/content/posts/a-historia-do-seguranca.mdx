@@ -36,11 +36,11 @@ A primeira resposta foi isolar o agente. **ai-jail** usa bwrap (bubblewrap) + la
 ```yaml
 # ~/.ai-jail — a parte mais importante:
 mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
-hide_dotdirs = [".hermes"]  # tokens do Hermes protegidos
+hide_dotdirs = ["<diretorio-protegido>"]  # o dir do agente fica invisivel no sandbox
 deny_paths = ["secrets/", "*.key", ".gnupg/"]
 ```
 
-O detalhe fino: `hide_dotdirs = [".hermes"]` — esconder o diretório **inteiro** do Hermes dentro do sandbox. Nem o agente nem um prompt injection conseguem ler os tokens. Depois veio a fase 2 da prática (10/08): o sandbox aprendeu com os erros da gente — novos masks, deny_paths, e o TatuEngine levou o conceito pro código com um **Sandbox Híbrido de 51/51 testes**.
+O detalhe fino: `hide_dotdirs` — esconder o diretório **inteiro** do agente dentro do sandbox. Nem o agente nem um prompt injection conseguem listar o que não existe pra eles.
 
 ### Fase 2: a caça ativa (11/08) — scan agentico em todos os projetos
 
@@ -66,7 +66,7 @@ A regra de ouro: **cron só notifica quando tem problema** — sistema silencios
 
 ##  Resolução — as regras que nasceram da luta
 
-1. **Segurança de agente é camada, não feature** — sandbox, mask e hide_dotdirs protegem contra o pior caso (prompt injection), não contra o usuário. Projete pro adversário.
+1. **Segurança de agente é camada, não feature** — sandbox, mask e isolamento de diretório protegem
 2. **Scan antes do deploy, sempre** — ZAP + gitleaks + bandit + opengrep rodam em CI antes de qualquer entrega. Check falhou = não entrega.
 3. **Vigilância é processo, não campanha** — watchdog ativo 24/7 vale mais que uma auditoria de fim de semana.
 4. **Fixes valem pra TODAS as contas** — correção de segurança encontrada no meu projeto vale pro Douglas, pra Juliana, pra qualquer usuário do ecossistema.
@@ -90,7 +90,7 @@ A regra de ouro: **cron só notifica quando tem problema** — sistema silencios
 
 <Terminal
   lines={[
-  { cmd: 'ai-jail run -- "cat ~/.hermes/secrets.env"', output: 'permission denied — mask aplicado no sandbox' },
+  { cmd: 'cat ~/.<dir-protegido>/secrets.env', output: 'permission denied — mask aplicado no sandbox' },
   { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan no histórico do git' },
   { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — análise estática' },
   { cmd: 'python3 security-watchdog.py', output: 'monitorando 24/7 — alerta só em problema' },

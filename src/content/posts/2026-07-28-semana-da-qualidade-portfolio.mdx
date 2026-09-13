@@ -37,7 +37,7 @@ const keyField = `01${keyLen}${key}`;
 
 `String.fromCharCode` converte o número em codepoint Unicode. `key.length` sendo 10 vira `\n` (line feed) em vez de `"10"`. O payload chegava no banco com campos de tamanho inválido — Pix rejeitado silenciosamente.
 
-O mesmo bug aparecia em **4 campos** (chave Pix, Merchant Name, Merchant City, e o CRC que usava `slice(0, -4)` em vez de concatenar o CRC no final). O commit `977eaf6` corrigiu todos.
+O mesmo bug aparecia em **4 campos** (chave Pix, Merchant Name, Merchant City, e o CRC que usava `slice(0, -4)` em vez de concatenar o CRC no final). O commit `<commit>` corrigiu todos.
 
 ### Focus trap roubando o teclado
 
@@ -46,8 +46,8 @@ O modal de CV tem um formulário. Quando tentava digitar, o focus trap do modal 
 ```typescript
 // Raiz: dois handlers Escape competindo
 // ProjectModal e TimelineModal tinham listeners duplicados
-git show 83efb93  # fix: focus trap roubando foco ao digitar
-git show 0d7c218  # fix: remove duplicate Escape handlers
+git show <commit>  # fix: focus trap roubando foco ao digitar
+git show <commit>  # fix: remove duplicate Escape handlers
 ```
 
 ### Smooth scroll com race condition
@@ -56,13 +56,13 @@ Clicar num link de navegação disparava animação antes do hash atualizar. Se 
 
 ```typescript
 // Fix: pausar observer durante animação
-git show 3b31bc4  # navigationRef pausa observer durante smooth-scroll
-git show 8782a3d  # handleNavClick seta activeSection no click
+git show <commit>  # navigationRef pausa observer durante smooth-scroll
+git show <commit>  # handleNavClick seta activeSection no click
 ```
 
 ### +6 problemas no mesmo dia
 
-O commit `refactor: auditoria profunda — 10 correções de qualidade` (`713a556`) consolidou:
+O commit `refactor: auditoria profunda — 10 correções de qualidade` (`<commit>`) consolidou:
 
 - CV download: `fs.appendFileSync` falhava no Vercel → migrado pra Capivara API
 - Terminal: history com cap e tracking corrigido (`external_link` → `terminal_command`)
@@ -75,7 +75,7 @@ O commit `refactor: auditoria profunda — 10 correções de qualidade` (`713a55
 
 ## O commit que documenta tudo
 
-A mensagem do commit `713a556` é longa de propósito — cada correção tem o _o quê_ e o _por quê_. Debugging futuro agradece.
+A mensagem do commit `<commit>` é longa de propósito — cada correção tem o _o quê_ e o _por quê_. Debugging futuro agradece.
 
 ```
 refactor: auditoria profunda — 10 correções de qualidade
@@ -111,8 +111,8 @@ refactor: auditoria profunda — 10 correções de qualidade
 
 <Terminal
   lines={[
-  { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 arquivos, 26 inserções' },
-  { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
+  { cmd: 'git show <commit> --stat', output: 'Pix BR Code fix — 2 arquivos, 26 inserções' },
+  { cmd: 'git log --oneline <commit>..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
   { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Health check do deploy' },
   { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Testes passando após correções' },
   ]}

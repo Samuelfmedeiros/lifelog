@@ -102,6 +102,6 @@ Depois disso: **242 passed, 0 failed**. Suíte inteira de volta ao verde.
   { cmd: "grep -n \"if (fm.draft)\" e2e/lifelog.spec.ts", output: "linha do helper — faltava o filtro hidden ali do lado" },
   { cmd: "file src/content/posts/estudos-308-skills-e-o-hub-de-reuso.mdx", output: "ASCII text, with CRLF line terminators" },
   { cmd: "sed -n '1,3p' e2e/lifelog.spec.ts | od -c | head", output: "ver o \\r\\n cru nas linhas" },
-  { cmd: "git show 1cb9771 --stat", output: "e2e/lifelog.spec.ts | 7 ++++++- — a correção em 1 arquivo" },
+  { cmd: "git show COMMIT_REF --stat", output: "e2e/lifelog.spec.ts | 7 ++++++- — a correção em 1 arquivo" },
   ]}
 />

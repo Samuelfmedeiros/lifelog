@@ -88,7 +88,7 @@ A próxima rodada de revisão já nasce com essa camada ligada. Tema escuro, cla
 <Terminal
   title="auditoria-visual-resumida"
   commands={[
-    { cmd: 'git log --oneline --grep="VLM" -2', output: '633a140 fix(header): email truncado no tema claro — max-w 240->300 + title tooltip + md breakpoint (achado pela VLM)\nf38a9ea fix(contraste): tokens do tema claro em InvitesSection (rgba hardcoded -> var)' },
+    { cmd: 'git log --oneline --grep="VLM" -2', output: 'COMMIT_REF fix(header): email truncado no tema claro — max-w 240->300 + title tooltip + md breakpoint (achado pela VLM)\nf38a9ea fix(contraste): tokens do tema claro em InvitesSection (rgba hardcoded -> var)' },
     { cmd: 'grep -c "var(--text" frontend/src/components/dashboard/InvitesSection.tsx', output: '9' },
     { cmd: 'grep -o "max-w-\\[300px\\]" frontend/src/components/ui/Header.tsx', output: 'max-w-[300px]' },
   ]}

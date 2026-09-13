@@ -64,7 +64,7 @@ Intermittent because it depended on **when** the import happened and **which thr
 
 ##  The resolution: lazy init — born in the right loop
 
-The fix (commit `457326e`, 09/08 02:59): the lock is no longer created at import — it's created **inside the current loop**, on first use.
+The fix (09/08 02:59): the lock is no longer created at import — it's created **inside the current loop**, on first use.
 
 ```python
 #  Before — born bound to the import's loop
@@ -94,7 +94,7 @@ Yesterday's story was a generator that never closed the Postgres session. Today 
 
 | Metric | Value |
 |--------|-------|
-| Commit | `457326e` (09/08 02:59) |
+| Commit | the fix commit (09/08 02:59) |
 | File | `api/app/browser_agent/engine.py` |
 | Diff | +16 / -3 |
 | Lock usages fixed | 2 (`_maybe_gc`, `_get_browser`) |
@@ -115,7 +115,7 @@ Yesterday's story was a generator that never closed the Postgres session. Today 
 <Terminal
   lines={[
   { cmd: 'grep -n "bound to a different event loop" /tmp/arachne-workflow.log', output: 'RuntimeError: <asyncio.locks.Lock> is bound to a different event loop' },
-  { cmd: 'git show 457326e -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
+  { cmd: 'git show COMMIT_REF -- api/app/browser_agent/engine.py | head -30', output: '+16 -3: _lock = None + _get_lock() lazy' },
   { cmd: 'grep -n "async with await _get_lock()" api/app/browser_agent/engine.py', output: 'Lines 140 and 177: the 2 fixed usages' },
   { cmd: 'grep -c "def test_" api/tests/test_*.py | awk -F: \'{s+=$2} END {print s}\'', output: '2732 tests — full Arachne suite' },
   ]}

@@ -35,7 +35,7 @@ O audit fix rodou com o pnpm 10, gerou um lockfile v10. O packageManager continu
 
 ##  A luta — três fixes até achar a raiz
 
-### Fix 1: alinhar o packageManager (commit `6e90b6b`)
+### Fix 1: alinhar o packageManager
 
 ```json
 // package.json
@@ -45,7 +45,7 @@ O audit fix rodou com o pnpm 10, gerou um lockfile v10. O packageManager continu
 
 A Vercel passou a usar o pnpm 10 (a mesma versão do lockfile). Menos mal — mas o erro persistiu em outro ponto.
 
-### Fix 2: matar o `node-linker=hoisted` (commit `0aa26b2`)
+### Fix 2: matar o `node-linker=hoisted`
 
 O `.npmrc` tinha `node-linker=hoisted` (herdado de config antiga). O hoisted faz o pnpm **achatar o node_modules interno do `@parcel/watcher-wasm`** (uma dep com `bundledDependencies`) — e o rename conflita com o cache restaurado do build:
 
@@ -100,8 +100,8 @@ O deploy voltou a passar. E o aprendizado mais valioso: a ferramenta feita pra *
 
 <Terminal
   lines={[
-  { cmd: 'git show 6e90b6b', output: 'packageManager pnpm@9.12.3 → 10.34.5 + lock regenerado' },
-  { cmd: 'git show 0aa26b2', output: 'remove node-linker=hoisted — ERR_PNPM_EEXIST no @parcel/watcher-wasm' },
+  { cmd: 'git show COMMIT_REF', output: 'packageManager pnpm@9.12.3 → 10.34.5 + lock regenerado' },
+  { cmd: 'git show COMMIT_REF', output: 'remove node-linker=hoisted — ERR_PNPM_EEXIST no @parcel/watcher-wasm' },
   { cmd: 'grep packageManager package.json', output: '"packageManager": "pnpm@10.34.5"' },
   { cmd: 'vercel --prod', output: 'deploy pra produção — agora estável' },
   ]}

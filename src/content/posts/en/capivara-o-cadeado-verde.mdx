@@ -118,9 +118,9 @@ Normalize first, reject residue after — plus a second rejection for absolute f
 <Terminal
   lines={[
   { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://capivara.seu.pet/%2e%2e/%2e%2e/backend/.env', output: '404' },
-  { cmd: 'git log --oneline -1 d80c267', output: 'fix(critical): path traversal in SPA — production secret leak' },
-  { cmd: 'git log --oneline -1 ed201dd', output: 'fix(sec): defense-in-depth hardening on the _next/static proxy' },
-  { cmd: 'git log --oneline -1 9d6a7f6', output: 'fix(sec): path traversal in Umami proxy — normalize path before the check' },
+  { cmd: 'git log --oneline -1', output: 'fix(critical): path traversal in SPA — production secret leak' },
+  { cmd: 'git log --oneline -1', output: 'fix(sec): defense-in-depth hardening on the _next/static proxy' },
+  { cmd: 'git log --oneline -1', output: 'fix(sec): path traversal in Umami proxy — normalize path before' },
   { cmd: 'cat .security/opengrep-rules.yml | head -8', output: 'secret-key-hardcoded · sql-string-concatenation · debug-print-leaking-data' },
   ]}
 />

@@ -23,7 +23,7 @@ The TatuEngine started as an experiment: "what if I train an SSM from scratch, i
 298 commits later, the project is a full engine with:
 
 - **GPU inference** with BitMamba-2 1B — block-encoded BVH with radical compression of ternary models
-- **GPU block-traversal kernel** — parallel traversal with hundreds-of-times speedup over CPU
+**block traversal on GPU** — parallel, with orders-of-magnitude speedup over CPU
 - **Hybrid CPU/GPU pipeline** — SSM state on CPU, `bridge_matmul` on GPU
 - **`tatu` CLI** — generation, MCP and tool commands
 - **MCP connector** — standalone server with 4 tools (FastMCP, stdio/SSE)

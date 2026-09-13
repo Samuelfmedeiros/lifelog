@@ -95,8 +95,8 @@ If a payload arrives with `hacker_section` in the `order`, the backend returns 4
 
 <Terminal
   commands={[
-    { cmd: 'git log --oneline -1 8cbabfc', label: 'Fix double PUT' },
-    { cmd: 'git diff --stat 8cbabfc', label: 'Files touched' },
+  { cmd: 'git log --oneline -1', label: 'Fix double PUT' },
+  { cmd: 'git log --oneline -1', label: 'Fix double PUT' },
     { cmd: 'pytest backend/tests/test_layout.py -v', label: '146 lines of tests' },
   ]}
 />

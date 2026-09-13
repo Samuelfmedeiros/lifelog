@@ -27,7 +27,7 @@ ver os horários da semana. Aí o navegador responde do jeito dele: tela de
 parece um visitante — abre na aba do Chrome, sem ícone na tela inicial, sem
 presença. Um site que o usuário nunca instala não vira hábito.
 
-A Fase 4F (commit `978f4e75`, 05/09) existiu para resolver esses dois
+A Fase 4F (05/09) existiu para resolver esses dois
 problemas juntos: **fazer o app instalável de verdade** e **dar um destino
 digno pra navegação offline**.
 
@@ -192,7 +192,7 @@ mostrando código velho quebrou o contrato antes de qualquer tela carregar.
 <Terminal
   client:load
   commands={[
-    { cmd: 'git show 978f4e75 --stat | tail -5' },
+    { cmd: 'git show COMMIT_REF --stat | tail -5' },
     { cmd: '12 files changed, 443 insertions(+), 6 deletions(-)' },
     { cmd: 'grep -n "navigateFallback" vite.config.js' },
     { cmd: 'navigateFallback: null,   # NUNCA cachear HTML' },

@@ -164,7 +164,7 @@ The most daring project: an inference engine that mixes State Space Models with 
 ```
 TatuEngine
  ├── BlockCodec → 32×32 ternary blocks, 27 GB → 245 MB
- ├── GPU kernel → 32 threads/CTA, warp shuffle, 252× speedup
+├── GPU → parallel block traversal, orders-of-magnitude speedup
  ├── GenerationContext → Autopoietic agent with LTM, ToolUse, GoalStack
  ├── PhaseField → O(1) potential field, SPLIT/PRUNE/EXPLORE decisions
  ├── CLI tatu → generate, mcp, tool, info
@@ -247,12 +247,7 @@ The ecosystem today has 5 projects, ~2,400 commits, and a brain orchestrating ev
 The cool thing is that each piece fits into the others — and the whole is already greater than the sum of its parts.
 
 <Terminal lines={[
-  'system:~$ echo $((654 + 852 + 495 + 289 + 86 + 80))',
-  '2396',
-  '',
-  'system:~$ python3 -c "print(2818 + 219 + 400 + 75)"',
-  '3512',
-  '',
-  'system:~$ echo "And this is just the beginning."',
-  'And this is just the beginning.',
+  { cmd: 'system:~$ echo $((654 + 852 + 495 + 289 + 86 + 80))', output: '2396' },
+  { cmd: 'system:~$ python3 -c "print(2818 + 219 + 400 + 75)"', output: '3512' },
+  { cmd: 'system:~$ echo "And this is just the beginning."', output: 'And this is just the beginning.' },
 ]} />

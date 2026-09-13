@@ -27,52 +27,52 @@ O stack planejado era ambicioso:
 - **GGUF** como formato de modelo
 - **MCP** como protocolo de API
 
-O Sprint 1 construiu tudo ao redor dessa visão: `src/core` com pipeline lock-free e triple buffering, `src/rt` com headers OptiX 9.1 compilando PTX, `src/mamba` com SSM kernel CUDA, `src/field_theory` com o protótipo do Campo de Fase. Documentação da época: PLANO_MESTRE.md e CARVEKNOWLEDGE.md — ambos refletindo uma visão que nunca funcionaria no ambiente real.
+O Sprint 1 construiu tudo ao redor dessa visão: um núcleo com pipeline lock-free e triple buffering, uma camada de ray tracing com headers OptiX 9.1 compilando PTX, o módulo do SSM com kernel em CUDA, e o protótipo do Campo de Fase. Documentação da época: o plano mestre e a tese — ambos refletindo uma visão que nunca funcionaria no ambiente real.
 
 ##  A luta — o sonho que morreu no WSL2
 
 ### O baque: RT Cores não existem no WSL2
 
-O WSL2 não tem suporte a RT Cores. A `libnvoptix.so.1` dentro do WSL é um **proxy DXCore de 14KB** que não exporta a function table do OptiX:
+O WSL2 não tem suporte a RT Cores. A biblioteca OptiX dentro do WSL é um proxy fino que nem exporta a função de inicialização:
 
 ```
-optixInit() → OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND
+a chamada de init retorna erro de símbolo não encontrado
 ```
 
 Duas semanas tentando contornar. O que salvou: **CUDA funciona nativamente no WSL** (ioctl NVIDIA direto). RT Cores não — mas CUDA Cores, sim. Foi a primeira lição: *não force uma tecnologia onde ela não encaixa*.
 
 ### O segundo muro: 27 GB de lentes
 
-Converter a rede de 1B parâmetros pra BVH como lentes individuais custaria **27 GB** — impossível pra VRAM de 12 GB. A solução foi o pipeline híbrido: as matmuls pesadas (in_proj, out_proj, lm_head) rodam em CUDA lendo os tensores originais, e o estado SSM (conv1d, RMSNorm, step) fica na CPU:
+Converter a rede de 1B parâmetros pra BVH como lentes individuais custaria dezenas de gigabytes — impossível pra VRAM de 12 GB. A solução foi o pipeline híbrido: as multiplicações matriciais pesadas rodam na GPU lendo os tensores originais, e o estado do SSM (que é sequencial) fica na CPU:
 
 ```
-CPU: embedding → RMSNorm → conv1d+SiLU → SSM step → residual
-GPU (bridge_matmul): in_proj → out_proj → lm_head
+CPU: trecho sequencial — normalização, convolução, passo do SSM, residual
+GPU: os matmuls pesados — projeções de entrada/saída e cabeça de saída
 ```
 
 E aqui veio outra descoberta: **o Mamba SSM é inerentemente sequencial** — `h(t) = f(h(t-1), x(t))`. Diferente de transformers (KV cache paralelizável), só dá pra paralelizar as matmuls; o step é CPU-bound. O gargalo virou a comunicação CPU↔GPU entre tokens.
 
 ### O NaN que quase virou lenda
 
-Softplus com float32 estoura: `expf(89.0) = inf`. Uma linha salvou dois dias de debug: a formulação numericamente estável (`log1pf(expf(-abs(x)))`).
+Em float32, `exp()` estoura perto do limite superior do tipo e gera `inf`. Uma linha salvou dois dias de debug: a formulação numericamente estável do softplus.
 
-### O marco: 50257/50257 logits bit-a-bit
+### O marco: todos os logits bit-a-bit
 
-A validação que provou que o híbrido funcionava: **50257 logits idênticos** entre o `bridge_matmul` e o ground truth CPU, bit por bit.
+A validação que provou que o híbrido funcionava: todos os logits do próximo token idênticos entre o caminho híbrido e o ground truth em CPU, bit por bit.
 
 ### Block Codec: compressão radical
 
-A descoberta que mudou o jogo: em vez de 1 lente por peso, **blocos ternários compactados** — 245 MB no total vs 27.26 GB float32 — mais de 100× de compressão, com tolerância ULP.
+**blocos ternários compactados** — centenas de MB no total vs dezenas de GB em float32 — duas ordens de grandeza de compressão
 
 ### GPU Block-Traversal
 
-O kernel de travessia em GPU processa blocos inteiros em paralelo, com redução via warp e acumulador em memória compartilhada — **sem atomics**:
+A travessia em GPU processa blocos inteiros em paralelo, com a redução acontecendo dentro do próprio hardware:
 
 | Pipeline | CPU | GPU | Speedup |
 |----------|-----|-----|---------|
-| Inferência 1 token | 10.552 ms | 41.9 µs | **252×** |
-| Traversal 16 raios | 74.2 ms | 0.52 ms | **146×** |
-| Bake 100K células | ~70 ms | 4.8 ms | **15×** |
+| Inferência 1 token | milissegundos | microssegundos | **ordens de grandeza** |
+| Traversal de raios | dezenas de ms | sub-milissegundo | **ordens de grandeza** |
+| Bake 100K células | dezenas de ms | poucos ms | **uma ordem de grandeza** |
 
 ##  Resolução — o agente autopoiético
 
@@ -85,10 +85,10 @@ E o **Sandbox Híbrido** pra proteger as tools de arquivo — path validation, s
 | Métrica | Junho (nascimento) | Hoje |
 |---------|--------------------|------|
 | Commits | 1 | 302 |
-| Testes | 0 | 400+ C++ (30 suites) + 51 sandbox |
-| Speedup GPU |  (OptiX não funcionava) | 252× block-traversal |
-| Compressão | 27.26 GB (float32) | 245 MB (block codec, 114×) |
-| Pipeline | Conceitual | Híbrido CPU/GPU bit-a-bit |
+| Testes | 0 | centenas de testes C++ + suite de sandbox |
+| Speedup GPU | (OptiX não funcionava) | travessia em bloco na GPU, ordens de grandeza |
+| Compressão | dezenas de GB (float32) | centenas de MB (block codec) |
+| Pipeline | Conceitual | Híbrido CPU/GPU validado bit-a-bit |
 | Agente | 0 subsistemas | 8 subsistemas |
 | Modelo | Mamba 2.8B (planejado) | BitMamba-2 1B (funcional) |
 | Sandbox | não existia | 3 níveis, 51/51 testes |
