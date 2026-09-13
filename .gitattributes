@@ -1,0 +1,14 @@
+# Normalizacao de linha (cacada 13/09): trabalho sempre LF no repo.
+# Sem isso, commits vindos do Windows entravam CRLF no blob e cada edicao
+# gerava diff de arquivo inteiro (o "diff fantasma" dos posts).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.avif binary
+*.mp4 binary
