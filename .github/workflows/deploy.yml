@@ -99,6 +99,9 @@ jobs:
       run: python3 scripts/check-lang-sync.py
     - name: Tag vocabulary check (Opção C)
       run: python3 scripts/check-tags.py --strict
+    - name: Leak gate (project posts)
+      run: node scripts/check-content-leakage.mjs --diff
+
 
     - name: Astro type check
       continue-on-error: true

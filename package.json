@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+      "check:leakage": "node scripts/check-content-leakage.mjs",
     "dev": "astro dev",
     "build": "node scripts/validate-covers.mjs && node scripts/gen-ocultos.mjs && astro build",
     "preview": "astro preview",
