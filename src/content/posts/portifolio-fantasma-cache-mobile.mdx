@@ -110,7 +110,7 @@ Com a base sólida (218 testes, cache resolvido, deploy estável), os próximos 
 
 <Terminal
   commands={[
-cd ~/projetos/portifolio && git log --oneline -5', output: 'fix(cache)
+  { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: 'fix(cache): no-cache no HTML + meta tags + guard bfcache\nfix(deploy): remove node-linker=hoisted\nfix(deploy): packageManager pnpm@10.34.5\nchore: issue/PR templates + contributing guide\ndocs: add MIT license' },
   { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n  Tests  218 passed (218)\n  Duration  11.58s' },
   { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
   ]}

@@ -246,12 +246,7 @@ O ecossistema hoje tem 5 projetos, ~2.400 commits, e um cérebro orquestrando tu
 O legal é que cada peça se encaixa nas outras — e o todo já é maior que a soma das partes.
 
 <Terminal lines={[
-  'system:~$ echo $((654 + 852 + 495 + 289 + 86 + 80))',
-  '2396',
-  '',
-  'system:~$ python3 -c "print(2818 + 219 + 400 + 75)"',
-  '3512',
-  '',
-  'system:~$ echo "E isso é só o começo."',
-  'E isso é só o começo.',
+  { cmd: 'system:~$ echo $((654 + 852 + 495 + 289 + 86 + 80))', output: '2396' },
+  { cmd: 'system:~$ python3 -c "print(2818 + 219 + 400 + 75)"', output: '3512' },
+  { cmd: 'system:~$ echo "E isso é só o começo."', output: 'E isso é só o começo.' },
 ]} />

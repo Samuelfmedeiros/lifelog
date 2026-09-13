@@ -38,7 +38,7 @@ const keyField = `01${keyLen}${key}`;
 
 `String.fromCharCode` converts the number to a Unicode codepoint. `key.length` being 10 turns into `\n` (line feed) instead of `"10"`. The payload arrived at the bank with invalid length fields — Pix silently rejected.
 
-The same bug appeared in **4 fields** (Pix key, Merchant Name, Merchant City, and the CRC that used `slice(0, -4)` instead of concatenating). Commit `977eaf6` fixed them all.
+The same bug appeared in **4 fields** (Pix key, Merchant Name, Merchant City, and the CRC that used `slice(0, -4)` instead of concatenating). Commit `<commit>` fixed them all.
 
 ### Focus trap stealing the keyboard
 
@@ -54,13 +54,13 @@ git show <commit>  # fix: remove duplicate Escape handlers
 Clicking a nav link triggered animation before the hash updated. If you clicked two links fast, the first scroll never finished and the second started from a halfway point.
 
 ```bash
-git show <commit>
-git show <commit>
+git show <commit>  # navigationRef pauses observer during smooth-scroll
+git show <commit>  # handleNavClick sets activeSection on click
 ```
 
 ### +6 more in one day
 
-The commit message of that fix batch is intentionally long — each fix had
+Commit `<commit>` (`refactor: deep audit — 10 quality fixes`) consolidated:
 
 - CV download: `fs.appendFileSync` failed on Vercel → migrated to Capivara API
 - Terminal: history with cap + fixed tracking (`external_link` → `terminal_command`)
@@ -73,7 +73,7 @@ The commit message of that fix batch is intentionally long — each fix had
 
 ## The commit message that documents everything
 
-The commit message of that fix batch is intentionally long — each fix had
+The `<commit>` commit message is intentionally long — each fix has the _what_ and the _why_. Future debugging thanks me.
 
 ```
 refactor: deep audit — 10 quality fixes
@@ -109,8 +109,8 @@ refactor: deep audit — 10 quality fixes
 
 <Terminal
   lines={[
-git show HEAD~3 --stat
-The commit message of that fix batch is intentionally long — each fix had
+  { cmd: 'git show <commit> --stat', output: 'Pix BR Code fix — 2 files, 26 insertions' },
+  { cmd: 'git log --oneline <commit>..HEAD | grep fix | wc -l', output: 'Total fixes post-audit' },
   { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Deploy health check' },
   { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Tests passing after fixes' },
   ]}

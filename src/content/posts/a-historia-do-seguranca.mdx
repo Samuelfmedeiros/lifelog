@@ -90,7 +90,7 @@ A regra de ouro: **cron só notifica quando tem problema** — sistema silencios
 
 <Terminal
   lines={[
-cat ~/.<dir-protegido>/secrets.env
+  { cmd: 'cat ~/.<dir-protegido>/secrets.env', output: 'permission denied — mask aplicado no sandbox' },
   { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan no histórico do git' },
   { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — análise estática' },
   { cmd: 'python3 security-watchdog.py', output: 'monitorando 24/7 — alerta só em problema' },

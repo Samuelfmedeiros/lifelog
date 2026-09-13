@@ -37,7 +37,7 @@ const keyField = `01${keyLen}${key}`;
 
 `String.fromCharCode` converte o número em codepoint Unicode. `key.length` sendo 10 vira `\n` (line feed) em vez de `"10"`. O payload chegava no banco com campos de tamanho inválido — Pix rejeitado silenciosamente.
 
-O mesmo bug aparecia em **4 campos** (chave Pix, Merchant Name, Merchant City, e o CRC que usava `slice(0, -4)` em vez de concatenar o CRC no final). O commit `977eaf6` corrigiu todos.
+O mesmo bug aparecia em **4 campos** (chave Pix, Merchant Name, Merchant City, e o CRC que usava `slice(0, -4)` em vez de concatenar o CRC no final). O commit `<commit>` corrigiu todos.
 
 ### Focus trap roubando o teclado
 
@@ -56,13 +56,13 @@ Clicar num link de navegação disparava animação antes do hash atualizar. Se 
 
 ```typescript
 // Fix: pausar observer durante animação
-git show <commit>
-git show <commit>
+git show <commit>  # navigationRef pausa observer durante smooth-scroll
+git show <commit>  # handleNavClick seta activeSection no click
 ```
 
 ### +6 problemas no mesmo dia
 
-O commit `refactor: auditoria profunda — 10 correções de qualidade` (`713a556`) consolidou:
+O commit `refactor: auditoria profunda — 10 correções de qualidade` (`<commit>`) consolidou:
 
 - CV download: `fs.appendFileSync` falhava no Vercel → migrado pra Capivara API
 - Terminal: history com cap e tracking corrigido (`external_link` → `terminal_command`)
@@ -75,7 +75,7 @@ O commit `refactor: auditoria profunda — 10 correções de qualidade` (`713a55
 
 ## O commit que documenta tudo
 
-A mensagem do commit `713a556` é longa de propósito — cada correção tem o _o quê_ e o _por quê_. Debugging futuro agradece.
+A mensagem do commit `<commit>` é longa de propósito — cada correção tem o _o quê_ e o _por quê_. Debugging futuro agradece.
 
 ```
 refactor: auditoria profunda — 10 correções de qualidade
@@ -111,8 +111,8 @@ refactor: auditoria profunda — 10 correções de qualidade
 
 <Terminal
   lines={[
-git show HEAD~3 --stat
-  { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
+  { cmd: 'git show <commit> --stat', output: 'Pix BR Code fix — 2 arquivos, 26 inserções' },
+  { cmd: 'git log --oneline <commit>..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
   { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Health check do deploy' },
   { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Testes passando após correções' },
   ]}

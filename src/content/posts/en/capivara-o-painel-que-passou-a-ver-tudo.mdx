@@ -129,7 +129,7 @@ And `ExecutiveSection` (the "Ecosystem" section) got a clever optimization: it a
 <Terminal
   commands={[
   { cmd: 'git log --oneline -1', label: 'Executive Hub commit' },
-git show HEAD~2 --stat
+    { cmd: 'git show HEAD~2 --stat', label: 'Files touched' },
     { cmd: 'pnpm vitest run dashboard-hero', label: '9 hero + KPI tests' },
   ]}
 />

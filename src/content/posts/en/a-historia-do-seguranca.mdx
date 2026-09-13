@@ -90,7 +90,7 @@ The golden rule: **crons only notify when there's a problem** — a silent syste
 
 <Terminal
   lines={[
-cat ~/.<protected-dir>/secrets.env
+  { cmd: 'cat ~/.<protected-dir>/secrets.env', output: 'permission denied — mask applied in the sandbox' },
   { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan of git history' },
   { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — static analysis' },
   { cmd: 'python3 security-watchdog.py', output: 'monitoring 24/7 — alert only on problems' },
