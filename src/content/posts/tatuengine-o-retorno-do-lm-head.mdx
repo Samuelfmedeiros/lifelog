@@ -26,7 +26,7 @@ O script `lm_head_fix.py` nasceu com uma pergunta simples: **o que tem dentro do
 
 A primeira coisa que ele faz é carregar o checkpoint original e medir estatísticas da matriz de pesos:
 
-```python
+```text
 w = model.lm_head.weight.data
 print(f"lm_head.weight: mean={w.float().mean().item():.4f} "
       f"std={w.float().std().item():.4f} "
@@ -36,7 +36,7 @@ print(f"zeros absolutos: {(w.float().abs() < 1e-12).sum().item()} / {w.numel()}"
 
 E depois compara com a embedding:
 
-```python
+```text
 ew = model.embed.weight.data
 print(f"embed.weight: mean={ew.float().mean().item():.4f} "
       f"std={ew.float().std().item():.4f}")
@@ -49,7 +49,7 @@ O que a auditoria revelou: a distribuição dos pesos do lm_head estava **desali
 
 A decisão foi cirúrgica: em vez de mexer no modelo inteiro, re-inicializar **apenas** o lm_head com uma escala pequena, como se fosse uma cabeça nova. Usando Xavier uniform — a mesma inicialização clássica de uma camada recém-nascida:
 
-```python
+```text
 new_w = torch.empty_like(w)
 fan_in, fan_out = w.shape[1], w.shape[0]
 bound = math.sqrt(6.0 / (fan_in + fan_out))
@@ -59,7 +59,7 @@ lh.weight.data.copy_(new_w)
 
 O teste de sanidade veio na sequência: rodar um forward com uma frase real e olhar os 5 maiores logits — para conferir que a cabeça ainda produzia saídas com magnitude razoável, e não um mar de NaN:
 
-```python
+```text
 top5_vals, top5_idx = logits[-1].topk(5)
 for v, i in zip(top5_vals.tolist(), top5_idx.tolist()):
     print(f"  {v:10.2f} -> {repr(tok.decode([i]))}")
@@ -67,14 +67,14 @@ for v, i in zip(top5_vals.tolist(), top5_idx.tolist()):
 
 Depois, o reteste de loss com um batch de treino — a expectativa era um valor perto do aleatório (~10.8), porque uma cabeça re-inicializada ainda não aprendeu nada:
 
-```python
+```text
 loss = F.cross_entropy(shift.reshape(-1, shift.size(-1)), sample[:, 1:].reshape(-1))
 print(f"LOSS APOS RE-ESCALA: {loss.item():.4f} (random esperado ~10.8)")
 ```
 
 E por fim, um teste de backward com gradientes — conferir que o gradiente flui, que não tem NaN, e que a norma total faz sentido:
 
-```python
+```text
 loss3.backward()
 total_norm = sum(g**2 for g in grad_norms) ** 0.5
 print(f"grad_norm total: {total_norm:.4f}")
@@ -83,29 +83,29 @@ print(f"NaN nos grads: {any(math.isnan(g) for _, g in grad_norms)}")
 
 ## O checkpoint que destravou tudo
 
-A auditoria gerou um checkpoint novo: `bitmamba_1b_lmfix.pt` — o mesmo modelo, mas com a cabeça re-escalada e saudável.
+A auditoria gerou um checkpoint novo — o mesmo modelo, mas com a cabeça re-escalada e saudável.
 
-E foi exatamente esse arquivo que o `run_fase4.py` escolheu como base. Olha a linha de configuração:
+E foi exatamente esse artefato corrigido que o script da Fase 4 adotou como base de carga.
 
-```python
-# Base .pt (modelo nu — sem treino, pesos do HF)
-MODEL_PT = PROJECT_ROOT / "models" / "bitmamba_cpp" / "bitmamba_1b_lmfix.pt"
+```text
+# base do modelo: checkpoint corrigido da auditoria (arquivo interno)
+base = checkpoint corrigido da auditoria
 ```
 
-A Fase 4 — batizada de Ressurreição, autorizada pelo arquiteto em 28/08 — precisa de uma **carga limpa**: um checkpoint de pré-treino sem SFT contaminando a memória. O `bitmamba_1b.pt` original tinha a cabeça com escala derivada; o `_lmfix` é a versão corrigida. Sem a auditoria, a Fase 4 teria começado com uma cabeça doente e os primeiros steps de treino estariam brigando contra a escala errada.
+A Fase 4 — batizada de Ressurreição, autorizada pelo arquiteto em 28/08 — precisa de uma **carga limpa**: um checkpoint de pré-treino sem SFT contaminando a memória. O checkpoint original tinha a cabeça com escala derivada; o novo é a versão corrigida. Sem a auditoria, a Fase 4 teria começado com uma cabeça doente e os primeiros steps de treino estariam brigando contra a escala errada.
 
 A ordem de serviço da Fase 4:
 
 ```text
-1. Carga limpa: full_warmup/best — pré-treino, sem SFT
-2. AdamW (Fused) + Parameter Groups: A_log/D @ 10x, resto @ 0.3x
-3. Loop Híbrido: 0-300 pretrain puro, 300-2000 co-training pretrain:SFT
-4. Telemetria: losses separadas (Pretrain vs SFT) a partir do step 301
+1. Carga limpa: checkpoint de pre-treino, sem SFT
+2. AdamW (Fused) + Parameter Groups: learning rate diferenciada por grupo — os parâmetros de estado do SSM num regime, o corpo do modelo em outro
+3. Loop Híbrido: fase de pre-treino puro, depois co-training pre-treino + SFT
+4. Telemetria: perdas separadas (pre-treino vs SFT) desde o início do co-training
 ```
 
 E o treino ainda ganhou uma inspeção extra de gradientes por grupo — incluindo o lm_head separado do resto:
 
-```python
+```text
 gnorm_lm = 0.0
 for n, p_g in model.named_parameters():
     if p_g.grad is not None and "lm_head" in n:
@@ -119,12 +119,12 @@ Agora o lm_head tem telemetria própria no log a cada step. Depois de ser o vil�
 
 | Métrica | Valor |
 |---------|-------|
-| Checkpoint original | `bitmamba_1b.pt` (2.04GB) |
-| Checkpoint corrigido | `bitmamba_1b_lmfix.pt` (2.04GB) |
+| Checkpoint original | ~2 GB, escala derivada na cabeça |
+| Checkpoint corrigido | ~2 GB, lm_head re-escalado |
 | Técnica | Re-escala Xavier uniform, apenas lm_head |
 | Loss pós-re-escala | ~10.8 (esperado para cabeça nova) |
 | Fase 4 | Ressurreição (Opção C Híbrida), autorizada 28/08 |
-| Base da Fase 4 | `bitmamba_1b_lmfix.pt` — carga limpa |
+| Base da Fase 4 | checkpoint corrigido — carga limpa |
 
 ## Aprendizados
 
@@ -137,8 +137,8 @@ A Ressurreição começou com a cabeça certa. E o spoiler do codec, enfim, se p
 
 <Terminal
   lines={[
-  { cmd: 'python3 lm_head_fix.py', output: 'lm_head: re-escala Xavier OK · loss ~10.8 · grad OK · checkpoint salvo' },
-  { cmd: 'ls models/bitmamba_cpp/bitmamba_1b_lmfix.pt', output: '2.0G ago 30 00:23 bitmamba_1b_lmfix.pt' },
-  { cmd: 'grep MODEL_PT tatu/scripts/run_fase4.py', output: 'MODEL_PT = ... bitmamba_1b_lmfix.pt  ← base da Fase 4' },
+  { cmd: "python3 lm_head_fix.py", output: "lm_head: re-escala Xavier OK · perda esperada de cabeça nova · grad OK · checkpoint salvo" },
+  { cmd: "ls -lh models/", output: "2.0G checkpoint corrigido — salvo, pronto p/ Fase 4" },
+  { cmd: "python fase4.py --dry-run", output: "base: checkpoint corrigido da auditoria" },
   ]}
 />

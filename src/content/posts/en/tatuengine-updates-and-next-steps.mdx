@@ -50,7 +50,7 @@ Some lessons worth recording:
 
 **3. The SSM hidden state doesn't carry history.** Δh ≈ 0.000 between consecutive tokens. The real memory is in the SSM state (the kv_cache). The Energy Observer v1 measured the wrong thing — we fixed it.
 
-**4. Softplus overflows in float32 past x > 89.** `expf(89.0) = inf`. A 1-line patch with the numerically stable formulation (`log1pf(expf(-|x|))`) saved 2 days of NaN debugging.
+**4. Softplus overflows in float32 near the type limit.** `exp()` becomes `inf`, backward spreads NaN. A 1-line patch with the numerically stable formulation fixed it.
 
 ## Lessons learned
 

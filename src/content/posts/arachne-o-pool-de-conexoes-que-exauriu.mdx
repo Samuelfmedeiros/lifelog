@@ -95,7 +95,7 @@ Verificação: Bug Hunter re-rodado → **11/11 checks OK, 0 falhas**, `/api/aut
 <Terminal
   lines={[
   { cmd: 'SELECT state, COUNT(*) FROM pg_stat_activity GROUP BY state;', output: '38 idle in transaction — as conexões órfãs' },
-  { cmd: 'git show af642ef -- api/app/main.py | head -30', output: 'O fix: _session_gen.close() no finally (22 linhas)' },
+{ cmd: 'git show HEAD~1 -- api/app/main.py | head -30', output: 'O fix: _session_gen.close() no finally (22 linhas tocadas)' },
   { cmd: 'grep -n "_session_gen.close()" api/app/main.py', output: 'Linha 847: roda o __exit__ → conexão volta ao pool' },
   { cmd: 'pg_terminate_backend(pid)', output: 'Mitigação imediata: matar as 38 órfãs + restart' },
   ]}

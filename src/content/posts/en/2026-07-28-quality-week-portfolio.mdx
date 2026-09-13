@@ -45,8 +45,8 @@ The same bug appeared in **4 fields** (Pix key, Merchant Name, Merchant City, an
 The CV modal has a form. When trying to type, the project modal's focus trap conflicted — one modal's `onMouseDown` intercepted the other's, and focus jumped back to background.
 
 ```bash
-git show 83efb93  # fix: focus trap stealing focus while typing
-git show 0d7c218  # fix: remove duplicate Escape handlers
+git show <commit>  # fix: focus trap stealing focus while typing
+git show <commit>  # fix: remove duplicate Escape handlers
 ```
 
 ### Smooth scroll race condition
@@ -54,13 +54,13 @@ git show 0d7c218  # fix: remove duplicate Escape handlers
 Clicking a nav link triggered animation before the hash updated. If you clicked two links fast, the first scroll never finished and the second started from a halfway point.
 
 ```bash
-git show 3b31bc4  # navigationRef pauses observer during smooth-scroll
-git show 8782a3d  # handleNavClick sets activeSection on click
+git show <commit>
+git show <commit>
 ```
 
 ### +6 more in one day
 
-Commit `713a556` (`refactor: deep audit — 10 quality fixes`) consolidated:
+The commit message of that fix batch is intentionally long — each fix had
 
 - CV download: `fs.appendFileSync` failed on Vercel → migrated to Capivara API
 - Terminal: history with cap + fixed tracking (`external_link` → `terminal_command`)
@@ -73,7 +73,7 @@ Commit `713a556` (`refactor: deep audit — 10 quality fixes`) consolidated:
 
 ## The commit message that documents everything
 
-The `713a556` commit message is intentionally long — each fix has the _what_ and the _why_. Future debugging thanks me.
+The commit message of that fix batch is intentionally long — each fix had
 
 ```
 refactor: deep audit — 10 quality fixes
@@ -109,8 +109,8 @@ refactor: deep audit — 10 quality fixes
 
 <Terminal
   lines={[
-  { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 files, 26 insertions' },
-  { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total fixes post-audit' },
+git show HEAD~3 --stat
+The commit message of that fix batch is intentionally long — each fix had
   { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Deploy health check' },
   { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Tests passing after fixes' },
   ]}

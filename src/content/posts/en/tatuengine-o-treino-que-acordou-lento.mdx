@@ -41,14 +41,12 @@ The scheduler is a plan for reducing the LR across steps: divisions by 10 at fix
 
 After restoring the state, **re-impose the levels declared by the current session**:
 
-```python
-if tstate.get("scheduler") is not None and scheduler is not None:
-    try:
-        scheduler.load_state_dict(tstate["scheduler"])
-        scheduler.base_lrs = [args.lr for _ in scheduler.base_lrs]  # fix LR~0: ckpt carried base_lrs from an old run (1e-6)
-        print(f"  base_lrs reforced to CLI: {args.lr:.2e}")
-    except Exception as e:
-        print(f"  scheduler.load_state_dict failed ({e}); using fresh scheduler")
+```text
+restore scheduler state from the checkpoint
+for each parameter group:
+    group_base_lr = learning_rate_declared_in_this_session   # the session owns it, not the checkpoint
+confirm the re-imposed value in the log
+if restoring fails, use a fresh scheduler
 ```
 
 Two lines: the re-imposition and a confirmation print. The rest of the block already existed — nobody had noticed that `load_state_dict` clobbered the value right below the try. And a project decision is embedded there: **the current session owns the LR**. An old checkpoint carries step progress, not the LR policy of an era that's over. If someday I want to resume with a different CLI value, the pipeline obeys the CLI.
@@ -79,8 +77,8 @@ The next Phase 4 milestone is still crossing the zone where the previous round d
 <Terminal
   title="fix-summary"
   commands={[
-    { cmd: 'git log --oneline -1 0497d85', output: '0497d85 fix: force scheduler base_lrs after ckpt load (old ckpt carried lr 1e-6 -> LR ~5e-7)' },
-    { cmd: 'tail -2 telemetry.log | grep lr', output: 'step=1180 loss=2.417 grad=2.9 lr=5.00e-07  # before the fix: old ckpt LR' },
-    { cmd: 'tail -2 telemetry.log | grep lr  # after the fix', output: 'step=1181 loss=2.402 grad=3.1 lr=1.00e-04  # base_lrs reforced to CLI' },
+    { cmd: 'git log --oneline -1', output: 'fix: re-impose scheduler LR after ckpt load (old ckpt carried LR ~0)' },
+    { cmd: 'tail -2 telemetry.log | grep lr', output: 'before the fix: tiny LR inherited from the old checkpoint' },
+    { cmd: 'tail -2 telemetry.log | grep lr  # after the fix', output: 'after: LR = 1.00e-04, exactly what the CLI asked for' },
   ]}
 />

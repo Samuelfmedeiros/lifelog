@@ -46,7 +46,7 @@ E mesmo assim o Chrome mobile servia versão velha. Porque o bfcache não lê is
 
 ##  O diagnóstico — pageshow e `e.persisted`
 
-O LifeLog (blog Astro) tinha sofrido do **mesmo problema** uns dias antes. O Samuel abria o blog no celular, via posts antigos, dava refresh manual e os novos apareciam. A solução aplicada lá (commit `8f257c7`) virou referência e foi portada pro Portfólio (commit `283ebbc`).
+O LifeLog (blog Astro) tinha sofrido do **mesmo problema** uns dias antes — o cache ficou preso num commit antigo por dias, até alguém notar. Foi corrigido em 22 de junho com cache-control `no-cache` nos entrypoints.
 
 A chave do diagnóstico: o evento `pageshow`. Ele dispara **toda vez** que uma página é mostrada — seja no load inicial, seja na restauração do bfcache. Quando a página vem do bfcache, a propriedade `event.persisted` vem `true`.
 
@@ -110,7 +110,7 @@ Com a base sólida (218 testes, cache resolvido, deploy estável), os próximos 
 
 <Terminal
   commands={[
-  { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: '283ebbc fix(cache): no-cache no HTML + meta tags + guard bfcache\n0aa26b2 fix(deploy): remove node-linker=hoisted\n6e90b6b fix(deploy): packageManager pnpm@10.34.5\nacd55d6 chore: issue/PR templates + contributing guide\nd88eda2 docs: add MIT license' },
+cd ~/projetos/portifolio && git log --oneline -5', output: 'fix(cache)
   { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n  Tests  218 passed (218)\n  Duration  11.58s' },
   { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
   ]}

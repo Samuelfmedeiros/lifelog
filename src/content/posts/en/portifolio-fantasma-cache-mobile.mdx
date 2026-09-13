@@ -47,7 +47,7 @@ And still Chrome mobile served stale versions. Because bfcache doesn't read thos
 
 ##  The diagnosis — pageshow and `e.persisted`
 
-LifeLog (the Astro blog) had suffered the **same problem** a few days earlier. Samuel would open the blog on his phone, see old posts, manually refresh, and the new ones would appear. The solution applied there (commit `8f257c7`) became the reference and was ported to the Portfolio (commit `283ebbc`).
+LifeLog (the Astro blog) had suffered the **same problem** a few days earlier — the cache got stuck on an old commit for days, until someone noticed. It was fixed on June 22nd with `no-cache` on the entrypoints.
 
 The diagnostic key: the `pageshow` event. It fires **every time** a page is shown — whether on initial load or on bfcache restoration. When the page comes from bfcache, the `event.persisted` property is `true`.
 
@@ -111,7 +111,7 @@ With the solid foundation (218 tests, cache resolved, stable deploy), the next s
 
 <Terminal
   commands={[
-  { cmd: 'cd ~/projetos/portifolio && git log --oneline -5', output: '283ebbc fix(cache): no-cache no HTML + meta tags + guard bfcache\n0aa26b2 fix(deploy): remove node-linker=hoisted\n6e90b6b fix(deploy): packageManager pnpm@10.34.5\nacd55d6 chore: issue/PR templates + contributing guide\nd88eda2 docs: add MIT license' },
+LifeLog (the Astro blog) had suffered the **same problem** a few days earlier — the cache got stuck on an old commit for days, until someone noticed. It was fixed on June 22nd with `no-cache` on the entrypoints.
   { cmd: 'npx vitest run 2>&1 | tail -3', output: 'Test Files  28 passed (28)\n  Tests  218 passed (218)\n  Duration  11.58s' },
   { cmd: 'curl -sI https://samuelmedeiros.vercel.app | grep -E "(cache|pragma|expires)"', output: 'cache-control: no-cache, no-store, must-revalidate\npragma: no-cache\nexpires: 0' },
   ]}

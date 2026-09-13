@@ -36,11 +36,11 @@ The first response was isolating the agent. **ai-jail** uses bwrap (bubblewrap) 
 ```yaml
 # ~/.ai-jail — the most important part:
 mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
-hide_dotdirs = [".hermes"]  # Hermes tokens protected
+hide_dotdirs = ["<protected-dir>"]  # the agent workdir becomes invisible in the sandbox
 deny_paths = ["secrets/", "*.key", ".gnupg/"]
 ```
 
-The fine detail: `hide_dotdirs = [".hermes"]` — hiding Hermes' **entire** directory inside the sandbox. Neither the agent nor a prompt injection can read the tokens. Then came phase 2 in practice (08/10): the sandbox learned from our mistakes — new masks, deny_paths, and TatuEngine took the concept to code with a **Hybrid Sandbox with 51/51 tests**.
+The fine detail: `hide_dotdirs` — hiding the agent's **entire** directory inside the sandbox. Neither the agent nor a prompt injection can list what doesn't exist for them.
 
 ### Phase 2: active hunting (08/11) — agentic scan in every project
 
@@ -66,7 +66,7 @@ The golden rule: **crons only notify when there's a problem** — a silent syste
 
 ##  Resolution — the rules born from the struggle
 
-1. **Agent security is a layer, not a feature** — sandbox, mask and hide_dotdirs protect against the worst case (prompt injection), not against the user. Design for the adversary.
+1. **Agent security is a layer, not a feature** — sandbox, mask and directory isolation protect
 2. **Scan before deploy, always** — ZAP + gitleaks + bandit + opengrep run in CI before any delivery. Check failed = no delivery.
 3. **Surveillance is a process, not a campaign** — a 24/7 watchdog beats a weekend audit.
 4. **Fixes apply to ALL accounts** — a security fix found in my project applies to Douglas, Juliana, any ecosystem user.
@@ -90,7 +90,7 @@ The golden rule: **crons only notify when there's a problem** — a silent syste
 
 <Terminal
   lines={[
-  { cmd: 'ai-jail run -- "cat ~/.hermes/secrets.env"', output: 'permission denied — mask applied in the sandbox' },
+cat ~/.<protected-dir>/secrets.env
   { cmd: 'gitleaks detect --source .', output: 'no leaks found — scan of git history' },
   { cmd: 'bandit -r backend/ -q', output: '0 high severity issues — static analysis' },
   { cmd: 'python3 security-watchdog.py', output: 'monitoring 24/7 — alert only on problems' },

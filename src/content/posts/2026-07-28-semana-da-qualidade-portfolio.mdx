@@ -46,8 +46,8 @@ O modal de CV tem um formulário. Quando tentava digitar, o focus trap do modal 
 ```typescript
 // Raiz: dois handlers Escape competindo
 // ProjectModal e TimelineModal tinham listeners duplicados
-git show 83efb93  # fix: focus trap roubando foco ao digitar
-git show 0d7c218  # fix: remove duplicate Escape handlers
+git show <commit>  # fix: focus trap roubando foco ao digitar
+git show <commit>  # fix: remove duplicate Escape handlers
 ```
 
 ### Smooth scroll com race condition
@@ -56,8 +56,8 @@ Clicar num link de navegação disparava animação antes do hash atualizar. Se 
 
 ```typescript
 // Fix: pausar observer durante animação
-git show 3b31bc4  # navigationRef pausa observer durante smooth-scroll
-git show 8782a3d  # handleNavClick seta activeSection no click
+git show <commit>
+git show <commit>
 ```
 
 ### +6 problemas no mesmo dia
@@ -111,7 +111,7 @@ refactor: auditoria profunda — 10 correções de qualidade
 
 <Terminal
   lines={[
-  { cmd: 'git show 977eaf6 --stat', output: 'Pix BR Code fix — 2 arquivos, 26 inserções' },
+git show HEAD~3 --stat
   { cmd: 'git log --oneline 713a556..HEAD | grep fix | wc -l', output: 'Total de fixes pós-auditoria' },
   { cmd: 'curl -s https://samuelmedeiros.vercel.app/api/health | jq .', output: 'Health check do deploy' },
   { cmd: 'pnpm vitest run --reporter=verbose 2>&1 | tail -5', output: 'Testes passando após correções' },

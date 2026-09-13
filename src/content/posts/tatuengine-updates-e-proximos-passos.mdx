@@ -49,7 +49,7 @@ Algumas lições que merecem registro:
 
 **3. O hidden state do SSM não carrega a história.** Δh ≈ 0.000 entre tokens consecutivos. A memória real tá no SSM state (o kv_cache). O Energy Observer v1 media a coisa errada — corrigimos.
 
-**4. Softplus com float32 estoura em x > 89.** `expf(89.0) = inf`. Um patch de 1 linha com a formulação numericamente estável (`log1pf(expf(-|x|))`) salvou 2 dias de debug de NaN.
+**4. Softplus com float32 estoura perto do limite do tipo.** `exp()` vira `inf`, o backward espalha NaN. Um patch de 1 linha com a formulação numericamente estável resolveu.
 
 ## Aprendizados
 

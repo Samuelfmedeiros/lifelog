@@ -163,7 +163,7 @@ O projeto mais ousado: uma engine de inferência que mistura State Space Models 
 ```
 TatuEngine
  ├── BlockCodec → 32×32 blocos ternários, 27 GB → 245 MB
- ├── GPU kernel → 32 threads/CTA, warp shuffle, 252× speedup
+├── GPU → travessia em bloco paralela, speedup de ordens de grandeza
  ├── GenerationContext → Agente autopoiético com LTM, ToolUse, GoalStack
  ├── PhaseField → Campo potencial O(1), decisões SPLIT/PRUNE/EXPLORE
  ├── CLI tatu → generate, mcp, tool, info

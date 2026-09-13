@@ -40,7 +40,7 @@ A regra do ecossistema manda auditar antes de melhorar. Então o primeiro passo 
 #  1. Path traversal prevention (resolve + prefix check)
 #  2. File size & type enforcement
 #  3. Read vs write scope control
-result = sandbox.check_read("~/projetos/meu-arquivo.txt")
+sandbox.check_read("~/dir-qualquer/arquivo.txt")
 if result.ok:
   path = result.path  # Path resolvido com prefix check
 ```

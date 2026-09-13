@@ -21,33 +21,33 @@ Foram 4 bugs distintos. Cada um matava o treino de um jeito diferente. E o Adafa
 
 ## Os 4 Fixes do NaN
 
-### Fix #1 — Softplus overflow no dt_bias: `expf(89.0) = inf`
+### Fix #1 — Softplus overflow no dt_bias
 
 O primeiro NaN vinha do SSM step — camada 1, primeiro batch, sempre no `ssm_step`. O culpado: `softplus(dt_bias + dt)`.
 
-`expf(89.0) ≈ 5.5e38` → `+inf` em float32. Quando `dt_bias` passava de ~89 após algumas iterações, o softplus retornava `+inf`, o `ssm_step` propagava `inf`, e o backward transformava tudo em NaN.
+Em ponto flutuante de 32 bits, `exp()` estoura perto do limite superior do tipo. Quando o `dt_bias` cruzava essa faixa após algumas iterações, o softplus retornava `+inf`, o `ssm_step` propagava o `inf`, e o backward transformava tudo em NaN.
 
-2 dias de debug. Um patch de 1 linha: `log1pf(expf(-|x|))` resolve.
+2 dias de debug. A cura é clássica: trocar a formulação ingênua do softplus pela versão numericamente estável, que reescreve a expressão pra não passar perto do overflow.
 
-### Fix #2 — Adafactor `eps=(None, 0.001)`: o `rsqrt(0)` em bf16
+### Fix #2 — Adafactor e o `rsqrt(0)` em bf16
 
 Adafactor fatora o segundo momento em rank-1 (row + col), economizando ~4 GB vs AdamW (4 GB vs 8.14 GB na RTX 3060). Mas tem um catch:
 
-O eps1=1e-30 padrão existe pro caso float32 (onde `finfo(float32).eps = 1.19e-7`). Mas em bf16, `finfo(bf16).eps = 0.0078`. Quando o segundo momento acumulado é pequeno (primeiros steps), `rsqrt(accum + 1e-30)` retorna um número enorme porque `1e-30` é subnormal em bf16 e vira 0. Resultado: `inf * 0 = NaN`.
+O epsilon padrão do otimizador foi calibrado pro mundo float32, onde o menor número representável é minúsculo. Em bf16 o cenário muda: esse mesmo epsilon vira subnormal, colapsa pra zero dentro do `rsqrt`, e o resultado é `inf * 0 = NaN` nos primeiros steps, quando o segundo momento ainda é pequeno.
 
-Passando `eps=(None, 0.001)`, o PyTorch usa `finfo(dtype).eps` como eps1, que pra bf16 é 0.0078 — o suficiente pra evitar underflow no `rsqrt`.
+A cura: em vez de fixar um número, deixar o otimizador derivar o epsilon do próprio dtype — a biblioteca expõe um piso por tipo que evita o underflow no `rsqrt`. O valor exato importa menos que o princípio: **epsilon tem que acompanhar a precisão do tipo**.
 
-### Fix #3 — State LR Scale: parâmetros de estado precisam de 50× mais LR
+### Fix #3 — State LR Scale: parâmetros de estado precisam de LR muito maior
 
-Os parâmetros de estado do SSM (`A_log`, `D`, `dt_bias`) controlam a dinâmica temporal do modelo. Com a LR base (`lr=3e-5`), eles mal se movem.
+Os parâmetros de estado do SSM (`A_log`, `D`, `dt_bias`) controlam a dinâmica temporal do modelo. Com a learning rate base do treino, eles mal se movem — a escala deles vive num mundo numérico diferente dos pesos de projeção.
 
-Sem isso, o `dt_bias` congela perto de 0, o softplus produz `log(2) ≈ 0.69` pra sempre, e o modelo não desenvolve discretização temporal — o SSM essencialmente não funciona.
+Sem um multiplicador dedicado, o `dt_bias` congela perto de 0, o softplus trava num valor morto pra sempre, e o modelo não desenvolve discretização temporal — o SSM essencialmente não funciona.
 
-### Fix #4 — Gradient Clamping: `clamp_(-1, 1)` + max-norm
+### Fix #4 — Gradient Clamping: clamp + max-norm
 
 O gradiente do SSM é inerentemente instável por causa da retropropagação através da discretização `exp(Δ · A)`.
 
-Em head-only mode (treinando só o lm_head), os gradientes ficam livres — sem clamp porque a head precisa de movimento rápido pra domar a variância da saída. Em full SFT, o clamp [-1, 1] é obrigatório: sem ele, layers profundas explodem no step 5-10.
+Em head-only mode (treinando só o lm_head), os gradientes ficam livres — sem clamp porque a head precisa de movimento rápido pra domar a variância da saída. Em full SFT, o clamp é obrigatório: sem ele, layers profundas explodem entre o step 5 e o 10.
 
 ---
 
@@ -57,9 +57,9 @@ Em head-only mode (treinando só o lm_head), os gradientes ficam livres — sem 
 |---------|-------|-----------|
 | Memória do otimizador | 8.14 GB (2 estados + momentum) | ~4 GB (rank-1 fatorado) |
 | Custo por step | Maior (full matrix update) | Menor (row/col update) |
-| Estabilidade bf16 | `eps=1e-8` seguro | Precisa de `eps=(None, X)` tuning |
+| Estabilidade bf16 | epsilon padrão seguro | Precisa de epsilon derivado do dtype |
 | Warmup | Necessário (momemtum frio) | Built-in (`relative_step=True`) |
-| Convergência | Mais rápida em transformers | Mais lenta em SSM (precisa state_lr_scale) |
+| Convergência | Mais rápida em transformers | Mais lenta em SSM (precisa de escala de LR por grupo de estado) |
 
 A economia de 4 GB é crítica na RTX 3060 (12 GB). Com AdamW, o modelo 1.4B + optimizer ocupam ~11.5 GB — sem espaço pra batch > 1 ou sequências > 256 tokens. Com Adafactor, cabem 7.5 GB e sobra margem.
 
@@ -85,14 +85,14 @@ O replay buffer de fineweb-edu (9:1 de raciocínio:pretrain) mantém o modelo de
 
 ## Aprendizados
 
-1. **Softplus não é seguro em float32** — a formulação ingênua `log(1 + exp(x))` explode quando x > 89. Sempre usar a versão numericamente estável.
+1. **Softplus não é seguro em float32** — a formulação ingênua explode perto do limite superior do tipo. Sempre usar a versão numericamente estável.
 
-2. **Adafactor economiza VRAM mas cobra em tuning** — o eps1 precisa ser calibrado pro dtype. `None` resolve (delega pro finfo), mas nunca use o default 1e-30 em bf16.
+2. **Adafactor economiza VRAM mas cobra em tuning** — o epsilon precisa ser calibrado pro dtype. Deixar a biblioteca derivar do piso do tipo resolve; o default calibrado pra float32 quebra em bf16.
 
-3. **Parâmetros de estado do SSM são uma classe própria** — `dt_bias`, `A_log`, `D` controlam a discretização temporal e precisam de LR muito maior que os parâmetros de projeção. O `state_lr_scale=50` foi descoberto empiricamente perdendo 3 treinos.
+perdendo treinos no caminho
 
-4. **Gradient clamping não é opcional em SSM** — a retropropagação através de `exp(Δ · A)` amplifica gradientes exponencialmente. `clamp_(-1, 1)` + `clip_grad_norm_` são camadas de segurança complementares, não redundantes.
+4. **Gradient clamping não é opcional em SSM** — a retropropagação pela discretização amplifica gradientes exponencialmente. Clamp por parâmetro + normalização por norma global são camadas de segurança complementares, não redundantes.
 
 O SFT completo do Student ainda não rodou (3 épocas, 381 exemplos). Mas agora o pipeline não explode mais — o próximo passo é deixar treinar e ver o que sai.
 
-> TL;DR: O Adafactor economizou 4 GB de VRAM (crítico na RTX 3060), mas custou 3 treinos perdidos em NaN até acertar os 4 fixes. Softplus numericamente estável, eps1 calibrado pro bf16, state_lr_scale=50 pros parâmetros do SSM, e clamp+clip como camadas de segurança complementares. O pipeline não explode mais — agora é deixar rodar.
+clamp + normalização por norma

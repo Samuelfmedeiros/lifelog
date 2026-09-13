@@ -14,7 +14,7 @@ import Terminal from '../../../components/TerminalWidget.astro'
 
 ## Context
 
-The TatuEngine's hybrid CPU/GPU pipeline was already working — 252× speedup, Block Codec compressing 36 GB into 281 MB (128×), 41.9 µs per token. But there was a critical gap: **the model couldn't generate coherent text**.
+orders-of-magnitude speedup
 
 BitMamba-1B is a PyTorch implementation of Mamba-2, with 48 layers. ~1.4B parameters total (1.446B). Compared to a Transformer of similar size — 7B, 70B — it seems small, but for a pure SSM it's still a 7-headed beast.
 
@@ -246,7 +246,7 @@ The `tatu_phase4_ressurection.py` script is ready, linted, and waiting for execu
 3. If it works, expand the pretrain dataset with more data (code, docs, wikis)
 4. Try generation with the post-Phase 4 checkpoint
 
-If it doesn't work... well, then I'm going back to Transformer. But the SSM premise still seems right for edge devices: 1.4B params in 2.93GB of VRAM, inference at 41.9µs with Block Codec. The potential exists — it's the training that's missing.
+If it doesn't work... well, then I'm going back to Transformer. But the SSM premise still seems right for edge devices: 1.4B params in 2.93GB of VRAM, inference in microseconds with Block Codec. The potential exists — it's the training that's missing.
 
 ```python
 # The lesson that will stick:
@@ -261,8 +261,8 @@ If it doesn't work... well, then I'm going back to Transformer. But the SSM prem
 <Terminal
   lines={[
   { cmd: 'cd ~/projetos/TatuEngine && python3 scripts/tatu_phase4_ressurection.py --help', output: 'Phase 4 full pipeline' },
-  { cmd: 'ls -lh models/bitmamba/checkpoints/full_warmup/best.pt', output: 'Base checkpoint (~1.94 GB, 200 pretrain steps)' },
-  { cmd: "python3 -c 'import torch; m=torch.load(\"models/bitmamba/checkpoints/full_warmup/best.pt\", map_location=\"cpu\"); print(f\"Params: {sum(p.numel() for p in m.values())/1e9:.3f}B\")'", output: 'Check model parameters' },
+  { cmd: 'ls -lh <checkpoints dir>/', output: 'Base checkpoint (~1.94 GB, 200 pretrain steps)' },
+  { cmd: 'python3 -c "<loads checkpoint, sums numel>"', output: 'Check model parameters' },
   { cmd: 'nvidia-smi --query-gpu=memory.used --format=csv -l 5', output: 'Monitor VRAM during training (~8.8GB in use)' },
   { cmd: 'tensorboard --logdir logs/bitmamba_sft', output: 'Track loss and perplexity in real time' },
   ]}

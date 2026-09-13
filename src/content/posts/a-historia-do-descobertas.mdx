@@ -66,11 +66,11 @@ Agente com acesso ao shell é um risco enorme — um prompt injection e os token
 ```yaml
 # ~/.ai-jail — a parte mais importante:
 mask = [".env", "credentials.json", "*.pem", "id_ed25519*", "id_rsa*"]
-hide_dotdirs = [".hermes"]  # tokens do Hermes protegidos
+hide_dotdirs = ["<diretorio-protegido>"]  # o dir do agente fica invisivel no sandbox
 deny_paths = ["secrets/", "*.key", ".gnupg/"]
 ```
 
-O `hide_dotdirs = [".hermes"]` foi a descoberta fina: esconder o diretório inteiro do Hermes dentro do sandbox, pra nem o agente nem um prompt injection conseguirem ler os tokens. E o TatuEngine levou o conceito pro código: **Sandbox Híbrido com 51/51 testes** (path validation, size/type enforcement, 3 níveis de isolamento).
+O `hide_dotdirs` foi a descoberta fina: esconder o diretório de trabalho do agente inteiro dentro do sandbox, pra nem o agente nem um prompt injection conseguirem nem *ver* que ele existe — o que não aparece no `ls` não vaza por exfiltração.
 
 ### Ollama: a IA que mora em casa
 
@@ -98,7 +98,7 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
 |------------|-------|--------|
 | Integração | plugins/handlers custom | MCP: 38 tools + registry oficial (v1.0.1) |
 | Busca | `LIKE %termo%` | FTS5 + pgvector + RRF híbrido |
-| Segurança | agente sem sandbox | ai-jail (mask + hide_dotdirs) + Sandbox 51/51 |
+| Segurança | agente sem sandbox | ai-jail (mask + isolation) + Sandbox 51/51 |
 | IA | cloud-only | Ollama local (máquina espelho, qwen3.5-vision) |
 | Regras | "funciona aqui" | Docs First + Plan First + Delivery Gate |
 
@@ -106,7 +106,7 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
 
 1. **Não invente o que já existe** — MCP, FTS5, bwrap, Ollama: tudo documentado, tudo open source. O trabalho é descobrir e integrar, não reinventar.
 2. **A descoberta vira padrão, não projeto** — cada uma dessas ferramentas atravessou 2+ projetos. O padrão é o que escala, não o caso isolado.
-3. **Segurança de agente é camada, não feature** — sandbox, mask de secrets e hide_dotdirs protegem contra o pior caso (prompt injection), não contra o usuário. Projete pro adversário.
+3. **Segurança de agente é camada, não feature** — sandbox, mask de secrets e isolamento de diretório protegem contra o pior caso (prompt injeção), não contra o usuário.
 4. **Documentar a lição dobra o valor** — esse post é a prova: a descoberta que vira regra evita que o próximo projeto repita o erro.
 
 <Terminal
@@ -114,6 +114,6 @@ O maior ganho não foi nenhuma ferramenta — foi o **padrão de comportamento**
   { cmd: 'python3 -m arachne.mcp.server', output: 'servidor MCP do Arachne — 38 tools (stdio/SSE)' },
   { cmd: 'mcp-publisher publish', output: 'io.github.Samuelfmedeiros/arachne-mcp v1.0.1 no MCP Registry' },
   { cmd: 'curl -s http://localhost:11434/api/tags', output: 'qwen3.5-vision:latest — Ollama local na máquina espelho' },
-  { cmd: 'grep hide_dotdirs ~/.ai-jail', output: 'hide_dotdirs = [".hermes"] — tokens protegidos no sandbox' },
+{ cmd: 'grep -c hide_dotdirs ~/.ai-jail', output: 'presente — dir do agente invisivel no sandbox' },
   ]}
 />
