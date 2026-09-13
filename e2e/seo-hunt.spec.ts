@@ -32,7 +32,7 @@ test.describe('SEO base (caçada 13/09)', () => {
     await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
   });
 
-  test('link interno do capivara-cresce nao usa /posts/ (404 histórico)', async ({ page }) => {
+  test('link interno do capivara-cresce nao usa /posts/ (404 histórico)', async ({ page, request }) => {
     await page.goto('/post/capivara-cresce-dashboard-analytics-e-controle/');
     await expect(page.locator('a[href^="/posts/"]')).toHaveCount(0);
     const link = page.locator('article a[href="/post/capivara-nasce-preciso-de-um-hub-pessoal-seguro/"]');
