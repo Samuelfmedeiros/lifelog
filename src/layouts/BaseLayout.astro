@@ -11,9 +11,10 @@ export interface Props {
   image?: string;
   type?: string;
   locale?: string;
+  noindex?: boolean;
 }
 
-const { title, description, theme, image, type, locale } = Astro.props;
+const { title, description, theme, image, type, locale, noindex } = Astro.props;
 const lang = locale === 'en' ? 'en' : 'pt-BR';
 const dataLocale = locale || 'pt';
 const t = getTranslations(dataLocale);
@@ -51,6 +52,17 @@ const langHref = (() => {
   const alias: Record<string, string> = { '/arquivo': '/en/archive', '/sobre': '/en/about' };
   return alias[norm] || ('/en' + norm + trailing);
 })();
+// SEO base (caçada 13/09): canonical + hreflang PT/EN. Normaliza a URL real
+// da pagina (com trailing slash, igual as rotas geradas) e deriva a contraparte.
+const canonPath = (() => {
+  const p = Astro.url.pathname;
+  const s = p.endsWith('/') ? p : p + '/';
+  return s.replace(/index\.html\/+$/, '') || '/';
+})();
+const canonPathEn = canonPath === '/' ? '/en/'
+  : (canonPath.startsWith('/en/') ? canonPath : '/en' + canonPath);
+const canonPathPt = canonPath === '/en/' ? '/'
+  : (canonPath.startsWith('/en/') ? canonPath.slice(3) || '/' : canonPath);
 const footerText = dataLocale === 'en'
   ? `LifeLog © ${new Date().getFullYear()} — Samuel Medeiros' learning journey`
   : `LifeLog © ${new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros`;
@@ -130,11 +142,17 @@ const footerText = dataLocale === 'en'
     </script>
     <meta name="description" content={pageDesc} />
     <title>{pageTitle}</title>
+    {noindex === true && <meta name="robots" content="noindex, nofollow" />}
+    <link rel="canonical" href={SITE_URL + canonPath} />
+    <link rel="alternate" hreflang="pt-BR" href={SITE_URL + canonPathPt} />
+    <link rel="alternate" hreflang="en" href={SITE_URL + canonPathEn} />
+    <link rel="alternate" hreflang="x-default" href={SITE_URL + canonPathPt} />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDesc} />
     <meta property="og:type" content={ogType} />
+    <meta property="og:locale" content={dataLocale === 'en' ? 'en_US' : 'pt_BR'} />
     <meta property="og:url" content={ogUrl} />
     <meta property="og:site_name" content="LifeLog" />
     {ogImage && <meta property="og:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
@@ -146,7 +164,7 @@ const footerText = dataLocale === 'en'
     {ogImage && <meta name="twitter:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="alternate" type="application/rss+xml" title="LifeLog RSS" href="/rss.xml" />
+    <link rel="alternate" type="application/rss+xml" title="LifeLog RSS" href={dataLocale === 'en' ? '/en/rss.xml' : '/rss.xml'} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..800&display=swap" rel="stylesheet" />
