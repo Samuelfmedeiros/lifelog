@@ -1,0 +1,166 @@
+---
+title: "Aprovado sem olhar — quando o verificador não consegue verificar"
+description: "O auditor visual das capas ficou com o modelo primário sem saldo, devolveu erro, e o tratamento do erro devolvia 'aprovado'. Em poucas horas dezenas de capas passaram sem nenhuma checagem — com o sistema reportando sucesso. A mesma doença reapareceu duas outras vezes no mesmo pipeline, em corpos diferentes."
+date: 2026-09-13 06:30:00 -03:00
+pubDate: 2026-09-13 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "validation", "reliability", "fallback", "observability", "audit", "process", "security"]
+cover: /covers/seguranca-aprovado-sem-olhar.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O log que eu criei dois dias antes
+
+De manhã abri um arquivo de log que eu mesmo tinha criado 48 horas antes — um log dedicado só para incidentes do verificador visual das capas do blog. Ele tinha oito linhas. Todas diziam, em variantes mínimas, a mesma coisa: o verificador primário tinha falhado, e o reserva tinha assumido.
+
+Essas oito linhas eram a boa notícia. A ruim era o que tinha acontecido antes delas existirem.
+
+O trabalho do verificador é simples de descrever: cada capa gerada por modelo de imagem passa por uma auditoria visual antes de entrar no repositório, com critérios objetivos — luminosa e clara, sem texto legível, sem pseudo-texto (aquelas formações abstratas que o modelo desenha fingindo ser tipografia), sem fileiras de elementos que imitem ícones. Se reprovar, a capa volta pra fila com outra semente.
+
+Esse gate existe porque eu já tinha publicado capas escuras demais que liam como "post sem imagem", e capas com pseudo-texto que viraram motivo de recusa. Auditoria de capa parece frívolo até você explicar pra alguém por que a vitrine do projeto está suja.
+
+## O furo: duas saídas quando existiam três estados
+
+No dia 12, um dos modelos do pool ficou com o saldo zerado. A resposta dele para qualquer requisição passou a ser HTTP 400.
+
+O verificador chamava esse modelo. Recebia erro. E o tratamento de erro devolvia **aprovado**.
+
+Não por burrice — por conveniência. Escrevi aquele `return True` numa época em que o gate era um passo extra, lento, que às vezes não respondia, e travar a esteira inteira porque um servidor externo recusou uma pergunta parecia o pior dos dois mundos. Então o erro virou "deixa passar". Fail-open.
+
+O problema é o que isso significa depois:
+
+```python
+# a forma que eu escrevi (esqueleto do bug, não o código)
+def verificar_imagem(b64, modelo):
+    try:
+        resposta = chamar(modelo, b64)
+        return "REPROVADO" in resposta.texto
+    except (ErroDeRede, ErroDeResposta):
+        return True          # "não consegui olhar" == "está ok"
+```
+
+Existem três resultados possíveis para uma checagem:
+
+1. verificou e aprovou;
+2. verificou e reprovou;
+3. **não verificou**.
+
+O código só tinha espaço para dois. E o terceiro foi mapeado no primeiro — silenciosamente, com carimbo de sucesso. Durante algumas horas, o gate estava cego e o pipeline continuava reportando "camada de auditoria: ok". Pior: nada disso gerava alarme, porque do ponto de vista do chamador, a checagem *rodou*.
+
+A regra que ficou escrita no cabeçalho do arquivo depois da correção é esta:
+
+> Um verificador que não conseguiu verificar não é um verificador que passou. É um verificador que não rodou — e isso precisa aparecer na saída como uma terceira coisa.
+
+## A cura em três camadas
+
+**Primeira: cadeia, não aposta única.** O verificador agora percorre uma lista de modelos. A falha de um passa para o próximo. O incidente é registrado com o nome de quem falhou e quem aceitou no lugar.
+
+```python
+# a forma corrigida (esqueleto)
+for modelo in VERIFICADORES:            # primário, reserva, ...
+    ok, motivo = tentar_uma_vez(b64, modelo)
+    if ok == "ERRO":
+        registrar_incidente(f"{modelo}: {motivo}")
+        continue                        # próximo verificador
+    return ok, motivo                   # alguém de fato olhou
+registrar_incidente("FAIL-OPEN: todos os verificadores falharam")
+return True, "nenhum verificador disponível (degradado)"
+```
+
+**Segunda: fail-open declarado, não implícito.** Quando *todos* falham, o sistema ainda deixa passar — essa escolha eu mantive, porque travar a esteira inteira por indisponibilidade de terceiros continua sendo ruim. Mas o resultado agora carrega a palavra "degradado", vai para o log de incidentes e não se disfarça de "aprovado". A diferença entre as duas coisas é o que eu ia conseguir descobrir na manhã seguinte.
+
+**Terceira: o log dedicado.** Essa é a parte que a regra de correção do meu processo exige: correção só está completa com prevenção no ponto da falha **e** log próprio com timestamp pra provar recorrência. Sem o log, oito linhas de fallback teriam sido só um rumor. Com ele, eu tenho a hora exata em que o primário morreu e a frequência com que o reserva está carregando o gate — que, pelos números, é quase toda rodada de madrugada.
+
+Vale registrar a implicação incômoda: o modelo primário está com saldo zerado desde então. Ou seja, o gate "com dois verificadores" está rodando com um só, todo dia, e é o backup que virou o caminho padrão. Um fallback que nunca é acionado é enfeite; um fallback que é sempre acionado é a arquitetura real — e ninguém autorizou essa troca.
+
+## A segunda aparição: o vazio que parecia nota boa
+
+Dias antes da cadeia de verificadores, o mesmo gate tinha morrido de outro jeito, sem nenhum erro no log.
+
+O modelo de auditoria usado na época é um modelo de raciocínio: ele gasta uma parte do orçamento de resposta pensando antes de responder. O teto de tokens estava configurado baixo demais. O resultado era um envelope de sucesso — HTTP 200, sem exceção — com o campo de texto **vazio**.
+
+E o código decidia procurando uma palavra de reprovação na resposta. Vazio não contém a palavra de reprovação. Vazio era aprovado.
+
+```python
+# duas formas do mesmo defeito
+if "ruim" in resposta:   return False   # vazio passa
+return True
+
+if not resposta.strip(): return False   # vazio é "não verifiquei"
+```
+
+A lição aqui não é sobre teto de tokens. É que **ausência de evidência contrária virou evidência a favor** duas vezes em duas implementações diferentes, em dois corpos diferentes. Quando você decide por "procurar o sinal de erro", o estado "não veio sinal nenhum" entra pela mesma porta do estado "veio sinal de tudo certo".
+
+## A terceira aparição: a tela que mostrava nada
+
+A mais perigosa das três, porque o efeito é inverso ao do alarme.
+
+Um endpoint da área de revisão lia os posts ocultos direto do filesystem. Em ambiente de produção esse filesystem não existe do jeito que o código esperava, a leitura dava erro, e o erro era capturado devolvendo lista vazia.
+
+```javascript
+const posts = await lerDiretorio(caminho).catch(() => []);
+```
+
+Uma linha. O resultado: a tela de revisão respondia zero itens em qualquer condição — com os posts ocultos existindo, prontos, esperando liberação. Durante dias.
+
+Esse é o caso em que fail-open é mais traiçoeiro, porque "zero itens" é um estado perfeitamente plausível do mundo. Um gate cego que aprova capas você percebe quando alguém reclama da vitrine. Uma lista de pendências que volta vazia faz você acreditar que não há nada para revisar. O erro não produziu barulho — produziu **folga**.
+
+A correção não foi só trocar a fonte de dados por uma que existe no bundle. Foi separar as coisas: quando a leitura falha, a resposta é um erro declaradamente indisponível, e não uma coleção vazia.
+
+## Onde o fail-open é a escolha certa
+
+Não estou defendendo "sempre travar". O portão de checagem de conteúdo do repositório — aquele que bloqueia publicar detalhes técnicos proprietários em post de projeto — é deliberadamente assimétrico, e tem duas camadas com temperamentos diferentes:
+
+| Camada | Alcance | Comportamento | Motivo |
+|---|---|---|---|
+| Rigorosa (CI) | só o que mudou neste PR | bloqueia sem apelo | futuro é controlável, dá pra ser chato |
+| Inventário (rodada manual) | legado inteiro | lista, não trava | travar tudo de uma vez = ninguém roda |
+
+Calibrar isso levou uma rodada: a métrica que virou título de post foi liberada explicitamente como headline público; número de implementação ficou bloqueado. Rigidez sem calibragem vira ruído, e ruído se aprende a ignorar — o que é outro tipo de gate cego, feito de gente em vez de código.
+
+## Métricas dos episódios
+
+| Episódio | Sintoma visível | Estado real | Custo do silêncio |
+|---|---|---|---|
+| Saldo zerado → HTTP 400 | capas subindo normalmente | auditoria inexistente | dezenas de itens publicados sem checagem |
+| Teto de tokens baixo | HTTP 200, sem erro | resposta vazia, gate aprovando no escuro | dias |
+| `catch(() => [])` do painel | "nada para revisar" | pendências existiam e não apareciam | dias, com decisão humana bloqueada |
+| Fallback virou caminho padrão | log limpo, tudo verde | um verificador dos dois está morto | estrutural, ainda em curso |
+
+## Aprendizados
+
+- Todo verificador precisa de três saídas — aprovou, reprovou, **não verificou**. Se a sua função devolve boolean, você escolheu sem pensar qual dos três divide a mesma porta.
+- "Procurar o erro na resposta" é uma decisão de design, não uma implementação. Ela define o que acontece com o vazio — e quase sempre define mal.
+- Fail-open é uma escolha legítima, mas precisa ser **declarada** na saída, registrada com timestamp e somável. Fail-open implícito é só um bug com bom humor.
+- Um fallback que dispara toda vez não é fallback, é o sistema real operando sem autorização.
+- Estado plausível disfarça erro melhor que estado estranho. Lista vazia e "nenhuma pendência" são os dois piores tipos de sucesso que existem.
+
+## O que vem a seguir
+
+Duas coisas ficaram abertas e uma delas é mais larga que o LifeLog.
+
+A primeira: varrer os verificadores do resto do ecossistema procurando a mesma estrutura — uma função que responde sim/não e trata exceção como "sim". Não espero encontrar zero. Espero encontrar pelo menos um, porque escrevi todos com a mesma pressa e a mesma cabeça.
+
+A segunda: transformar "degradado" em alerta. Hoje o log de incidentes existe e eu abri ele por iniciativa própria numa manhã. Isso não é um sistema, é um hábito — e hábito não sobrevive a semana ruim. O próximo passo é o verificador indisponível acordar alguém em vez de esperar alguém passar olhando.
+
+<Terminal
+  client:load
+  title="samuel@lifelog: ~/seguranca"
+  commands={[
+    { cmd: 'verificar(capa) -> modelo primario' },
+    { cmd: 'HTTP 400 (sem saldo no pool)' },
+    { cmd: 'except -> return True    # "aprovado"' },
+    { cmd: 'capa publicada sem nenhuma auditoria' },
+    { cmd: '--- depois da correcao ---' },
+    { cmd: 'verificar(capa) -> [primario, reserva]' },
+    { cmd: 'primario: ERRO -> registrar incidente -> reserva' },
+    { cmd: 'reserva aceitou  # gate vivo de novo' },
+    { cmd: 'todos falharam -> "degradado" != "aprovado"' },
+    { cmd: 'grep -n "return True" verificadores/*.py' },
+    { cmd: '# a varrer ainda esta aberta' },
+  ]}
+/>

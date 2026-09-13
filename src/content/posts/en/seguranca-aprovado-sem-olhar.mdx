@@ -1,0 +1,166 @@
+---
+title: "Approved without looking — when the checker can't check"
+description: "The visual auditor for blog covers lost its primary model to an empty balance, returned an error, and the error handler returned 'approved'. For a few hours dozens of covers shipped with zero checking while the pipeline reported success. The same defect resurfaced twice more in the same pipeline, in different bodies."
+date: 2026-09-13 06:30:00 -03:00
+pubDate: 2026-09-13 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "validation", "reliability", "fallback", "observability", "audit", "process", "security"]
+cover: /covers/seguranca-aprovado-sem-olhar.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The log I had created two days earlier
+
+In the morning I opened a log file I had written myself 48 hours before — a dedicated incident log for the visual checker that audits blog covers. It had eight lines. Every one of them said, in slightly different wording, the same thing: the primary checker failed, and the standby took over.
+
+Those eight lines were the good news. The bad news was what happened before they existed.
+
+The checker's job is easy to describe: every cover produced by an image model passes a visual audit before it lands in the repository, with objective criteria — bright and light, no legible text, no pseudo-text (those abstract formations the model draws pretending to be typography), no rows of elements mimicking icons. If it fails, the cover goes back to the queue with a different seed.
+
+That gate exists because I had already shipped covers too dark to read as anything but "post with no image", and covers with pseudo-text that became a rejection reason. Auditing a cover sounds frivolous until you have to explain to someone why the project's shop window is dirty.
+
+## The hole: two return paths when there are three states
+
+On the 12th, one of the models in the pool ran out of balance. Its answer to any request became HTTP 400.
+
+The checker called that model. It got an error. And the error handler returned **approved**.
+
+Not out of stupidity — out of convenience. I wrote that `return True` back when the gate was an extra step, slow, sometimes unresponsive, and blocking the whole pipeline because an external server refused to answer a question seemed like the worse of both worlds. So the error became "let it through". Fail-open.
+
+Here's what that means afterwards:
+
+```python
+# the shape I wrote (bug skeleton, not the real code)
+def check_image(b64, model):
+    try:
+        answer = call(model, b64)
+        return "REJECTED" in answer.text
+    except (NetworkError, BadResponse):
+        return True          # "I couldn't look" == "it's fine"
+```
+
+A check has three possible outcomes:
+
+1. it checked and approved;
+2. it checked and rejected;
+3. **it did not check**.
+
+The code only had room for two. And the third got mapped onto the first — silently, stamped as success. For a few hours the gate was blind while the pipeline kept reporting "audit layer: ok". Worse, none of that raised an alarm, because from the caller's point of view the check *ran*.
+
+The rule that now lives in the file header, right after the fix, is this:
+
+> A checker that failed to check is not a checker that passed. It is a checker that didn't run — and that has to show up in the output as a third thing.
+
+## The fix in three layers
+
+**First: a chain, not a single bet.** The checker now walks a list of models. One failing hands off to the next. The incident is logged with the name of who failed and who accepted in its place.
+
+```python
+# the corrected shape (skeleton)
+for model in CHECKERS:              # primary, standby, ...
+    ok, why = attempt(b64, model)
+    if ok == "ERROR":
+        log_incident(f"{model}: {why}")
+        continue                    # next checker
+    return ok, why                  # somebody actually looked
+log_incident("FAIL-OPEN: every checker failed")
+return True, "no checker available (degraded)"
+```
+
+**Second: declared fail-open, not implicit fail-open.** When *all* of them fail, the system still lets things through — I kept that choice, because blocking the entire pipeline over a third party's outage is still bad. But the result now carries the word "degraded", goes into the incident log, and no longer dresses up as "approved". The difference between those two strings is exactly what I was able to discover the next morning.
+
+**Third: the dedicated log.** This is the part my own correction policy demands: a fix is only complete with prevention at the point of failure **and** a dedicated timestamped log to prove recurrence. Without the log, eight fallback lines would have been a rumor. With it, I have the exact minute the primary died and how often the standby is carrying the gate — which, judging by the numbers, is basically every overnight run.
+
+Worth stating the uncomfortable implication: the primary model has been out of balance ever since. Meaning the "two-checker gate" is running with one, every day, and the backup has quietly become the default path. A fallback that never fires is decoration; a fallback that always fires is the real architecture — and nobody authorized that swap.
+
+## The second appearance: the empty answer that looked like a good grade
+
+Days before the checker chain, the same gate had died a different way, with no error in any log.
+
+The audit model in use at the time is a reasoning model: it spends part of its response budget thinking before it answers. The token ceiling was set too low. The result was a success envelope — HTTP 200, no exception — with the text field **empty**.
+
+And the code made its decision by searching the response for a rejection keyword. Empty does not contain the rejection keyword. Empty was approved.
+
+```python
+# two shapes of the same defect
+if "bad" in answer:     return False   # empty passes
+return True
+
+if not answer.strip():  return False   # empty means "I didn't check"
+```
+
+The lesson isn't about token ceilings. It's that **absence of contrary evidence became evidence in favor** twice, in two different implementations, in two different bodies. The moment you decide by "look for the error signal", the state "no signal arrived at all" walks through the same door as the state "signal arrived, all clear".
+
+## The third appearance: the screen that showed nothing
+
+The most dangerous of the three, because the effect is the opposite of an alarm.
+
+An endpoint in the review area read hidden posts straight from the filesystem. In production that filesystem isn't where the code expected, the read failed, and the failure was caught and turned into an empty list.
+
+```javascript
+const posts = await readDirectory(path).catch(() => []);
+```
+
+One line. The result: the review screen returned zero items under every condition — with hidden posts existing, finished, waiting for release. For days.
+
+This is the case where fail-open is most treacherous, because "zero items" is a perfectly plausible state of the world. A blind gate that approves covers, you notice when somebody complains about the shop window. A to-do list that comes back empty makes you believe there is nothing to review. The error produced no noise — it produced **free time**.
+
+The fix wasn't only swapping the data source for one that exists in the bundle. It was separating the concepts: when the read fails, the response is a declared unavailable error, not an empty collection.
+
+## Where fail-open is the right call
+
+I'm not arguing for "always block". The repository's content-leak gate — the one that stops proprietary technical detail from being published in a project post — is deliberately asymmetric, with two layers of different temperament:
+
+| Layer | Scope | Behavior | Reason |
+|---|---|---|---|
+| Strict (CI) | only what changed in this PR | blocks, no appeal | the future is controllable, so it can be annoying |
+| Inventory (manual sweep) | the whole legacy set | reports, doesn't block | blocking everything at once = nobody runs it |
+
+Calibrating that took a round: the metric that became a post title was explicitly released as a public headline; implementation numbers stayed blocked. Rigidity without calibration becomes noise, and noise is something people learn to ignore — which is another kind of blind gate, made of humans instead of code.
+
+## Episode metrics
+
+| Episode | Visible symptom | Actual state | Cost of the silence |
+|---|---|---|---|
+| Empty balance → HTTP 400 | covers shipping normally | audit nonexistent | dozens of items published unchecked |
+| Token ceiling too low | HTTP 200, no error | empty response, gate approving blind | days |
+| `catch(() => [])` in the panel | "nothing to review" | pending items existed and stayed hidden | days, with a human decision blocked |
+| Fallback became the default | clean log, all green | one of the two checkers is dead | structural, still ongoing |
+
+## What I learned
+
+- Every checker needs three outputs — approved, rejected, **didn't check**. If your function returns a boolean, you already decided, without deciding, which two of those three share a door.
+- "Search the answer for an error" is a design decision, not an implementation detail. It defines what happens to emptiness — and it almost always defines it badly.
+- Fail-open is a legitimate choice, but it has to be **declared** in the output, logged with a timestamp, and countable. Implicit fail-open is just a bug with good manners.
+- A fallback that fires every time isn't a fallback, it's the real system running without authorization.
+- A plausible state hides an error better than a weird one. An empty list and "nothing pending" are the two worst kinds of success there are.
+
+## What comes next
+
+Two things are still open, and one of them is wider than the blog.
+
+First: sweep the checkers in the rest of the ecosystem looking for the same shape — a function that answers yes/no and treats an exception as "yes". I don't expect to find zero. I expect to find at least one, because I wrote all of them in the same hurry and with the same head.
+
+Second: turn "degraded" into an alert. Today the incident log exists and I opened it on my own initiative one morning. That isn't a system, it's a habit — and habits don't survive a bad week. The next step is for an unavailable checker to wake somebody up instead of waiting for somebody to walk by and look.
+
+<Terminal
+  client:load
+  title="samuel@lifelog: ~/seguranca"
+  commands={[
+    { cmd: 'check(cover) -> primary model' },
+    { cmd: 'HTTP 400 (pool balance exhausted)' },
+    { cmd: 'except -> return True    # "approved"' },
+    { cmd: 'cover published with zero audit' },
+    { cmd: '--- after the fix ---' },
+    { cmd: 'check(cover) -> [primary, standby]' },
+    { cmd: 'primary: ERROR -> log incident -> standby' },
+    { cmd: 'standby accepted  # gate alive again' },
+    { cmd: 'all failed -> "degraded" != "approved"' },
+    { cmd: 'grep -n "return True" checkers/*.py' },
+    { cmd: '# that sweep is still open' },
+  ]}
+/>
