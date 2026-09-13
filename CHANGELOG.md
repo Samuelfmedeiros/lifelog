@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-12] - 3 posts no pipeline (08:20 / 13:44 / 16:58) + capa AI curada
+- **feat(post)** (`ba57513`): `capivara-a-porta-de-mao-unica` (PT + EN hidden + capa AI).
+- **fix(capa)** (`1df0e24`): capa AI de `descobertas-as-tres-respostas-do-monitor` refeita pelo watchdog de capas.
+- **post** (`279fada`): `lifelog-tres-concertos-uma-causa` (hidden, Post C das 16:00 do pipeline).
+- **Pipeline**: 3 entradas no dia, todas hidden esperando liberacao manual do Samuel.
+- 4 commits no dia (3 de conteudo + CHANGELOG da madrugada) - push origin OK - HEAD: `279fada`.
+
 ## [2026-09-11] — filtro de lingua nas tags + 3 posts no pipeline + fix i18n
 - **fix(tags)** (`535ec0c`): filtro de lingua nas paginas de tag — PT lista so PT, EN so EN; testes de regressao (`45d3579`) + docs pitfall commit compartilhado (`1b7aa46`)
 - **fix(tags/cover)** (`b4aace0`): PostCard recebe cover e icon nas paginas de tag (cards estavam sempre no placeholder)

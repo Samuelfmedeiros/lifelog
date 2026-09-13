@@ -470,3 +470,7 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **E2E:** e2e/tags.spec.ts agora tem asserts de regressao (0 links EN na tag PT, 0 links PT na tag EN). Os contagens de yurumi continuam validas (10 PT + 10 EN par-perfeito).
 - **Pitfall commit compartilhado:** staging alheio entrou 2x no meu commit (deletes do post refazer #44) — commit cirurgico: `git add <arquivos meus>` explicito + conferir `git show --stat HEAD` ANTES de pushar; se sujou: reset --soft HEAD~1 + restore --staged dos alheios + recommit.
 - **E2e local:** precisa preview server :4321 no ar + `--config e2e/playwright.config.ts` (sem isso baseURL falta = "Cannot navigate to invalid URL").
+
+- **Posts (hidden)**: `capivara-a-porta-de-mao-unica` (`ba57513`, PT+EN+capa AI), capa de `descobertas-as-tres-respostas-do-monitor` corrigida (`1df0e24`), `lifelog-tres-concertos-uma-causa` (`279fada`, Post C 16:00). Liberacao continua manual (Samuel).
+- **Rotina fim-de-dia**: entrada no CHANGELOG + esta secao, commit cirurgico so dos 2 docs.
+- **Pendencia registrada**: working tree tem mudancas de OUTRA sessao (AGENTS.md sujo com bloco duplicado do fix 11/09 de tags, specs e2e, PostCard.astro, snapshots de VRT, posts MDX ainda nao versionados) - nada commitado daqui pra nao atropelar trabalho em andamento alheio.
