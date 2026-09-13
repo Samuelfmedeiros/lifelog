@@ -1,0 +1,158 @@
+---
+title: "Arachne — 79 restarts contra uma porta invisível: quando a tabela mente e o bind não"
+description: "O serviço parou de subir numa tarde comum e a guarda de porta jurava, a cada tentativa, que estava tudo livre. 79 reinícios em 24 minutos contra uma reserva que nenhum diagnóstico do convidado enxergava. A correção foi trocar o oráculo."
+category: samuel-projects
+date: 2026-09-13 04:08:00 -03:00
+pubDate: 2026-09-13 08:00:00 -03:00
+project: arachne
+tags: ["arachne", "systemd", "wsl", "ports", "debugging", "reliability", "testing"]
+cover: /covers/arachne-79-restarts-contra-uma-porta-invisivel.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A tarde em que nada estava errado
+
+Nada nos logs apontava para a porta. E foi exatamente por isso que demorou.
+
+No dia 12/09 o serviço web do Arachne parou de conseguir subir — não de forma dramática. Ele subia, respondia ao health, ficava saudável por alguns minutos e reiniciava. O systemd contou 79 reinícios programados em 24 minutos, entre 14:19 e 14:43. O uvicorn morria com errno 98, "address already in use", que é o erro mais velho do mundo.
+
+A parte incômoda: antes de cada tentativa existia uma guarda cujo trabalho único era garantir que a porta estivesse livre. Ela consultava, respondia "livre", saía com exit 0, e o serviço morria em seguida. Setenta e nove vezes seguidas.
+
+Uma peça do sistema afirmou com confiança absoluta algo que não era verdade durante todo o incidente. E o pior: tudo que eu usava para conferir a afirmação dela dizia a mesma coisa.
+
+## O oráculo errado
+
+A guarda era um script POSIX pequeno, honesto, do tipo que a gente escreve em cinco minutos e esquece por meses. O coração dele era este loop:
+
+```sh
+i=0
+while [ "$i" -lt "$MAX_WAIT" ]; do
+    if ! ss -tlnp | grep -q ":${PORT} "; then
+        exit 0        # porta livre, pode subir
+    fi
+    sleep 1
+    i=$((i + 1))
+done
+exit 1
+```
+
+Está tudo certo aí, desde que uma premissa valha: que `ss` e `fuser` mostram a verdade sobre a porta.
+
+Eles mostram a verdade que o convidado tem. Naquele dia o WSL tinha acordado em outro modo de rede — nos boot anteriores ele estava em NAT, naquele estava em modo espelhado, com loopback compartilhado com o host. Nesse arranjo, uma reserva feita do lado Windows pode segurar a porta sem aparecer na tabela do convidado. O `ss` vinha vazio. O `fuser` não achava nada. O `netstat` idem. Todas as ferramentas consultavam a mesma tabela, e a tabela estava mentindo por omissão: ela não lista o que ela não sabe.
+
+Existe inclusive um issue aberto no repositório do WSL sobre esse comportamento de reserva em modo espelhado (microsoft/WSL#40984). Ou seja: não era bug do Arachne nem do uvicorn. Era o guarda perguntando pra testemunha errada.
+
+Era a segunda vez na semana que a porta 9000 me ensinava algo sobre quem a segura — mas dessa vez o dono nem estava visível.
+
+## A troca: parar de perguntar, começar a tentar
+
+A única fonte de verdade sobre "essa porta está livre" é a própria operação de abrir a porta. Ninguém sabe melhor se um socket está ocupado do que um `bind()`.
+
+Então a pergunta "quem está com a porta?" virou "eu consigo ocupar a porta?". O probe passou a ser um `bind()` real, IPv4 primeiro, IPv6 como alternativa, e sem `SO_REUSEADDR` — porque um reuseaddr transforma "ocupado" em "livre" justo no caso que interessa:
+
+```sh
+"$PYBIN" - "$PORT" <<'PY'
+import socket, sys
+port = int(sys.argv[1])
+for fam, sockaddr in ((socket.AF_INET, ("0.0.0.0", port)), (socket.AF_INET6, ("::", port))):
+    s = socket.socket(fam, socket.SOCK_STREAM)
+    try:
+        s.bind(sockaddr)
+    except OSError:
+        s.close()
+        continue
+    s.close()
+    print("free")
+    break
+else:
+    print("busy")
+PY
+```
+
+A inspeção de tabela não saiu do script — ela foi rebaixada de juíza a testemunha de defesa. Continua rodando `ss`, mas agora só para **diagnóstico**: se há ouvinte vivo visível no convidado, ele é matável; se a tabela está vazia e o bind falha, é reserva do host, que é inmatável daqui. As duas saídas geram frases diferentes no log, e só uma delas te manda fazer algo.
+
+Antes, o mesmo `ss` vazio significava "livre". Agora significa "não posso resolver isso sozinho".
+
+## Os guards que apareceram no caminho
+
+Escrever o probe certo foi meia hora. O resto do trabalho foram as bordas — e é nelas que mora o custo real de uma correção em produção.
+
+**Matar só com ouvinte confirmado.** O script antigo chamava `fuser -k` incondicional no start. Se houvesse qualquer coisa respirando na porta, ela morria, sem perguntas. Agora o kill acontece apenas quando o diagnóstico confirmou um ouvinte vivo do lado do convidado. Uma reserva do host não some com SIGKILL — e matar processo inocente para "liberar" uma porta que nem estava com ele é o tipo de efeito colateral que ninguém documenta porque ninguém percebe.
+
+**Um modo que não destrói.** Entrou o `--check`: uma passada, sem matar, sem esperar. Porque "vou rodar a mão rapidinho para ver o estado" não pode ser o gesto que derruba o serviço.
+
+**A porta vem do ambiente, sempre.** Aqui está a cicatriz mais cara do dia. A primeira versão da suíte de testes herdou o `PORT=9000` fixo do script. Rodar um teste significava executar o guarda contra a porta de produção, com o `fuser -k` do guarda antigo incluso. Aconteceu — durante o red-green, o serviço em produção caiu por causa do próprio teste que ia provar o conserto. Hoje existe um teste que nem executa o script: ele lê o arquivo e asserts que a porta é sobrescrevível por env e que não existe mais a linha hardcoded. É o único teste da suíte que não roda nada, e é justamente o que impede o acidente de novo.
+
+**Teto de espera cabe no timeout de start.** `MAX_WAIT` de 75 segundos, escolhido para caber folgado dentro do `TimeoutStartSec=120` do override da unit. Se o systemd mata o `ExecStartPre` no meio da espera, o que se perde não é tempo — é o diagnóstico, que é justamente a razão de a espera existir.
+
+**Falhar aberto quando falta ferramenta.** O systemd entrega um `PATH` mínimo. Se não há interpretador Python nem `ss` disponíveis, o guarda não consegue sondar — e um guarda que bloqueia a subida do serviço porque ele mesmo não tem uma dependência é pior que a ausência do guarda. Nesse caminho ele declara livre e sai 0. O pior caso vira o restart seguinte, não um bloqueio permanente.
+
+**Log dedicado com timestamp.** `porta=9000 bind ocupado`, `liberada apos 25s`, um carimbo por linha, histórico preservado. É o que transforma "acho que resolveu" em "está aqui a prova de que a condição voltou a acontecer e foi tratada". Regra de casa: correção sem log que prove recorrência não está pronta.
+
+## A prova de fogo veio de madrugada
+
+No dia 13, às 04:07, a mesma condição do incidente apareceu de novo. O log registrou bind ocupado, nenhum ouvinte visível, diagnóstico apontando para reserva do host — e às 04:08:01 a porta liberou sozinha, e o serviço subiu.
+
+Vinte e cinco segundos de espera, zero intervenção humana, zero restart em loop.
+
+Se fosse a guarda antiga, aqueles mesmo minuto 04:07 teriam sido mais um "porta livre, exit 0" seguido de errno 98 — o octogésimo reinício de um filme que já tinha custado 79.
+
+## Segundo ato: o conserto que derrubou a esteira
+
+A master ficou vermelha na mesma tarde, e não foi por causa do bug.
+
+Um dos dez testes novos era estático e começava assim: o script existe e tem o bit de execução. Só que o commit que adicionou o teste escreveu o arquivo com modo 100644 — herança de como o editor/gravação criou a cópia nova. O teste do `os.access(..., X_OK)` reprovou na hora.
+
+```
+fix(ci): devolve bit de execucao ao wait-port-free.sh (#69)
+
+old mode 100644
+new mode 100755
+```
+
+Banali? Banal. Mas com duas pontas afiadas. Primeiro: não é chatice de teste — um `ExecStartPre` sem o bit faz a unit cair com 203/EXEC antes de qualquer diagnóstico, ou seja, a guarda do bind livre estaria morta no mesmo lugar que ela conserta. Segundo: git versiona apenas o bit de execução entre os modos de arquivo, e uma mudança de modo não aparece no diff de conteúdo. É exatamente o tipo de informação que passa batido num `git show --stat` corrido.
+
+E a lição que ficou mais fundo: **uma asserção de permissão pode ser derrotada pelo próprio commit que a adiciona.** O teste que protege o bit não protege o momento em que o bit é definido. O que fecha essa janela não é mais um assert — é a esteira rodando o assert no commit do autor, antes de qualquer merge.
+
+## Os números
+
+| Item | Valor | Como sei |
+|------|-------|----------|
+| Reinícios no incidente | 79 em 24 minutos (14:19-14:43 de 12/09) | contagem registrada no commit do conserto |
+| Ferramentas que mentiram | `ss`, `fuser` (mesma tabela do convidado) | reproduzido no caso do incidente |
+| Nova fonte de verdade | bind() real, IPv4 entao IPv6, sem reuseaddr | codigo do probe |
+| Testes da suíte nova | 10 (uma delas nem executa o script) | `grep -c "def test"` |
+| Alcance da correção | 2 arquivos, +382/-15 | `git show --stat` |
+| Teto de espera | 75s, dentro de `TimeoutStartSec=120` | teste que trava o teto |
+| Prova de fogo | 13/09 04:07 bind ocupado -> liberada em 25s | log dedicado da guarda |
+
+## O que vem a seguir
+
+- Levar o mesmo desenho de sonda para as outras pontes de porta que nasceram na época do NAT e nunca foram revisadas para o modo espelhado.
+- Uma asserção de política, não de arquivo: qualquer script chamado em `ExecStartPre` precisa existir, ser executável e ter teste. Hoje cada um garante isso por conta própria.
+- Parar de escrever guardas em cinco minutos. A peça que decide se o serviço sobe merece a mesma revisão de um endpoint público.
+
+<Terminal
+  title="o-que-o-repo-registra"
+  commands={[
+    { cmd: 'git show -s --format=%s f63716f4', output: 'fix(infra): wait-port-free sonda bind real e nao so tabela de porta' },
+    { cmd: 'git show --stat --format= f63716f4', output: 'api/scripts/wait-port-free.sh    | 134 +++++++++++++++++++\napi/tests/test_wait_port_free.py | 263 ++++++++++++++++++++++++++\n2 files changed, 382 insertions(+), 15 deletions(-)' },
+    { cmd: 'git show c55f571e', output: 'old mode 100644\nnew mode 100755\n\nold mode 100644\nnew mode 100755' },
+    { cmd: 'grep -c "def test" api/tests/test_wait_port_free.py', output: '10' },
+    { cmd: 'tail -n 3 ~/arachne-ops/wait-port-free.log', output: '2026-09-13T04:07:34-03:00 port=9000 bind ocupado\n2026-09-13T04:07:34-03:00 port=9000 DIAG nenhum ouvinte visivel no WSL (ss vazio) = reserva do host Windows em mirrored (microsoft/WSL#40984)\n2026-09-13T04:08:01-03:00 port=9000 liberada apos 25s' },
+  ]}
+/>
+
+## O que fica
+
+**Ferramentas que consultam a mesma fonte concordam por construção — e concordar não é provar.** `ss`, `fuser` e `netstat` olham para a mesma tabela. Três "sim" independentes valem um.
+
+**Na dúvida entre perguntar e tentar, tente.** O `bind()` é o único dicionário que não tem verbete faltando. Diagnóstico por inspeção serve para classificar o que a operação já detectou, não para decidir se ela é viável.
+
+**Um guarda precisa saber quando não agir.** Falhar aberto sem dependências, matar só o que ele confirma que pode matar, e oferecer um modo de leitura que não destrói. Guarda que quebra o guardado não é proteção, é passivo.
+
+**O conserto entra na esteira com os defeitos dele.** O commit que criou o teste do bit de execução trouxe o arquivo sem o bit. A rede de segurança não é o teste escrito hoje — é o teste executado no commit de quem escreveu.

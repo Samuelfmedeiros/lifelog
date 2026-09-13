@@ -1,0 +1,158 @@
+---
+title: "Arachne — 79 restarts against an invisible port: when the table lies and bind() does not"
+description: "The service stopped coming up on an ordinary afternoon while the port guard swore, on every single attempt, that the port was free. 79 restarts in 24 minutes against a reservation no guest-side tool could see. The fix was to change the oracle."
+category: samuel-projects
+date: 2026-09-13 04:08:00 -03:00
+pubDate: 2026-09-13 08:00:00 -03:00
+project: arachne
+tags: ["arachne", "systemd", "wsl", "ports", "debugging", "reliability", "testing"]
+cover: /covers/arachne-79-restarts-contra-uma-porta-invisivel.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The afternoon when nothing was wrong
+
+No log pointed at the port. Which is precisely why it took so long.
+
+On 12/09 the Arachne web service stopped being able to start — not dramatically. It came up, answered the health check, looked healthy for a few minutes, restarted. systemd counted 79 scheduled restarts in 24 minutes, between 14:19 and 14:43. uvicorn kept dying with errno 98, "address already in use", the oldest error in the book.
+
+The uncomfortable part: ahead of every attempt there was a guard whose entire job was to make sure the port was free. It consulted, answered "free", exited 0, and the service died right after. Seventy-nine times in a row.
+
+One component of the system had stated, with total confidence, something that was not true for the whole incident. And the worst of it: every tool I used to double-check that statement said the exact same thing.
+
+## The wrong oracle
+
+The guard was a small, honest POSIX script — the kind you write in five minutes and forget about for months. Its heart looked like this:
+
+```sh
+i=0
+while [ "$i" -lt "$MAX_WAIT" ]; do
+    if ! ss -tlnp | grep -q ":${PORT} "; then
+        exit 0        # port free, go ahead
+    fi
+    sleep 1
+    i=$((i + 1))
+done
+exit 1
+```
+
+Everything there is correct, as long as one premise holds: that `ss` and `fuser` tell the truth about the port.
+
+They tell the truth the guest has access to. That day WSL had booted into a different networking mode — previous boots were NAT, this one came up mirrored, with loopback shared with the host. In that arrangement a reservation made on the Windows side can hold the port without ever appearing in the guest's table. `ss` came back empty. `fuser` found nothing. `netstat` likewise. Every tool queried the same table, and the table was lying by omission: it doesn't list what it doesn't know about.
+
+There is even an open issue in the WSL repository describing this reservation behaviour in mirrored mode (microsoft/WSL#40984). So it wasn't an Arachne bug or a uvicorn bug. The guard was interrogating the wrong witness.
+
+That was the second time that week port 9000 taught me something about who holds it — except this time the holder wasn't even visible.
+
+## The swap: stop asking, start trying
+
+The only authoritative answer to "is this port free" is the act of opening the port. Nobody knows better whether a socket is taken than a `bind()`.
+
+So "who has the port?" became "can I take the port?". The probe turned into a real bind, IPv4 first with IPv6 as fallback, and deliberately without `SO_REUSEADDR` — because reuseaddr turns "busy" into "free" in exactly the case that matters:
+
+```sh
+"$PYBIN" - "$PORT" <<'PY'
+import socket, sys
+port = int(sys.argv[1])
+for fam, sockaddr in ((socket.AF_INET, ("0.0.0.0", port)), (socket.AF_INET6, ("::", port))):
+    s = socket.socket(fam, socket.SOCK_STREAM)
+    try:
+        s.bind(sockaddr)
+    except OSError:
+        s.close()
+        continue
+    s.close()
+    print("free")
+    break
+else:
+    print("busy")
+PY
+```
+
+Table inspection didn't leave the script — it was demoted from judge to character witness. It still runs `ss`, but only for **diagnosis**: if there is a live listener visible on the guest, it is killable; if the table is empty and bind fails, it's a host reservation, unkillable from here. The two branches write different sentences to the log, and only one of them tells you to do something.
+
+Before, the same empty `ss` meant "free". Now it means "I cannot resolve this on my own".
+
+## The guards that showed up along the way
+
+Writing the probe correctly took half an hour. The rest of the work was the edges — and that's where the real cost of a production fix lives.
+
+**Kill only with a confirmed listener.** The old script called `fuser -k` unconditionally at start. If anything was breathing on that port, it died, no questions asked. Now the kill happens only when the diagnosis confirmed a live listener on the guest side. A host reservation doesn't vanish under SIGKILL — and murdering an innocent process to "free" a port it never held is the kind of side effect nobody documents, because nobody notices it.
+
+**A mode that doesn't destroy.** `--check` was added: one pass, no killing, no waiting. Because "let me just run this by hand to peek at the state" must not be the gesture that takes the service down.
+
+**The port comes from the environment, always.** Here is the most expensive scar of the day. The first version of the new test suite inherited the script's hardcoded `PORT=9000`. Running a test meant running the guard against the production port, with the old guard's `fuser -k` included. It happened — during red-green, production dropped because of the very test meant to prove the fix. Today one test in the suite doesn't execute the script at all: it reads the file and asserts the port is env-overridable and that the hardcoded line is gone. It's the only test in the suite that runs nothing, and it's the one that prevents the accident from repeating.
+
+**The wait ceiling fits inside the start timeout.** `MAX_WAIT` is 75 seconds, chosen to sit comfortably under the unit override's `TimeoutStartSec=120`. If systemd kills the `ExecStartPre` mid-wait, what you lose isn't time — it's the diagnosis, which is the only reason the wait exists.
+
+**Fail open when a tool is missing.** systemd hands over a minimal `PATH`. If no Python interpreter and no `ss` are available, the guard can't probe — and a guard that blocks a service from starting because it lacks one of its own dependencies is worse than no guard at all. On that path it declares free and exits 0. The worst case becomes the next restart, not a permanent deadlock.
+
+**A dedicated log with timestamps.** `porta=9000 bind ocupado`, `liberada apos 25s`, one stamp per line, history kept. That's what turns "I think it's fixed" into "here is the proof the condition came back and was handled". House rule: a fix without a log that proves recurrence isn't finished.
+
+## The proof by fire arrived at 4am
+
+On the 13th, at 04:07, the exact same condition from the incident reappeared. The log recorded bind busy, no visible listener, the diagnosis pointing at a host reservation — and at 04:08:01 the port released itself and the service came up.
+
+Twenty-five seconds of waiting, zero human intervention, zero restart loop.
+
+With the old guard, that same 04:07 would have produced one more "port free, exit 0" followed by errno 98 — the eightieth take of a film that had already cost 79.
+
+## Second act: the fix that broke the pipeline
+
+main went red that same afternoon, and not because of the bug.
+
+One of the ten new tests was static and started like this: the script exists and has the executable bit. But the commit that added the test had written the file with mode 100644 — an artefact of how the new copy got created. The `os.access(..., X_OK)` assertion failed instantly.
+
+```
+fix(ci): devolve bit de execucao ao wait-port-free.sh (#69)
+
+old mode 100644
+new mode 100755
+```
+
+Trivial? Trivial. But with two sharp edges. First: this isn't test pedantry — an `ExecStartPre` without the bit makes the unit fail with 203/EXEC before any diagnosis runs, meaning the free-port guard would have been dead in the very place it repairs. Second: git versions only the executable bit among file modes, and a mode change never shows up in a content diff. It is precisely the kind of information that slips past a quick `git show --stat`.
+
+And the lesson that sank in deepest: **a permission assertion can be defeated by the commit that introduces it.** The test protecting the bit doesn't protect the moment the bit gets set. What closes that gap isn't one more assertion — it's the pipeline running the assertion on the author's commit, before any merge.
+
+## The numbers
+
+| Item | Value | How I know |
+|------|-------|------------|
+| Restarts during the incident | 79 in 24 minutes (12/09, 14:19-14:43) | count recorded in the fix commit |
+| Tools that lied | `ss`, `fuser` (same guest table) | reproduced in the incident case |
+| New source of truth | real bind(), IPv4 then IPv6, no reuseaddr | probe code |
+| New suite size | 10 tests (one doesn't execute the script) | `grep -c "def test"` |
+| Fix footprint | 2 files, +382/-15 | `git show --stat` |
+| Wait ceiling | 75s, inside `TimeoutStartSec=120` | test that pins the ceiling |
+| Proof by fire | 13/09 04:07 bind busy -> free after 25s | the guard's dedicated log |
+
+## What comes next
+
+- Bring the same probe design to the other port bridges that were written during the NAT era and never reviewed for mirrored mode.
+- A policy assertion, not a file assertion: any script invoked from `ExecStartPre` must exist, be executable and have a test. Right now each one arranges that privately.
+- Stop writing guards in five minutes. The piece that decides whether the service comes up deserves the same review as a public endpoint.
+
+<Terminal
+  title="what-the-repo-records"
+  commands={[
+    { cmd: 'git show -s --format=%s f63716f4', output: 'fix(infra): wait-port-free sonda bind real e nao so tabela de porta' },
+    { cmd: 'git show --stat --format= f63716f4', output: 'api/scripts/wait-port-free.sh    | 134 +++++++++++++++++++\napi/tests/test_wait_port_free.py | 263 ++++++++++++++++++++++++++\n2 files changed, 382 insertions(+), 15 deletions(-)' },
+    { cmd: 'git show c55f571e', output: 'old mode 100644\nnew mode 100755\n\nold mode 100644\nnew mode 100755' },
+    { cmd: 'grep -c "def test" api/tests/test_wait_port_free.py', output: '10' },
+    { cmd: 'tail -n 3 ~/arachne-ops/wait-port-free.log', output: '2026-09-13T04:07:34-03:00 port=9000 bind ocupado\n2026-09-13T04:07:34-03:00 port=9000 DIAG nenhum ouvinte visivel no WSL (ss vazio) = reserva do host Windows em mirrored (microsoft/WSL#40984)\n2026-09-13T04:08:01-03:00 port=9000 liberada apos 25s' },
+  ]}
+/>
+
+## What stays
+
+**Tools that read the same source agree by construction — and agreement is not proof.** `ss`, `fuser` and `netstat` all look at one table. Three independent "yes" answers are worth one.
+
+**When in doubt between asking and trying, try.** `bind()` is the only dictionary with no missing entries. Inspection-based diagnosis exists to classify what an operation already detected, not to decide whether the operation is viable.
+
+**A guard must know when not to act.** Fail open without dependencies, kill only what it confirms it can kill, and offer a read mode that doesn't destroy. A guard that breaks the thing it guards isn't protection, it's liability.
+
+**The fix ships with its own defects.** The commit that created the executable-bit test shipped the file without the bit. The safety net isn't the assertion written today — it's the assertion executed on the commit of whoever wrote it.
