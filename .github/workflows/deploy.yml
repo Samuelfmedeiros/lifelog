@@ -200,7 +200,7 @@ jobs:
     # error-context) vira artefato do run, com timestamp no nome — prova de recorrencia.
     - name: Upload E2E report (evidencia)
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: e2e-report-${{ github.run_id }}-${{ github.run_attempt }}
         path: |
