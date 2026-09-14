@@ -66,3 +66,8 @@ public/test-light*.png
 .auto-post-state.json
 .loop-state.json
 .tmp-*
+
+# symlink que o pnpm cria em worktree. O padrao 'node_modules/' (com barra)
+# NAO pega symlink, e um symlink rastreado quebra 'pnpm install' no runner
+# com ENOTDIR (incidente 13/09). O padrao abaixo cobre arquivo e diretorio.
+node_modules
