@@ -20,14 +20,15 @@ export interface Props {
   backHref: string;
   postHref: string;
   noindex?: boolean;
+  alternatePath?: string | null;
 }
 
-const { post, locale, prevPost, nextPost, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref, noindex } = Astro.props;
+const { post, locale, prevPost, nextPost, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref, noindex, alternatePath } = Astro.props;
 const coverImage = post.data.cover;
 const { Content } = await render(post);
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale} noindex={noindex}>
+<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale} noindex={noindex} alternatePath={alternatePath}>
   <article data-project={post.data.project}>
     <div class="max-w-3xl mx-auto px-4 py-8">
       <!-- Cover Image -->

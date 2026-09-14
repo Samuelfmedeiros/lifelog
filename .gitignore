@@ -36,6 +36,9 @@ __pycache__/
 
 # Screenshots e capturas na raiz
 *.png
+# icones PWA: o '*.png' acima bloqueava o commit destes arquivos (por isso
+# /icons/lifelog-{192,512}.png nunca existiram e o manifest.json dava 404)
+!public/icons/*.png
 *.webm
 *.mp4
 

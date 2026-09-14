@@ -33,6 +33,16 @@ const prevPost = currentIndex < localePosts.length - 1 ? localePosts[currentInde
 const nextPost = currentIndex > 0 ? localePosts[currentIndex - 1] : null;
 
 const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
+
+// Contraparte PT do post (espelho do post/[slug].astro).
+const ptPosts = allPosts.filter((p) => !p.data.hidden && !p.id.startsWith('en/'));
+const sameName = ptPosts.find((p) => p.id === post.id.replace(/^en\//, ''));
+const sameMeta = ptPosts.filter((p) =>
+  (p.data.pubDate || p.data.date).getTime() === (post.data.pubDate || post.data.date).getTime() &&
+  p.data.project === post.data.project);
+const ptPartner = sameName ?? (sameMeta.length === 1 ? sameMeta[0] : null);
+const alternatePath = ptPartner ? `/post/${ptPartner.id}/` : null;
+
 ---
 
 <PostLayout
@@ -48,4 +58,5 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
   dateLocale="en-US"
   backHref="/en/"
   postHref="en/post"
+  alternatePath={alternatePath}
 />
