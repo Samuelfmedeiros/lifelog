@@ -12,9 +12,10 @@ export interface Props {
   type?: string;
   locale?: string;
   noindex?: boolean;
+  alternatePath?: string | null;
 }
 
-const { title, description, theme, image, type, locale, noindex } = Astro.props;
+const { title, description, theme, image, type, locale, noindex, alternatePath } = Astro.props;
 const lang = locale === 'en' ? 'en' : 'pt-BR';
 const dataLocale = locale || 'pt';
 const t = getTranslations(dataLocale);
@@ -59,10 +60,40 @@ const canonPath = (() => {
   const s = p.endsWith('/') ? p : p + '/';
   return s.replace(/index\.html\/+$/, '') || '/';
 })();
-const canonPathEn = canonPath === '/' ? '/en/'
-  : (canonPath.startsWith('/en/') ? canonPath : '/en' + canonPath);
-const canonPathPt = canonPath === '/en/' ? '/'
-  : (canonPath.startsWith('/en/') ? canonPath.slice(3) || '/' : canonPath);
+// Contrapartes PT/EN (cacada 13/09 v2): so emite hreflang quando a URL alvo
+// EXISTE. Antes o BaseLayout assumia sempre "/en" + path, gerando 350 links
+// apontando para 404 (previews, posts com slug traduzido, /arquivo|/sobre).
+//  1) previews ocultos -> contraparte troca o segmento de idioma
+//  2) /ocultos* -> pagina so-PT, sem contraparte
+//  3) post sem traducao -> alternatePath === null
+//  4) post com slug traduzido -> alternatePath explicito da pagina
+//  5) /arquivo|/sobre <-> /en/archive|/en/about
+const alternates = (() => {
+  const trim = canonPath.length > 1 ? canonPath.replace(/\/+$/, '') : canonPath;
+  const slash = (t: string) => (t === '/' ? '/' : t + '/');
+  const isEn = trim === '/en' || trim.startsWith('/en/');
+  const preview = trim.match(/^\/ocultos\/preview\/(pt|en)\/(.+)$/);
+  if (preview) {
+    // pagina de preview: a contraparte vem explicita (o slug pode ser traduzido)
+    if (alternatePath === null) return null;
+    if (typeof alternatePath === 'string') {
+      return isEn ? { pt: alternatePath, en: slash(trim) } : { pt: slash(trim), en: alternatePath };
+    }
+    const mk = (l: string) => `/ocultos/preview/${l}/${preview[2]}/`;
+    return { pt: mk('pt'), en: mk('en') };
+  }
+  if (/^\/ocultos(\/|$)/.test(trim)) return null;
+  if (alternatePath === null) return null;
+  const rest = isEn ? (trim.slice(3) || '/') : trim;
+  const ptOf: Record<string, string> = { '/archive': '/arquivo', '/about': '/sobre' };
+  const enOf: Record<string, string> = { '/arquivo': '/en/archive', '/sobre': '/en/about' };
+  const pt = slash(isEn ? (ptOf[rest] ?? rest) : rest);
+  const en = slash(isEn ? trim : (enOf[rest] ?? (rest === '/' ? '/en' : '/en' + rest)));
+  if (typeof alternatePath === 'string') {
+    return isEn ? { pt: alternatePath, en } : { pt, en: alternatePath };
+  }
+  return { pt, en };
+})();
 const footerText = dataLocale === 'en'
   ? `LifeLog © ${new Date().getFullYear()} — Samuel Medeiros' learning journey`
   : `LifeLog © ${new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros`;
@@ -144,9 +175,9 @@ const footerText = dataLocale === 'en'
     <title>{pageTitle}</title>
     {noindex === true && <meta name="robots" content="noindex, nofollow" />}
     <link rel="canonical" href={SITE_URL + canonPath} />
-    <link rel="alternate" hreflang="pt-BR" href={SITE_URL + canonPathPt} />
-    <link rel="alternate" hreflang="en" href={SITE_URL + canonPathEn} />
-    <link rel="alternate" hreflang="x-default" href={SITE_URL + canonPathPt} />
+    {alternates && <link rel="alternate" hreflang="pt-BR" href={SITE_URL + alternates.pt} />}
+    {alternates && <link rel="alternate" hreflang="en" href={SITE_URL + alternates.en} />}
+    {alternates && <link rel="alternate" hreflang="x-default" href={SITE_URL + alternates.pt} />}
 
     <!-- Open Graph / Facebook -->
     <meta property="og:title" content={pageTitle} />

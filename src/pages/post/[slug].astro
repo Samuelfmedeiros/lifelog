@@ -34,6 +34,17 @@ const prevPost = currentIndex < localePosts.length - 1 ? localePosts[currentInde
 const nextPost = currentIndex > 0 ? localePosts[currentIndex - 1] : null;
 
 const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
+
+// Contraparte EN do post (11 posts tem slug traduzido, entao o nome do arquivo
+// nao basta): casa por nome, senao por (pubDate+project) quando for unico.
+const enPosts = allPosts.filter((p) => !p.data.hidden && p.id.startsWith('en/'));
+const sameName = enPosts.find((p) => p.id.replace(/^en\//, '') === post.id);
+const sameMeta = enPosts.filter((p) =>
+  (p.data.pubDate || p.data.date).getTime() === (post.data.pubDate || post.data.date).getTime() &&
+  p.data.project === post.data.project);
+const enPartner = sameName ?? (sameMeta.length === 1 ? sameMeta[0] : null);
+const alternatePath = enPartner ? `/en/post/${enPartner.id.replace(/^en\//, '')}/` : null;
+
 ---
 
 <PostLayout
@@ -49,4 +60,5 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
   dateLocale="pt-BR"
   backHref="/"
   postHref="post"
+  alternatePath={alternatePath}
 />

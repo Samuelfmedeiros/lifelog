@@ -37,6 +37,20 @@ const prevPost = currentIndex < localePosts.length - 1 ? localePosts[currentInde
 const nextPost = currentIndex > 0 ? localePosts[currentIndex - 1] : null;
 
 const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
+
+// Contraparte do preview no outro idioma (mesma regra do post publico: nome do
+// arquivo, senao par unico por pubDate+project — 11 slugs sao traduzidos).
+const other = allPosts.filter((p) => (locale === 'en' ? !p.id.startsWith('en/') : p.id.startsWith('en/')));
+const baseId = post.id.replace(/^en\//, '');
+const oSameName = other.find((p) => p.id.replace(/^en\//, '') === baseId);
+const oSameMeta = other.filter((p) =>
+  (p.data.pubDate || p.data.date).getTime() === (post.data.pubDate || post.data.date).getTime() &&
+  p.data.project === post.data.project);
+const partner = oSameName ?? (oSameMeta.length === 1 ? oSameMeta[0] : null);
+const alternatePath = partner
+  ? `/ocultos/preview/${locale === 'en' ? 'pt' : 'en'}/${partner.id.replace(/^en\//, '')}/`
+  : null;
+
 ---
 
 <PostLayout
@@ -52,5 +66,6 @@ const readingTime = Math.max(1, Math.ceil((post.body?.length || 0) / 1000));
   dateLocale="pt-BR"
   backHref="/"
   postHref="post"
+  alternatePath={alternatePath}
   noindex={true}
 />
