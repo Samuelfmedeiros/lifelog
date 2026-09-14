@@ -1,0 +1,151 @@
+---
+title: "Two gigabytes that weren't two gigabytes"
+description: "I lost 810 training steps because a 2 GB checkpoint was copied straight onto its final name and the machine rebooted mid-copy. I fixed the write on the primary volume. Two days later the same bug was living in the second-drive mirror — and it had gotten worse: the truncated file passed the resume check."
+date: 2026-09-14 02:35:00 -03:00
+pubDate: 2026-09-14 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "checkpoint", "training", "reliability", "integrity", "validation", "lessons"]
+cover: /covers/tatuengine-dois-gigabytes-que-nao-eram-dois.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## What was left after the reboot
+
+There's a routine in every long training run that you write without thinking twice: every N steps, save the model state to disk and carry on. Training keeps going, the file sits there, and resuming feels like a solved problem.
+
+On September 12th at 14:16, a system update rebooted the machine in the middle of a run that had reached roughly step 810. When the runtime came back, the resume checker scanned the checkpoint folder and found nothing intact. It found nothing because the file was corrupted, and because there is no such thing as a half-written file: the old launcher looked up names, and that name had been created at the very first byte of the 2 GB copy.
+
+Eight hundred steps became nothing. Not data loss, not a full disk — one line of code writing to the wrong place.
+
+## Copying onto the final name is always a bet
+
+The problem isn't specific to model checkpoints. It's the naive pattern behind every large file write:
+
+```python
+# dangerous: the destination exists, empty or partial, from the first instant of the copy
+shutil.copy2(src, os.path.join(persist_dir, f"step_{step:04d}.pt"))
+```
+
+While that copy runs, `step_0810.pt` exists in the directory. Any other process listing the folder — the resume checker, a watchdog, a cleanup script, a curious human — sees that file and has no way to know it's work in progress. If the machine dies mid-copy, the file stays there forever, truncated, wearing the name of a finished artifact.
+
+Two states have to be separated: "I am writing this" and "this is done". A filename may only express the second one.
+
+## The fix on the primary volume
+
+The correction was the well-known technique, applied without shortcuts:
+
+```python
+tmp = os.path.join(persist_dir, f"step_{step:04d}.pt.part")
+with open(tmp, "wb") as fh:
+    torch.save(payload, fh)
+    fh.flush()
+    os.fsync(fh.fileno())        # bytes on platter, not in the OS cache
+os.replace(tmp, final)           # commit point: the file is "born" here
+dir_fd = os.open(persist_dir, os.O_RDONLY)
+try:
+    os.fsync(dir_fd)             # without this, the rename itself can vanish on reboot
+finally:
+    os.close(dir_fd)
+```
+
+Three details that actually matter, and that I had underestimated:
+
+- `os.replace()` is atomic **within one filesystem**. That's why the `.part` file goes in the same directory as the destination, never in some generic temp folder.
+- `fsync` on the file without `fsync` on the directory guarantees nothing: the contents can be on disk while the directory entry (the rename) is not.
+- Readers don't need to know any of this. The resume checker kept looking for `step_NNNN.pt` — it simply never saw a half-file again, because a half-file now has a different name.
+
+I validated it through the launcher in ten sandbox scenarios: reboot mid-write, orphan `.part` from a dead process, nearly full disk, primary and mirror on different filesystems. The recovery point was always the last complete step.
+
+## Two days later, the same bug was in the mirror
+
+Training doesn't write to one place. Beyond the primary volume there's a copy on a second drive — a mirror for the day the primary dies, and also for external queries that shouldn't fight the run for I/O.
+
+That copy had been written for ages with `copy2` straight onto the final name. Exactly the pattern I had just eliminated. Nobody noticed because, on the primary volume, the corruption window required dying at the right moment; on the mirror, it happened on its own.
+
+In the early hours of the 14th, under memory pressure on the box, the file bridge between the Linux runtime and the second drive's volume returned an error mid-copy. The measured result: the file for step 1750 held **1.82 GB out of the 2.47 GB** it should have.
+
+And here's what kept me up: **that file passed the resume check**.
+
+## A size floor is not an integrity check
+
+The mirror side had a guard. It rejected candidates too small to be real:
+
+```python
+# what the guard did, in essence
+if os.path.getsize(candidate) > 50 * 1024 * 1024:
+    return candidate   # "plausible"
+```
+
+A 50 MB floor in a world of 2.47 GB checkpoints filters out junk, zero-byte files and downloads that died in the first seconds. Against a file truncated at 73% of its size, it approves with enthusiasm.
+
+A truncated checkpoint isn't a smaller file. It's a **different file**. It opens, it deserializes, it loads onto the device. The first layers are perfect — the damage lives at the end of the file, which is where the last layers' weights, the optimizer state and the step counter sit. Past that point, it's whatever those pages held before. It doesn't fail when read; it fails when used, and it fails by producing numbers.
+
+The repair was the same pair of ideas, now on the mirror path: write `.part`, verify the expected size before publishing, `os.replace()`. And — because size still isn't integrity — record each artifact's size at write time, so resume compares against the expected value instead of an arbitrary floor.
+
+## The pruning that nearly ate the candidate
+
+Fixing the write surfaced a second problem that had been hiding behind it. The mirror had no pruning. By the end of a full training cycle it held 46 checkpoints — around 114 GB on a volume with 131 GB free. It was going to fill up before the run finished.
+
+So I added pruning: keep the 12 most recent, on both sides, aligned on the same set of steps. Then came the naive question that would have ruined everything: what happens when pruning runs while a copy is in flight?
+
+Two guards, both learned the hard way:
+
+```python
+# 1. touched less than 5 minutes ago = possibly a copy in flight, don't delete
+if time.time() - st.st_mtime < 300:
+    continue
+
+# 2. no trustworthy mtime, delete nothing
+if st.st_mtime == 0:
+    continue
+```
+
+The second guard exists only because I discovered that on a network filesystem the timestamp metadata can simply not come back. A `stat` returning zero doesn't mean "old file" — it means "I don't know". Treating "I don't know" as "old" deletes the correct checkpoint.
+
+## Lessons
+
+- **Never write onto the final name.** The final name is the public claim that the artifact is complete. Write `.part` on the same filesystem and rename. If you can't rename, you can't write.
+- **`fsync` on the file and `fsync` on the directory are different checks.** One without the other lets the content survive and the pointer disappear.
+- **A size floor catches junk, not truncation.** Store the expected size (or a hash) with the artifact and validate against it. Comparing to a constant you made up is guessing wearing a validation badge.
+- **Fixing one layer and ignoring its symmetric twin is a half fix.** Primary volume and mirror were the same bug under different names. The second one took two days to bill me.
+- **Every cleanup routine must know about in-flight files.** Pruning, rotation and GC coexist with concurrent writes; without an age guard they remove exactly the candidate resume was looking for.
+- **A truncated file raises nothing — it returns a number.** When choosing between "loud failure" and "passes and yields a weird value", pick the loud failure. That's what I postponed for two days.
+
+## Before and after
+
+| Aspect | Before (Sep 12) | After (Sep 14) |
+|--------|-----------------|----------------|
+| Write on primary volume | `copy2` onto final name | `.part` + fsync + rename |
+| Write on the mirror | `copy2` onto final name | `.part` + fsync + rename |
+| Resume criterion | 50 MB floor | expected size per artifact |
+| Outcome of dying mid-copy | step lost or truncated file accepted | last complete step |
+| Measured real recovery | restarted from zero, 810 steps | one 1.82 GB truncation detected and rejected |
+| Mirror footprint without pruning | 46 checkpoints, ~114 GB | 12 most recent, both sides |
+
+## What comes next
+
+- A content hash in the resume manifest, to close the gap between "the size matches" and "the bytes match".
+- The fine-tune cycle in progress still has a few thousand steps to go; pruning will get tested under genuinely tight disk, not just with free space sitting there.
+- An audit of the ecosystem's other mirrors, asking the same question: where else am I copying straight onto the final name?
+- The cycle report keeps going through the critique loop before any release, and truncation checking is now one of its criteria.
+
+The run was at step 2500 when all this happened. None of those 2500 were lost after the fix — but 810 had already died because of one line I wrote without thinking.
+
+```text
+The rule that stuck isn't "keep backups".
+It's that an artifact exists only when it's whole — until then, it doesn't get a name.
+```
+
+<Terminal
+  commands={[
+    { cmd: 'ls -lh "$PERSIST_DIR" | tail -6' },
+    { cmd: 'find "$PERSIST_DIR" "$MIRROR_DIR" -name "*.part" -mmin -60' },
+    { cmd: 'stat -c "%s %Y %n" "$CKPT"' },
+    { cmd: 'expected 2.47 GB   ->   found 1.82 GB   ->   REJECTED' },
+    { cmd: 'df -h "$MIRROR_DIR" | tail -1' },
+  ]}
+/>

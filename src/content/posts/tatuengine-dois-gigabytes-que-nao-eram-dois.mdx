@@ -1,0 +1,153 @@
+---
+title: "Dois gigabytes que não eram dois gigabytes"
+description: "Perdi 810 steps de treino porque um checkpoint de 2 GB foi copiado direto no nome final e a máquina reiniciou no meio. Consertei a escrita no volume principal. Dois dias depois, o mesmo bug morava no espelho do segundo disco e tinha ficado pior: o arquivo truncado passava na checagem de retomada."
+date: 2026-09-14 02:35:00 -03:00
+pubDate: 2026-09-14 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "checkpoint", "training", "reliability", "integrity", "validation", "lessons"]
+cover: /covers/tatuengine-dois-gigabytes-que-nao-eram-dois.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O que sobrou depois do reboot
+
+Existe uma rotina num treino longo que a gente faz sem pensar duas vezes: a cada N steps, grava o estado do modelo em disco e segue em frente. O treino continua, o arquivo fica lá, e a retomada parece um problema resolvido.
+
+No dia 12 de setembro, às 14:16, uma atualização do Windows reiniciou a máquina no meio de um treino que tinha chegado perto do step 810. Quando o runtime voltou, o verificador de retomada olhou a pasta de checkpoints e não achou nada íntegro. Ele não achou porque o arquivo estava corrompido, e porque não existe meio arquivo: o launcher antigo procurava pelo nome final, e o nome final tinha sido criado logo no começo da cópia de 2 GB.
+
+Oito centenas de steps viraram nada. Não por perda de dado, não por disco cheio — por uma linha de código que escrevia no lugar errado.
+
+## Por que copiar direto no nome final é sempre uma aposta
+
+O problema não é exclusivo de checkpoint de modelo. É o padrão ingênuo de qualquer escrita de arquivo grande:
+
+```python
+# perigoso: o destino aparece vazio/parcial no instante em que a escrita começa
+shutil.copy2(src, os.path.join(persist_dir, f"step_{step:04d}.pt"))
+```
+
+Enquanto essa cópia roda, `step_0810.pt` existe no diretório. Qualquer outro processo que listar a pasta — o verificador de retomada, um vigia, um script de limpeza, um humano curioso — vai enxergar aquele arquivo e não tem como saber que ele é um trabalho em andamento. Se a máquina morre no meio, o arquivo fica lá para sempre, truncado, com nome de arquivo terminado.
+
+Duas coisas precisam ser separadas: o estado "estou escrevendo" e o estado "está pronto". Um nome de arquivo só pode representar o segundo.
+
+## A cura no volume principal
+
+A correção foi a técnica conhecida, aplicada sem atalho:
+
+```python
+tmp = os.path.join(persist_dir, f"step_{step:04d}.pt.part")
+with open(tmp, "wb") as fh:
+    torch.save(payload, fh)
+    fh.flush()
+    os.fsync(fh.fileno())        # dados no disco, não só no cache da OS
+os.replace(tmp, final)           # ponto de commit: aqui o arquivo "nasce"
+dir_fd = os.open(persist_dir, os.O_RDONLY)
+try:
+    os.fsync(dir_fd)             # sem isso, o rename pode sumir no reboot
+finally:
+    os.close(dir_fd)
+```
+
+Três detalhes que fazem a diferença e que eu tinha subestimado:
+
+- `os.replace()` é atômico **dentro do mesmo filesystem**. Por isso o `.part` é escrito no mesmo diretório do destino, nunca num temp genérico.
+- `fsync` do arquivo sem `fsync` do diretório não garante nada: o conteúdo pode estar em disco e a entrada do diretório (o rename) ainda não.
+- Quem só lê não precisa saber nada disso. O verificador de retomada continuou procurando `step_NNNN.pt` — ele apenas nunca mais viu um arquivo pela metade, porque um arquivo pela metade agora tem outro nome.
+
+Testei com o launcher em dez casos de sandbox: reboot no meio da escrita, `.part` órfão de processo morto, disco quase cheio, persist e espelho em filesystems diferentes. O ponto de corte sempre foi o último step completo.
+
+## Dois dias depois, o mesmo bug estava no espelho
+
+O treino não grava só num lugar. Além do volume principal, existe uma cópia num segundo disco — um espelho pra o caso de o primário pifar, e também pra consulta externa sem brigar com o treino.
+
+Essa cópia foi escrita por anos com `copy2` direto no nome final. Exatamente o padrão que eu tinha acabado de eliminar. Ninguém tinha percebido porque, no volume principal, a janela de corrupção exigia uma morte no momento certo; no espelho, ela acontecia sozinha.
+
+Na madrugada do dia 14, sob contenção de memória na máquina, a ponte de arquivos entre o runtime Linux e o volume do segundo disco devolveu erro no meio da cópia. O resultado medido: o arquivo do step 1750 tinha **1,82 GB dos 2,47 GB** que deveria ter.
+
+E aqui está o que me fez perder o sono: **esse arquivo passou na checagem de retomada**.
+
+## O filtro de tamanho não é uma checagem de integridade
+
+O verificador do lado do espelho tinha uma proteção. Ela descartava candidatos pequenos demais para serem reais:
+
+```python
+# o que o guard fazia, em essência
+if os.path.getsize(candidate) > 50 * 1024 * 1024:
+    return candidate   # "plausível"
+```
+
+Um piso de 50 MB num universo de checkpoints de 2,47 GB elimina lixo, arquivo zero e download interrompido nos primeiros segundos. Contra um truncado em 73% do tamanho, ele aprova com entusiasmo.
+
+Um checkpoint truncado não é um arquivo menor. É um arquivo **diferente**. Ele abre, ele desserializa, ele carrega no dispositivo. As primeiras camadas estão perfeitas — o dano está no fim do arquivo, que é onde ficam os pesos das últimas camadas, o otimizador e o contador de steps. A partir dali, é o que quer que estivesse naquelas páginas antes. Ele não falha ao ser lido; ele falha ao ser usado, e falha produzindo número.
+
+O conserto foi o mesmo par de ideias, agora no caminho do espelho: escrever `.part`, conferir o tamanho esperado antes de publicar, `os.replace()`. E — porque tamanho ainda não é integridade — registrar o tamanho de cada artefato no momento da escrita, pra retomar comparando com o esperado em vez de um piso arbitrário.
+
+## A poda que quase comeu o candidato
+
+Resolver a escrita expôs um segundo problema que estava escondido atrás dela. O espelho não tinha poda. No fim de um ciclo de treino inteiro, eram 46 checkpoints — cerca de 114 GB ocupados num volume que tinha 131 GB livres. Ia encher antes de acabar.
+
+Adicionei poda: manter os 12 mais recentes, nos dois lados, alinhados no mesmo conjunto de steps. Aí veio a pergunta boba que estragaria tudo: o que acontece quando a poda roda enquanto uma cópia está em andamento?
+
+Dois guards, ambos aprendidos da pior maneira:
+
+```python
+# 1. arquivo tocado ha menos de 5 minutos = pode ser uma copia em voo, nao apaga
+if time.time() - st.st_mtime < 300:
+    continue
+
+# 2. sem mtime confiavel, nao apaga nada
+if st.st_mtime == 0:
+    continue
+```
+
+O segundo guard só existe porque descobri que, num filesystem de rede, o metadado de tempo pode simplesmente não vir. Um `stat` que devolve zero não é "arquivo antigo" — é "não sei". Tratar "não sei" como "velho" apaga o checkpoint certo.
+
+## Aprendizados
+
+- **Nunca escreva no nome final.** O nome final é a afirmação pública de que o artefato está pronto. Escreva `.part` no mesmo filesystem e renomeie. Se não dá para fazer o rename, não dá para fazer a escrita.
+- **`fsync` do arquivo e `fsync` do diretório são checagens diferentes.** Uma sem a outra deixa sobreviver o conteúdo e perder o ponteiro.
+- **Piso de tamanho detecta lixo, não detecta truncado.** Guarde o tamanho esperado (ou um hash) junto do artefato e valide contra ele. Comparar com uma constante que você inventou é adivinhação com cara de validação.
+- **Consertar uma camada e ignorar a simétrica é meio conserto.** Volume principal e espelho eram o mesmo problema com nomes diferentes. O segundo demorou dois dias para cobrar.
+- **Toda rotina de limpeza precisa conhecer o arquivo em voo.** Poda, rotação e GC convivem com escrita concorrente; sem guarda de idade, elas removem exatamente o candidato que a retomada procuraria.
+- **Um arquivo truncado não levanta exceção — ele produz número.** Na dúvida entre "falha barulhenta" e "passa e entrega valor estranho", escolha a falha barulhenta. Foi o que adiei por dois dias.
+
+## Antes e depois
+
+| Aspecto | Antes (12/09) | Depois (14/09) |
+|---------|---------------|----------------|
+| Escrita no volume principal | `copy2` no nome final | `.part` + fsync + rename |
+| Escrita no espelho | `copy2` no nome final | `.part` + fsync + rename |
+| Cripte de retomada | piso de 50 MB | tamanho esperado por artefato |
+| Resultado de morte no meio da copia | step perdido ou truncado aceito | ultimo step completo |
+| Retomada real medida | voltou do zero, 810 steps | 1 truncado em 1.82 GB detectado e rejeitado |
+| Ocupacao do espelho sem poda | 46 ckpts, ~114 GB | 12 mais recentes, nos dois lados |
+
+## O que vem a seguir
+
+- Hash de conteúdo no manifest de retomada, pra fechar a diferença entre "tamanho bate" e "bytes batem".
+- O ciclo de fine-tune em andamento tem mais alguns milhares de steps pela frente; a poda vai ser testada sob disco apertado de verdade, não só com espaço livre.
+- Auditoria dos outros espelhos do ecossistema: a mesma pergunta — onde mais eu copio direto no nome final?
+- O relatório do ciclo vai continuar passando pelo loop de crítica antes de qualquer liberação, e a checagem de truncamento agora é um dos critérios.
+
+O treino estava no step 2500 quando tudo isso aconteceu. Nenhum dos 2500 foi perdido depois da correção — mas 810 tinham morrido por causa de uma linha que eu escrevi sem pensar.
+
+```text
+A regra que ficou não é "faça backup".
+É: um artefato só existe quando está inteiro — antes disso, ele não tem nome.
+```
+
+<Terminal
+  commands={[
+    { cmd: 'ls -lh "$PERSIST_DIR" | tail -6' },
+    { cmd: 'find "$PERSIST_DIR" "$MIRROR_DIR" -name "*.part" -mmin -60' },
+    { cmd: 'stat -c "%s %Y %n" "$CKPT"' },
+    { cmd: 'esperado 2.47 GB   ->   encontrado 1.82 GB   ->   REJEITADO' },
+    { cmd: 'df -h "$MIRROR_DIR" | tail -1' },
+  ]}
+/>
+
+> Se um artefato pode nascer pela metade, ele vai nascer. A única defesa que funciona é impedir que o mundo veja o embrião — dar a ele um nome que ninguém considera pronto, e só renomear quando estiver inteiro.
