@@ -153,15 +153,44 @@ jobs:
           echo "❌ Preview server didn't start"
           exit 1
         fi
+        # Readiness nao e só a home: o E2E navega para /en/, post e asset. Se alguma
+        # dessas ainda nao serve, os testes comecam contra servidor meio-vivo e o erro
+        # vira net::ERR_ABORTED (o falso-negativo que mascaramos por meses).
+        for probe in /en/ /404.html /manifest.json; do
+          C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:4321$probe" || echo 000)
+          echo "probe $probe -> $C"
+          case "$C" in
+            200|404) ;;
+            *) echo "❌ preview nao pronto em $probe ($C)"; exit 1 ;;
+          esac
+        done
+        echo "✅ preview pronto em todas as rotas criticas"
 
     - name: Run unit tests
       run: pnpm exec vitest run --reporter=verbose
 
     - name: Run E2E tests
-      continue-on-error: true
+      # 13/09/2026 — antes o step tinha `continue-on-error: true` + `|| true`, ou seja:
+      # o E2E podia falhar inteiro e o pipeline continuava verde (falso-verde; o job
+      # passou `success` com 12 testes falhando). Agora e gate de verdade.
+      # workers=1: o preview e um unico processo e 2 chromiums em paralelo estouravam o
+      # timeout de navegacao sob carga — estabilidade primeiro, velocidade depois.
       env:
         PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
-      run: pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=2 || true
+      run: pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=1
+
+    # Log dedicado: quando o E2E falha, o relatorio do Playwright (traces + screenshots +
+    # error-context) vira artefato do run, com timestamp no nome — prova de recorrencia.
+    - name: Upload E2E report (evidencia)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-report-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          playwright-report/
+          test-results/
+        retention-days: 14
+        if-no-files-found: ignore
 
     # ── Deploy ─────────────────────────────────────────────────
     - name: Deploy to Vercel (Production)
