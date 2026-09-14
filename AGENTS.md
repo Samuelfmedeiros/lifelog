@@ -470,3 +470,15 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **E2E:** e2e/tags.spec.ts agora tem asserts de regressao (0 links EN na tag PT, 0 links PT na tag EN). Os contagens de yurumi continuam validas (10 PT + 10 EN par-perfeito).
 - **Pitfall commit compartilhado:** staging alheio entrou 2x no meu commit (deletes do post refazer #44) — commit cirurgico: `git add <arquivos meus>` explicito + conferir `git show --stat HEAD` ANTES de pushar; se sujou: reset --soft HEAD~1 + restore --staged dos alheios + recommit.
 - **E2e local:** precisa preview server :4321 no ar + `--config e2e/playwright.config.ts` (sem isso baseURL falta = "Cannot navigate to invalid URL").
+## Sessao 2026-09-13 (fim de dia) - gate de receita tecnica + higiene do repo + caca de bugs SEO
+
+- **feat(ci)** (`c3bee00`): gate de vazamento de receita tecnica em posts de projeto; aplicado em `7a3ac3f` (41 PT+EN dos posts TatuEngine) e `ce8f5a9` (legados: SHAs e numeros de benchmark, 32 hits).
+- **Posts/releases:** `3f0ab03` (`capivara-a-porta-de-mao-unica`) e `46caca1` (`lifelog-tres-concertos-uma-causa`) PT+EN+ocultos-data; capa AI de `portfolio-a-fabrica-de-candidaturas` refeita pelo watchdog (`fc240ff`).
+- **fix(seo+ocultos)** (`010cbea`): caca de bugs do dia - link 404, noindex, SEO base, sitemap, RSS por idioma; fixture `request` que faltava no caso do link interno (`dfa4422`).
+- **test(rss)** (`857d8a3`): suites alinhadas a `/rss.xml` so PT e `/en/rss.xml` so EN.
+- **Higiene** (`db71dd6`, `875180e`): 14 posts sem `icon` + 8 capas orfas removidas; 68 blobs renormalizados CRLF->LF com `.gitattributes`.
+- **i18n/conteudo** (`4247575` PR #46, `b5ece77`): troca de idioma nos previews ocultos mantem o slug; reparo do JSX dos blocos Terminal.
+- **fix(ci)** (PR #49, `2000470`, merge `4045992`): symlink `node_modules` fora do indice + guard no `.gitignore` (padrao SEM barra - com barra nao pega) + renormalize de EOL.
+- **23h, branch `fix/hunt-seo-pwa` (NAO mergeada na main):** `d8a8da3` hreflang so para par existente + icones PWA que davam 404 (`.gitignore *.png` global bloqueava o commit - excecao `!public/icons/*.png`); `9ba24e0` guardiao `scripts/check-alternates.py` no CI pos-build.
+- **Pendencias registradas:** main local esta 11 commits atras de `origin/main`; working tree com 38 entradas de outra sessao (artefatos `.loop-*`, posts MDX ainda nao versionados, specs e2e, snapshots VRT) - nada tocado daqui. `docs/CHANGELOG.md` untracked (duplicata) segue sem decisao.
+- 26 commits no dia - push origin OK - HEAD origin/main: `4045992` (antes do doc).

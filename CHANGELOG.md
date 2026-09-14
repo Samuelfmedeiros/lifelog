@@ -1,5 +1,16 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-13] - gate de receita tecnica, higiene de repo e caca de bugs SEO
+- **feat(ci)** (`c3bee00`): gate de vazamento de receita tecnica em posts de projeto (SHAs, numeros de benchmark, nomes de engine); aplicado em `7a3ac3f` (41 PT+EN TatuEngine) e `ce8f5a9` (32 hits legados).
+- **fix(seo)** (`010cbea`, `d8a8da3`): link 404, noindex, SEO base, sitemap, RSS por idioma; hreflang so para par existente.
+- **fix(pwa)** (`d8a8da3`): icones PWA davam 404 - o `.gitignore` (`*.png` global) bloqueava o commit dos icones; excecao `!public/icons/*.png`.
+- **ci** (`9ba24e0`): guardiao `scripts/check-alternates.py` (hreflang/assets do head) apos o build.
+- **test** (`857d8a3`, `dfa4422`): suites de RSS por idioma + fixture `request` no caso do link interno.
+- **chore(hunt)** (`db71dd6`, `875180e`): remove `icon: optfimo` de 14 posts + apaga 8 capas orfas; 68 blobs renormalizados CRLF->LF.
+- **fix(ci)** (PR #49 `2000470`, merge `4045992`): symlink `node_modules` fora do indice + guard no `.gitignore` + EOL renormalizado.
+- **chore(release)** (`3f0ab03`, `46caca1`, `f29f2cc`, `e7f0f33`): releases atomicas dos posts A/B/C do dia.
+- 26 commits no dia - push origin OK - HEAD origin/main: `4045992` (antes do doc).
+
 ## [2026-09-11] — filtro de lingua nas tags + 3 posts no pipeline + fix i18n
 - **fix(tags)** (`535ec0c`): filtro de lingua nas paginas de tag — PT lista so PT, EN so EN; testes de regressao (`45d3579`) + docs pitfall commit compartilhado (`1b7aa46`)
 - **fix(tags/cover)** (`b4aace0`): PostCard recebe cover e icon nas paginas de tag (cards estavam sempre no placeholder)
