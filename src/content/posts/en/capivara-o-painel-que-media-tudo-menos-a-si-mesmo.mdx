@@ -1,0 +1,126 @@
+---
+title: "The dashboard that measured everything except itself"
+description: "I built an ecosystem status aggregator and, eighteen minutes after it was born, it couldn't prove its own existence. The fix wasn't code: it was deciding what counts as evidence. A timeout isn't an outage, 429 means alive, a 401 on a gate means the door is shut to people who shouldn't be there, and an open port doesn't mean a running process."
+category: samuel-projects
+date: 2026-09-12 13:20:00 -03:00
+pubDate: 2026-09-14 16:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "observability", "reliability", "false-positive", "architecture", "lessons"]
+cover: /covers/capivara-o-painel-que-media-tudo-menos-a-si-mesmo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Back in August I had stitched a status aggregator inside Capivara itself. That problem was about assembly: gather scattered data, put it on a screen. On Monday, September 12th, its replacement was born — a standalone dashboard, from scratch, meant to be the authority on "what is up in the ecosystem".
+
+It took eighteen minutes between the commit that founded the project and the commit that fixed three classes of lies it was telling. The first lie was the funniest and the ugliest: on its own screen, the dashboard couldn't say whether it existed.
+
+## I was looking at myself
+
+The dashboard has a registry: a static list of surfaces, each with a URL, what's expected from it, whether it's critical, and who owns it. In that first version there were thirteen entries, and one of them was the dashboard itself.
+
+The health route does the following job: walk the registry, probe everything, classify each response, return a verdict. It is itself one of the routes in the registry. So every request to health fired a request to health, which fired another.
+
+It wasn't a hang or an explicit infinite loop — nothing blew the stack. It was more subtle: each request spawned a cascade of sub-probes competing for the same server, until the whole thing failed to answer inside the deadline. And the result showed up on screen tagged with the label I had reserved for "I don't know": `unknown`, reason `timeout`.
+
+In other words, the dashboard wasn't claiming "I have a problem". It was claiming "I couldn't measure that one". Which, on a screen where everything else is green, is precisely the sentence that sends me to a terminal.
+
+The fix fit in one line, but it carries an epistemic decision: the dashboard proves it's alive by the fact that it's answering. You don't probe from inside your own probe. An item marked as self-attested enters the state as `ok` without ever becoming a request, and it's filtered out before the probing round even starts.
+
+## Absence of evidence isn't evidence of failure
+
+I wrote that rule in the very first commit, before I had any evidence for it:
+
+> a single measurement, without an HTTP status code, never becomes an alert.
+
+It came from older history. My machine had already fooled a monitor before: an execution environment sharing resources with a heavy training run makes a service take twenty seconds to answer without being dead. A naive classifier reads that as an outage, notifies, and I wake up to find everything working. A real outage returns a code — connection refused, 503, nothing listening at all. A slow response returns silence, and silence is the absence of information.
+
+So the probe has a contract: it never throws. A timeout becomes `status: null` with reason `timeout`, a connection error becomes `status: null` with the message, and only the classifier decides what each null means. The probe concludes nothing. The verdict doesn't confuse things either: if most surfaces are green and a bunch come back unproven, the screen says `parcial`, never `crit`.
+
+What I didn't know back then is that the problem wouldn't be this rule failing. It would be the rule being **defeated from underneath**: a too-short timeout ceiling manufactures `unknown` on healthy services, and a dashboard full of "no evidence" is as useless as one full of red — just with a humble appearance.
+
+## Timeouts are measured numbers, not chosen ones
+
+The first version used a four-second ceiling. That was a sensible, round number that I had arrived at without measuring a thing.
+
+The measurement came from one specific target: a health route that runs seventeen chained checks in a single request — just over a second on an idle machine, far more when the machine is fighting for resources. At four seconds, that service looked down every time the machine was actually working. I raised the ceiling to eight, which is the measured number with headroom, not the number that felt prudent.
+
+The next day I removed that target from the registry. Not because it was dead — because the dashboard was paying the price of measuring a route that takes however long it feels like. The latency of my own health route dropped from eight seconds to around ninety milliseconds. Sometimes healing a monitor isn't waiting longer: it's removing what shouldn't have been there.
+
+And the probes run in parallel on purpose. Each target in series adds its own time — with about ten of them, the deadline blows before the last answer arrives. So `Promise.all`, with result order preserved, plus a test that measures peak concurrent requests to make sure nobody "optimizes" that back into a serial loop later.
+
+The cache in the governance layer is the same logic with a different number: thirty seconds. Short enough that the screen doesn't lie, long enough that auto-refresh doesn't turn into a denial-of-service against my own database.
+
+## Three status codes that mean "I'm alive"
+
+The most counterintuitive part of writing a classifier is that error codes don't mean the service is absent — they mean the service is present and has opinions.
+
+**429 is alive.** Two different monitors hit the same endpoint, one of them got rate limited. The service responded, and responded usefully: "already working on your case". Classifying 429 as degradation generates a permanent false alert — I'd keep getting notified about a dashboard behaving exactly as designed.
+
+**A 401 on a gate is a door shut to someone who shouldn't be there.** The registry has an expectation mode called `auth-gate` for surfaces that require credentials. The semantics are deliberately inverted: 401, 403 and a login redirect all count as `ok`. What counts as critical is a 200 with no credentials — because then the authentication isn't working. A dashboard that reads "200 = green" will paint green the single worst incident that surface could possibly have.
+
+**A 404 on a newly registered target is degraded, not dead.** An application answering 404 is an application that exists and is willing to talk. Most likely I registered a health path that has since been renamed. That deserves `warn`, not `crit` — the alarm should hurt in proportion to the actual loss.
+
+This part has desk-check coverage: a suite that covers classification only, no network at all, plus an integrity test that sweeps the registry demanding unique ids, required fields present, and every URL on loopback. The dashboard never probes an external address. Not out of paranoia — because the external address depends on a tunnel, and a tunnel is a second system that can fail and make me report the first one down.
+
+## An open port doesn't mean a running process
+
+After a few weeks reading the dashboard, it became clear it was answering a question I wasn't asking.
+
+"The ports are answering" doesn't tell me whether the service is up. It tells me some process is listening. There's a specific case that bit me: services written as template units. The wrapper shows as stopped while the real instance, with the variant name in it, is running. Query the generic name and you see "inactive" on a database that is serving connections at that very moment. The dashboard would say "down". The machine would say "working".
+
+So I split it into two layers that don't derive from each other. The registry proves the port over HTTP. A separate read-only services screen proves the process — systemd and containers, with the raw state visible instead of a summarized color. Neither substitutes the other, and both display when they have no evidence.
+
+Three rules came out of that layer:
+
+1. **Failed spawn, timeout, and missing unit are `unknown`, not down.** The HTTP probe's rule applied to processes.
+2. **A terminal-but-clean state from a wrapper isn't an outage.** A template shell that exits after launching its instance is behaving correctly. Without this rule I'd have a permanent red on a healthy service.
+3. **A historical restart counter doesn't classify.** A process that restarted once a month ago is healthy right now. Alerting on history is the cousin of alerting on a growth percentage in a tiny database — technically correct, wrong question.
+
+And one structural rule: this layer changes nothing in the world. It invokes commands with an argument list, never through a shell, and there is no start, stop or restart call anywhere in the path. An observability panel that can poke the system becomes part of the system being observed.
+
+## The details that only surface when someone actually looks
+
+Three fixes that aren't about architecture, but say a lot about how the dashboard was actually built.
+
+A "critical" marker in the table leaked as escaped text — a raw `<span>` showing up on screen. The cause is template-specific: a string inside an expression renders as text, not as markup. It became a real `span` element.
+
+The byte-formatting test asserted the largest scale was petabyte. A petabyte is 1024 to the fifth, not to the fourth. The code was right and the test was wrong — and that's the species of bug that slips through precisely because test green is the evidence we consult.
+
+The dashboard's tables overflowed their width on mobile. I measured instead of guessing: three overflows, one of them a hundred pixels. Fixed all three, re-checked the same metric on the device, and then found that a "no-wrap" note was blowing up horizontal scroll for the whole page. Measured before: nearly twice the screen width. After: exactly the screen width.
+
+## Metrics
+
+| Item | Before | After |
+|---|---|---|
+| Surfaces in the registry | 13 | 12 (one retired probe) |
+| Health route latency | 8 s (hitting the ceiling) | ~98 ms |
+| Timeout ceiling | 4 s (guessed) | 8 s (measured, with headroom) |
+| Process layer | nonexistent | read-only, no mutation |
+| Dashboard tests | 32 at foundation | 73, none needing real network |
+| Horizontal overflows on mobile | 3 | 0 |
+
+## What stays
+
+**A measurement system that can measure itself is a system that can fool itself.** The dashboard's recursion didn't show up as a program error; it showed up as a plausible, wrong data point. Whenever your monitor observes something it serves itself, "who is measuring whom" needs an answer before the first deploy.
+
+**Absence of evidence isn't evidence of absence.** The worst thing a dashboard can do is convert "I don't know" into "broken", because that destroys your willingness to believe it on the occasions when it's right. `parcial` is an honest answer; an invented `crit` is a debt you pay with your own credibility.
+
+**An error code is information, not a verdict.** The three cases that look most like failure — rate limit, denied gate, renamed route — are the service asserting that it exists. A classifier that treats anything non-200 as degraded will misfire exactly when the system is under real pressure, which is when I'd need it most.
+
+**Measuring two separate layers beats translating one into the other.** Port and process answer different questions, and the translation between them is where false certainty lives. I'd rather have a screen showing two answers that don't match than one showing a clean answer that's wrong.
+
+**Every ceiling number needs a measurement behind it.** Four seconds was a number I liked. Eight seconds is a number the machine gave me. The difference between the two is the difference between a dashboard that alarms and a dashboard that informs.
+
+<Terminal
+  title="probe-epistemology"
+  commands={[
+    { cmd: 'grep -n "TIMEOUT_PADRAO_MS" src/lib/probe.js', output: '7:export const TIMEOUT_PADRAO_MS = 8000;' },
+    { cmd: 'grep -n "if (st === 429)" -B2 src/lib/registry.js', output: '66-  // 429 = the target is ALIVE and answering (rate limit from shared monitor traffic).\n67-  // Not an outage — classifying warn here would generate a permanent false alert.\n68:  if (st === 429) return "ok";' },
+    { cmd: 'grep -n "autoProva" src/lib/status.js | head -2', output: '6:export async function estadoHub({ fetchImpl, tcpImpl, autoProva = true } = {}) {\n11:  if (autoProva) itens = itens.map((i) => (i.id === "hub" ? { ...i, _auto: true } : i));' },
+    { cmd: 'npx vitest --run tests/', output: 'Test Files  5 passed (5)\n     Tests  73 passed (73)' },
+  ]}
+/>
