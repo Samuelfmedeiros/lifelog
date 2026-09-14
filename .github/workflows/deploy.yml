@@ -106,6 +106,12 @@ jobs:
 
     - name: Build Astro
       run: pnpm build
+
+    - name: SEO bilíngue — hreflang e assets do head (guardiao)
+      run: |
+        echo "🔎 Verificando hreflang e assets do <head> no dist..."
+        python3 scripts/check-alternates.py --dist dist
+        echo "✅ hreflang sem links quebrados e assets do head presentes"
       # Astro build catches MDX syntax errors, broken imports, missing components
 
     # ── Self-heal: ocultos-data síncrono ────────────────────────────
