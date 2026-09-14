@@ -1,0 +1,61 @@
+{
+  "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
+  "failures": [
+    {
+      "spec": "e2e/a11y.spec.ts",
+      "title": "home — tema dark sem violações críticas",
+      "reason": "axe-core reporta violações critical/serious na home (dívida anterior ao gate)",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/a11y.spec.ts",
+      "title": "home — tema light sem violações críticas",
+      "reason": "axe-core reporta violações critical/serious na home (dívida anterior ao gate)",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/a11y.spec.ts",
+      "title": "/en/ — tema dark sem violações críticas",
+      "reason": "axe-core reporta violações critical/serious em /en/ (dívida anterior ao gate)",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/a11y.spec.ts",
+      "title": "/en/ — tema light sem violações críticas",
+      "reason": "axe-core reporta violações critical/serious em /en/ (dívida anterior ao gate)",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/lifelog.spec.ts",
+      "title": "deve ter filtros: busca textual e pills de projeto",
+      "reason": "spec espera 10 pills (lista hardcoded); produção tem 11 projetos",
+      "owner": "quem adicionou o 11º projeto sincroniza a lista do spec",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/vrt.spec.ts",
+      "title": "home — tema dark (desktop)",
+      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/vrt.spec.ts",
+      "title": "home — tema light (desktop)",
+      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    },
+    {
+      "spec": "e2e/vrt.spec.ts",
+      "title": "home — mobile (tema dark)",
+      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
+      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
+      "expiry": "2026-09-28"
+    }
+  ]
+}
