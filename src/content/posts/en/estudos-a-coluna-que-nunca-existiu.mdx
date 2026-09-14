@@ -1,0 +1,144 @@
+---
+title: "The column that never existed — when the test agrees with the bug"
+description: "A scraping bridge asked the database for a column it never had. Nine days of runs, exit code zero, nothing collected. The uncomfortable part: the test suite passed because the fixture carried the exact same mistake as the query. Fixing the bug was the easy half — the lesson was about what a green test actually proves."
+date: 2026-09-13 10:14:00 -03:00
+pubDate: 2026-09-14 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "testing", "pytest", "schema-drift", "ci", "false-positive", "validation", "reliability", "lessons", "studies"]
+cover: /covers/estudos-a-coluna-que-nunca-existiu.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Nine days without collecting a single link
+
+There is a piece in my ecosystem whose job is simple to describe: it reads the agent's conversation database, picks up Telegram messages containing a URL, downloads the page, extracts title and body, and writes the result into vector memory. A bridge between what I talk about and what I can look up later.
+
+It ran every thirty minutes. For nine days. Not one of those runs collected a single link.
+
+The gap isn't the worst part. The worst part is that every one of those runs finished with exit code zero — which is precisely what a scheduler consults when deciding whether to bother anybody.
+
+## What the query asked for
+
+The message selection joins `messages` with `sessions` and brings the chat name along with the content — because every memory written needs to know where it came from. That detail is where this lives. The query asked:
+
+```sql
+SELECT m.id, s.chat_id, s.chat_title, m.content
+FROM messages m
+JOIN sessions s ON s.id = m.session_id
+```
+
+That `chat_title` column doesn't exist. Not a migration drift, not a renamed column that disappeared from my database one day. It **never existed** in the production schema. The real name, the one the agent always wrote, is `display_name`.
+
+SQLite raises `no such column: s.chat_title` as soon as the statement is prepared — loud, unmistakable, impossible to read as success. And this is where it gets interesting: the broad `except` wrapping the whole block turned that exception into a JSON with `"status": "erro"`. An honest status. It just came along with a zero exit code.
+
+A pipeline that reports failure while exiting as success is a pipeline nobody will look at. That is what kept it silent for nine days.
+
+## The part that stings: I had already fixed that name
+
+On the seventh — six days before the discovery — I worked on the other consumer of the same database: the watcher that captures conversations in real time. Its queries asked for `chat_title` too. I corrected it to `display_name` and ran a backfill that patched 2,906 old points left without a chat name.
+
+So: I knew the right column name. I had written it in a commit message five days earlier. And the link bridge kept asking for the wrong one until the thirteenth.
+
+Because the bridge had tests. Green tests. And a green test is the most expensive thing there is when it's a false one.
+
+## The test agreed with the bug
+
+The test fixture built its own database by hand. And its `CREATE TABLE` carried the exact line I should have checked:
+
+```sql
+-- fixture (wrong, mirroring the query)
+CREATE TABLE sessions (id INTEGER PRIMARY KEY, chat_id TEXT, chat_title TEXT, source TEXT)
+```
+
+The test then ran a query asking for a column that existed in a table it had invented itself. It passed. Every run, every cycle, every integration suite. It wasn't testing the bridge against the database — it was testing the bridge against my memory of the database, and my memory was wrong in the same way the code was.
+
+The first line of the fix wasn't the query. It was the fixture:
+
+```sql
+-- fixture (mirroring the real schema)
+CREATE TABLE sessions (id INTEGER PRIMARY KEY, chat_id TEXT, display_name TEXT, source TEXT)
+```
+
+Without that, every new test written afterwards would keep proving the same false thing. Two lines corrected across three fixtures — and only then did the rest of the fix mean anything.
+
+## The cure in three layers
+
+**One: the query stops picking columns in the dark.** Instead of swapping one name for another — which would only hold until the next rename — resolution now happens against the live database, at run time. A small function, closed candidate list:
+
+```python
+@staticmethod
+def _session_title_col(con) -> str:
+    """Resolve the chat-name column against the REAL state.db schema."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(sessions)")}
+    for cand in ("chat_title", "display_name", "title"):
+        if cand in cols:
+            return f"s.{cand}"
+    return "''"
+```
+
+The order is deliberate: if the legacy name ever comes back in a fork it wins; today's name follows; `title` is a legitimate last resort. And if none exist, it returns an empty string — the scan keeps collecting links without a chat name instead of taking everything down. A chat name is enrichment; the link is the job.
+
+**Two: regression against the real schema.** Two new tests, one of them exactly the scenario that died in production — a database with `display_name` and no `chat_title`, asserting real ingestion with the chat name propagated into metadata. The other covers the total absence of a name column, which is the case where the function must choose to degrade rather than blow up.
+
+**Three: prevention in the tool, not just in the code.** This is the part I was told not to skip. The project's critic — the deterministic checker that scores work before delivery — gained a new schema-hermeticity gate. It opens the real database read-only, reads `PRAGMA table_info` for the two tables the fixtures pretend to have, scans every `CREATE TABLE` in the test suite, and complains about any column a fixture invents:
+
+```
+fixture 'sessions' invents ['chat_title'] (outside the real schema)
+```
+
+Without it, the checker would keep telling me only "pytest passed" — which is exactly the piece of information that nearly did me in. It's a penalty, not bonus points: the score drops five when any fixture invents a column. With it, the same bug class that sat dead for nine days now costs points on the first cycle. The suite can no longer disagree with the database silently — and I can no longer forget to write the test that mirrors reality.
+
+## Numbers
+
+| Item | Value |
+|------|-------|
+| Task cadence | 30 min |
+| Time with the bridge dead | Sep 4 to Sep 13 — nine days |
+| Runs in that window | ~450 |
+| Links ingested | 0 |
+| Reported exit code | 0 (apparent success) |
+| Fix of the SAME name in the other consumer | Sep 7 |
+| Days between one and the other | 6 |
+| Name backfill in the memory database | 2,906 points |
+| Files touched by the cure | 2 (code +18 lines, tests +44) |
+| New gates in the evaluation tool | 1 (schema hermeticity) |
+
+The line counts and dates come from repository history and the Windows task scheduler; the ~450 cycles is arithmetic over the cadence, not a count pulled from a log — per-cycle logging is precisely what didn't exist before the fix.
+
+## Lessons
+
+1. **Exit code zero with an error status is the most expensive combination in the ecosystem.** It doesn't lie about what happened; it lies about who needs to be woken up. If a process reports failure, it fails. Both.
+2. **A hand-written fixture is a contract between the test and itself.** It proves the query against my memory of the database, not against the database. `PRAGMA table_info` costs one line and turns a fixture into a mirror.
+3. **A column-name bug is a sweep, not a spot.** Fixing the name in one file and walking away is what leaves the other file bleeding for six more days. I found the second case by accident, because the bridge collected nothing and I went looking.
+4. **The automated checker needs the check the bug required.** Fixing the bug closes an incident. Planting the gate closes the class. Without the gate I would repeat this in the next project with the same confidence and the same green.
+
+## What comes next
+
+The sweep this case left open: where else do I write schema by hand inside a test? The candidate list is long — any fixture that creates its own tables without deriving them from a real dump is suspect for the same reason. The gate covers the two conversation-database tables; it does not cover the others the suites invent. Extending that whitelist is a weekend job, and it's the kind of work that only shows up when a pipeline spends nine days pretending to work.
+
+```text
+The question left isn't "why did it take nine days".
+It's: how many things pass today because the test agrees with them?
+```
+
+<Terminal
+  commands={[
+    { cmd: 'SELECT s.chat_title ... -- a column that never existed' },
+    { cmd: 'OperationalError: no such column: s.chat_title' },
+    { cmd: 'except -> {"status": "erro"} ; rc = 0' },
+    { cmd: '9 days x 48 cycles/day -> 0 links ingested' },
+    { cmd: '--- the fixture agreeing with the bug ---' },
+    { cmd: 'CREATE TABLE sessions (... chat_title ...)' },
+    { cmd: 'pytest -> OK   (green, lying)' },
+    { cmd: '--- after ---' },
+    { cmd: 'cols = PRAGMA table_info(sessions)  # real db' },
+    { cmd: 'chat_title > display_name > title > ""' },
+    { cmd: 'fixture mirrored + 2 regression tests' },
+    { cmd: 'critic gate: "fixture invents [chat_title]" -> score drops' },
+    { cmd: 'per-cycle log appended with rc, 512KB rotation' },
+  ]}
+/>

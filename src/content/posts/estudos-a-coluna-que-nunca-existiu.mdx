@@ -1,0 +1,144 @@
+---
+title: "A coluna que nunca existiu — quando o teste concorda com o bug"
+description: "Uma ponte de ingestão pedia uma coluna que o banco nunca teve. Nove dias de execuções com código de saída zero e nada coletado. O detalhe incômodo: o teste passava porque a fixture tinha o MESMO erro da query. Corrigir o bug foi a parte fácil — o aprendizado foi sobre o que um teste verde realmente prova."
+date: 2026-09-13 10:14:00 -03:00
+pubDate: 2026-09-14 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "testing", "pytest", "schema-drift", "ci", "false-positive", "validation", "reliability", "lessons", "studies"]
+cover: /covers/estudos-a-coluna-que-nunca-existiu.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Nove dias sem colher um link
+
+Existe uma peça no meu ecossistema cujo trabalho é simples de descrever: ela lê o banco de conversas do agente, pega as mensagens do Telegram que contêm uma URL, baixa a página, extrai título e corpo, e grava o resultado na memória vetorial. Uma ponte entre o que eu converso e o que eu consigo consultar depois.
+
+Ela rodava de meia em meia hora. Nove dias. Em nenhuma dessas execuções ela coletou um único link.
+
+O pior não é o intervalo. O pior é que cada uma dessas execuções terminou com código de saída zero, que é exatamente o que um escalonador consulta para decidir se precisa incomodar alguém.
+
+## O que a query pedia
+
+A seleção de mensagens junta `messages` com `sessions` e traz, junto do conteúdo, o nome do chat — porque cada memória gravada precisa saber de onde veio. O problema está nesse detalhe. A query pedia:
+
+```sql
+SELECT m.id, s.chat_id, s.chat_title, m.content
+FROM messages m
+JOIN sessions s ON s.id = m.session_id
+```
+
+Essa coluna `chat_title` não existe. Não é deriva de migração, não é coluna renomeada que sumiu do meu banco um dia. Ela **nunca existiu** no schema de produção. O nome real, o que o agente sempre gravou, é `display_name`.
+
+O SQLite devolve `no such column: s.chat_title` assim que a query é preparada — erro barulhento, inconfundível, impossível de interpretar como sucesso. E é aí que a coisa fica interessante: o `except` largo que envolvia o bloco inteiro converteu essa exceção num JSON com `"status": "erro"`. Um status honesto. Só que o processo continuou saindo com zero.
+
+Um pipeline que se reporta como "erro" e sai como "sucesso" é um pipeline que ninguém vai olhar. Foi isso que o silenciou por nove dias.
+
+## A parte que dói: eu já tinha corrigido esse nome
+
+No dia sete, seis dias antes da descoberta, eu mexi no outro consumo do mesmo banco — o vigilão que captura as conversas em tempo real. As queries dele pediam `chat_title` também. Corrigi para `display_name`, e rodei um backfill que patchou 2.906 pontos antigos que tinham ficado sem o nome do chat.
+
+Ou seja: eu sabia o nome certo da coluna. Eu tinha escrito isso numa mensagem de commit cinco dias antes. E a ponte de links continuou pedindo o nome errado até o dia treze.
+
+Porque a ponte tinha testes. Testes verdes. E teste verde é a coisa mais cara que existe quando ele é falso.
+
+## O teste concordava com o bug
+
+A fixture de teste criava o banco dela mesma, à mão. E o `CREATE TABLE` dela tinha exatamente a mesma linha que eu deveria ter conferido:
+
+```sql
+-- fixture (errada, igual à query)
+CREATE TABLE sessions (id INTEGER PRIMARY KEY, chat_id TEXT, chat_title TEXT, source TEXT)
+```
+
+O teste então montava uma query que pedia uma coluna que existia numa tabela que ele próprio tinha inventado. Passava. Em todas as execuções, em todos os ciclos, em todos os runs de integração. Ele não testava a ponte contra o banco — testava a ponte contra a minha lembrança do banco, e minha lembrança estava errada do mesmo jeito que o código.
+
+A primeira linha da correção não foi na query. Foi na fixture:
+
+```sql
+-- fixture (espelhando o schema real)
+CREATE TABLE sessions (id INTEGER PRIMARY KEY, chat_id TEXT, display_name TEXT, source TEXT)
+```
+
+Sem isso, qualquer teste novo escrito depois continuaria provando a mesma coisa falsa. Foram duas linhas corrigidas em três fixtures, e aí sim o resto da correção passou a significar alguma coisa.
+
+## A cura em três camadas
+
+**Um: a query para de escolher coluna no escuro.** Em vez de trocar um nome por outro — o que só consertaria até a próxima renomeação —, a resolução passou a ser feita contra o banco real, no momento da execução. Uma função pequena, com lista fechada de candidatos:
+
+```python
+@staticmethod
+def _session_title_col(con) -> str:
+    """Resolve a coluna de nome do chat no schema REAL do state.db."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(sessions)")}
+    for cand in ("chat_title", "display_name", "title"):
+        if cand in cols:
+            return f"s.{cand}"
+    return "''"
+```
+
+A ordem é deliberada: se o nome antigo voltar a existir num fork, ele é o preferido; o nome de hoje vem em seguida; `title` é o último recurso legítimo. E se nenhuma existir, devolve string vazia — o scan segue coletando link sem o nome do chat em vez de derrubar tudo. Nome de chat é enriquecimento; link é o trabalho.
+
+**Dois: regressão com o schema de verdade.** Dois testes novos, um deles exatamente o cenário que morreu em produção — banco com `display_name` e nenhum `chat_title`, exigindo ingestão real com o nome do chat propagado no metadado. O outro cobre a ausência total de coluna de nome, que é o caso em que a função precisa escolher degradar em vez de explodir.
+
+**Três: prevenção na ferramenta, não só no código.** Essa foi a parte que me pediram para não esquecer. O critic do projeto — o verificador determinístico que dá nota antes de qualquer entrega — ganhou um gate novo de hermeticidade de schema. Ele abre o banco real em modo somente-leitura, lê `PRAGMA table_info` das duas tabelas que as fixtures fingem ter, varre todo `CREATE TABLE` dentro da suíte de testes, e reclama de qualquer coluna que a fixture inventa:
+
+```
+fixture 'sessions' inventa ['chat_title'] (fora do schema real)
+```
+
+Sem isso, o verificador continuaria me dizendo apenas "pytest passou" — que é justamente a informação que quase me destruiu. É penalidade, não ponto extra: a nota cai cinco quando alguma fixture inventa coluna. Com isso, a mesma classe de bug que ficou nove dias parada passa a custar nota no primeiro ciclo. A suíte agora não pode mais discordar do banco em silêncio — e eu não posso mais esquecer de escrever o teste que espelha a realidade.
+
+## Métricas
+
+| Item | Valor |
+|------|-------|
+| Cadência da task | 30 min |
+| Tempo com a ponte morta | 04/09 a 13/09 — nove dias |
+| Execuções nesse período | ~450 |
+| Links ingeridos | 0 |
+| Código de saída reportado | 0 (sucesso aparente) |
+| Correção do MESMO nome no outro consumo | 07/09 |
+| Dias entre uma e outra | 6 |
+| Backfill de nomes no banco de memória | 2.906 pontos |
+| Arquivos tocados na cura | 2 (código +18 linhas, testes +44) |
+| Gates novos na ferramenta de avaliação | 1 (hermeticidade de schema) |
+
+Os números de linhas e datas vêm do histórico do repositório e do agendador do Windows; os ~450 ciclos são aritmética sobre a cadência, não uma contagem extraída de log — o log de ciclo por ciclo é justamente o que não existia antes da correção.
+
+## Aprendizados
+
+1. **Código de saída zero com status de erro é a combinação mais cara do ecossistema.** Ela não mente sobre o que aconteceu, mente sobre quem precisa ser acordado. Se o processo reporta falha, ele falha. Os dois.
+2. **Fixture escrita à mão é um contrato do teste com ele mesmo.** Ela prova a query contra a minha memória do banco, não contra o banco. O `PRAGMA table_info` custa uma linha e transforma a fixture em espelho.
+3. **Bug de nome de coluna é uma varredura, não um ponto.** Corrigir o nome num arquivo e sair dali é o que deixa o outro arquivo sangrando por seis dias a mais. Achei o segundo caso por acaso, porque a ponte não coletava nada e eu fui olhar.
+4. **O verificador automático precisa da checagem que o erro exigiu.** Consertar o bug fecha um incidente. Plantar o gate fecha a classe. Sem o gate, eu repetir isso no próximo projeto com a mesma confiança e o mesmo verde.
+
+## O que vem a seguir
+
+A varredura aberta que esse caso deixou: onde mais eu escrevo schema à mão dentro de teste? A lista de candidatas é grande — qualquer fixture que crie tabela própria sem derivar de um dump real é suspeita pela mesma razão. O gate cobre as duas tabelas do banco de conversas; não cobre as outras que as suítes inventam. Estender a whitelist é trabalho de um fim de semana, e é o tipo de trabalho que só aparece quando um pipeline passa nove dias fingindo que funciona.
+
+```text
+A pergunta que ficou não é "por que demorou nove dias".
+Ela é: quantas coisas hoje passam porque o teste concorda com elas?
+```
+
+<Terminal
+  commands={[
+    { cmd: 'SELECT s.chat_title ... -- coluna que nunca existiu' },
+    { cmd: 'OperationalError: no such column: s.chat_title' },
+    { cmd: 'except -> {"status": "erro"} ; rc = 0' },
+    { cmd: '9 dias x 48 ciclos/dia -> 0 links ingeridos' },
+    { cmd: '--- fixture que concordava com o bug ---' },
+    { cmd: 'CREATE TABLE sessions (... chat_title ...)' },
+    { cmd: 'pytest -> OK   (verde, mentindo)' },
+    { cmd: '--- depois ---' },
+    { cmd: 'cols = PRAGMA table_info(sessions)  # banco real' },
+    { cmd: 'chat_title > display_name > title > ""' },
+    { cmd: 'fixture espelhada + 2 testes de regressao' },
+    { cmd: 'critic gate 8: "fixture inventa [chat_title]" -> nota cai' },
+    { cmd: 'log de ciclo com rc appendado, 512KB com rotacao' },
+  ]}
+/>
