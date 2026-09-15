@@ -1,6 +1,6 @@
 ---
 title: "The 350 links pointing to nowhere — the day hreflang became noise"
-description: "The blog declared an English sibling to Google for every page, adding up to 350 alternate links. A good share pointed at addresses that never existed — and Google simply ignores a tag that doesn't point back. The hunt went through a false premise in the path, two states that looked like one, two icons the .gitignore forbade from being born, and a watchdog that failed because of itself."
+description: "hreflang is the tag that tells Google every page also exists in another language — but it only counts if both sides point back at each other. Here, 350 of those links pointed at addresses that never existed. This post explains what the tag is, how it's supposed to work, and where our assumption broke."
 category: samuel-projects
 date: 2026-09-13 23:05:00 -03:00
 pubDate: 2026-09-15 12:00:00 -03:00
@@ -14,92 +14,76 @@ lang: 'en'
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## The perfect header nobody read
+## First: what hreflang actually is
 
-The site was behaving too well. Every generated page emitted three language tags — the Portuguese version, the English version, and an `x-default` — plus the canonical, Open Graph, and RSS. The HTML looked like a best-practices manual.
+Picture a book that exists in two languages. At the start of each chapter, a note says: "this same chapter, in English, is on page X".
 
-There was just one problem: a good share of those links pointed at pages that did not exist.
+hreflang is that note inside the page's HTML. One line in the head:
 
-That is no cosmetic detail. Google is explicit in the hreflang docs: if two pages don't both point to each other, the tags are ignored. An `alternate` that returns 404 isn't a "broken link" in the sense of a console error someone sees — it's noise. The crawler reads it, doesn't confirm the return path, and discards the whole pair. In other words: the bilingual work that took weeks was, in part, declared in a way the search engine threw away.
-
-The audit counted 350 links in that state: 169 going Portuguese to English, 166 the other way, and 15 `x-default`. All generated, all silent, all wrong.
-
-## The premise nobody wrote down
-
-The guilty code was short enough to fit in three lines. The base layout computed the page's canonical path and derived the counterparts by string concatenation:
-
-```astro
-// before
-const canonPathEn = canonPath === '/' ? '/en/'
-  : (canonPath.startsWith('/en/') ? canonPath : '/en' + canonPath);
-const canonPathPt = canonPath === '/en/' ? '/'
-  : (canonPath.startsWith('/en/') ? canonPath.slice(3) || '/' : canonPath);
+```html
+<link rel="alternate" hreflang="pt" href="/post/exemplo/" />
+<link rel="alternate" hreflang="en" href="/en/post/example/" />
+<link rel="alternate" hreflang="x-default" href="/post/exemplo/" />
 ```
 
-Nobody sat down and decided "every Portuguese page has an English sibling at the same path." The premise formed on its own, because at first it was true: there were two or three fixed pages, and the `/en` prefix solved it. The day the blog became genuinely bilingual, one file per language, the silent rule kept emitting URLs with the confidence of law.
+It tells Google: "this page also exists in another language, at that other address". The tag doesn't translate anything and redirects no one. It's a pure declaration — a hint that helps the search engine pick which version to show whom. Someone searching in English gets the English link, someone searching in Portuguese gets the Portuguese one. Without the hint, Google serves whichever version it guesses, and the visitor lands in the wrong language.
 
-And reality has three folds the concatenation didn't foresee.
+`x-default` is the third option: "if the person speaks neither Portuguese nor English, send them here" — in our case the Portuguese version, which is the default.
 
-**Translated filename.** Most posts were born with the slug in both languages — but some came with the title translated in the English filename. `2026-07-28-semana-da-qualidade-portfolio` on one side, `2026-07-28-quality-week-portfolio` on the other. Concatenating `/en` in front of the Portuguese path yields an address that never existed in any universe.
+## The one rule that matters
 
-**A page that only exists in one language.** The hidden-draft panel is pure Portuguese — there's no matching English route. Emitting an `alternate` from there is inventing a page.
+For the hint to work, the other side has to confirm it.
 
-**Route aliases.** The fixed pages don't mirror their names: `/arquivo` lives at `/en/archive`, `/sobre` at `/en/about`. Cutting the prefix yields `/en/arquivo`, which is a 404.
+If the Portuguese page declares "my English sibling lives at `/en/post/example/`", then the page at `/en/post/example/` must declare back "my Portuguese sibling lives at `/post/exemplo/`". That's called reciprocity, and Google's official docs are blunt: a pair without a return path, both tags get ignored.
 
-The count made at the time logged 22 translated slugs, from 11 posts, in the middle of this. Redoing the measurement today, with pairing by pubDate plus project — which is how the system actually matches the two languages — the orphan list (a Portuguese post without English) comes to zero. The 13 pairs that still have a divergent filename and the 6 ambiguous ones are precisely what concatenation could never guess.
+Notice what that means in practice: a broken hreflang doesn't show up in the browser console, doesn't turn the build red, doesn't trigger any alert of any kind. The only place the problem exists is on Google's side — where nobody is looking. A site can spend years "declaring" translated versions that the search engine throws away silently.
 
-## The prop needs three states, not two
+That was exactly our case.
 
-The cure wasn't "fix the path"; it was admitting the layout doesn't know who is whose sibling. The one that knows is the page, which has access to the post collection. So the layout started receiving the counterpart via prop.
+## What was happening here
 
-And here came the point I hadn't seen before writing it: a boolean wasn't enough, and neither were two options.
+The blog generates the language tags automatically for every page — each of the site's thousand-plus pages declares the Portuguese version, the English one, and the default. The audit counted 350 links in that shape: 169 going Portuguese to English, 166 the other way, 15 `x-default`.
 
-```astro
-// the prop has three states, and two of them mean opposite things
-alternatePath?: string | null;
+A good share of them pointed at an address that never existed. Concrete example: the post `2026-07-28-semana-da-qualidade-portfolio` has an English file whose name is translated — `2026-07-28-quality-week-portfolio`. But the tag generator didn't know that. It built the English address by rule: take the Portuguese path, paste `/en` in front. Result: a link to `/en/2026-07-28-semana-da-qualidade-portfolio/` — a page that exists nowhere. Google reads it, finds no other side, discards the pair. Hundreds of times.
 
-// undefined  -> derive from the path itself (home, archive, about: mirror works)
-// string     -> use exactly this path as the sibling
-// null       -> NO sibling exists; emit no alternate at all
-```
+The rule generating those links was written before the blog was genuinely bilingual. Back then there were two or three fixed pages, and "paste /en in front" solved it. The blog grew, moved to one file per language, and the assumption stayed, enforced like a law nobody ever voted on. And reality has three folds the rule didn't foresee:
 
-`undefined` and `null` looked like the same thing until someone passed the first untranslated post. With a loose check, "no counterpart" and "I didn't specify" fell into the same branch and the site went back to inventing links. The semantic difference became part of the component's interface: passing `null` is an assertion, not an absence.
+**Translated filename.** Some posts were born with the same slug in both languages; others came with the title translated in the English filename. Concatenation has no way to guess which case it's in.
 
-The rest of the function is a ladder of cases — hidden previews swapping only the language segment, the hidden panel returning null, route aliases, and only at the end the derived path.
+**A page that exists in only one language.** The hidden-draft review panel is pure Portuguese — there is no English version (nor any need for one). Emitting an alternate from there is inventing a page.
 
-## The order of the block, or the 37 links that were left
+**Route aliases.** The fixed pages don't mirror their names: `/arquivo` lives at `/en/archive`, `/sobre` at `/en/about`. Pasting the prefix yields `/en/arquivo`, which is a 404.
 
-The first version of the fix passed the test and left broken the thing nobody was looking at.
+## How the pairing actually works
 
-Because the hidden-preview block came after the rest of the logic, and the preview path has its own shape — `/ocultos/preview/pt/...`. When the function fell into the general branch before recognizing the preview, it assembled an English from a Portuguese that was already composed. About 37 broken links were left in that niche, all on pages that appear nowhere in navigation: the review panel, exactly where I never went to look.
+Here's the point almost everyone (me included) gets wrong: the two languages **don't** recognize each other by address.
 
-Reordering — recognize the preview before anything else — closed it. A lesson that holds for any validator I write later: a case that doesn't show up in the menu still shows up in the build.
+Each post carries, in its frontmatter, a publication date and a project. The system that matches languages uses that pair — same pubDate, same project. If the Portuguese file and the English file match on both fields, they're siblings, no matter what each one is named on disk.
 
-## Two icons that could never exist
+The cure was bringing that truth into the tag generator. Instead of the layout (which only sees the page's path) guessing the sibling's address, the one that knows who the sibling is turns out to be the page that loads the post collection — it queries the date + project pairing and hands the layout the right path, ready-made. The layout stopped deriving and started receiving.
 
-The same sweep found another problem, embarrassing in how simple it was. The `manifest.json` asked for two icons and `apple-touch-icon` asked for a third. All three paths had been returning 404 in production since forever.
+Two details surfaced along the way.
 
-The reason was in the `.gitignore`:
+First: the prop carrying the sibling needs three values, not two. "This page has a sibling, the path is this" (a string). "This page has no sibling, emit no alternate" (null). And "nobody told me anything" (absent — falls back to the old rule, which works, for the fixed pages). The original bug lived precisely in treating the last two as the same thing: without separating "no sibling" from "not provided", the site keeps inventing links.
 
-```gitignore
-*.png
-```
+Second: branch order. Hidden-post previews have their own path shape (`/ocultos/preview/pt/...`). In the first version of the fix, the general case ran before the preview case and built an English URL out of an already-composed Portuguese one. About 37 broken links survived — all in the review panel, exactly the part of the site that never shows up in the menu. Reordering the cases closed it, and the rule stuck: a case that doesn't appear in navigation still appears in the build.
 
-A global line, innocent, placed there so I wouldn't commit test screenshots. The side effect: it was impossible to commit the icons directory without forcing it. Nobody ever forced it. The files simply never existed in the repository — and the deploy served a manifest promising icons that weren't in the package.
+## Two finds that weren't hreflang
 
-The cure had two parts: an exception for the directory (`!public/icons/*.png`) and the two PNGs drawn, 192 by 192 and 512 by 512, taking up 878 and 2,828 bytes. No rendered emoji — the machine has no emoji font and the result comes out as a white square, which is literally the kind of thing that would slip past a manifest nobody opens.
+The same sweep ran into two more things.
 
-The bug wasn't the 404. It was the `.gitignore` being silent enough to turn "never existed" into "nothing changed."
+The site's manifest (the file that tells a phone how to install the blog as an app) asked for two icons, and the iPhone asked for a third. All three paths had 404'd since day one. The reason: the `.gitignore` had a global `*.png` line, placed there so test screenshots would never get committed. The side effect: it was impossible to commit the icons without forcing it — and nobody ever forced. The files simply never existed in the repository. Fixed with an exception for the folder (`!public/icons/*.png`) and two properly drawn icons (192×192 and 512×512).
 
-## A watchdog that failed because of itself
+And the link watchdog, once written, failed its own test: the regression spec navigated to a route that never existed in the project and treated the 404 as a site defect. The watchdog accused the innocent, and the guilty one was the watchdog. Cut down to an honest smoke test, with the exhaustive coverage left to the script that walks the build and checks, one by one, every declared alternate against every generated file.
 
-By the pattern I had already learned the hard way, fixing wasn't enough: it had to be locked. So a guardian was born that runs after the build, walks the `dist/`, reads every HTML and extracts two kinds of things with a regex — every `link rel=alternate hreflang` and every asset referenced in the head. If any path doesn't exist in the generated directory, the script returns exit 1 and the pipeline stops. A hundred and fourteen lines in total.
+## The two checks that stayed
 
-It entered the deploy workflow as its own step, after the build, before the push.
+So the problem can't come back quietly, two checks now run in the pipeline:
 
-And then the regression spec written alongside it failed — by its own fault. The spec navigated to `/posts/`, a route that never existed in this project, and treated the 404 as a site failure. The watchdog accused the innocent and the guilty one was the watchdog. I cut the spec to the honest smoke: hreflang pointing to real pages, manifest icons present, `noindex` on the two error pages. The exhaustive coverage stayed with the `dist/` script, which is where it's cheap.
+1. **PT/EN sync** — compares each Portuguese post against the English ones by the date + project pair. A new post without a translation fails the build with an explicit warning, before any tag is emitted.
+2. **Alternate validator** — runs after the build, reads every generated HTML, extracts every `link rel=alternate`, and confirms the destination exists. Any invented path becomes exit 1 and the deploy stops. A hundred and fourteen lines, zero leniency.
 
-A detail that almost slipped by: comparing a file path to an href requires percent-decoding and Unicode normalization. The link arrives as `%C3%AD` in the HTML; the filesystem may be in NFC or NFD. Without `unquote` plus normalization, the checker flags a perfectly valid link as broken — a false positive on an accented slug, and a false positive teaches you to switch off the guardian faster than any real bug.
+A technical detail that almost slipped: comparing a filesystem path against an HTML link requires decoding the percent-escapes (`%C3%AD` becomes the matching accented letter) and normalizing accents — the same "í" can exist in two byte shapes. Without that, the validator flagged perfectly valid links as broken. And a false positive teaches you to disable the guardian faster than any real bug would.
 
 ## Metrics
 
@@ -107,48 +91,47 @@ A detail that almost slipped by: comparing a file path to an href requires perce
 |------|--------|-------|
 | Alternate links pointing to 404 | 350 | 0 |
 | Alternates declared in the build | ~3.5k | 3,876 |
-| Manifest icons present in the package | 0 of 2 | 2 of 2 |
+| Manifest icons present in the bundle | 0 of 2 | 2 of 2 |
 | Error page indexable | yes | no |
 | Guardian running in CI | didn't exist | post-build, blocking |
 | Proof build | -- | 1,293 pages, unit tests 89 of 89 |
 
 ## Lessons
 
-**A silent invariant is the expensive one.** "Every Portuguese page has English at the same path" was never decided out loud. Premises nobody wrote have no owner, and it's them that become three lines of concatenation in a layout.
+**The explanation comes before the cure.** Understanding what the tag does on Google's side — asking for a confirmation back — is what showed why our path was wrong. Every conversation with an external system (search, email, payments) starts better with "how does this work over there" than with "why is my code broken".
 
-**A declaration without verification is decoration.** hreflang is a request, not an order. The standard requires bidirectionality, and the real validator is the outside. As long as nobody confirmed the return path, the build's green meant nothing.
+**Silent invariants are the most expensive.** "Every Portuguese page has English at the same path" was never decided out loud. An assumption nobody wrote down has no owner, and it's the one that becomes three lines of concatenation in a layout.
 
-**Absence is a value.** `undefined` and `null` had to be separated so the system could say "I didn't specify" and "it doesn't exist" without confusing the two. Half the integration bugs I fix are two different intentions fighting over a single state.
+**A declaration without verification is decoration.** hreflang is a request, not an order. The real verifier lives outside, at Google. Until someone confirmed the return path, a green build meant nothing.
 
-**A global ignore is a policy without review.** One `.gitignore` line can forbid an entire feature from being born, and the error only shows up outside the repository.
+**Absence is a value.** "No sibling" and "not provided" had to be separated for the system to stop inventing. Half of the integration bugs I fix are two different intentions sharing one state.
 
-**The validator needs tests too.** I wrote the guardian and the spec that failed on its own the same day. Trusting a tool without reading its accusation is just outsourcing the bug.
+**The validator needs tests too.** I wrote the guardian and the spec that failed through its own fault on the same day. Trusting a tool without reading its accusation is just outsourcing the bug.
 
 ## What comes next
 
-The watchdog already caught a variation the moment it was planted: the pubDate-plus-project pairing rule had to hold for the hidden previews too, and it was exactly the order of the branches that broke there. It's the kind of case that only surfaces because now there's a place where it hurts in the build instead of silently in the index.
-
-What stays open is the other side of the coin: a new post can be born with broken hreflang in a way neither the derivation nor the divergent filename covers — a translation published with a different date from the original. The pairing matches by exact key, and if the date slips between the two files, the alternate becomes null without anyone warning. That's the next check that makes sense to write: not "does this link exist," but "does this post have a sibling."
+What stays open is the other side of the coin: a new post can be born with broken hreflang in a way that neither the derivation nor the divergent name covers — a translation published with a different date than the original. The pairing matches on the exact pair; if the date slips between the two files, the sibling vanishes with no warning. The next check that makes sense to write isn't "does this link exist" — it's "does this post have a sibling".
 
 <Terminal
   commands={[
-    { cmd: '--- symptom: 350 hreflang ignored ---' },
-    { cmd: 'pt->en: 169 | en->pt: 166 | x-default: 15' },
-    { cmd: 'Google: non-mutual pair -> tag discarded' },
-    { cmd: '--- cause: a path premise, not a decision ---' },
-    { cmd: 'canonPathEn = "/en" + canonPath' },
-    { cmd: 'translated slug / mono-language page / route alias' },
-    { cmd: '--- cure: the page knows its sibling ---' },
-    { cmd: 'alternatePath?: string | null' },
-    { cmd: 'undefined -> derive | string -> use | null -> no emit' },
-    { cmd: '--- branch order: preview before general ---' },
-    { cmd: '~37 broken links were left in the review panel' },
-    { cmd: '--- icons: never existed in the repo ---' },
-    { cmd: '.gitignore: *.png  ->  !public/icons/*.png' },
-    { cmd: 'lifelog-192.png 192x192 878B | lifelog-512.png 512x512 2828B' },
-    { cmd: '--- post-build guardian ---' },
-    { cmd: 'python3 scripts/check-alternates.py --dist dist' },
-    { cmd: 'walk dist/ + unquote + NFC -> exit 1 if route missing' },
-    { cmd: '114 lines, CI green, 3876 alternates, 0 broken' },
+    { cmd: '--- what hreflang is ---' },
+    { cmd: 'a <head> link: this page also exists in another language, there' },
+    { cmd: 'rule: only counts if both sides point at each other (reciprocity)' },
+    { cmd: 'no return path -> Google ignores both tags, and nobody sees it' },
+    { cmd: '--- the symptom here ---' },
+    { cmd: '350 alternates: pt->en 169 | en->pt 166 | x-default 15' },
+    { cmd: 'generator built sibling = "/en" + portuguese path' },
+    { cmd: '--- where the premise broke (3 folds) ---' },
+    { cmd: '1. translated filename: semana-da-qualidade vs quality-week' },
+    { cmd: '2. single-language page: review panel has no english' },
+    { cmd: '3. alias: /arquivo lives at /en/archive, not /en/arquivo' },
+    { cmd: '--- how pairing really works ---' },
+    { cmd: 'sibling = same pubDate + same project (not the address)' },
+    { cmd: 'the page knows the sibling; the layout just receives' },
+    { cmd: 'prop with 3 values: path | null (no sibling) | absent (derive)' },
+    { cmd: '--- locks that stayed ---' },
+    { cmd: 'check-lang-sync: post without translation fails the build' },
+    { cmd: 'check-alternates: every HTML href vs dist/ files' },
+    { cmd: '114 lines, 3876 alternates, 0 broken, blocking CI' },
   ]}
 />
