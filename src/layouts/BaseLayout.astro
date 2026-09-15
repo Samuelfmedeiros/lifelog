@@ -23,9 +23,15 @@ const pageTitle = `${title} — LifeLog`;
 const pageDesc = description || t.home.description;
 const themeAttr = theme || 'dev';
 const ogType = type || 'website';
-const ogImage = image || undefined;
-const ogUrl = Astro.url;
 const SITE_URL = 'https://lifelog-sepia.vercel.app';
+// Imagem OG: capa do post ou a imagem padrao do site (public/og-default.png,
+// 1200x630). SEMPRE emite og:image — sem ela o LinkedIn descarta o card e cai
+// em fallback de busca pelo dominio (bug Arachne, 14/09/2026).
+const DEFAULT_OG_IMAGE = '/og-default.png';
+const isDefaultOg = !image;
+const ogImage = image || DEFAULT_OG_IMAGE;
+const ogUrl = Astro.url;
+const ogImageAbs = ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`;
 
 // Nav links
 const homeHref = dataLocale === 'en' ? '/en/' : '/';
@@ -186,13 +192,19 @@ const footerText = dataLocale === 'en'
     <meta property="og:locale" content={dataLocale === 'en' ? 'en_US' : 'pt_BR'} />
     <meta property="og:url" content={ogUrl} />
     <meta property="og:site_name" content="LifeLog" />
-    {ogImage && <meta property="og:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
+    <meta property="og:image" content={ogImageAbs} />
+    {/* Dimensoes so na imagem padrao (conhecidas). Capas de post tem formatos
+        variados (1024x1024, 2100x900, 1376x752) — dimensao errada e pior que
+        nenhuma; os crawlers leem o header da imagem. */}
+    {isDefaultOg && <meta property="og:image:width" content="1200" />}
+    {isDefaultOg && <meta property="og:image:height" content="630" />}
+    <meta property="og:image:alt" content={pageTitle} />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={pageDesc} />
-    {ogImage && <meta name="twitter:image" content={ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}`} />}
+    <meta name="twitter:image" content={ogImageAbs} />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate" type="application/rss+xml" title="LifeLog RSS" href={dataLocale === 'en' ? '/en/rss.xml' : '/rss.xml'} />

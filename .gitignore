@@ -39,6 +39,8 @@ __pycache__/
 # icones PWA: o '*.png' acima bloqueava o commit destes arquivos (por isso
 # /icons/lifelog-{192,512}.png nunca existiram e o manifest.json dava 404)
 !public/icons/*.png
+# imagem OG padrao (fix handoff Arachne 14/09): mesma armadilha do '*.png'
+!public/og-default.png
 *.webm
 *.mp4
 
