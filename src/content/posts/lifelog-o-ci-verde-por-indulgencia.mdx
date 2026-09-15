@@ -1,0 +1,100 @@
+---
+title: "O CI que vinha verde por indulgência"
+description: "Durante meses olhei para o ponto verde do pipeline como se fosse prova. Quando tirei as duas linhas que engoliam o código de saída dos testes, o primeiro run honesto da história do repositório devolveu 8 falhas em 417 testes. A cura não foi escondê-las de novo: foi dar à dívida um endereço, um dono e um vencimento."
+category: samuel-projects
+date: 2026-09-13 01:00:00 -03:00
+pubDate: 2026-09-15 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "ci", "testing", "quality", "false-positive", "lessons"]
+cover: /covers/lifelog-o-ci-verde-por-indulgencia.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Existem dois tipos de tranquilidade na virada de domingo para segunda: a de quem passou todos os testes, e a de quem nunca ia passar. Eu vivia na primeira sem saber que era a segunda. O pipeline do LifeLog vinha verde havia semanas — deploy, health check, tudo certo — e eu olhava para o ponto verde exatamente como se olha para um semáforo à meia-noite: um ritual que ninguém questiona.
+
+A caçada de bugs do SEO, em 13 de setembro, mandou fazer uma coisa óbvia: provar que o teste de regressão falha antes da correção. Parece uma exigência burocrática. Foi o que desmontou a minha tranquilidade.
+
+## Duas linhas de máscara
+
+O step de E2E no workflow de deploy tinha esta forma:
+
+```yaml
+- name: Run E2E tests
+  continue-on-error: true
+  run: pnpm exec playwright test ... || true
+```
+
+Cada linha sozinha já bastaria para matar o sinal. A primeira diz ao Actions que o step nunca falha, aconteça o que acontecer. A segunda é o shell dizendo a mesma coisa de novo, em voz mais baixa: `|| true` transforma qualquer código de saída não-zero em zero. Uma máscara dupla, redundante — e é justamente esse tipo de redundância que sobrevive a revisões, porque ninguém pergunta duas vezes o que já parece perguntado.
+
+O número que me acordou não veio do CI. Veio de rodar a suíte localmente, no mesmo commit que estava verde no Actions: doze testes falhando, silenciosos, há não se sabia quanto tempo. O job reportava `success` porque tinha sido configurado para nunca reportar outra coisa. Verde, ali, não era um resultado. Era um selo.
+
+## O primeiro run honesto
+
+Tirei as duas linhas e empurrei. O pipeline parou de mentir na hora — e o que ele disse doeu: 8 falhas em 417 testes, 409 passando, bloqueando o deploy.
+
+Foi aí que apareceu a tentação, e ela foi bem educada. Se o gate agora trava a main, dá para recolocar um `|| true` "temporário", só até consertar os oito. É a mesma linha, com um comentário dizendo que é por pouco tempo. Eu conheço esse "por pouco tempo": ele é a minha própria máscara antiga, com nome de improviso.
+
+Mas olhei de perto os oito falhos e eles não eram o que eu temia. Não eram regressões da caçada de SEO — eram dívida anterior: quatro violações de acessibilidade que o axe-core reportava na home em cada combinação de idioma e tema, um teste de pills que esperava dez projetos quando o blog já tinha onze, e três baselines de screenshot de vídeo que estavam desatualizados e ainda por cima flaky sob carga. Aqueles testes falhavam antes do gate. O gate só os tornou visíveis.
+
+Ou seja: eu tinha dois problemas diferentes que o verde confundia num só. Um teste novo que quebra tem que travar tudo, hoje, sem discussão. Uma dívida velha tem que ser paga, mas não pode ser escondida de novo para não travar o que não tem a ver com ela.
+
+## Ratchet: a dívida com endereço, dono e prazo
+
+A saída honesta tem um nome emprestado de mecânica de bicicleta: ratchet — engrena num sentido só. Não volta.
+
+Plantei três peças. A primeira é um arquivo em `e2e/known-failures.json` que declara cada falha conhecida pelo título exato do teste, com motivo, dono e vencimento. Não é uma lista de exclusão — é uma fatura. As oito entradas de 14 de setembro venceriam em 28 de setembro.
+
+A segunda é um script pequeno, `scripts/e2e-ratchet.mjs`, com três comandos: `count` diz quantos testes estão fora do gate, `grep-invert` cospe a regex dos títulos para o Playwright excluir, e `audit` compara a data de hoje com cada vencimento e sai com erro se qualquer um passou. O passo `audit` corre no CI antes do próprio E2E: dívida vencida trava o pipeline, nem que seja para me obrigar a renegociá-la com justificativa, em PR própria, aprovada explicitamente.
+
+A terceira é o step de teste, que agora faz o seguinte:
+
+```bash
+RE=$(node scripts/e2e-ratchet.mjs grep-invert)
+pnpm exec playwright test --config e2e/playwright.config.ts --workers=1 --grep-invert "$RE"
+```
+
+O suíte inteiro roda de verdade. Só fica de fora o que está declarado. E o detalhe que me deu confiança na nova honestidade é uma aritmética: 417 testes no total, menos os 8 da dívida, igual 409 — exatamente o número que passou no primeiro run honesto. O número bate porque não tem máscara. Se alguém tentar engolir um teste novo no ratchet, o total da lista (`--list`) denuncia.
+
+## O servidor meio-vivo
+
+Havia uma segunda mentira por trás dessa. Vários daqueles oito falhavam com `net::ERR_ABORTED` ou timeout de vinte segundos, e a leitura natural era "o site está quebrado". Não estava. O preview do Astro dentro do runner começava a responder pela home enquanto ainda não servia as rotas laterais — os testes começavam contra um servidor meio-vivo, e a primeira navegação morria no colo.
+
+O conserto foi tratar prontidão como pergunta plural. Antes, o workflow esperava a home devolver 200 e soltava os testes. Agora ele sonda `/en/`, `/404.html` e o manifesto, aceitando 200 ou 404 como "servindo", e aborta a esteira se qualquer uma não responder. Duas chromium em paralelo contra um preview único também estouravam navegação sob carga, então o workers voltou para 1 — estabilidade antes de velocidade. O timeout por teste subiu de 20 para 60 segundos com timeout de navegação de 45, porque um gate que bloqueia de verdade precisa de tempo suficiente para ser sinal confiável, e não ruído com cara de falha.
+
+Por fim: evidência. Quando o E2E falha, o relatório do Playwright — traces, screenshots, contexto de erro — vira artefato do run com o identificador e a tentativa no nome, e fica guardado por duas semanas. Recorrência sem prova é opinião.
+
+## Os números depois da honestidade
+
+| Métrica | Antes do gate | Depois |
+|---|---|---|
+| Suíte rodando de verdade | 0% (saída engolida) | 409 de 417 (8 declarados) |
+| Falha de teste bloqueia deploy | nunca | sempre |
+| Dívida conhecida | invisível | 8 itens com dono e prazo 28/09 |
+| Prontidão do preview sondada | 1 rota | 4 rotas críticas |
+| Evidência quando falha | nenhuma | artefato com trace por run |
+
+## O que fica
+
+**Um passo de teste que não pode falhar não é um passo de teste.** `continue-on-error` e `|| true` não tornam algo flaky — tornam algo decorativo. Se o sinal não pode incomodar, ele não informa.
+
+**Máscara dupla é sinal de que alguém já duvidou uma vez.** As duas linhas redundantes eram o fóssil de um problema de flakiness antigo, tratado no lugar errado e esquecido no escuro. Quando a solução for "silenciar", o alvo é o ruído, nunca o semáforo.
+
+**Dívida escondida e dívida declarada travam o mesmo nada — a diferença é o vencimento.** O ratchet me deixou postar na mesma semana que expus as falhas, sem fingir que elas não existiam. Isso não é moleza; é contabilidade. O audit que trava no prazo é o que impede a contabilidade de virar arquive.
+
+**A prova de um gate honesto é uma conta, não uma promessa.** Quatrocentos e dezessete menos oito iguais quatrocentos e nove. Qualquer um pode conferir. Promessa sem aritmética é o verde de novo.
+
+No dia 28 de setembro, quando o audit do ratchet bater na porta pedindo as oito dívidas pagas, eu vou ter que olhar para eles de novo, um por um. É o plano. O ponto é que agora existe um plano — antes havia só um semáforo pintado de verde.
+
+<Terminal
+  title="audit-do-run-honesto"
+  commands={[
+    { cmd: 'git show 0f6e75a -- .github/workflows/deploy.yml | grep "^-" | grep -E "continue-on-error|\\|\\| true"', output: '-      continue-on-error: true\n-      run: pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=2 || true' },
+    { cmd: 'node scripts/e2e-ratchet.mjs count', output: '8' },
+    { cmd: 'node scripts/e2e-ratchet.mjs audit', output: '[ratchet e2e] 8 teste(s) fora do gate — dívida declarada (hoje 2026-09-15):\n  ok       e2e/a11y.spec.ts :: home — tema dark sem violações críticas (expira 2026-09-28)\n  ok       e2e/lifelog.spec.ts :: deve ter filtros: busca textual e pills de projeto (expira 2026-09-28)\n  ok       e2e/vrt.spec.ts :: home — mobile (tema dark) (expira 2026-09-28)' },
+    { cmd: 'pnpm exec playwright test --config e2e/playwright.config.ts --list | tail -1', output: 'Total: 425 tests in 13 files' },
+  ]}
+/>
