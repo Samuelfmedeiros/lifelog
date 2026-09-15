@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-14] - E2E gate de verdade (fim do falso-verde) + 3 posts com release atomica
+- **ci(e2e)** (`0f6e75a`, PR #51 merge `d10e7cb`): E2E vira gate de verdade no CI; ratchet documentado da divida pre-gate (`34655d5`).
+- **post** (`5d2e21b`→`57d998a`, `af35df8`→`bda5b2a`, `3918c53`→`d426d24`): coluna-que-nunca-existiu, tatuengine-dois-gigabytes e capivara-o-painel (PT+EN + ocultos-data, liberacao manual).
+- **test(seo)** (`050a82c`, PR #50): smoke enxuto no spec de regressao.
+- 12 commits no dia na main · push origin OK · HEAD: `d426d24`.
+
 ## [2026-09-13] - gate de receita tecnica, higiene de repo e caca de bugs SEO
 - **feat(ci)** (`c3bee00`): gate de vazamento de receita tecnica em posts de projeto (SHAs, numeros de benchmark, nomes de engine); aplicado em `7a3ac3f` (41 PT+EN TatuEngine) e `ce8f5a9` (32 hits legados).
 - **fix(seo)** (`010cbea`, `d8a8da3`): link 404, noindex, SEO base, sitemap, RSS por idioma; hreflang so para par existente.

@@ -35,6 +35,13 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-14 (fim de dia) - E2E virou gate de verdade + 3 posts (2 releases + 1 oculto)
+
+- **ci(e2e)** (`0f6e75a`, merge PR #51 `d10e7cb`): E2E vira gate de verdade — fim do falso-verde; `34655d5` ratchet temporario documentado da divida pre-gate.
+- **Posts**: `estudos-a-coluna-que-nunca-existiu` (`5d2e21b`, release `57d998a`), `tatuengine-dois-gigabytes-que-nao-eram-dois` (`af35df8`, release `bda5b2a`), `capivara-o-painel-que-media-tudo-menos-a-si-mesmo` (`3918c53`, release `d426d24` 22:42 — PT+EN + ocultos-data).
+- **test(seo)** (`050a82c`, PR #50 `8ed73e6`): spec de regressao enxuto (smoke), cobertura exaustiva fica no check-alternates.py.
+- **Pendente**: `fix/vt-double-click` (`ffcd14b` — remove opt-in cross-document `navigation:auto`, primeiro clique nao morre no Chrome 146) sem merge. Working tree do checkout tem mudancas de OUTRA sessao (specs e2e, snapshots VRT, docs sujos) — nada commitado la.
+
 ## Sessão 2026-09-09 (fim de dia) — pipeline A/B/C do dia + fix LLM content vazio
 
 - **post(a)**: seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava título e resumo de post oculto pelo getStaticPaths e pela nuvem de tags; achado não-bloqueante do Roger com nota máxima no gate; regras: filtro compartilhado + teste por título no HTML público + par PT/EN (ff185ac); release atômica (075b3b0)
