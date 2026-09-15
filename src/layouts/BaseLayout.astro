@@ -23,7 +23,7 @@ const pageTitle = `${title} — LifeLog`;
 const pageDesc = description || t.home.description;
 const themeAttr = theme || 'dev';
 const ogType = type || 'website';
-const ogImage = image || undefined;
+const ogImage = image || '/og-default.webp'; // handoff Arachne 14/09: home/sobre/arquivo/en sem og:image -> preview degrada
 const ogUrl = Astro.url;
 const SITE_URL = 'https://lifelog-sepia.vercel.app';
 
