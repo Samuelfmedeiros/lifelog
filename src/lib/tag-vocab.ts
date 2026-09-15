@@ -288,6 +288,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'security', pt: 'Segurança (tema)' },
   { slug: 'security-agent' },
   { slug: 'security-txt' },
+  { slug: 'seo' },
   { slug: 'self-hosted' },
   { slug: 'self-improvement' },
   { slug: 'sft' },
