@@ -64,10 +64,10 @@ const POSTS = loadPosts();
 
 // Pills dinâmicas: 'all' + projetos únicos reais (ordem estável do DOM)
 // data-filter-project usa o ID minúsculo (matches src/lib/projects.ts)
-const PROJECT_ORDER_IDS = ['arachne', 'dogwalk', 'portfolio', 'capivara', 'tatuengine', 'seguranca', 'lifelog', 'estudos', 'descobertas'];
+const PROJECT_ORDER_IDS = ['arachne', 'dogwalk', 'portfolio', 'capivara', 'tatuengine', 'seguranca', 'lifelog', 'estudos', 'descobertas', 'yurumi'];
 const PROJECT_LABELS: Record<string, string> = {
   arachne: 'Arachne', dogwalk: 'Dogwalk', portfolio: 'Portfólio', capivara: 'Capivara',
-  tatuengine: 'TatuEngine', seguranca: 'Segurança', lifelog: 'LifeLog', estudos: 'Estudos', descobertas: 'Descobertas',
+  tatuengine: 'TatuEngine', seguranca: 'Segurança', lifelog: 'LifeLog', estudos: 'Estudos', descobertas: 'Descobertas', yurumi: 'Yurumi',
 };
 const UNIQUE_PROJECTS = [...new Set(POSTS.map(p => p.project).filter(Boolean))];
 const PROJECT_PILLS = ['all', ...PROJECT_ORDER_IDS.filter(p => UNIQUE_PROJECTS.includes(p))];

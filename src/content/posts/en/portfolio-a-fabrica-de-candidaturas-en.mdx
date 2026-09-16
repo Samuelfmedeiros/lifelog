@@ -1,0 +1,95 @@
+---
+title: "The application factory that doesn't exist yet"
+description: "The Resume Tailor is back in the tree, but every tailored résumé is still handcrafted: open the site, describe the job, review, save, send. The plan has had a Phase 5 sketched since August — a semi-automated pipeline that turns a raw job posting into a ready PDF — and it still hasn't left the paper. On the difference between shipping a tool and shipping a habit."
+category: samuel-projects
+date: 2026-09-11 09:00:00 -03:00
+pubDate: 2026-09-11 18:05:00 -03:00
+project: portfolio
+tags: [portfolio, llm, automation, pipeline, workflow]
+cover: /covers/portfolio-a-fabrica-de-candidaturas.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The manual ritual
+
+Applying to a job today, with the tool already reintroduced, follows a fixed sequence: open the portfolio, click the tailored résumé button, describe the job in the modal, wait for the AI, review the PDF field by field, save, attach it to the company's form. Several clicks — and, worst of all, the whole ritual repeats from zero for every company. The tool exists; the habit is still artisanal.
+
+This isn't laziness talking. It's the realization that the feature solved the hard part (reformatting the résumé without inventing anything, aligning it with the job) and left the bureaucratic surroundings untouched: collecting the posting, triggering the process, storing the result, remembering who it went to. That surroundings is what the next phase wants to eat.
+
+## The tool that came back different
+
+The road here already earned a story on this blog: a pre-dawn revert on the 5th took the entire feature out of the tree, and six days later it came back — with a different architecture. Before and after, in two commits:
+
+| | Revert (Saturday, 3:55 AM) | Reintroduction (Friday, 12:18 AM) |
+|---|---|---|
+| Commit | `4dd1a99` | `d247a55` |
+| Files | 20 | 14 |
+| Lines | −4.819 | +3.242 |
+| LLM integration | hardcoded race of free models | provider chain via gateway |
+| LLM down | placeholder PDF with HTTP 200 | explicit 502 |
+| Prompt echo | became a fake PDF | guard + retry + 502 |
+
+The reintroduction didn't restore — it swapped the model race for a provider chain (the portfolio talks to a gateway, not to a list), made LLM downtime fail loud, and planted a guard that recognizes when the model returns the prompt's own example back as its answer. The rails that hold the tool today were born from that pair of pre-dawn sessions.
+
+But notice what the table doesn't show: none of these decisions touches the manual ritual. The tool got better at waiting for someone to sit down and operate it.
+
+## Phase 5, written since August
+
+At the end of August, when the Resume Tailor plan was written, this gap already had a name. The document ends with a phases section, and the last one isn't about code — it's about operation:
+
+```text
+### Phase 5 — Practical Use (Jobs)
+- [ ] Internal script: for each target company, generate a tailored résumé
+- [ ] Semi-automated pipeline: new job posting → prompt → résumé → PDF
+- [ ] Integrate with LifeLog? (post "I applied to company X")
+```
+
+Three checkboxes. None checked. The phase that turns the tool into a factory was drawn before the tool even survived its first revert — and that's probably why it's the most honest of the three: it doesn't promise elegance, it promises volume.
+
+## The pipeline design
+
+The idea that hasn't left paper yet has a deliberately boring sequence:
+
+**The job enters raw.** The posting text, pasted as it came — with badly formatted requirements, a marketing title, whatever. The pipeline doesn't ask for a pretty job posting; demanding one creates friction at the entrance, and friction at the entrance kills pipelines.
+
+**The jobs folder becomes the source of truth.** Each target job becomes an artifact on disk: posting text + metadata (company, role, date). With that, generating stops being an event in an interface and becomes a runnable command — including in batch, for the list of companies already worth keeping separated.
+
+**The prompt is assembled, not written.** The raw text enters the same mold the modal uses today: real résumé as the only source, inventing forbidden, ATS format, brand colors. The advantage of the mold already being in production is that the pipeline inherits the guardrails for free — prompt echo detected, retry with reinforcement; LLM down, 502 and no fake PDF. Fail-loud matters even more in a pipeline than in a feature: a fake PDF in a batch of ten is the kind of error that only surfaces at the interview stage.
+
+**The human points and clicks.** The "semi" in semi-automated is deliberate. The AI prepares the draft; the decision to send, with a real name under it, belongs to whoever signs. Automating the sending would save the one part nobody should save.
+
+**Applications become records.** The plan's last checkbox wires the pipeline to the blog: every generated application can become a public line on LifeLog. Not for vanity — for memory. "I applied to X on such date" is the antidote to the ghost application, the one you forget you sent and get surprised when they answer.
+
+## Today vs. what's still coming
+
+| | Today (manual) | Phase 5 (pipeline) |
+|---|---|---|
+| Input | posting pasted into the modal, one at a time | raw posting on disk, in batch |
+| Execution | full ritual per company | one command per company |
+| Guardrails | identical | inherited from the same mold |
+| Records | none | every application becomes a blog line |
+| Who sends | you | you — the AI only prepares |
+
+## What an empty checkbox teaches
+
+Features are born twice: first as a tool, then as a habit. Friday's reintroduction delivered the tool — and it's good, with fail-loud errors and an echo guard. The habit is still pending, because habituating someone into a ten-click manual ritual is wasting the tool that was built to replace it.
+
+The part that makes me want to write about something that doesn't exist yet: a plan with empty checkboxes is a promise with an open expiration date. Phase 5 was written before the tool was ready, survived the revert alongside it, and is still there — three lines waiting for the next pre-dawn block. When the checkboxes become code, this post is the "before". And if they never do, the post becomes the photo of a good plan that stayed on paper — which is also an honest record.
+
+<Terminal
+  client:visible
+  title="samuel@dev:~/portifolio"
+  commands={[
+    { cmd: 'git show d247a55 --stat | tail -1' },
+    { cmd: '# 14 files changed, 3242 insertions(+) — the tool is back' },
+    { cmd: 'grep -A4 "Fase 5" docs/plans/2026-08-30-resume-tailor-ai.md' },
+    { cmd: '# - [ ] Internal script: for each target company...' },
+    { cmd: '# - [ ] Semi-automated pipeline: new job → prompt → résumé → PDF' },
+    { cmd: '# - [ ] Integrate with LifeLog? (post "I applied to company X")' },
+    { cmd: 'echo "3 empty checkboxes. For now."' },
+  ]}
+/>

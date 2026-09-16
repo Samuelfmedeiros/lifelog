@@ -495,3 +495,13 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **23h, branch `fix/hunt-seo-pwa` (NAO mergeada na main):** `d8a8da3` hreflang so para par existente + icones PWA que davam 404 (`.gitignore *.png` global bloqueava o commit - excecao `!public/icons/*.png`); `9ba24e0` guardiao `scripts/check-alternates.py` no CI pos-build.
 - **Pendencias registradas:** main local esta 11 commits atras de `origin/main`; working tree com 38 entradas de outra sessao (artefatos `.loop-*`, posts MDX ainda nao versionados, specs e2e, snapshots VRT) - nada tocado daqui. `docs/CHANGELOG.md` untracked (duplicata) segue sem decisao.
 - 26 commits no dia - push origin OK - HEAD origin/main: `4045992` (antes do doc).
+
+## Sessao 2026-09-15 (noite) — resgate da tree suja: PostCard a11y + pills yurumi + 3 posts orfaos
+
+- **Diagnostico:** working tree tinha trabalho de outra sessao (13/09 08:41) nunca commitado, e o main local estava 12 commits atras. Diff de `playwright.config.ts` (timeout 60s) e AGENTS/CHANGELOG ja existiam na origem em outra forma — descartados; `PostCard.astro` e `lifelog.spec.ts` eram unicos — reaplicados via patch salvo em `profiles/portifolio/state/lifelog-dirty-20260915.patch`.
+- **fix(a11y):** chips de tag movidos para FORA do `<a>` do card — âncora aninhada e HTML invalido; o parser fecha o `<a>` antes dos chips e os links perdem o nome acessivel. Prova pos-build: parser HTML nos dist/ = 0 âncoras aninhadas (o regex ingenuo dá falso positivo).
+- **fix(e2e):** spec de pills sincronizada com o 11º projeto (yurumi) — fecha a entrada do ratchet `known-failures.json` (8 -> 7). Gate pilis: 10 passed.
+- **posts orfaos versionados (hidden, PT+EN):** `descobertas-as-tres-respostas-do-monitor`, `lifelog-o-ciclo-do-nao` (EN renomeado do nao-padrao `en-lifelog-o-ciclo-do-nao`), `portfolio-a-fabrica-de-candidaturas` (EN com sufixo `-en`, casamento lang-sync e por date+project — OK). Capas recuperadas do historico: `descobertas` do `1df0e24`, `fabrica` do `fc240ff` (a higiene `db71dd6` apagou as capas mas os mdx ficaram no disco huercos); `ciclo-do-nao` era untracked mesmo.
+- `api/ocultos-data.mjs` regenerado pelo build com os 3 pares hidden — entra junto (mesmo commit, padrao release atomic).
+- **Validacao:** build 1321 paginas; sync perfeito; check-tags 0 erros; capas validas; alternates 3960/0; vitest 89/89; E2E full no padrao CI (grep-invert do ratchet): **420 passed**.
+- **Pitfall:** `git checkout -- <dir>` largo reaplicado depois do `git apply` levou junto os arquivos bons — reaplicar patch SEMPRE seletivo por arquivo (`--include`).

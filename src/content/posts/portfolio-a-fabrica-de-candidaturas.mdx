@@ -1,0 +1,95 @@
+---
+title: "A fábrica de candidaturas que ainda não existe"
+description: "O Resume Tailor voltou da árvore, mas cada currículo personalizado ainda é obra manual: abrir o site, descrever a vaga, revisar, salvar, enviar. O plano tem uma Fase 5 desenhada desde agosto — um pipeline semi-automático que transforma uma vaga crua em PDF pronto — e ela ainda não saiu do papel. Sobre a diferença entre lançar uma ferramenta e lançar um hábito."
+category: samuel-projects
+date: 2026-09-11 09:00:00 -03:00
+pubDate: 2026-09-11 18:05:00 -03:00
+project: portfolio
+tags: [portfolio, llm, automation, pipeline, workflow]
+cover: /covers/portfolio-a-fabrica-de-candidaturas.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O ritual manual
+
+Aplicar a uma vaga hoje, com a ferramenta já reintroduzida, tem uma sequência fixa: abrir o portfólio, clicar no botão de currículo personalizado, descrever a vaga no modal, esperar a IA, revisar o PDF campo por campo, salvar, anexar no formulário da empresa. São vários cliques e — o pior — é um ritual que se repete inteiro para cada empresa. A ferramenta existe; o hábito continua artesanal.
+
+Não é reclamação de preguiça. É a percepção de que a feature resolveu a parte difícil (reformatar o currículo sem inventar nada, alinhar com a vaga) e deixou intocado o entorno burocrático: coletar a vaga, disparar o processo, guardar o resultado, lembrar pra quem foi. Essa entorno é que a próxima fase quer comer.
+
+## A ferramenta que voltou diferente
+
+O caminho até aqui rendeu uma história que já foi contada neste blog: um revert de madrugada no dia 5 tirou a feature inteira da árvore, e seis dias depois ela voltou — com outra arquitetura. O antes e o depois, em dois commits:
+
+| | Revert (sábado, 03h55) | Reintrodução (sexta, 00h18) |
+|---|---|---|
+| Commit | `4dd1a99` | `d247a55` |
+| Arquivos | 20 | 14 |
+| Linhas | −4.819 | +3.242 |
+| Integração LLM | corrida de modelos free hardcoded | cadeia de providers via gateway |
+| LLM fora do ar | PDF placeholder com HTTP 200 | erro explícito 502 |
+| Echo de prompt | virava PDF de mentira | guard + retry + 502 |
+
+A reintrodução não restaurou — ela trocou a corrida de modelos por uma cadeia de providers (o portfólio fala com um gateway, não com uma lista), fez o LLM indisponível falhar alto e cravou um guard que reconhece quando o modelo devolve o próprio exemplo do prompt de volta. Os trilhos que hoje sustentam a ferramenta nasceram desse par de madrugadas.
+
+Mas repare no que a tabela não mostra: nenhuma dessas decisões mexe no ritual manual. A ferramenta ficou melhor esperando alguém sentar e operar.
+
+## A Fase 5, escrita desde agosto
+
+No fim de agosto, quando o plano do Resume Tailor foi escrito, essa lacuna já tinha nome. O documento termina com uma seção de fases, e a última delas não fala de código — fala de operação:
+
+```text
+### Fase 5 — Uso Prático (Vagas)
+- [ ] Script interno: para cada empresa-alvo, gerar currículo personalizado
+- [ ] Pipeline semi-automático: nova vaga → prompt → currículo → PDF
+- [ ] Integrar com LifeLog? (postar "Candidatei para X empresa")
+```
+
+Três checkboxes. Nenhum marcado. A fase que transforma a ferramenta em fábrica foi desenhada antes de a ferramenta sequer sobreviver ao primeiro revert — e é provavelmente por isso que ela é a mais honesta das três: não promete eleganteza, promete volume.
+
+## O desenho do pipeline
+
+A ideia que ainda vai sair do papel tem uma sequência propositalmente sem graça:
+
+**A vaga entra crua.** Texto do anúncio, colado como veio — com requisito mal formatado, título marketing, o que for. O pipeline não pede que a vaga seja bonita; pedir isso é criar atrito na entrada, e atrito na entrada mata pipeline.
+
+**A pasta de vagas vira fonte de verdade.** Cada vaga-alvo vira um artefato em disco: texto do anúncio + metadados (empresa, cargo, data). Com isso, gerar deixa de ser um evento na interface e vira um comando executável — inclusive em lote, para a lista de empresas que já vale a pena ter separadas.
+
+**O prompt é montado, não escrito.** O texto cru da vaga entra no mesmo molde que hoje o modal usa: currículo real como única fonte, proibido inventar, formato ATS, cores da marca. A vantagem de o molde já existir em produção é que o pipeline herda os guardrails de graça — echo de prompt detectado, repete com reforço; LLM fora, 502 e nenhum PDF de mentira. Fail-loud em pipeline é ainda mais importante do que em feature: um PDF falso num lote de dez é o tipo de erro que só aparece na entrevista.
+
+**O humano aponta e clica.** O "semi" de semi-automático é deliberado. A IA prepara o rascunho; a decisão de enviar, com o nome de verdade embaixo, é de quem assina. Automatizar o envio seria economizar a única parte que ninguém deveria economizar.
+
+**Candidatura vira registro.** O último checkbox do plano liga o pipeline ao blog: cada candidatura gerada pode virar uma linha pública no LifeLog. Não por vaidade — por memória. "Candidatei para X em tal data" é o antídoto contra a candidatura fantasma, aquela que você esquece que enviou e se surpreende quando respondem.
+
+## Hoje vs. o que ainda vem
+
+| | Hoje (manual) | Fase 5 (pipeline) |
+|---|---|---|
+| Entrada | vaga colada no modal, uma por vez | vaga crua em disco, em lote |
+| Execução | ritual inteiro por empresa | um comando por empresa |
+| Guardrails | idênticos | herdados do mesmo molde |
+| Registro | nenhum | cada candidatura vira linha no blog |
+| Quem envia | você | você — a IA só prepara |
+
+## O que um checkbox vazio ensina
+
+Features nascem duas vezes: primeiro como ferramenta, depois como hábito. A reintrodução da sexta-feira entregou a ferramenta — e ela é boa, com falha alta e guard de echo. O hábito continua pendente porque habituar alguém a um ritual manual de dez cliques é desperdiçar a ferramenta que o substitui.
+
+A parte que me faz querer escrever sobre algo que ainda não existe: um plano com checkboxes vazios é uma promessa com data de validade aberta. A Fase 5 foi escrita antes da ferramenta estar pronta, sobreviveu ao revert junto com ela, e continua lá — três linhas esperando o próximo bloco de madrugada. Quando os checkboxes virarem código, este post é o "antes". E se nunca virarem, o post vira a foto do plano que era bom e ficou no papel — o que também é um registro honesto.
+
+<Terminal
+  client:visible
+  title="samuel@dev:~/portifolio"
+  commands={[
+    { cmd: 'git show d247a55 --stat | tail -1' },
+    { cmd: '# 14 files changed, 3242 insertions(+) — a ferramenta de volta' },
+    { cmd: 'grep -A4 "Fase 5" docs/plans/2026-08-30-resume-tailor-ai.md' },
+    { cmd: '# - [ ] Script interno: para cada empresa-alvo...' },
+    { cmd: '# - [ ] Pipeline semi-automático: nova vaga → prompt → currículo → PDF' },
+    { cmd: '# - [ ] Integrar com LifeLog? (postar "Candidatei para X empresa")' },
+    { cmd: 'echo "3 checkboxes vazios. Por enquanto."' },
+  ]}
+/>

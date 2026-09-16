@@ -1,0 +1,64 @@
+---
+title: "The no loop — when every reader rejection became a ticket in the pipeline"
+description: "The reject-post button saved feedback to a file. But a file doesn't open an issue, doesn't notify, and doesn't nag. One day the silent queue swallowed an entire request — and LifeLog learned that rejection without notification is just polite disposal. The story of /api/recusar and the loop that closes itself."
+date: 2026-09-06 08:00:00 -03:00
+pubDate: 2026-09-06 08:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "pipeline", "feedback", "github-api", "api", "process", "automation"]
+cover: /covers/lifelog-o-ciclo-do-nao.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The day silence ate a request
+
+This blog publishes daily, and every post is born hidden. I read, decide what goes live, and when something doesn't sit right with me, the system logs my rejection into a file inside the repository. Simple, traceable, quiet. For months this worked — until I discovered that "working" and "being read" are different things.
+
+The rejections file grew. Related issues stayed open. Nothing complained, because everything was "recorded". But a record without notification is a message in a bottle: the content is intact, the destination is what's missing. A rewrite request sat idle for days while the pipeline kept its rhythm, happy, unaware it owed an answer.
+
+## Why a file isn't enough
+
+A rejection had three possible destinations and the implementation got two right: a traceable comment in the repository and a physical copy under `docs/recusas/`. What was missing was the link that turns a record into a task — someone (or something) that looks at that file and says "this needs a response". The blog had the memory of the request, but no system with a mandate to act on it.
+
+The fix wasn't creating yet another place to write things down. It was closing the loop: now, when a rejection is recorded, the matching pipeline gets notified and the post returns to the review queue — with the original reason attached, intact, in the same place it was born. The file stayed the source of truth; what changed was who reads it and when.
+
+```js
+// Before: rejection recorded, period.
+await commitNotaFile(slug, nota);        // file in the repo
+await createIssue(slug, nota);           // traceable issue
+// ...and the pipeline? The pipeline found out when (or if) someone remembered.
+
+// After: rejection recorded + automatic follow-up
+await commitNotaFile(slug, nota);
+await createIssue(slug, nota);
+await notifyPipeline(slug, nota);        // the loop closes itself
+```
+
+## What the loop teaches about feedback
+
+A system that accepts rejection without reacting teaches the user to stop rejecting. Worse: it teaches that rejecting is pointless. The button existed, worked, saved everything — and still the loop was broken, because whoever receives the feedback was never told they had received it.
+
+The fix reminded me of a rule I apply in code and forget in processes: **every input needs a named consumer**. Not "someone will see it eventually", but a specific component, with a specific trigger, reacting to a specific event. Without that, the input is just archiving with good posture.
+
+| | Rejection as a file | Rejection as a ticket |
+|---|---|---|
+| Record | traceable | traceable |
+| Who reads it | whoever remembers | the pipeline, always |
+| Response time | undefined | one cycle |
+| Silence possible | yes, and common | no |
+
+## The takeaway
+
+The automation I'm proud of isn't the one that publishes posts by itself. It's the one that guarantees **none of my requests disappear**. If I reject a post, that "no" has a path: file, issue, notification, rewrite, re-delivery. The blog became a system that listens and answers — and if the loop ever breaks again, there is now a part of the process whose only job is to notice.
+
+<Terminal
+  commands={[
+    { label: 'origin', cmd: 'POST /api/recusar  {"path": "<slug>", "nota": "..."}' },
+    { label: 'record', cmd: 'traceable issue + docs/recusas/<slug>.md' },
+    { label: 'follow-up', cmd: 'pipeline notified -> rewrites -> re-delivers hidden' },
+    { label: 'closure', cmd: 'issue closed when the new version enters the flow' },
+  ]}
+/>
