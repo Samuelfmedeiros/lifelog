@@ -1,0 +1,65 @@
+---
+title: "O ciclo do não — quando cada recusa do leitor virou um ticket no pipeline"
+description: "O botão de recusar posts salvava o feedback num arquivo. Mas um arquivo não abre issue, não notifica e não cobra. Um dia a fila silenciosa engoliu um pedido inteiro — e o LifeLog aprendeu que rejeição sem notificação é só descarte educado. A história do /api/recusar e do ciclo que fecha sozinho."
+date: 2026-09-06 08:00:00 -03:00
+pubDate: 2026-09-06 08:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "pipeline", "feedback", "github-api", "api", "processo", "automacao"]
+
+cover: /covers/lifelog-o-ciclo-do-nao.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia em que o silêncio comeu um pedido
+
+O blog publica todos os dias, e cada post nasce escondido. Eu leio, decido o que vai pro ar, e quando algo não me agrada, o sistema anota minha recusa num arquivo dentro do repositório. Simples, rastreável, quieto. Por meses isso funcionou — até descobrir que "funcionar" e "ser lido" são coisas diferentes.
+
+O arquivo de recusas crescia. Issues relacionadas ficavam abertas. Nada reclamava, porque tudo estava "registrado". Só que registro sem notificação é mensagem numa garrafa: o conteúdo está intacto, o destino é que não existe. Um pedido de reescrita ficou dias parado enquanto o pipeline seguia seu ritmo, feliz, sem saber que devia algo.
+
+## Por que um arquivo não basta
+
+A recusa tinha três destinos possíveis e a implementação acertou dois: um comentário rastreável no repositório e uma cópia física em `docs/recusas/`. O que faltava era o elo que transforma registro em tarefa — alguém (ou algo) que olhe aquele arquivo e diga "isto precisa de resposta". O blog tinha a memória do pedido, mas nenhum sistema com mandato de agir sobre ela.
+
+A correção não foi criar mais um lugar pra escrever. Foi fechar o ciclo: agora, quando uma recusa é registrada, o pipeline correspondente é notificado e o post volta pro fluxo de revisão — com o motivo original anexado, intacto, no mesmo lugar onde nasceu. O arquivo continuou sendo a fonte de verdade; o que mudou foi quem o lê e quando.
+
+```js
+// Antes: recusa registrada, e só.
+await commitNotaFile(slug, nota);        // arquivo no repo
+await createIssue(slug, nota);           // issue rastreável
+// ...e o pipeline? O pipeline descobria quando (ou se) alguém lembrava.
+
+// Depois: recusa registrada + cobrança automática
+await commitNotaFile(slug, nota);
+await createIssue(slug, nota);
+await notifyPipeline(slug, nota);        // o ciclo fecha sozinho
+```
+
+## O que o ciclo ensina sobre feedback
+
+Um sistema que aceita rejeição sem reagir ensina o usuário a parar de rejeitar. Pior: ensina que recusar é inútil. O botão existia, funcionava, salvava tudo — e ainda assim o loop estava quebrado, porque quem recebe o feedback nunca foi avisado de que tinha recebido.
+
+O conserto me lembrou de uma regra que aplico no código e esqueço nos processos: **toda entrada precisa de um consumidor nomeado**. Não "alguém vai ver eventualmente", mas um componente específico, com gatilho específico, reagindo a um evento específico. Sem isso, a entrada é só arquivamento com passo firme.
+
+| | Recusa como arquivo | Recusa como ticket |
+|---|---|---|
+| Registro | rastreável | rastreável |
+| Quem lê | quem lembrar | o pipeline, sempre |
+| Tempo de resposta | indefinido | um ciclo |
+| Silêncio possível | sim, e comum | não |
+
+## O aprendizado
+
+A automação que me orgulho não é a que publica posts sozinha. É a que garante que **nenhum pedido meu desaparece**. Se eu recuso um post, aquele "não" tem um caminho: arquivo, issue, notificação, reescrita, re-entrega. O blog virou um sistema que ouve e responde — e se um dia o ciclo quebrar de novo, agora existe uma parte do processo cujo único trabalho é perceber isso.
+
+<Terminal
+  commands={[
+    { label: 'origem', cmd: 'POST /api/recusar  {"path": "<slug>", "nota": "..."}' },
+    { label: 'registro', cmd: 'issue rastreável + docs/recusas/<slug>.md' },
+    { label: 'cobrança', cmd: 'pipeline notificado -> reescreve -> re-entrega oculta' },
+    { label: 'fechamento', cmd: 'issue fechada quando a nova versão entra no fluxo' },
+  ]}
+/>

@@ -1,0 +1,143 @@
+---
+title: "The three answers a monitor needs — why 'I don't know' must be a state, not a green"
+description: "An infrastructure watchdog printed 'FIXES APPLIED' without touching a single thing. Once it finally had a word for 'I don't know', the audit revealed three ways a monitor lies: an exit code read as failure, a timeout that killed the wrong child, and an uncertainty that turned out to live entirely on one line of the map."
+category: samuel-projects
+date: 2026-09-11 12:00:00 -03:00
+pubDate: 2026-09-12 12:00:00 -03:00
+project: descobertas
+tags: [descobertas, monitoring, observability, watchdog, reliability, debugging, lessons]
+cover: /covers/descobertas-as-tres-respostas-do-monitor.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The green that measured nothing
+
+The media-pipeline watchdog runs every fifteen minutes, checks about half a dozen things, and only speaks when something is wrong. Silence is good: it means everything passed.
+
+One particular night, the watchdog printed `FIXES APPLIED` — and it had fixed precisely nothing. The guest was unreachable; no check had measured a single thing. Days later the first line containing the word INDETERMINATE appeared in the log, and the comment at the top of the function explains what had happened before that word existed:
+
+> any check that didn't return `True` (including "couldn't check at all") became `FIXED` and went into "FIXES APPLIED"
+
+That was not an optimistic green. It was a gray wearing a repair badge — the worst variant, because "fixed" demands zero review. Whoever reads the log at six in the morning sees a solved problem and goes back to sleep.
+
+I went to read the checks. They run a command in the guest, take the output, and look inside it for the word that means "exists". Three possible paths:
+
+```python
+out = guest(f"ls -d {target} 2>/dev/null && echo EXISTS || echo MISSING")
+if "EXISTS" in out:
+    return "ok", "path present"
+if "MISSING" in out:
+    create_dir()
+    return "fixed", "path created (it was missing)"
+return "unknown", "the disk did not answer — nothing was applied"
+```
+
+The logic looks harmless, and it was. The bug wasn't in it — it was inside `guest()`.
+
+## The exit code that read the wrong thing
+
+The helper running guest commands had one simple rule: return stdout when the process exits zero, return an empty string in every other case. A hygiene shortcut — a failed command has no usable output.
+
+But there is an entire class of commands that fail on purpose. They are exactly the verification commands.
+
+`systemctl is-enabled <unit>` returns a non-zero code when the unit is **not** enabled. That is the utility's design: the exit code carries the answer. The watchdog's job was precisely to find out whether a few units were disabled — and the helper threw the correct answer away, because the correct answer had arrived with a "wrong" exit code.
+
+The result: a check running every day, returning empty, labeled "did not respond". And the most unsettling part — the service was healthy. The monitor was the blind thing, at one specific spot, permanently and quietly.
+
+The fix is one and a half characters long:
+
+```python
+guest("systemctl is-enabled unit_a unit_b 2>&1; true")
+```
+
+Forcing a zero at the end of something that only wanted to inform. Plus the question the helper was never asked: **is a non-zero exit code a failed measurement, or is it the measurement's result?** Those are different things, and the monitor could not tell them apart.
+
+## The timeout that killed the wrong child
+
+Second family of lies. That check depends on an external process that depends on a dying disk — genuinely dying, with slow sectors and read operations that hang. And a read hung on a dying disk enters that kernel state that not even a kill signal reaches.
+
+The helper used `timeout=` on `subprocess.run`. Which works, with one caveat that only surfaces in production: it kills **the direct child**. The grandchild — the shell inside the guest, the utility stuck on the disk read — survives. And it survives holding the pipe, the handle, the address.
+
+The damage did not stay inside the watchdog. A scheduled task using the same pattern hung for hours holding its own session lock. While it held it, every subsequent delivery for that session was dropped for failing to acquire the lock — over a hundred deliveries in a single day, lost one by one, with no exception anywhere in the air. Nothing was broken. Everything was waiting.
+
+The fence has to be double, and each half catches a different case:
+
+```python
+guest_fence = f"timeout -k 5 {limit}"        # kills in there, where the I/O is stuck
+proc = subprocess.Popen(command, ...)
+try:
+    out = proc.communicate(timeout=limit)
+except subprocess.TimeoutExpired:
+    subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)])
+    proc.kill()
+```
+
+The inner `timeout` works when the guest still answers. The tree kill on the host works when the hung process has no intention of dying alone. Either one alone leaves a survivor.
+
+The audit that followed was revealing: of the eight-hundred-plus automation scripts in the ecosystem, just over a hundred already used a tree kill — but the reusable double-fence helper existed in **one** file. A pattern that worked, fixed in one place, with no path back to the two hundred others invoking the same external process.
+
+## When even SIGKILL cannot reach
+
+There is a detail neither fence solves, and it changes the design: if the process sits in uninterruptible I/O wait, it does not die. Not with a forced kill, not with the guest timeout. It stays there, a zombie with a credit line, until the disk answers — if it answers.
+
+The practical conclusion is counterintuitive: when the disk is hostile, **the wait ceiling has to be short**. Twenty-five seconds, a number that hurts less than holding a delivery for minutes. Labeling "I don't know" fast beats labeling it wrong slowly.
+
+And one more: against that kind of I/O, retry is not a policy — it is waste. Where an `ls` may hang indefinitely, insisting three times does not raise the odds of success; it multiplies by three the time spent trapped. For those calls the code makes a single attempt.
+
+## The third box
+
+The design mistake was not technical, it was vocabulary. The monitor had two words for a world that needs three:
+
+| State | Means | May alert? | May auto-fix? |
+|---|---|---|---|
+| OK | measured, passed | no | no |
+| FAIL | measured, rejected | yes | yes |
+| INDETERMINATE | **not measured** | only on recurrence | never |
+
+The rule that came out of this has two halves, and the second is the one usually missing:
+
+1. **An INDETERMINATE never becomes a FAIL.** A single measurement does not support an alert. The network flaps, the guest wobbles, the disk stalls — alerting on every lost measurement manufactures noise until somebody mutes the channel.
+2. **An INDETERMINATE never becomes an OK.** This is the one that stings, because green accumulates silently. A monitor that did not measure must not present itself as a monitor that passed; the dashboard has to show the gray, and the report has to state how many checks were *spared* from deciding.
+
+The third box has a useful side effect: it forces you to write the "I don't know" sentence down. And once you write it, you discover that "did not respond" was a lie — it had responded, with an exit code the helper did not know how to read.
+
+## What the log showed afterwards
+
+Once the fences were in place, the monitor started recording what it does not know. The file carries 858 accumulated runs and 709 checks in the current format, which stamps UTC plus local time — those 709 are what I sliced:
+
+- **27 indeterminations, 3.8% of checks.** Add up OK, failure, fix and detection, and the "I don't know" rate stayed under 4% — which is exactly where the average lied again, for the last time.
+- Segregated by section, the 3.8% falls apart. Of the six checks, the **four that measure on the host itself** total 472 executions with **zero** indetermination. The **two that cross the boundary** into the guest account for **all 27**: 22 out of 119 disk reads (18.5%) and 5 out of 118 service queries (4.2%).
+- **A single fix applied** across the whole period, and it came from a concrete measurement: no "fixed" was ever born from an empty read.
+
+The finding is not the rate, it is the address. The uncertainty was not spread across the monitor — it was 100% concentrated on the line that crosses from one machine to another, precisely where waiting is unpredictable and where the timeout that kills the wrong child does its damage. The parts that measure at home have no identity crisis at all.
+
+That changes what you fix. The temptation is to loosen every timeout, or to blame the guest. What the numbers say is narrower and more useful: **all of your doubt lives on the boundary** — so that is where the cheap probe from the outside has to run first, and it is what decides whether crossing is worth it.
+
+The number I actually wanted is neither the 3.8% nor the 18.5%. It is the fact that both exist. Before, that rate was neither high nor low: it was invisible, indistinguishable from "all good". A monitor that does not know how much it does not know is the most expensive version of a silent monitor: it costs, it deceives, and it still sleeps well.
+
+## What stays
+
+**An exit code is a message, not just a status.** Every verification command answers through its code. A helper that treats non-zero as "no output" erases the answer to half the questions a monitor asks.
+
+**A timeout on the parent does not kill the grandchild.** If what you call spawns a process that spawns another, `timeout=` ends exactly one of them — almost never the one holding the resource. Tree kill is not a nicety; it is what closes the hole.
+
+**Dying disks demand speed and honesty.** Where I/O can become uninterruptible, the right move is to wait little, admit fast, and not insist. The hurry is not impatience: it is the guarantee that the task never becomes a hostage.
+
+**The unknown state needs a color.** If your dashboard only has red and green, it is forced to pick one of the two when it knows nothing. It will pick green, because green creates no work — and that is how a failure stays pretty for weeks.
+
+<Terminal
+  title="watchdog-audit"
+  commands={[
+    { cmd: 'grep -c "media-streaming-health v1" monitor.log', output: '858' },
+    { cmd: 'python3 slice_log.py', output: 'checks: 709 | ok: 563 | fail: 44 | indeterminate: 27 | fixed: 1' },
+    { cmd: 'python3 slice_log.py --by-section', output: 'service query 5/118 = 4.2% | disk read 22/119 = 18.5%' },
+    { cmd: 'python3 slice_log.py --host-only', output: '472 checks on the host itself, 0 indeterminate' },
+    { cmd: 'grep -rl "def _run_tree" scripts/ | wc -l', output: '1' },
+    { cmd: 'grep -rl "/T" scripts/ | wc -l', output: '156' },
+    { cmd: 'ls scripts/*.py | wc -l', output: '816' },
+  ]}
+/>

@@ -1,0 +1,143 @@
+---
+title: "As três respostas do monitor — por que 'não sei' precisa ser um estado, não um verde"
+description: "Um monitor de infraestrutura imprimiu 'CORREÇÕES APLICADAS' sem tocar em uma coisa seququer. Quando ganhou palavra para 'não sei', a auditoria revelou três modos de um monitor mentir: um exit code lido como falha, um timeout que matava o filho errado, e uma incerteza que acabou morando inteira numa linha do mapa."
+category: samuel-projects
+date: 2026-09-11 12:00:00 -03:00
+pubDate: 2026-09-12 12:00:00 -03:00
+project: descobertas
+tags: [descobertas, monitoring, observability, watchdog, reliability, debugging, lessons]
+cover: /covers/descobertas-as-tres-respostas-do-monitor.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O verde que não media nada
+
+O monitor de pipeline de mídia roda a cada quinze minutos, checa meia dúzia de coisas e só fala quando algo está errado. Silêncio é bom: significa que tudo passou.
+
+Numa determinada madrugada, o monitor imprimiu `FIXES APLICADOS` — e não tinha corrigido absolutamente nada. O convidado estava inacessível; nenhum check chegou a medir fosse o que fosse. Dias depois apareceu no log a primeira linha com a palavra INDETERMINADO, e o registro no topo da função explica o que tinha acontecido antes dela existir:
+
+> qualquer check que não devolvesse `True` (inclusive "não deu pra checar") virava `FIXED` e entrava em "FIXES APLICADOS"
+
+Não era um verde otimista. Era um cinza que se vestia de conserto — a pior das variações, porque "consertado" pede revisão zero. Quem lê o log às seis da manhã vê um problema resolvido e volta a dormir.
+
+Fui ler o código dos checks. Eles executam um comando no convidado, recebem a saída, e procuram dentro dela a palavra que significa "existe". Três caminhos possíveis:
+
+```python
+saida = convidado(f"ls -d {alvo} 2>/dev/null && echo EXISTS || echo MISSING")
+if "EXISTS" in saida:
+    return "ok", "caminho presente"
+if "MISSING" in saida:
+    cria_diretorio()
+    return "fixed", "caminho criado (estava faltando)"
+return "unknown", f"o disco não respondeu — nada foi aplicado"
+```
+
+A lógica parece inofensiva, e era. O problema não estava nela — estava no `convidado()`.
+
+## O exit code que media a coisa errada
+
+O helper que rodava comandos no convidado tinha uma regra simples: devolvia stdout quando o processo terminava com zero, e devolvia string vazia em qualquer outro caso. Um atalho de higiene — comando que falhou não tem saída aproveitável.
+
+Só que existe uma classe inteira de comandos que falham de propósito. São exatamente os comandos de verificação.
+
+`systemctl is-enabled <unidade>` retorna código diferente de zero quando a unidade **não** está habilitada. É o desenho do utilitário: o exit code carrega a resposta. O monitor queria justamente saber se algumas unidades estavam desabilitadas — e o helper descartava a resposta certa, porque a resposta certa tinha chegado com exit code "errado".
+
+Resultado: check rodando todo dia, devolvendo vazio, rotulando "não respondeu". E o mais desconcertante — o serviço estava saudável. O monitor é que estava cego, num ponto específico, de forma permanente e silenciosa.
+
+O conserto tem um caractere e meio:
+
+```python
+convidado("systemctl is-enabled unidade_a unidade_b 2>&1; true")
+```
+
+Forçar zero no final de quem só queria informar. E acrescentar a pergunta que faltava no helper: **exit code diferente de zero é falha da medição ou é o resultado da medição?** São coisas diferentes e o monitor não sabia distinguir.
+
+## O timeout que matava o filho errado
+
+Segunda família de mentira. Esse check depende de um processo externo que depende de um disco que está morrendo — de verdade, com setores lentos e operações de leitura que penduram. E leitura pendurada em disco moribundo entra naquele estado do kernel que nem sinal de morte alcança.
+
+O helper tinha `timeout=` no `subprocess.run`. Que funciona, com uma ressalva que só aparece em produção: ele mata **o filho direto**. O neto — o shell de dentro do convidado, o utilitário que estava preso na leitura do disco — sobrevive. E sobrevive segurando o pipe, o handle, o endereço.
+
+O estrago não ficou restrito ao monitor. Uma tarefa agendada que usou o mesmo padrão ficou travada segurando o lock da própria sessão por horas. Enquanto ela segurava, toda entrega seguinte daquela sessão era descartada por não conseguir o lock — mais de uma centena de entregas no mesmo dia, perdidas uma por uma, sem nenhuma exceção no ar. Nada estava quebrado. Estava tudo esperando.
+
+A cerca precisa ser dupla, e cada metade pega um caso:
+
+```python
+cerco_convidado = f"timeout -k 5 {limite}"      # mata lá dentro, onde o I/O está preso
+processo = subprocess.Popen(comando, ...)
+try:
+    saida = processo.communicate(timeout=limite)
+except subprocess.TimeoutExpired:
+    subprocess.run(["taskkill", "/T", "/F", "/PID", str(processo.pid)])
+    processo.kill()
+```
+
+O `timeout` interno resolve quando o convidado ainda responde. O kill de árvore no host resolve quando o processo pendurado não vai morrer sozinho. Um dos dois sozinho deixa sobrevivente.
+
+A auditoria do que ficou depois foi reveladora: dos mais de oitocentos scripts de automação do ecossistema, pouco mais de uma centena já usava kill de árvore — mas o helper reutilizável com as duas cercas existia em **um** arquivo. Um padrão que funcionava, consertado num lugar só, sem caminho de volta para os outros duzentos que invocavam o mesmo processo externo.
+
+## Quando nem o SIGKILL alcança
+
+Tem um detalhe que nenhuma das duas cercas resolve, e que muda o desenho: se o processo está em espera de E/S ininterruptível, ele não morre. Nem com kill forçado, nem com o timeout do convidado. Ele fica ali, zumbi com crédito no nome, até o disco responder — se responder.
+
+A conclusão prática é contraintuitiva: quando o disco é hostil, **o teto de espera tem que ser curto**. Vinte e cinco segundos, um tempo que dói menos do que segurar a entrega por minutos. Rotular "não sei" rápido é melhor do que rotular errado devagar.
+
+E outra: contra esse tipo de E/S, retry não é política — é desperdício. Onde um `ls` pode pendurar indefinidamente, insistir três vezes não aumenta a chance de sucesso; multiplica por três o tempo preso. Nesses casos o código faz uma tentativa só.
+
+## A terceira caixa
+
+O erro de desenho não era técnico, era de vocabulário. O monitor tinha duas palavras para um mundo que precisa de três:
+
+| Estado | Significa | Pode alertar? | Pode consertar? |
+|---|---|---|---|
+| OK | medido, passou | não | não |
+| FALHA | medido, reprovado | sim | sim |
+| INDETERMINADO | **não medido** | só na reincidência | nunca |
+
+A regra que saiu daí tem duas metades, e a segunda é a que costuma faltar:
+
+1. **Um INDETERMINADO não vira FALHA.** Uma medição solta não sustenta alerta. O mundo fica flutuando, o convidado oscila, o disco trava — alertar em cada medição perdida é fabricar ruído até alguém ignorar o canal.
+2. **Um INDETERMINADO não vira OK.** Essa é a que dói, porque o verde acumula em silêncio. Monitor que não mede não deve se apresentar como monitor que passou; o painel precisa mostrar o cinza, e o relatório precisa dizer quantos checks foram *poupados* de decidir.
+
+A terceira caixa ainda tem efeito colateral bom: ela obriga a escrever a frase do "não sei". E quando a gente escreve, descobre que "não respondeu" era mentira — tinha respondido, sim, com exit code que o helper não sabia ler.
+
+## O que o log mostrou depois
+
+Depois das cercas no lugar, o monitor passou a registrar o que não sabe. O arquivo tem 858 execuções acumuladas e 709 checagens no formato atual, que carimba UTC e hora local — foram essas 709 que eu seccionei:
+
+- **27 indeterminações, 3,8% das checagens.** Somando OK, falha, correção e detecção, a taxa de "não sei" ficou abaixo de 4% — e foi aí que a média mentiu de novo, pela última vez.
+- Segregando por seção, o 3,8% se desfaz. Das seis checagens, as **quatro que medem no próprio host** somam 472 execuções com **zero** indeterminação. As **duas que cruzam a fronteira** para o convidado respondem por **todas as 27**: 22 em 119 leituras de disco (18,5%) e 5 em 118 consultas de serviço (4,2%).
+- **Uma única correção aplicada** em todo o período, e ela veio de uma medição concreta: nenhum "consertado" nasceu de leitura vazia.
+
+O achado não é a taxa, é o endereço. A incerteza não estava distribuída pelo monitor — estava 100% concentrada na linha que atravessa de uma máquina para outra, exatamente onde a espera é imprevisível e onde o timeout que mata o filho errado faz estrago. As partes que medem em casa não têm crise de identidade nenhuma.
+
+Isso muda o que se conserta. A tentação seria afrouxar o timeout de tudo, ou reclamar do convidado. O que os números dizem é mais estreito e mais útil: **toda a sua dúvida mora na fronteira** — então é na fronteira que a sonda barata do lado de fora tem que entrar primeiro, e é ela que decide se vale a pena atravessar.
+
+O número que eu queria, no fim, nem é o 3,8% nem o 18,5%. É o fato de os dois existirem. Antes, essa taxa não era alta nem baixa: era invisível, indistinguível de "tudo certo". Um monitor que não sabe quanto não sabe é a versão mais cara de um monitor mudo: custa, engana e ainda dorme tranquilo.
+
+## O que fica
+
+**Exit code é mensagem, não só status.** Todo comando de verificação responde pelo código. Um helper que trata não-zero como "sem saída" apaga a resposta de metade das perguntas que o monitor faz.
+
+**Timeout no pai não mata o neto.** Se o que você chama abre um processo que abre outro, o `timeout=` encerra exatamente um deles — e quase nunca o que estava prendendo o recurso. Kill de árvore não é capricho, é o que fecha o buraco.
+
+**Discos morrendo exigem pressa e honestidade.** Onde o E/S pode ficar ininterruptível, o certo é esperar pouco, admitir rápido e não insistir. A pressa aqui não é impaciência: é a garantia de que a tarefa não vira refém.
+
+**O estado desconhecido precisa ter cor.** Se o seu painel só tem vermelho e verde, ele é obrigado a escolher um dos dois quando não sabe nada. Ele vai escolher o verde, porque o verde não gera trabalho — e é assim que a falha fica bonita por semanas.
+
+<Terminal
+  title="auditoria-do-monitor"
+  commands={[
+    { cmd: 'grep -c "media-streaming-health v1" monitor.log', output: '858' },
+    { cmd: 'python3 secciona_log.py', output: 'checagens: 709 | ok: 563 | falha: 44 | indeterminado: 27 | corrigido: 1' },
+    { cmd: 'python3 secciona_log.py --por-secao', output: 'socat 5/118 = 4.2% | savepath 22/119 = 18.5%' },
+    { cmd: 'python3 secciona_log.py --host-only', output: '472 checagens no proprio host, 0 indeterminadas' },
+    { cmd: 'grep -rl "def _run_tree" scripts/ | wc -l', output: '1' },
+    { cmd: 'grep -rl "/T" scripts/ | wc -l', output: '156' },
+    { cmd: 'ls scripts/*.py | wc -l', output: '816' },
+  ]}
+/>

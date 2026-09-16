@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-15] - resgate da tree suja: a11y dos cards + pills yurumi + 3 posts orfaos
+- **fix(a11y)** PostCard: chips de tag fora da âncora do card (HTML invalido derrubava nome acessivel).
+- **fix(e2e)** lifelog.spec.ts ganha yurumi; ratchet 8->7 (entrada das pills paga).
+- **feat(posts)**: `descobertas-as-tres-respostas-do-monitor`, `lifelog-o-ciclo-do-nao`, `portfolio-a-fabrica-de-candidaturas` (PT+EN hidden + capas restauradas do historico) — estavam no disco huercos desde 06-12/09.
+- **Validacao**: build 1321 pag, guards 0 erros, vitest 89, E2E 420 passed no padrao do gate.
+- **Merge PR #56** (OK do Samuel): quitacao da pendencia `fix/cards-a11y-pills-orfaos` registrada na entrada de fim de dia abaixo.
+
 ## [2026-09-15] - 2 posts liberados (350 links hreflang + CI por indulgencia)
 - **post+release** (`8960445`->`b142105`): os 350 links que apontavam para o nada — recusa + reescrita didatica (hreflang) + PT+EN com ocultos-data.
 - **post+release** (`095ca6a`->`c112536`): o CI que vinha verde por indulgencia (Post C 16:00).
