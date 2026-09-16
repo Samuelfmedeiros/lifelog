@@ -7,6 +7,9 @@ Roda sobre o dist/ depois do build e falha (exit 1) se:
      (Google: "If two pages don't both point to each other, the tags will be ignored")
   2. algum asset referenciado no <head> (icon, manifest, apple-touch-icon, rss)
      nao existe no dist (ex.: icons PWA do manifest.json que davam 404)
+  3. (15/09, caçada Arachne) alguma pagina sem og:image ou com og:image
+     apontando para asset inexistente — sem og:image o LinkedIn descarta o
+     card e cai em fallback de busca pelo dominio
 
 Slugs com acento sao comparados ja decodificados e normalizados (NFC), porque
 o href vai URL-encoded e o filesystem pode estar em NFC ou NFD.
@@ -22,6 +25,7 @@ HEAD_ASSET_RE = re.compile(
     r'<(?:link|meta)[^>]*?(?:href|content)="(/(?:icons/|covers/|patterns/|manifest\.json|sw\.js|favicon\.svg|rss\.xml|en/rss\.xml)[^"]*)"'
 )
 ALERT_RE = re.compile(r'<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"')
+OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
 
 
 def norm(s):
@@ -64,7 +68,7 @@ def main():
         print("!! dist/ nao encontrado — rode o build antes")
         return 1
 
-    broken_alts, missing_assets = [], []
+    broken_alts, missing_assets, missing_og = [], [], []
     checked = 0
     for root, dirs, files in os.walk(dist):
         for f in (x for x in files if x.endswith(".html")):
@@ -81,6 +85,15 @@ def main():
             for asset in HEAD_ASSET_RE.findall(txt):
                 if not os.path.isfile(os.path.join(dist, norm(asset).lstrip("/"))):
                     missing_assets.append((rel, asset))
+
+            for og in OG_IMAGE_RE.findall(txt):
+                path = og.replace(SITE, "")
+                if not path.startswith("/"):
+                    missing_assets.append((rel, og))
+                elif not os.path.isfile(os.path.join(dist, norm(path).lstrip("/"))):
+                    missing_assets.append((rel, og))
+            if not OG_IMAGE_RE.search(txt):
+                missing_og.append(rel)
 
     broken_alts = sorted(set(broken_alts))
     missing_assets = sorted(set(missing_assets))
@@ -103,10 +116,16 @@ def main():
         for rel, asset in missing_assets[:10]:
             print("   %s -> %s" % (rel, asset))
 
-    if broken_alts or missing_assets:
+    missing_og = sorted(set(missing_og))
+    if missing_og:
+        print("\nPAGINAS SEM og:image: %d" % len(missing_og))
+        for rel in missing_og[:10]:
+            print("   %s" % rel)
+
+    if broken_alts or missing_assets or missing_og:
         print("\nFALHOU")
         return 1
-    print("\nOK — hreflang e assets do head coerentes")
+    print("\nOK — hreflang, assets do head e og:image coerentes")
     return 0
 
 
