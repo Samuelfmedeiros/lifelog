@@ -35,6 +35,12 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-15 (fim de dia) - 2 posts liberados (350 links + CI por indulgencia); OG-default e resgate a11y pendentes em branch
+
+- **Posts na main**: `descobertas-os-350-links-que-apontavam-para-o-nada` (`8960445` hidden -> recusa `7858abe` -> reescrita didatica explicando hreflang `18cf092` -> release PT+EN `b142105`) e `lifelog-o-ci-verde-por-indulgencia` (`095ca6a` hidden 16:00 -> release `c112536`).
+- **Pendente em branches**: `fix/og-default-image-v2` (`1b19c9c` og:image padrao no site todo + guardiao no check-alternates; `8bf2cb9` excecao `!public/og-default.png` no gitignore) e `fix/cards-a11y-pills-orfaos` (`bfae32c` resgate da tree suja: chips fora da anchor, pills yurumi ratchet 8->7, 3 posts orfaos hidden PT+EN com capas). `fix/og-default-image` (`3bbdf96`) substituido pela v2.
+- Working tree do checkout tem 23 entradas de OUTRA sessao — nada commitado nem descartado daqui. Sem merge/deploy automatico.
+
 ## Sessão 2026-09-14 (fim de dia) - E2E virou gate de verdade + 3 posts (2 releases + 1 oculto)
 
 - **ci(e2e)** (`0f6e75a`, merge PR #51 `d10e7cb`): E2E vira gate de verdade — fim do falso-verde; `34655d5` ratchet temporario documentado da divida pre-gate.

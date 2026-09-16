@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-15] - 2 posts liberados (350 links hreflang + CI por indulgencia)
+- **post+release** (`8960445`->`b142105`): os 350 links que apontavam para o nada — recusa + reescrita didatica (hreflang) + PT+EN com ocultos-data.
+- **post+release** (`095ca6a`->`c112536`): o CI que vinha verde por indulgencia (Post C 16:00).
+- **pendente**: `fix/og-default-image-v2` (`1b19c9c`) e `fix/cards-a11y-pills-orfaos` (`bfae32c`) sem merge.
+- 6 commits na main · push origin OK · HEAD main: `c112536`.
+
 ## [2026-09-14] - E2E gate de verdade (fim do falso-verde) + 3 posts com release atomica
 - **ci(e2e)** (`0f6e75a`, PR #51 merge `d10e7cb`): E2E vira gate de verdade no CI; ratchet documentado da divida pre-gate (`34655d5`).
 - **post** (`5d2e21b`→`57d998a`, `af35df8`→`bda5b2a`, `3918c53`→`d426d24`): coluna-que-nunca-existiu, tatuengine-dois-gigabytes e capivara-o-painel (PT+EN + ocultos-data, liberacao manual).
