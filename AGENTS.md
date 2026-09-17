@@ -35,6 +35,13 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-16 (fim de dia) - 3 posts liberados + merges #56/#57 e og-default na main
+
+- **Posts na main**: `descobertas-as-tres-respostas-do-monitor` (`f22be55`), `lifelog-o-ciclo-do-nao` (`8a60bae`) e `portfolio-a-fabrica-de-candidaturas` (`2097ed0`) - PT+EN com `ocultos-data` (sync `74df8c3`).
+- **fix(ocultos) `3c24c03`**: par EN da fabrica renomeado ao padrao mesmo-slug (`-en` sobrava e dava 404 no preview) - PR #57 (`fe8f7ed`).
+- **fix(a11y) `7b6e212`**: resgate da tree suja - chips de tag fora da ancora do card, pills yurumi (ratchet 8->7) e 3 posts orfaos hidden PT+EN com capas - PR #56 (`0272cb8`).
+- **merge `1310f67`**: `fix/og-default-image-v2` (og:image padrao no site todo) mergeado na main.
+
 ## Sessão 2026-09-15 (fim de dia) - 2 posts liberados (350 links + CI por indulgencia); OG-default e resgate a11y pendentes em branch
 
 - **Posts na main**: `descobertas-os-350-links-que-apontavam-para-o-nada` (`8960445` hidden -> recusa `7858abe` -> reescrita didatica explicando hreflang `18cf092` -> release PT+EN `b142105`) e `lifelog-o-ci-verde-por-indulgencia` (`095ca6a` hidden 16:00 -> release `c112536`).
