@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-16] - 3 posts liberados + PRs #56/#57 + og-default na main
+- **feat(posts)** (`f22be55`, `8a60bae`, `2097ed0`): tres respostas do monitor, o ciclo do nao e a fabrica de candidaturas (PT+EN + ocultos-data).
+- **fix(ocultos)** (`3c24c03`, PR #57): par EN renomeado ao padrao mesmo-slug.
+- **fix(a11y+e2e)** (`7b6e212`, PR #56): chips fora da ancora, pills yurumi 8->7, 3 posts orfaos com capas.
+- **merge** (`1310f67`): `fix/og-default-image-v2` na main.
+- 9 commits na main - push origin OK - HEAD main: `1310f67`.
+
 ## [2026-09-15] - resgate da tree suja: a11y dos cards + pills yurumi + 3 posts orfaos
 - **fix(a11y)** PostCard: chips de tag fora da âncora do card (HTML invalido derrubava nome acessivel).
 - **fix(e2e)** lifelog.spec.ts ganha yurumi; ratchet 8->7 (entrada das pills paga).
