@@ -1,5 +1,10 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-09-20] - capa AI do post de fixtures (watchdog)
+- **fix(cover)** (`373c675`): capa AI de `estudos-validacao-automatica-de-fixtures` gerada pelo watchdog (a rodada de 17/09, `3779f7b`, so cobriu `arachne-conhecimento-os`).
+- **pendente**: post `estudos-validacao-automatica-de-fixtures` (PT+EN) e `nova-historia-portfolio-2026-09-20.webp` seguem na tree de outra sessao, sem versionar.
+- 1 commit na main - push origin OK - HEAD main: `373c675`.
+
 ## [2026-09-16] - 3 posts liberados + PRs #56/#57 + og-default na main
 - **feat(posts)** (`f22be55`, `8a60bae`, `2097ed0`): tres respostas do monitor, o ciclo do nao e a fabrica de candidaturas (PT+EN + ocultos-data).
 - **fix(ocultos)** (`3c24c03`, PR #57): par EN renomeado ao padrao mesmo-slug.

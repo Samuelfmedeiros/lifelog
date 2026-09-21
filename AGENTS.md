@@ -35,6 +35,13 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
+## Sessão 2026-09-20 (fim de dia) - capa AI do post de fixtures (watchdog) na main; resto do dia na tree de outra sessao
+
+- **fix(cover) `373c675`** (na main, 1 arquivo): capa AI de `estudos-validacao-automatica-de-fixtures` gerada pelo watchdog - o watchdog de 17/09 (`3779f7b`) so tinha fechado a de `arachne-conhecimento-os` e este post ficou sem capa.
+- **Working tree de OUTRA sessao (nada tocado daqui)**: post `estudos-validacao-automatica-de-fixtures.mdx` + par `en/` (14:55) e `public/covers/nova-historia-portfolio-2026-09-20.webp` (16:31) ainda NAO versionados; `api/ocultos-data.mjs` modificado 16:51 - quem escreveu decide commit/release.
+- **Pendencia herdada**: `docs/CHANGELOG.md` (untracked, duplicata) segue sem decisao.
+- 1 commit na main hoje - push origin OK - HEAD main: `373c675`.
+
 ## Sessão 2026-09-16 (fim de dia) - 3 posts liberados + merges #56/#57 e og-default na main
 
 - **Posts na main**: `descobertas-as-tres-respostas-do-monitor` (`f22be55`), `lifelog-o-ciclo-do-nao` (`8a60bae`) e `portfolio-a-fabrica-de-candidaturas` (`2097ed0`) - PT+EN com `ocultos-data` (sync `74df8c3`).
