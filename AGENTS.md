@@ -35,20 +35,6 @@ Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega 
 
 
 
-## Sessão 2026-09-20 (fim de dia) - capa AI do post de fixtures (watchdog) na main; resto do dia na tree de outra sessao
-
-- **fix(cover) `373c675`** (na main, 1 arquivo): capa AI de `estudos-validacao-automatica-de-fixtures` gerada pelo watchdog - o watchdog de 17/09 (`3779f7b`) so tinha fechado a de `arachne-conhecimento-os` e este post ficou sem capa.
-- **Working tree de OUTRA sessao (nada tocado daqui)**: post `estudos-validacao-automatica-de-fixtures.mdx` + par `en/` (14:55) e `public/covers/nova-historia-portfolio-2026-09-20.webp` (16:31) ainda NAO versionados; `api/ocultos-data.mjs` modificado 16:51 - quem escreveu decide commit/release.
-- **Pendencia herdada**: `docs/CHANGELOG.md` (untracked, duplicata) segue sem decisao.
-- 1 commit na main hoje - push origin OK - HEAD main: `373c675`.
-
-## Sessão 2026-09-16 (fim de dia) - 3 posts liberados + merges #56/#57 e og-default na main
-
-- **Posts na main**: `descobertas-as-tres-respostas-do-monitor` (`f22be55`), `lifelog-o-ciclo-do-nao` (`8a60bae`) e `portfolio-a-fabrica-de-candidaturas` (`2097ed0`) - PT+EN com `ocultos-data` (sync `74df8c3`).
-- **fix(ocultos) `3c24c03`**: par EN da fabrica renomeado ao padrao mesmo-slug (`-en` sobrava e dava 404 no preview) - PR #57 (`fe8f7ed`).
-- **fix(a11y) `7b6e212`**: resgate da tree suja - chips de tag fora da ancora do card, pills yurumi (ratchet 8->7) e 3 posts orfaos hidden PT+EN com capas - PR #56 (`0272cb8`).
-- **merge `1310f67`**: `fix/og-default-image-v2` (og:image padrao no site todo) mergeado na main.
-
 ## Sessão 2026-09-15 (fim de dia) - 2 posts liberados (350 links + CI por indulgencia); OG-default e resgate a11y pendentes em branch
 
 - **Posts na main**: `descobertas-os-350-links-que-apontavam-para-o-nada` (`8960445` hidden -> recusa `7858abe` -> reescrita didatica explicando hreflang `18cf092` -> release PT+EN `b142105`) e `lifelog-o-ci-verde-por-indulgencia` (`095ca6a` hidden 16:00 -> release `c112536`).
@@ -519,3 +505,5 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - `api/ocultos-data.mjs` regenerado pelo build com os 3 pares hidden — entra junto (mesmo commit, padrao release atomic).
 - **Validacao:** build 1321 paginas; sync perfeito; check-tags 0 erros; capas validas; alternates 3960/0; vitest 89/89; E2E full no padrao CI (grep-invert do ratchet): **420 passed**.
 - **Pitfall:** `git checkout -- <dir>` largo reaplicado depois do `git apply` levou junto os arquivos bons — reaplicar patch SEMPRE seletivo por arquivo (`--include`).
+
+## Sessao 2026-09-22 (fim de dia) - Fim de dia automático
