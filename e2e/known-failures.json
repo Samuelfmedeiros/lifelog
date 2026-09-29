@@ -1,34 +1,6 @@
 {
-  "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
+  "$comment": "Ratchet de divida de E2E (PR #51). Testes listados ficam fora do gate por titulo; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovacao explicita do Samuel; remover e sempre livre.",
   "failures": [
-    {
-      "spec": "e2e/a11y.spec.ts",
-      "title": "home — tema dark sem violações críticas",
-      "reason": "axe-core reporta violações critical/serious na home (dívida anterior ao gate)",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/a11y.spec.ts",
-      "title": "home — tema light sem violações críticas",
-      "reason": "axe-core reporta violações critical/serious na home (dívida anterior ao gate)",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/a11y.spec.ts",
-      "title": "/en/ — tema dark sem violações críticas",
-      "reason": "axe-core reporta violações critical/serious em /en/ (dívida anterior ao gate)",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/a11y.spec.ts",
-      "title": "/en/ — tema light sem violações críticas",
-      "reason": "axe-core reporta violações critical/serious em /en/ (dívida anterior ao gate)",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
     {
       "spec": "e2e/vrt.spec.ts",
       "title": "home — tema dark (desktop)",
@@ -50,5 +22,6 @@
       "owner": "dívida a11y (sessão dona da área a11y/VRT)",
       "expiry": "2026-09-28"
     }
-  ]
+  ],
+  "$ultimaRevisao": "2026-09-29: 4 entradas de a11y REMOVIDAS (divida PAGA). Suite a11y verde 14/14 verificado em runtime win32 (chromium local). Plataforma da CI e ubuntu-latest: a validacao definitiva sera o proprio CI, ja que os testes de a11y (axe-core) sao baseados em DOM, nao em pixel. Restam 3 entradas de VRT: baseline linux desatualizado (data dos cards e tag Yurumi mudaram; layout e identico). Prova de nao-regressao: commit 22b248f, SEM os posts novos, falha com os MESMOS 144758 pixels -> diff pre-existente, nao causado pelos posts de setembro."
 }
