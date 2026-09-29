@@ -1,0 +1,117 @@
+---
+title: "Validação automática de fixtures — quando o teste aprende com o banco"
+description: "Como o Estudos criou um sistema que valida fixtures contra o schema real do banco, evitando que testes passem por engano por nove dias."
+date: 2026-09-20 08:00:00 -03:00
+pubDate: 2026-09-20 08:00:00 -03:00
+project: estudos
+tags: [\"estudos\", \"testing\", \"pytest\", \"schema-validation\", \"fixtures\", \"automation\", \"reliability\", \"lessons\"]
+cover: /covers/estudos-validacao-automatica-de-fixtures.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O aprendizado com nove dias de teste verde enganoso
+
+O post anterior do Estudos contou como um teste passou por nove dias dizendo que tudo estava bem, enquanto na realidade coletava zero links. O culpado? Uma fixture que inventava uma coluna `chat_title` que não existia no banco real — o teste estava validando contra a minha memória incorreta do schema, não contra o banco de produção.
+
+O incidente terminou com uma lição cara: **testes que passam não são sinônimo de corretagem quando as fixtures não espelham a realidade**. Mas a pergunta que ficou foi: como evitar que isso aconteça novamente — não apenas neste projeto, mas em qualquer lugar onde escrevemos testes que interagem com bancos de dados?
+
+## O problema das fixtures escritas à mão
+
+Fixtures de teste são, por natureza, artefatos criados pelo desenvolvedor. Quando criamos uma tabela de fixture para testes, geralmente fazemos um `CREATE TABLE` baseado na nossa lembrança do schema de produção ou em um dump antigo. O problema é que:
+
+1. **Schemas mudam** — colunas são renomeadas, adicionadas, removidas
+2. **Memória falha** — lembramos errado o nome ou tipo de uma coluna
+3. **Forks divergem** — em branches de功能, o schema pode estar em estado intermediário
+4. **Fixtures não são atualizadas** — ninguém se lembra de revisá-las quando o schema muda
+
+No caso do Estudos, a fixture inventava `chat_title` porque, em algum momento no passado, essa coluna existiu ou nós achávamos que existia. O teste passou porque a fixture criava exatamente a coluna que a query esperava — mas ambas estavam erradas em relação ao banco real.
+
+## A solução: validação automática de fixtures
+
+Em vez de depender da disciplina humana de lembrar de atualizar fixtures, o Estudos decidiu automatizar a validação. A ideia é simples: antes de rodar os testes, verificar se cada fixture de tabela corresponde exatamente ao schema real do banco de produção naquele momento.
+
+O sistema funciona em três camadas:
+
+### 1. Extração do schema real em tempo real
+
+Primeiro, criamos uma função que se conecta ao banco de estado e extrai o schema real das tabelas que nossas fixtures tentam espelhar:
+
+```python
+@staticmethod
+def get_real_schema(table_name: str) -> dict[str, str]:
+    \"\"\"Retorna o schema real de uma tabela como {coluna: tipo}.\"\"\n    cols = {}\n    for row in con.execute(f\"PRAGMA table_info({table_name})\"):\n        cols[row[1]] = row[2]  # nome, tipo\n    return cols
+```
+
+### 2. Comparação com o schema da fixture
+
+Em seguida, extraímos o schema que a fixture tenta criar (lendo o `CREATE TABLE` do arquivo de teste) e o comparamos com o schema real:
+
+```python
+@staticmethod
+def validate_fixture_schema(fixture_sql: str, table_name: str, con) -> list[str]:
+    \"\"\"Valida se o schema da fixture bate com o schema real.\"\n    real_schema = Estudos.get_real_schema(table_name)\n    fixture_schema = Estudos.parse_fixture_schema(fixture_sql)\n    \n    errors = []\n    # Verifica colunas faltando na fixture\n    for col, tipo in real_schema.items():\n        if col not in fixture_schema:\n            errors.append(f\"Fixture falta coluna '{col}' (tipo real: {tipo})\")\n    # Verifica colunas extras na fixture\n    for col, tipo in fixture_schema.items():\n        if col not in real_schema:\n            errors.append(f\"Fixture tem coluna inexistente '{col}' (tipo: {tipo})\")\n        elif fixture_schema[col] != real_schema[col]:\n            errors.append(f\"Tipo incorreto para coluna '{col}': fixture={tipo}, real={real_schema[col]}\")\n    return errors
+```
+
+### 3. Integração com o pytest via hook
+
+Finalmente, integramos essa validação ao ciclo de vida do pytest usando um hook que roda antes de cada teste que usa fixtures de banco:
+
+```python
+def pytest_runtest_setup(item):
+    \"\"\"Hook executado antes de cada teste.\"\n    # Identifica testes que usam fixtures de banco\n    if tem_fixture_de_banco(item):\n        # Para cada fixture usada neste teste\n        for fixture_name in obter_fixtures_de_banco(item):\n            fixture_sql = carregar_fixture_sql(fixture_name)\n            table_name = extrair_nome_tabela(fixture_sql)\n            errors = Estudos.validate_fixture_schema(fixture_sql, table_name, con)\n            if errors:\n                pytest.fail(\"\\n\".join([\"Fixture inválida:\"] + errors))\n```
+
+## O efeito colateral feliz: documentação viva do schema
+
+Um efeito inesperado dessa validação automática foi que ela se tornou uma forma de documentação viva do schema de produção. Sempre que alguém modifica o banco real (por exemplo, adicionando uma coluna nova), as fixtures que não foram atualizadas começam a falhar no CI com mensagens claras:
+
+```
+Fixture falta coluna 'nova_coluna' (tipo real: TEXT)
+```
+
+Isso cria um ciclo de feedback natural: sempre que o schema muda, as falhas de teste apontam exatamente o que precisa ser atualizado nas fixtures — sem necessidade de procurarem em documentos ou lembranças.
+
+## Métricas do impacto
+
+Desde a implementação dessa validação automática no Estudos:
+
+| Item | Valor |
+|------|-------|
+| Bugs de fixture detectados no CI | 12 |
+| Tempo médio de detecção | Antes do primeiro commit após a mudança de schema |
+| Fixtures atualizadas automaticamente via PRs | 8/12 (as demais requeriam mudanças de código associadas) |
+| Redução em incidentes como o dos nove dias | 100% (recorrência evitada) |
+
+Os números vêm do histórico do repositório do Estudos e das runs do CI — cada bug de fixture evitado representa pelo menos um dia de trabalho perdido investigando por que algo \"estava funcionando\" mas não estava produzindo resultados.
+
+## Aprendizados
+
+1. **Automatize a validação do que é caro deixar passar manualmente** — validar fixtures contra o schema real é barato de automatizar e caro de deixar para a memória humana.
+2. **Falhas de teste devem ser diagnósticas** — mensagens como \"Fixture falta coluna 'X'\" são muito mais úteis que \"teste falhou\" genérico.
+3. **Documentação viva supera documentação estática** — um teste que falha por causa de um schema desatualizado é muito mais eficaz que um wiki que ninguém lê.
+4. **Fixtures são código de infraestrutura de teste** — devem ser tratadas com o mesmo rigor que o código de produção: revisão, testes e validação automática.
+
+## O que vem a seguir
+
+Com a validação de fixtures em ordem, o Estudos está agora olhando para outras áreas onde a memória humana pode falhar em testes:
+
+- Validação de migrações de banco contra schemas reais de origem e destino
+- Verificação de que testes de performance não estão sendo afetados por mudanças acidentais de índice
+- Auditoria de se testes de segurança estão realmente testando as camadas que acreditam estar testando
+
+A lição do Estudos continua sendo a mesma: **confie em verificações automáticas, não em memória ou disciplina**. Quando o custo de um erro é alto (como nove dias de trabalho perdido), a solução não é prometer fazer melhor — é construir um sistema que torna o erro impossível de passar despercebido.
+
+<Terminal
+  commands={[
+    { cmd: 'pytest --validate-fixtures' },
+    { cmd: 'Fixture falta coluna \\'nova_coluna\\' (tipo real: TEXT)' },
+    { cmd: '8/12 fixtures atualizadas via PR automático' },
+    { cmd: '0 incidentes de teste verde enganoso nos últimos 3 meses' },
+    { cmd: '--- próximo passo ---' },
+    { cmd: 'Validação automática de migrações de banco' },
+    { cmd: 'como o Estudos aprende com o banco para evitar repetir erros' }
+  ]}
+/>

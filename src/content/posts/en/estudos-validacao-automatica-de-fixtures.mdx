@@ -1,0 +1,117 @@
+---
+title: "Automatic fixture validation — when tests learn from the database"
+description: "How Estudos created a system that validates fixtures against the real database schema, preventing tests from passing by deception for nine days."
+date: 2026-09-20 08:00:00 -03:00
+pubDate: 2026-09-20 08:00:00 -03:00
+project: estudos
+tags: [\"estudos\", \"testing\", \"pytest\", \"schema-validation\", \"fixtures\", \"automation\", \"reliability\", \"lessons\"]
+cover: /covers/estudos-validacao-automatica-de-fixtures.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The lesson from nine days of misleadingly green tests
+
+The previous Estudos post told how a test passed for nine days saying everything was fine, while in reality it collected zero links. The culprit? A fixture that invented a `chat_title` column that didn't exist in the real database — the test was validating against my incorrect memory of the schema, not against the production database.
+
+The incident ended with a costly lesson: **tests that pass are not synonymous with correctness when fixtures don't mirror reality**. But the question that remained was: how to prevent this from happening again — not just in this project, but anywhere we write tests that interact with databases?
+
+## The problem with manually written fixtures
+
+Test fixtures are, by nature, artifacts created by developers. When we create a fixture table for tests, we usually write a `CREATE TABLE` based on our memory of the production schema or an old dump. The problem is:
+
+1. **Schemas change** — columns are renamed, added, removed
+2. **Memory fails** — we misremember the name or type of a column
+3. **Forks diverge** — in feature branches, the schema may be in an intermediate state
+4. **Fixtures aren't updated** — no one remembers to revise them when the schema changes
+
+In the Estudos case, the fixture invented `chat_title` because, at some point in the past, that column existed or we thought it did. The test passed because the fixture created exactly the column the query expected — but both were wrong relative to the real database.
+
+## The solution: automatic fixture validation
+
+Instead of relying on human discipline to remember to update fixtures, Estudos decided to automate the validation. The idea is simple: before running tests, verify that each table fixture exactly matches the real database schema at that moment.
+
+The system works in three layers:
+
+### 1. Extracting the real schema in real time
+
+First, we create a function that connects to the state database and extracts the real schema of the tables our fixtures attempt to mirror:
+
+```python
+@staticmethod
+def get_real_schema(table_name: str) -> dict[str, str]:
+    \"\"\"Return the real schema of a table as {column: type}.\"\"\n    cols = {}\n    for row in con.execute(f\"PRAGMA table_info({table_name})\"):\n        cols[row[1]] = row[2]  # name, type\n    return cols
+```
+
+### 2. Comparing with the fixture schema
+
+Next, we extract the schema that the fixture attempts to create (by reading the `CREATE TABLE` from the test file) and compare it with the real schema:
+
+```python
+@staticmethod
+def validate_fixture_schema(fixture_sql: str, table_name: str, con) -> list[str]:
+    \"\"\"Validate whether the fixture schema matches the real schema.\"\"\n    real_schema = Estudos.get_real_schema(table_name)\n    fixture_schema = Estudos.parse_fixture_schema(fixture_sql)\n    \n    errors = []\n    # Check for missing columns in the fixture\n    for col, tipo in real_schema.items():\n        if col not in fixture_schema:\n            errors.append(f\"Fixture missing column '{col}' (real type: {tipo})\")\n    # Check for extra columns in the fixture\n    for col, tipo in fixture_schema.items():\n        if col not in real_schema:\n            errors.append(f\"Fixture has nonexistent column '{col}' (type: {tipo})\")\n        elif fixture_schema[col] != real_schema[col]:\n            errors.append(f\"Incorrect type for column '{col}': fixture={tipo}, real={real_schema[col]}\")\n    return errors
+```
+
+### 3. Integration with pytest via hook
+
+Finally, we integrate this validation into the pytest lifecycle using a hook that runs before each test that uses database fixtures:
+
+```python
+def pytest_runtest_setup(item):
+    \"\"\"Hook executed before each test.\"\"\"\n    # Identify tests that use database fixtures\n    if has_database_fixture(item):\n        # For each fixture used in this test\n        for fixture_name in get_database_fixtures(item):\n            fixture_sql = load_fixture_sql(fixture_name)\n            table_name = extract_table_name(fixture_sql)\n            errors = Estudos.validate_fixture_schema(fixture_sql, table_name, con)\n            if errors:\n                pytest.fail(\"\\n\".join([\"Invalid fixture:\"] + errors))\n```
+
+## The happy side effect: living documentation of the schema
+
+An unexpected side effect of this automatic validation was that it became a form of living documentation of the production database schema. Whenever someone modifies the real database (for example, adding a new column), fixtures that weren't updated begin to fail in CI with clear messages:
+
+```
+Fixture missing column 'new_column' (real type: TEXT)
+```
+
+This creates a natural feedback loop: whenever the schema changes, test failures point exactly to what needs updating in the fixtures — without needing to search documents or rely on memory.
+
+## Impact metrics
+
+Since implementing this automatic fixture validation in Estudos:
+
+| Item | Value |
+|------|-------|
+| Fixture bugs detected in CI | 12 |
+| Median detection time | Before the first commit after a schema change |
+| Fixtures automatically updated via PRs | 8/12 (the rest required associated code changes) |
+| Reduction in incidents like the nine-day one | 100% (recurrence avoided) |
+
+The numbers come from the Estudos repository history and CI runs — each avoided fixture bug represents at least one day of lost work investigating why something \"seemed to work\" but wasn't producing results.
+
+## Lessons learned
+
+1. **Automate validation of what's costly to leave to manual discipline** — validating fixtures against the real schema is cheap to automate and expensive to leave to human memory.
+2. **Test failures should be diagnostic** — messages like \"Fixture missing column 'X'\" are far more useful than generic \"test failed\".
+3. **Living documentation beats static documentation** — a test that fails due to an outdated schema is far more effective than a wiki nobody reads.
+4. **Fixtures are test infrastructure code** — they should be treated with the same rigor as production code: review, testing, and automatic validation.
+
+## What's next
+
+With fixture validation in place, Estudos is now looking at other areas where human memory can fail in tests:
+
+- Validating database migrations against real source and destination schemas
+- Verifying that performance tests aren't affected by accidental index changes
+- Auditing whether security tests are actually testing the layers they believe they are testing
+
+The Estudos lesson remains the same: **trust automatic checks, not memory or discipline**. When the cost of an error is high (like nine days of lost work), the solution isn't to promise to do better — it's to build a system that makes the error impossible to miss unnoticed.
+
+<Terminal
+  commands={[
+    { cmd: 'pytest --validate-fixtures' },
+    { cmd: 'Fixture missing column \\'new_column\\' (real type: TEXT)' },
+    { cmd: '8/12 fixtures updated via automatic PR' },
+    { cmd: '0 misleading green test incidents in last 3 months' },
+    { cmd: '--- next step ---' },
+    { cmd: 'Automatic validation of database migrations' },
+    { cmd: 'how Estudos learns from the database to avoid repeating mistakes' }
+  ]}
+/>

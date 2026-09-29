@@ -1,0 +1,98 @@
+---
+title: "Arachne Knowledge OS: o Sistema Operacional de Conhecimento que uniu RAG, LLM e Obsidian"
+description: "Como o Arachne evoluiu de um scraper para uma plataforma de conhecimento pessoal com infra zero‑porta, busca híbrida e geração de bots."
+category: samuel-projects
+date: 2026-09-17 08:00:00 -03:00
+pubDate: 2026-09-17 08:00:00 -03:00
+project: arachne
+tags: [arachne, rag, llm, obsidian, knowledge-os]
+icon: "🕷️"
+cover: /covers/arachne-conhecimento-os-2026-09-17.webp
+featured: false
+hidden: true
+---
+
+# Arachne Knowledge OS
+
+Tudo começou com uma pergunta simples: como transformar anotações espalhadas em arquivos PDF, URLs, vídeos do YouTube e repositórios Git em um único sistema de conhecimento que realmente pudesse ser consultado? Após anos usando marcadores, pastas e ferramentas de notas que nunca se conectavam, decidi construir o que faltava: um **Sistema Operacional de Conhecimento** para o Arachne.
+
+## O setup: infra zero‑porta
+
+O primeiro obstáculo era a infraestrutura. Não queria abrir portas nem gerenciar servidores tradicionais. A solução foi abraçar o modelo **zero‑porta** do Cloudflare: usar D1 (SQLite na borda) para o armazenamento estrutural e Workers para a lógica de ingestão e consulta. Dessa forma, o Arachne passa a ser acessível apenas através de APIs HTTPS, sem necessidade de manter instâncias sempre ligadas.
+
+```bash
+# Exemplo de sync inicial com D1
+wrangler d1 execute arachne-knowledge-os --remote --command "SELECT COUNT(*) FROM sources"
+```
+
+## O conflito: ingestão multimodal e busca fragmentada
+
+Com a infra pronta, chegamos ao coração do problema: como lidar com tantos tipos de fontes diferentes? Cada formato exigia seu próprio extrator — PPTX precisava de lógica distinta de vídeos do YouTube, e os repositórios Git traziam históricos que precisavam ser indexados de forma incremental. Além disso, a busca pura por palavra‑chave (FTS5) não conseguia capturar o sentido semântico das perguntas, enquanto a busca vetorial pura era custosa demais para consultas frequentes.
+
+Foi aí que entrei no ciclo de tentativa e erro: tentei extratores genéricos, falhei com formatação perdida, tentei apenas vetores e vi a latência subir. A quebra veio quando decidi **combinar** as duas abordagens em um pipeline híbrido.
+
+## A resolução: RAG híbrido com RRF + LLM + Obsidian
+
+O pipeline atual do Arachne Knowledge OS é o seguinte:
+
+1. **Query expansion** – sinônimos e variações são gerados a partir da consulta original.
+2. **Busca híbrida** – a consulta expandida é enviada simultaneamente para um índice FTS5 (palavra‑chave) e um índice vetorial (embeddings).
+3. **Fusion com RRF** – os resultados das duas buscas são combinados usando *Reciprocal Rank Fusion*, que equilibra a contribuição de cada fonte sem depender de scores brutos.
+4. **Contexto** – os trechos ranqueados são fornecidos como contexto ao modelo de linguagem.
+5. **LLM** – o SambaNova DeepSeek‑V3.1 gera a resposta final, citando as fontes como \[1\], \[2\], etc.
+6. **Answer** – o usuário receita uma resposta fundamentada, com links para os trechos originais.
+
+```python
+# Pseudocódigo simplificado do pipeline RAG
+def answer(query):
+    expanded = expand_query(query)          # app/rag/expansion.py
+    fts_results = fts5_search(expanded)    # app/rag/stores/sqlite_store.py
+    vec_results = vector_search(expanded)  # mesmo store
+    fused = rrf_fusion(fts_results, vec_results, k=60)
+    context = build_context(fused)
+    llm_answer = sambanova_chat(context)   # app/knowledge/ingest.py (LLM call)
+    return llm_answer
+```
+
+Cada peça foi testada isoladamente. O FTS5 foi sanetizado para ignorar pontuação que quebra o MATCH; o vetor usa embeddings do mesmo provedor do LLM para manter espaço unificado; o RRF garante que um documento bem posicionado em apenas um dos índices ainda possa aparecer no topo.
+
+## Ingestão que realmente funciona
+
+Para não reinventar a roda, aproveitei extratores existentes sempre que possível:
+
+- **PPTX** – python‑pptx para percorrer slides e notas do apresentador.
+- **Obsidian** – caminhada direta nos arquivos markdown do vault, preservando frontmatter e tags.
+- **Git** – clone raso + log de commits para extrair mensagens e diffs.
+- **YouTube** – transcrição via API oficial, com fallback para yt‑dlp quando necessário.
+
+Cada ingestor grava no D1 tanto o texto bruto quanto os metadados (fonte, tipo, contagem de caracteres, timestamp). Após cada ingestão bem‑sucedida, o sistema dispara automaticamente a **write‑back para o vault do Obsidian**, mantendo uma cópia atualizada das notas processadas.
+
+## Geração de bots, notebooks e guias
+
+Com o conhecimento estruturado e acessível, o próximo passo foi tornar ele acionável. O Arachne agora pode gerar três tipos de artefatos diretamente de qualquer base de conhecimento:
+
+- **Chatbot Widget** – um script JavaScript que embarca um chat baseado na KB, configurável com tema, posição e saudação inicial.
+- **Página Notebook** – HTML no estilo NotebookLM, contendo lista de fontes, estatísticas e links para os documentos originais.
+- **Study Guide** – Markdown contendo contagens por tipo de entidade (PESSOA, LOCAL, ORG, etc.) e os chunks completos mais relevantes.
+
+Esses artefatos são produzidos sob demanda via endpoints `/generate/*` e podem ser hospedados em qualquer estático — perfeito para compartilhar com colegas ou publicar na web.
+
+## Próximos passos
+
+O Knowledge OS já está funcional, mas ainda há frente de trabalho:
+
+- **Integração com o Hermes** – usar o mecanismo de agentes do Hermes como motor de raciocínio opcional.
+- **Chunking recursivo** – melhorar a divisão de documentos longos para preservar contexto em níveis hierárquicos.
+- **Reranking com cross‑encoder** – adicionar uma segunda etapa de reordenação usando modelos menores e especializados para melhorar ainda mais a precisão.
+
+Hoje, ao olhar para o painel de estatísticas do Worker e ver o contador de fontes aumentando a cada nova anotação, sinto que o projeto finalmente chegou onde eu queria: um sistema de conhecimento que é tão fácil de usar quanto anotar em um caderno, mas tão poderoso quanto uma consulta a uma base de dados estruturada.
+
+---
+
+<details>
+  <summary>Ver como funciona na prática (TerminalWidget)</summary>
+  <br/>
+  <!-- O componente TerminalWidget será inserido aqui pelo build -->
+</details>
+
+import Terminal from '../../components/TerminalWidget.astro'

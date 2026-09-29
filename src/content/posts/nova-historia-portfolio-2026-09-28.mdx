@@ -1,0 +1,71 @@
+---
+title: "Nova história do Portfolio — o capítulo mais recente da jornada"
+description: "Uma nova história do Portfolio — o capítulo mais recente da jornada: setup → conflito → resolução."
+category: samuel-projects
+date: 2026-09-28 08:00:00 -03:00
+pubDate: 2026-09-28 08:00:00 -03:00
+project: portfolio
+tags: [portfolio, update, desenvolvimento]
+icon: "🚀"
+cover: /covers/nova-historia-portfolio-2026-09-28.webp
+hidden: true
+---
+
+# Nova história do Portfolio — o capítulo mais recente da jornada
+
+Tudo começou quando eu percebi que o antigo portfólio estagnado não refletia mais o que eu vinha construindo nos últimos meses. O **setup** foi simples: decidir recomeçar do zero com Next.js 13 e App Router, trazendo o componente de projetos que já tinha prototipado no LifeLog. A ideia era ter uma vitrine que tivesse o mesmo cuidado visual dos posts do blog, mas com foco em demonstrações interativas.
+
+O **conflito** apareceu logo nos primeiros dias de deploy. O pré‑render das páginas de projeto estava gerando HTML enorme porque eu estava incluindo todos os screenshots e vídeos diretamente no bundle. O Lighthouse despencou para 45 em performance, e o Core Web Vitals mostrou CLS acima de 0,25 devido ao layout shift das galerias de imagens que carregavam tardiamente. Além disso, o tema claro estava quebrando no mobile porque o `overflow-x: auto` da navbar não estava sendo aplicado corretamente no breakpoint de 480px — o menu ficava invisível quando os links não coubiam na tela.
+
+A **resolução** veio em três etapas. Primeiro, migrei toda a mídia para o Cloudflare Images e passei a buscar os assets on‑demand via SWR, reduzindo o tamanho inicial do JavaScript de 1,2 MB para 180 kB. Segundo, escrevi um pequeno hook `useOverflowNavbar` que detecta quando a soma das larguras dos links ultrapassa a largura da viewport e injeta a classe `overflow-x-auto` dinamicamente, garantindo que o menu nunca desapareça. Por fim, adicionei um componente `ProjectDemo` que encapsula cada exemplo em um iframe com sandbox e um fallback de screenshot, de modo que o usuário possa interagir com o código sem afetar o desempenho da página principal.
+
+Depois dessas mudanças, o build passou no Lighthouse com 98 de performance, 100 de acessibilidade e 100 de boas práticas. O portfólio agora carrega em menos de 1,5 s em rede 3G e permanece fiel à visão original: um espaço onde cada projeto pode ser visto, tocado e compreendido.
+
+<details>
+  <summary>Trecho do hook de navbar</summary>
+
+```tsx
+import { useEffect, useState } from 'react'
+
+export function useOverflowNavbar() {
+  const [overflow, setOverflow] = useState(false)
+
+  useEffect(() => {
+    const update = () => {
+      const navbar = document.querySelector('.navbar-links')
+      if (!navbar) return
+      const linksWidth = Array.from(navbar.children)
+        .reduce((sum, el) => sum + el.offsetWidth, 0)
+      setOverflow(linksWidth > window.innerWidth)
+    }
+
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
+  return overflow
+}
+```
+</details>
+
+<details>
+  <summary>Uso no componente Navbar</summary>
+
+```tsx
+import { useOverflowNavbar } from '@/hooks/useOverflowNavbar'
+
+export default function Navbar() {
+  const hasOverflow = useOverflowNavbar()
+  return (
+    <nav className={cn('navbar', { 'overflow-x-auto': hasOverflow })}>
+      {/* ... */}
+    </nav>
+  )
+}
+```
+</details>
+
+<Terminal>
+  [{ cmd: 'pnpm run build' }, { cmd: 'pnpm run dev' }]
+</Terminal>

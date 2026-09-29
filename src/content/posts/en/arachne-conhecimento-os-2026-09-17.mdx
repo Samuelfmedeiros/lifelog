@@ -1,0 +1,99 @@
+---
+title: "Arachne Knowledge OS: The Knowledge Operating System that united RAG, LLM and Obsidian"
+description: "How Arachne evolved from a scraper into a personal knowledge platform with zero‑port infra, hybrid search and bot generation."
+category: samuel-projects
+date: 2026-09-17 08:00:00 -03:00
+pubDate: 2026-09-17 08:00:00 -03:00
+project: arachne
+tags: [arachne, rag, llm, obsidian, knowledge-os]
+icon: "🕷️"
+cover: /covers/arachne-conhecimento-os-2026-09-17.webp
+featured: false
+hidden: true
+lang: en
+---
+
+# Arachne Knowledge OS
+
+It all started with a simple question: how to turn scattered notes across PDF files, URLs, YouTube videos and Git repositories into a single knowledge system that could actually be queried? After years using bookmarks, folders and note‑taking tools that never connected, I decided to build what was missing: a **Knowledge Operating System** for Arachne.
+
+## The setup: zero‑port infrastructure
+
+The first obstacle was infrastructure. I didn’t want to open ports nor manage traditional servers. The solution was to embrace Cloudflare’s **zero‑port** model: using D1 (SQLite on the edge) for structured storage and Workers for ingestion and query logic. This way Arachne becomes reachable only via HTTPS APIs, with no need to keep instances always running.
+
+```bash
+# Example initial sync with D1
+wrangler d1 execute arachne-knowledge-os --remote --command "SELECT COUNT(*) FROM sources"
+```
+
+## The conflict: multimodal ingestion and fragmented search
+
+With the infrastructure ready, we reached the core problem: how to handle so many different source types? Each format required its own extractor — PPTX needed different logic from YouTube videos, and Git repositories brought histories that needed incremental indexing. Moreover, pure keyword search (FTS5) couldn’t capture the semantic meaning of questions, while pure vector search was too costly for frequent queries.
+
+That’s when I entered the trial‑and‑error cycle: I tried generic extractors and failed with lost formatting, tried vectors only and saw latency rise. The breakthrough came when I decided to **combine** the two approaches into a hybrid pipeline.
+
+## The resolution: Hybrid RAG with RRF + LLM + Obsidian
+
+The current Arachne Knowledge OS pipeline works as follows:
+
+1. **Query expansion** – synonyms and variations are generated from the original query.
+2. **Hybrid search** – the expanded query is sent simultaneously to an FTS5 index (keyword) and a vector index (embeddings).
+3. **Fusion with RRF** – results from the two searches are combined using *Reciprocal Rank Fusion*, which balances each source’s contribution without relying on raw scores.
+4. **Context** – the ranked snippets are provided as context to the language model.
+5. **LLM** – SambaNova DeepSeek‑V3.1 generates the final answer, citing sources as \[1\], \[2\], etc.
+6. **Answer** – the user receives a grounded response, with links to the original snippets.
+
+```python
+# Simplified RAG pipeline pseudocode
+def answer(query):
+    expanded = expand_query(query)          # app/rag/expansion.py
+    fts_results = fts5_search(expanded)    # app/rag/stores/sqlite_store.py
+    vec_results = vector_search(expanded)  # same store
+    fused = rrf_fusion(fts_results, vec_results, k=60)
+    context = build_context(fused)
+    llm_answer = sambanova_chat(context)   # app/knowledge/ingest.py (LLM call)
+    return llm_answer
+```
+
+Each piece was tested in isolation. FTS5 was sanitized to ignore punctuation that breaks MATCH; the vector uses embeddings from the same LLM provider to keep a unified space; RRF ensures a document well‑ranked in just one index can still appear at the top.
+
+## Ingestion that actually works
+
+To avoid reinventing the wheel, I leveraged existing extractors wherever possible:
+
+- **PPTX** – python‑pptx to walk through slides and presenter notes.
+- **Obsidian** – direct traversal of the vault’s markdown files, preserving frontmatter and tags.
+- **Git** – shallow clone + commit log to extract messages and diffs.
+- **YouTube** – transcription via the official API, with fallback to yt‑dlp when needed.
+
+Each ingestor writes both the raw text and metadata (source, type, character count, timestamp) into D1. After each successful ingestion, the system automatically triggers a **write‑back to the Obsidian vault**, keeping an updated copy of the processed notes.
+
+## Generating bots, notebooks and guides
+
+With knowledge structured and accessible, the next step was to make it actionable. Arachne can now generate three types of artifacts directly from any knowledge base:
+
+- **Chatbot Widget** – a JavaScript script that embeds a chat based on the KB, configurable with theme, position and initial greeting.
+- **Notebook Page** – HTML in the style of NotebookLM, containing a source list, statistics and links to the original documents.
+- **Study Guide** – Markdown containing entity‑type counts (PERSON, LOCATION, ORG, etc.) and the most relevant complete chunks.
+
+These artifacts are produced on demand via the `/generate/*` endpoints and can be hosted anywhere static — perfect for sharing with colleagues or publishing on the web.
+
+## Next steps
+
+The Knowledge OS is already functional, but there’s still work ahead:
+
+- **Hermes integration** – use Hermes’ agent mechanism as an optional reasoning engine.
+- **Recursive chunking** – improve the division of long documents to preserve context across hierarchical levels.
+- **Cross‑encoder reranking** – add a second reordering stage using smaller, specialized models to further boost precision.
+
+Today, when I look at the Worker’s statistics panel and see the source counter rise with each new annotation, I feel the project has finally arrived where I wanted: a knowledge system as easy to use as jotting in a notebook, yet as powerful as querying a structured database.
+
+---
+
+<details>
+  <summary>See how it works in practice (TerminalWidget)</summary>
+  <br/>
+  <!-- The TerminalWidget component will be inserted here by the build -->
+</details>
+
+import Terminal from '../../../components/TerminalWidget.astro'
