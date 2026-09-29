@@ -12,6 +12,8 @@ hidden: true
 lang: en
 ---
 
+import Terminal from '../../../components/TerminalWidget.astro'
+
 # Nova história do Portfolio — o capítulo mais recente da jornada
 
 Tudo começou quando eu percebi que o antigo portfólio estagnado não refletia mais o que eu vinha construindo nos últimos meses. O **setup** foi simples: decidir recomeçar do zero com Next.js 13 e App Router, trazendo o componente de projetos que já tinha prototipado no LifeLog. A ideia era ter uma vitrine que tivesse o mesmo cuidado visual dos posts do blog, mas com foco em demonstrações interativas.
@@ -67,6 +69,9 @@ export default function Navbar() {
 ```
 </details>
 
-<Terminal>
-  [{ cmd: 'pnpm run build' }, { cmd: 'pnpm run dev' }]
-</Terminal>
+<Terminal
+  commands={[
+    { cmd: 'pnpm run build' },
+    { cmd: 'pnpm run dev' }
+  ]}
+/>

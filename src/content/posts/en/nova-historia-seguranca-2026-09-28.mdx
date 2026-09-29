@@ -31,22 +31,9 @@ Below is a sample command that illustrates how the security watchdogs verify env
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-<Terminal>
-  [
-    {
-      cmd: "bash -c 'source ~/.hermes/scripts/env-watchdog.sh && echo \"Checking env...\" && ./env-watchdog.sh --check'",
-      output: "Checking env...
-[WARN] VARIÁVEL LOG_LEVEL desviada de 'info' para 'debug'
-[INFO] Aplicando correção: LOG_LEVEL=info
-[OK] Todos os parâmetros dentro do esperado."
-    },
-    {
-      cmd: "bash -c './security-scan-weekly.sh --summary'",
-      output: "Security Scan Weekly - Resumo
-Data: 2026-09-22
-Score: 71% (35 ✅, 12 ⚠️, 0 🔴)
-Principais melhorias: dependências atualizadas, cabeçalhos de segurança aplicados em 2 novos serviços
-Próximos passos: tratar warnings de política de senha e completar o emergency-checklist."
-    }
-  ]
-</Terminal>
+<Terminal
+  commands={[
+    { cmd: "bash -c 'source ~/.hermes/scripts/env-watchdog.sh && echo \"Checking env...\" && ./env-watchdog.sh --check'", output: "Checking env...\n[WARN] LOG_LEVEL drifted from 'info' to 'debug'\n[INFO] Applying correction: LOG_LEVEL=info\n[OK] All parameters within expected range." },
+    { cmd: "bash -c './security-scan-weekly.sh --summary'", output: "Security Scan Weekly - Summary\nDate: 2026-09-22\nScore: 71% (35 Approved, 12 Warning, 0 Critical)\nNext steps: address password policy warnings and complete the emergency checklist." }
+  ]}
+/>
