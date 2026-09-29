@@ -507,3 +507,10 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **Pitfall:** `git checkout -- <dir>` largo reaplicado depois do `git apply` levou junto os arquivos bons — reaplicar patch SEMPRE seletivo por arquivo (`--include`).
 
 ## Sessao 2026-09-22 (fim de dia) - Fim de dia automático
+
+## Sessao 2026-09-28 (fim de dia) - 2 capas AI do watchdog + tree alheia intacta
+
+- `e52e755` fix: capa AI de nova-historia-seguranca-2026-09-28 (watchdog, 79838 bytes webp).
+- `03a8073` fix: capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
+- Working tree de outra sessao, nao tocada daqui: M api/ocultos-data.mjs + ~34 untracked (artefatos .loop-*, posts MDX PT+EN ainda nao versionados, docs/CHANGELOG.md untracked/duplicata sem decisao, capas public/covers, scripts/.dryrun-atomic.mjs).
+- Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.

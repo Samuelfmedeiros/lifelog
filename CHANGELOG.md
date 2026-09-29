@@ -272,3 +272,8 @@
 - contexto: cron fim-de-dia recriado (job `5682dd26368e`, 23:00) — recuperação pontual do gap de documentação
 
 ## [2026-09-22] - Fim de dia automático: documentação de sessão
+
+## [2026-09-28] - capas AI do watchdog (2 posts 28/09)
+- **fix** (`e52e755`): capa AI de nova-historia-seguranca-2026-09-28 (watchdog).
+- **fix** (`03a8073`): capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
+- 2 commits no dia; working tree segue com trabalho de outra sessao (posts MDX + M api/ocultos-data.mjs, intactos).
