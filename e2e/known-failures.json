@@ -28,27 +28,7 @@
       "reason": "axe-core reporta violações critical/serious em /en/ (dívida anterior ao gate)",
       "owner": "dívida a11y (sessão dona da área a11y/VRT)",
       "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/vrt.spec.ts",
-      "title": "home — tema dark (desktop)",
-      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/vrt.spec.ts",
-      "title": "home — tema light (desktop)",
-      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
-    },
-    {
-      "spec": "e2e/vrt.spec.ts",
-      "title": "home — mobile (tema dark)",
-      "reason": "baseline de screenshot desatualizado + flaky 'waiting for fonts' sob carga",
-      "owner": "dívida a11y (sessão dona da área a11y/VRT)",
-      "expiry": "2026-09-28"
     }
-  ]
+  ],
+  "$ultimaRevisao": "2026-10-01: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: pagar divida de VRT vencida (2026-09-28) - decisao do Samuel 30/09: regenerar no runtime da CI"
 }
