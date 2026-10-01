@@ -1,0 +1,10 @@
+# 01/10/2026 — o esbuild precisa de build script. Sem ele o `pnpm install` aborta com
+# ERR_PNPM_IGNORED_BUILDS e o `astro build` morre: sem build nao ha preview, sem preview
+# nao ha VRT, e sem VRT nao ha como pagar a divida de baseline do PR #60.
+#
+# A chave `allowBuilds` e a do pnpm 11+ (e a que o host win32, pnpm 11.25, exige).
+# O CI roda pnpm@10 (o mesmo do deploy.yml) e **nao le esta chave** — nele o build
+# script do esbuild ja e liberado pelo padrao do pnpm 10, entao o arquivo e inofensivo
+# la. Nao remova: sem ele o host de desenvolvimento nao builda.
+allowBuilds:
+  esbuild: true

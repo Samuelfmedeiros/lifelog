@@ -1,0 +1,218 @@
+# Regenera os baselines de VRT NO RUNTIME DA CI (ubuntu-latest), nunca em outra
+# plataforma. Motivo (01/10/2026): o Playwright sufixa o snapshot com a plataforma
+# (`-chromium-linux` / `-chromium-win32`). Os baselines versionados são linux, gerados
+# na CI. Regenerar no Windows produz win32 e a CI deixa de casar — a dívida troca de
+# forma em vez de ser paga.
+#
+# Uso: dispara o workflow (workflow_dispatch) ou faz push em `vrt/regenerate-baseline`.
+# Ele abre PR com os .png novos + as entradas VRT removidas de known-failures.json.
+# O diff da PR é o que o Samuel revisa — nada entra em main sem review.
+name: VRT baseline (regenerar)
+
+# Dispara manualmente (Actions > VRT baseline > Run workflow) ou por push em
+# `vrt/regenerate-baseline`. O push e o gatilho confiavel: `workflow_dispatch` so
+# aparece depois que o arquivo existe no branch padrao, e o primeiro run deste
+# workflow foi disparado por push justamente por isso.
+on:
+  workflow_dispatch:
+    inputs:
+      motivo:
+        description: 'Por que renovar o baseline (fica no commit)'
+        required: true
+        default: 'renovacao de baseline por divida vencida'
+  push:
+    branches:
+      - vrt/regenerate-baseline
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: vrt-baseline
+  cancel-in-progress: false
+
+jobs:
+  regenerar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Regenerar SEMPRE a partir de main: os baselines tem que refletir o que a CI
+      # valida hoje, nao um estado intermediario de branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # Install do pnpm ANTES do setup-node: com `cache: pnpm` o setup-node precisa
+      # do binario na hora de montar o cache, e falha com "Unable to locate executable
+      # file: pnpm" se o pnpm so for instalado depois (medido no run 36815928657).
+      #
+      # pnpm@10 para casar com o deploy.yml (que roda verde em main). A chave
+      # `allowBuilds` do pnpm-workspace.yaml e do pnpm 11 — no 10 ela nao existe e o
+      # install aborta (medido no run 36816041628). Alinhar versao e chave.
+      - name: Install pnpm
+        run: |
+          npm install -g pnpm@10
+          mkdir -p /tmp/pnpm-store
+          pnpm config set store-dir /tmp/pnpm-store --global
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: /tmp/pnpm-store
+          key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-
+
+      - name: Install dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      # O preview, a espera e a regeneracao vivem no MESMO step: um processo em
+      # background de um step NAO sobrevive para o step seguinte no GitHub Actions,
+      # e o VRT cairia contra porta fechada.
+      - name: Subir preview e regenerar baselines
+        env:
+          PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
+        run: |
+          set -euo pipefail
+          pnpm preview --port 4321 &
+          PREVIEW_PID=$!
+          trap 'kill $PREVIEW_PID 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 40); do
+            C=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ || echo 000)
+            [ "$C" = "200" ] && break
+            sleep 2
+          done
+          # Readiness nao e so a home: o E2E navega para /en/, 404 e manifest.
+          for probe in / /en/ /404.html /manifest.json; do
+            C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:4321$probe" || echo 000)
+            echo "probe $probe -> $C"
+            case "$C" in 200|404) ;; *) echo "preview nao pronto em $probe ($C)"; exit 1;; esac
+          done
+
+          # O config da suite fixa /usr/bin/chromium. Em ubuntu-latest ele existe; se
+          # nao existir, o Playwright usa o proprio binario e o render pode divergir
+          # do historico dos baselines — sinalizado, nao silenciado.
+          if [ ! -x /usr/bin/chromium ]; then
+            echo "::warning::/usr/bin/chromium ausente — o VRT usara o binario do Playwright e o render pode divergir do historico dos baselines"
+          else
+            echo "chromium da suite: /usr/bin/chromium (mesmo binario dos baselines versionados)"
+          fi
+
+          pnpm exec playwright test \
+            --config e2e/playwright.config.ts \
+            e2e/vrt.spec.ts \
+            --update-snapshots \
+            --workers=1
+
+      - name: Conferir que os baselines mudaram de fato
+        run: |
+          if git diff --quiet -- e2e/vrt.spec.ts-snapshots/; then
+            echo "::notice::render estavel — o baseline ja refletia o estado atual. Nada a renovar."
+          else
+            git --no-pager diff --stat -- e2e/vrt.spec.ts-snapshots/
+          fi
+
+      # Remove os VRT da divida SO depois que o baseline novo foi gerado. Remover e
+      # sempre livre; adicionar entrada exige aprovacao explicita do Samuel.
+      - name: Pagar a divida no ratchet
+        env:
+          MOTIVO: ${{ github.event.inputs.motivo }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const p = 'e2e/known-failures.json';
+          const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+          const antes = d.failures.length;
+          d.failures = d.failures.filter(f => !f.spec.includes('vrt.spec.ts'));
+          const hoje = new Date().toISOString().slice(0, 10);
+          d.$ultimaRevisao = hoje +
+            ': baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT' +
+            ' removidas — divida PAGA. Motivo: ' + (process.env.MOTIVO || 'n/a');
+          fs.writeFileSync(p, JSON.stringify(d, null, 2) + '\n');
+          console.log('ratchet: ' + antes + ' -> ' + d.failures.length + ' entradas');
+          NODE
+
+      - name: Audit do ratchet tem que passar agora
+        # Deliberadamente NARROW: este workflow regenera baseline de VRT e remove
+        # SO as entradas de vrt.spec.ts. Ele roda com checkout de `main`, onde ainda
+        # existem 4 entradas de a11y vencidas (2026-09-28) — elas sao pagas pelo PR
+        # #60, nao aqui. Entao o audit completo ainda falha neste ponto por design,
+        # e isso NAO e motivo para o workflow falhar: o que este passo tem que
+        # provar e' que nenhuma entrada de VRT ficou de fora.
+        #
+        # O gate real (audit completo) roda no PR, onde o #60 ja removeu as 4 de a11y.
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const d = JSON.parse(fs.readFileSync('e2e/known-failures.json', 'utf8'));
+          const vrt = d.failures.filter(f => f.spec.includes('vrt.spec.ts'));
+          if (vrt.length) {
+            console.error('❌ ' + vrt.length + ' entrada(s) de VRT ainda no ratchet apos regenerar:');
+            for (const f of vrt) console.error('   ' + f.title + ' (expira ' + f.expiry + ')');
+            process.exit(1);
+          }
+          const outras = d.failures.length;
+          console.log('OK: nenhuma entrada de VRT no ratchet. Restam ' + outras +
+            ' entrada(s) de outra spec (pagas em PR propria).');
+          NODE
+
+      - name: Audit completo (informativo — mostra o que ainda bloqueia o PR #60)
+        if: always()
+        run: |
+          node scripts/e2e-ratchet.mjs audit || \
+            echo "::notice::o audit completo ainda falha por entradas de a11y vencidas em main — isso e o PR #60, nao este workflow"
+
+      - name: Prova visual anexada ao run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrt-baselines
+          path: e2e/vrt.spec.ts-snapshots/
+          retention-days: 30
+
+      - name: Abrir PR (nunca merge direto em main)
+        if: github.event_name == 'workflow_dispatch'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: vrt/baseline-${{ github.run_number }}
+          base: main
+          title: 'test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet'
+          commit-message: 'test(vrt): baselines regenerados na CI ubuntu + ratchet pago'
+          body: |
+            ## O que muda
+
+            Baselines de VRT regenerados **no runtime da CI** (`ubuntu-latest`) — a mesma
+            plataforma que valida os arquivos versionados. Regenerar em outra plataforma
+            produziria `*-chromium-win32.png`, que a CI nao reconhece: a divida trocaria
+            de forma em vez de ser paga.
+
+            As entradas de VRT saem de `e2e/known-failures.json` (remover e sempre livre;
+            adicionar exige aprovacao). O audit do ratchet tem que passar neste PR.
+
+            **Motivo da renovacao:** ${{ github.event.inputs.motivo }}
+
+            ## Prova
+            - Artefato `vrt-baselines` anexado a este run (os .png novos)
+            - Audit do ratchet verde neste PR
+            - Nada entra em main sem review do Samuel
