@@ -1,0 +1,9 @@
+# 01/10/2026 — pnpm 11 exige declaracao explicita de quais pacotes podem rodar
+# build script. Sem esbuild aqui, `pnpm install` aborta com ERR_PNPM_IGNORED_BUILDS e
+# o astro build morre — sem build nao ha VRT, e sem VRT nao ha como pagar a divida
+# de baseline do PR #60.
+#
+# A chave e `allowBuilds` (nao `onlyBuiltDependencies`, que o pnpm 11 aceita escrever
+# mas nao le para este caso) com valor booleano por pacote.
+allowBuilds:
+  esbuild: true
