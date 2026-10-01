@@ -9,6 +9,10 @@
 # O diff da PR é o que o Samuel revisa — nada entra em main sem review.
 name: VRT baseline (regenerar)
 
+# Dispara manualmente (Actions > VRT baseline > Run workflow) ou por push em
+# `vrt/regenerate-baseline`. O push e o gatilho confiavel: `workflow_dispatch` so
+# aparece depois que o arquivo existe no branch padrao, e o primeiro run deste
+# workflow foi disparado por push justamente por isso.
 on:
   workflow_dispatch:
     inputs:
@@ -40,13 +44,16 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      # Install do pnpm ANTES do setup-node: com `cache: pnpm` o setup-node precisa
+      # do binario na hora de montar o cache, e falha com "Unable to locate executable
+      # file: pnpm" se o pnpm so for instalado depois (medido no run 36815928657).
+      - name: Install pnpm
+        run: npm i -g pnpm@11
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-
-      - name: Install pnpm
-        run: npm i -g pnpm@11
 
       - name: Install dependencias
         run: pnpm install --frozen-lockfile
