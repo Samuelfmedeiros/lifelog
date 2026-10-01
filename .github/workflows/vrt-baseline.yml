@@ -47,13 +47,35 @@ jobs:
       # Install do pnpm ANTES do setup-node: com `cache: pnpm` o setup-node precisa
       # do binario na hora de montar o cache, e falha com "Unable to locate executable
       # file: pnpm" se o pnpm so for instalado depois (medido no run 36815928657).
+      #
+      # pnpm@10 para casar com o deploy.yml (que roda verde em main). A chave
+      # `allowBuilds` do pnpm-workspace.yaml e do pnpm 11 — no 10 ela nao existe e o
+      # install aborta (medido no run 36816041628). Alinhar versao e chave.
       - name: Install pnpm
-        run: npm i -g pnpm@11
+        run: |
+          npm install -g pnpm@10
+          mkdir -p /tmp/pnpm-store
+          pnpm config set store-dir /tmp/pnpm-store --global
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: /tmp/pnpm-store
+          key: pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-
 
       - name: Install dependencias
         run: pnpm install --frozen-lockfile
