@@ -1,0 +1,65 @@
+---
+title: "Yurumi: o loop de consolidação de memória que não dorme"
+description: "O cron do Yurumi que roda a cada 5 minutos foi aprimorado: agora ele detecta duplicatas, agrupa clusters e tem um ratchet de pills que evita regressões. Veja como o loop evoluiu de um simples consumidor a um verdadeiro agente de memória."
+category: samuel-projects
+date: 2026-10-01 12:42:19 -03:00
+pubDate: 2026-10-01 12:42:19 -03:00
+project: yurumi
+tags: [yurumi, memory, cron, agent-loop, ratchet, pills]
+icon: "🧠"
+cover: /covers/yurumi-o-loop-de-consolidacao-de-memoria-que-nao-dorme.webp
+featured: false
+hidden: true
+---
+## O loop que nunca para
+
+O `yurumi-agent-loop` é o coração silencioso do Yurumi: ele roda a cada 5 minutos, consolidando memórias, detectando duplicatas e preparando o agente para o próximo ciclo. Em sua essência, é um cron simples, mas ao longo de seu desenvolvimento ganhou caminhos de aprendizado e auto‑reparo que o tornaram verdadeiramente agêntico.
+
+## Como funciona
+
+A cada execução, o loop:
+
+1. Carrega todas as memórias armazenadas no Qdrant (ou no fallback Vectorize);
+2. Detecta duplicatas latentes via embeddings e as agrupa em clusters;
+3. Aplica o processo de *consolidate dry‑run*: apenas identifica o que seria unificado, sem modificar nada;
+4. Verifica o horário de expiração de holds antigos e os remove;
+5. Se houver novidade, dispara o feed de aprendizado; caso contrário, fica silencioso.
+
+## O ratchet das pills
+
+Um dos avanços recentes foi a introdução de um **ratchet** no controle de pills do Yurumi. As pills representam os tipos de memória (F1 a F4, identity, etc.). Sempre que uma nova pill é adicionada ou um comportamento muda, o ratchet aumenta um contador em `known-failures.json`. Isso impede que regressões passem despercebidas nos testes E2E.
+
+No último update, o contador foi ajustado de 8 para 7 após a correção do `spec de pills` que sincronizou com o 11º projeto (yurumi) – ou seja, o próprio Yurumi agora é considerado um projeto dentro do ecossistema para fins de teste.
+
+## Por que isso importa
+
+Um loop de consolidação que nunca dorme garante que a memória do agente esteja sempre limpa, organizada e pronta para ser usada. Ele é o paralelo de um sono reparador: enquanto o agente “descansa”, ele está na verdade arquivando, esquecendo o que não serve e fortalecendo o que importa.
+
+Além disso, o design do loop é portátil: o mesmo padrão F1‑F4 (Ingest → Decide → Act → Feedback → Learn) pode ser reaplicado a qualquer outro agente do ecossistema, como o Arachne ou o Capivara, prometendo uma base comum para todos os sistemas agênticos que estamos construindo.
+
+<details>
+<summary>Trecho de código do loop (simplificado)</summary>
+
+```python
+def agent_loop():
+    memories = load_memories()
+    clusters = detect_duplicates(memories)
+    consolidate_dry_run(clusters)
+    expire_olds()
+    if has_changes():
+        trigger_learn()
+    else:
+        # silent cycle – nothing to do
+        pass
+```
+</details>
+
+## Próximos passos
+
+O loop já está estável, mas há espaço para melhorias:
+
+- Integrar um mecanismo de *prioridade* para que memórias mais recentes sejam consolidadas primeiro;
+- Adicionar métricas de latência ao loop, exportando‑as para o Painel de Métricas do Yurumi;
+- Experimentar com diferentes algoritmos de clustering (HDBSCAN, talvez) para melhorar a detecção de duplicatas em embeddings de alta dimensão.
+
+Enquanto isso, o `yurumi-agent-loop` continua sua tarefa incansável, rodando a cada 5 minutos, garantindo que a memória do agente seja sempre um ativo e nunca um passivo.

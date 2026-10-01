@@ -1,0 +1,65 @@
+---
+title: "Yurumi: the memory consolidation loop that never sleeps"
+description: "The Yurumi cron that runs every 5 minutes was improved: now it detects duplicates, clusters them, and has a pill ratchet to prevent regressions. See how the loop evolved from a simple consumer to a true memory agent."
+category: samuel-projects
+date: 2026-10-01 12:42:19 -03:00
+pubDate: 2026-10-01 12:42:19 -03:00
+project: yurumi
+tags: [yurumi, memory, cron, agent-loop, ratchet, pills]
+icon: "🧠"
+cover: /covers/yurumi-o-loop-de-consolidacao-de-memoria-que-nao-dorme.webp
+featured: false
+hidden: true
+---
+## The loop that never sleeps
+
+The `yurumi-agent-loop` is the silent heart of Yurumi: it runs every 5 minutes, consolidating memories, detecting duplicates, and preparing the agent for the next cycle. In essence, it is a simple cron, but over its development it gained learning and self‑repair paths that made it a true memory agent.
+
+## How it works
+
+On each execution, the loop:
+
+1. Loads all memories stored in Qdrant (or the Vectorize fallback);
+2. Detects latent duplicates via embeddings and groups them into clusters;
+3. Applies the *consolidate dry‑run* process: only identifies what would be unified, without modifying anything;
+4. Checks expiration times of old holds and removes them;
+5. If there is novelty, triggers the learning feed; otherwise, stays silent.
+
+## The pill ratchet
+
+One recent advancement was the introduction of a **ratchet** in the Yurumi pill control. Pills represent the memory types (F1 to F4, identity, etc.). Whenever a new pill is added or a behavior changes, the ratchet increments a counter in `known-failures.json`. This prevents regressions from slipping through unnoticed in E2E tests.
+
+In the latest update, the counter was adjusted from 8 to 7 after the pill spec was synchronized with the 11th project (yurumi) – meaning Yurumi itself is now considered a project within the ecosystem for testing purposes.
+
+## Why it matters
+
+A consolidation loop that never sleeps ensures the agent’s memory is always clean, organized, and ready for use. It is the parallel of restorative sleep: while the agent “rests”, it is actually archiving, forgetting what does not serve, and strengthening what matters.
+
+Moreover, the loop’s design is portable: the same F1‑F4 pattern (Ingest → Decide → Act → Feedback → Learn) can be reapplied to any other agent in the ecosystem, like Arachne or Capivara, promising a common foundation for all the agêntic systems we are building.
+
+<details>
+<summary>Code snippet of the loop (simplified)</summary>
+
+```python
+def agent_loop():
+    memories = load_memories()
+    clusters = detect_duplicates(memories)
+    consolidate_dry_run(clusters)
+    expire_olds()
+    if has_changes():
+        trigger_learn()
+    else:
+        # silent cycle – nothing to do
+        pass
+```
+</details>
+
+## Next steps
+
+The loop is already stable, but there is room for improvement:
+
+- Integrate a *priority* mechanism so that more recent memories are consolidated first;
+- Add latency metrics to the loop, exporting them to the Yurumi Metrics Panel;
+- Experiment with different clustering algorithms (HDBSCAN, perhaps) to improve duplicate detection in high‑dimensional embeddings.
+
+For now, the `yurumi-agent-loop` continues its tireless task, running every 5 minutes, ensuring the agent’s memory is always an asset and never a liability.
