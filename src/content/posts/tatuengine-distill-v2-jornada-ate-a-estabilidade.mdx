@@ -1,0 +1,39 @@
+---
+title: "TatuEngine Distill v2: Jornada até a Estabilidade"
+description: "Como o destilador v2 do TatuEngine superou desafios de corpus, professores e guardas para alcançar uma versão estável e pronta para uso."
+date: 2026-10-01 16:00:00 -03:00
+pubDate: 2026-10-01 16:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, distill, modelo, estabilidade]
+icon: "🌊"
+cover: /covers/tatuengine-distill-v2-jornada-ate-a-estabilidade.webp
+featured: false
+---
+
+## O desafio inicial: corpus e professores
+
+Os primeiros dias do destilador v2 foram marcados por instabilidade. O principal gargalo era a dependência de um corpus de treinamento de alta qualidade e um conjunto heterogêneo de professores (modelos maiores) que orientavam o aprendizado do aluno (o modelo menor a ser destilado). Sem um corpus confiável, o treinamento falhava silenciosamente, produzindo pesos inúteis. Além disso, o mix de professores variava de execução para execução, levando a gradientes inconsistentes e perda de convergência.
+
+## Guardas e validação de entrada
+
+A primeira linha de defesa foi a introdução de guards específicos para ausência de corpus. O guard GUARD16D, por exemplo, verifica a presença e a integridade dos arquivos de dados antes de iniciar qualquer etapa de treinamento. Se o corpus estiver ausente ou corrompido, o processo é interrompido com uma mensagem clara, evitando ciclos de treinamento desperdiçados. Essa mudança simples eliminou uma classe inteira de falhas silenciosas e tornou os logs de treinamento muito mais úteis para depuração.
+
+## Estratégia de professores e retry pinado
+
+Com o corpus garantido, o próximo desafio foi estabilizar o mix de professores. Em vez de permitir que a seleção de professores fosse totalmente aleatória, implementamos um mecanismo de retry pinado: se uma rodada de treinamento com um determinado conjunto de professores falhasse por motivos conhecidos (como estouro de memória ou divergência de loss), o mesmo conjunto seria reaplicado em seguida, permitindo que o modelo aprendesse com aquela configuração antes de passar para outra. Essa abordagem reduziu a variabilidade entre execuções e deu tempo ao modelo para absorver o conhecimento de cada conjunto de professores.
+
+## Transição para serviço systemd
+
+Um marco importante foi a mudança do destilador de um script avulso para um serviço gerenciado pelo systemd --user. Essa transição trouxe benefícios críticos: restart automático em caso de falha, isolamento de ambiente e integração com o sistema de logging do host. O serviço foi configurado com `Restart=always`, garantindo que, mesmo após uma queda inesperada, o processo fosse relançado sem intervenção manual. Além disso, a guarda de corpus ausente foi delegada ao próprio systemd, que verifica a condição antes de iniciar o serviço, evitando que processos inúteis sejam consumidos.
+
+## Iterações e ajustes finos
+
+Com a base estável, entramos em um ciclo de refinamento. A iteração dois (it2) focou no mix de professores, trazendo uma combinação específica de modelos (qwen3.8-flash e hy3) e definindo limites de tokens por modelo para evitar sobrecarga. Já a iteração três (it3) abordou os gargalos de desempenho em ambientes de alta latência, introduzindo um timeout configurável via variável de ambiente (D2_TMO) e aumentando a concorrência padrão de 1 para 14 processos. Esses ajustes permitiram que o destilador se adaptasse a diferentes cargas de trabalho sem sacrificar a estabilidade.
+
+## Resultado: um destilador pronto para uso
+
+Após essas melhorias, o destilador v2 atingiu um ponto de equilíbrio onde é possível deixar o serviço rodando por períodos prolongados sem intervenção. O modelo resultante mantém uma fração significativa das capacidades do modelo maior, mas com um tamanho reduzido que facilita o despliegue em dispositivos com recursos limitados. Mais importante, o processo de destilação tornou-se previsível: dado o mesmo corpus e o mesmo conjunto de professores, o output é reproduzível, o que é essencial para qualquer pipeline de produção.
+
+## Próximos passos
+
+O trabalho agora se volta para a integração desse destilador no fluxo de treinamento principal do TatuEngine. Objetivos incluem automatizar a seleção de professores com base em métricas de desempenho e expandir a guarda de corpus para incluir validação de formato e versão. Enquanto isso, o serviço systemd --user permanece como uma peça confiável da infraestrutura, pronta para ser acionada sempre que um novo modelo menor for necessário.

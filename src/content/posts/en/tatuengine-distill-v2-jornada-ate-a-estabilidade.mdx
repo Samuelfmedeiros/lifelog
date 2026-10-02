@@ -1,0 +1,39 @@
+---
+title: "TatuEngine Distill v2: Journey to Stability"
+description: "How the TatuEngine v2 distiller overcame corpus, teacher, and guard challenges to achieve a stable and ready-to-use version."
+date: 2026-10-01 16:00:00 -03:00
+pubDate: 2026-10-01 16:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, distill, model, stability]
+icon: "🌊"
+cover: /covers/tatuengine-distill-v2-jornada-ate-a-estabilidade.webp
+featured: false
+---
+
+## The initial challenge: corpus and teachers
+
+The early days of the TatuEngine v2 distiller were marked by instability. The main bottleneck was the dependence on a high-quality training corpus and a heterogeneous set of teacher models (larger models) that guided the learning of the student model (the smaller model being distilled). Without a reliable corpus, training would fail silently, producing useless weights. Moreover, the mix of teachers varied from run to run, leading to inconsistent gradients and loss of convergence.
+
+## Guards and input validation
+
+The first line of defense was introducing specific guards for corpus absence. Guard GUARD16D, for example, checks the presence and integrity of data files before any training step begins. If the corpus is missing or corrupted, the process is halted with a clear message, preventing wasted training cycles. This simple change eliminated an entire class of silent failures and made training logs far more useful for debugging.
+
+## Teacher strategy and pinned retry
+
+With the corpus secured, the next challenge was stabilizing the teacher mix. Instead of allowing teacher selection to be completely random, we implemented a pinned retry mechanism: if a training round with a given teacher set failed for known reasons (such as OOM or loss divergence), the same set would be retried immediately, allowing the model to learn from that configuration before moving on. This approach reduced variability between runs and gave the model time to absorb knowledge from each teacher set.
+
+## Transition to systemd service
+
+A key milestone was changing the distiller from an ad-hoc script to a service managed by user-level systemd. This transition brought critical benefits: automatic restart on failure, environment isolation, and integration with the host's logging system. The service was configured with `Restart=always`, ensuring that even after an unexpected crash, the process would be relaunched without manual intervention. Additionally, the corpus absence guard was delegated to systemd itself, which checks the condition before starting the service, preventing useless processes from being spawned.
+
+## Iterations and fine-tuning
+
+With a stable base, we entered a refinement cycle. The second iteration (it2) focused on the teacher mix, introducing a specific combination of models (qwen3.8-flash and hy3) and setting token limits per model to avoid overload. The third iteration (it3) addressed performance bottlenecks in high-latency environments, introducing a configurable timeout via environment variable (D2_TMO) and increasing the default concurrency from 1 to 14 processes. These adjustments allowed the distiller to adapt to different workloads without sacrificing stability.
+
+## Result: a distiller ready for use
+
+After these improvements, the v2 distiller reached a point of equilibrium where it can run for extended periods without intervention. The resulting model retains a significant fraction of the larger model's capabilities but with a reduced size that facilitates deployment on resource-constrained devices. More importantly, the distillation process became predictable: given the same corpus and the same teacher set, the output is reproducible, which is essential for any production pipeline.
+
+## Next steps
+
+Work now turns to integrating this distiller into TatuEngine's main training flow. Objectives include automating teacher selection based on performance metrics and expanding the corpus guard to include format and version validation. Meanwhile, the user-level systemd service remains a reliable infrastructure component, ready to be triggered whenever a new smaller model is needed.
