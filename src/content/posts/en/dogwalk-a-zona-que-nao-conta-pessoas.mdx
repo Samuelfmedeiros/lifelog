@@ -1,0 +1,151 @@
+---
+title: "The coverage zone that doesn't count people"
+description: "Dogwalk's /explorar page gained coverage zones, and the first version carried the link between walker and region on a public page that needs no login. The fix wasn't hiding a field: it was deciding the zone only holds aggregates — and turning the test that required the data into one that requires its absence."
+date: 2026-09-16 20:00:00 -03:00
+pubDate: 2026-10-03 08:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "privacy", "mapbox-gl", "testing", "react", "guardrails"]
+cover: /covers/dogwalk-a-zona-que-nao-conta-pessoas.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The feature that almost shipped broken
+
+September, wave 3 of the Dogwalk campaign. `/explorar` is public: no login, no cookie, nothing. It loads the list of available walkers and shows on the map where they actually work.
+
+Block 3 of that wave was **coverage zones**. The idea looked harmless from a distance. Instead of scattering a pin per walker, the page draws the area a region actually serves. One walker covering 5 km becomes a circle. Three walkers in the same city become a single, larger circle. The page gets cleaner and a visitor immediately understands where the service exists.
+
+The module shipped with 278 lines and it looked right. It ran, it drew, it had a legend.
+
+Except for one detail I had written down nowhere, because in my head it was too obvious to be a problem: **the zone was carrying the list of identifiers of everyone inside it**.
+
+## The contract I had written myself ten days earlier
+
+Ten days before, in the same campaign, wave 3 closed with a rule recorded in AGENTS.md and locked down in an end-to-end test: the public route **must not expose exact lat/lng for a person**. Not "doesn't display it". It's absent from the payload, absent from the request, absent from the source.
+
+And then I layered the coverage zones on top of that route, and `providerIds` — the direct link between an identifier and a region — came along for the ride. It wasn't in the DOM. It was in the object the page's JavaScript loads, and that's the same thing as being in the API payload.
+
+What stopped me wasn't a legal argument. It was a design question: **what is the zone for?** It's there so someone can understand where the service exists. It is not there to tell you who serves where. The identifier had no purpose in that structure — it was ballast I carried because grouping by city is convenient when you want to walk back from the aggregate to the list.
+
+That kind of detail only shows up when you say the function out loud. While I was thinking "zone" I was thinking "cluster". A cluster is a structure that holds the list of its members. A coverage zone is not a cluster: it's a claim about a territory.
+
+## The fix: aggregate by region, never by person
+
+The fix wasn't removing a field from an object. It was replacing the entire unit of grouping.
+
+`coverageZones.js` stopped grouping by walker and started grouping by region. The group key comes from the declared city; when a walker declared none, it falls into a 0.1-degree grid cell — roughly 11 km, which is a region, not what you'd call a dot.
+
+```javascript
+function regionKeyFor(point) {
+  const city = String(point?.city || '').trim();
+  if (city) {
+    return { key: `city:${city.toLowerCase()}`, label: city };
+  }
+  const lat = Number(point.lat).toFixed(1);
+  const lng = Number(point.lng).toFixed(1);
+  return { key: `grid:${lat},${lng}`, label: `Region ${lat}, ${lng}` };
+}
+```
+
+And the aggregate built from that carries four things. Exactly four:
+
+```javascript
+properties: {
+  label: zone.label,
+  radius_km: zone.radiusKm,
+  provider_count: zone.providerCount,
+  uses_declared_radius: zone.usesDeclaredRadius,
+}
+```
+
+A count, a center, a radius, and a boolean telling you whether that radius was declared by the walker or is the default. No identifier, no name, no price, no contact. The person-to-region link has no exit anymore, because the function that produces the zone never had access to it in the first place.
+
+One line of the module header records the whole decision, and I want to keep it exactly this way:
+
+> The public zone carries ONLY aggregates (count, center, radius): never id, name, price or the walker's contact — the person↔region link does not leave this module.
+
+There's a surface detail that reinforces the same idea: the function **doesn't use** the endpoint that returns walkers with name, bio and price to an anonymous caller. The response isn't filtered on the way out — the request simply doesn't exist. Everything runs in memory, over the dataset the public page had already fetched.
+
+## A circle that lies about kilometres
+
+There was a second problem in the same PR, less embarrassing and more subtle. I was going to draw the zones with MapLibre's `circle` layer, which is a one-liner. `circle-radius` is measured in **pixels**, not metres. That means the radius we proudly show as "5 km" at zoom 12 becomes an apparent "5 km" at zoom 14 and a dot at zoom 18. Same zone, three different lies.
+
+The answer was to convert the radius into a real geographic polygon, built from 72 segments:
+
+```javascript
+// Geometry: geographic POLYGON via buildCirclePolygon — MapLibre's `circle`
+// layer measures radius in PIXELS and would lie about kilometres at every zoom.
+```
+
+A single GeoJSON source with N polygons inside — one per region. Never one polygon per person, which would be the same leak wearing a geometric costume. And the radius is honest: it uses the `service_radius` the walker declared and, when nothing was declared, applies the 5 km default that matches what their onboarding already writes — and the interface says so out loud instead of pretending to a precision the data doesn't have.
+
+## The test that became a proof of absence
+
+The part of this work I actually kept isn't the fix. It's what happened to the test file.
+
+There was a test that **required** the zone to carry walker identifiers. It was written that way because that's how the function had been written — the test described the behaviour, and the behaviour was the wrong one. Sixty-six lines later, that same test became the lock in the opposite direction:
+
+```javascript
+// aggregate: the zone counts the walker but NEVER carries the person's id (privacy)
+expect(result.zones.every(zone => !('providerIds' in zone))).toBe(true);
+```
+
+A test asserting the non-existence of a property is a different kind of tool from the rest of the suite. Every normal test checks that something got done. This one checks that something **cannot** be done, which is why it catches the next developer who thinks they'll "enrich the zone with the caregivers".
+
+The needle list in the main test is the part I'm proudest of:
+
+```javascript
+const serialized = `${JSON.stringify(result.zones)} ${JSON.stringify(result.geojson)}`;
+[
+  'w-secreto-1',
+  'w-secreto-2',
+  'providerIds',
+  'provider_ids',
+  'Dona Maria',
+  'Joao Passeador',
+  'maria@example.com',
+  '11 99999-0000',
+  'CPF',
+  '@joao',
+  'price_per_walk',
+  'bio',
+].forEach(needle => expect(serialized).not.toContain(needle));
+```
+
+Twelve needles. Two are technical identifiers, two are the field name in camelCase and in snake_case — because someday someone will "standardize" the field name and the test needs to catch both spellings. The other ten are name, email, phone, document, handle, price and bio. It's not that the test knows what personal data is. It lists what **must not** appear, and anything new someone invents to put there won't be on the list.
+
+The simpler absence test still compares the exact set of keys:
+
+```javascript
+expect(Object.keys(result.geojson.features[0].properties).sort()).toEqual(
+  ['label', 'provider_count', 'radius_km', 'uses_declared_radius'].sort(),
+);
+```
+
+A closed list instead of a forbidden list. When someone wants to add a field, they break this test and have to go there by hand, to the line where the new field's name appears. That's the opposite of a silent leak.
+
+## What I'm taking away
+
+| Item | Value |
+|------|-------|
+| Needles in the absence test | 12 |
+| Fields the public zone carries | 4 |
+| Fields the public zone may not carry | id, name, price, contact, bio |
+| Legacy endpoints the module doesn't use | 1 |
+| Default radius when undeclared | 5 km |
+| Grid cell for a walker without a city | 0.1 degree (~11 km) |
+| Segments in the geographic polygon | 72 |
+| Lines in the fix (2 files) | 278 |
+| Commits in the arc (fix + contract + edges) | 3 |
+
+The lesson is short and I intend to keep applying it: **an aggregate is not the anonymous version of the data**. An aggregate is different data, answering a different question. "How many walkers serve here" and "who serves here" share nothing but a prefix — and if I need both answers, I need two structures.
+
+The other half of that is the absence test. Dogwalk's suite has hundreds of tests saying that things work. This is the first one saying that a thing must not exist, and it's the only one that would have caught the hole before it reached production. For every rule I don't want broken, it's worth writing the test that prevents it from breaking.
+
+<Terminal command="git log --oneline -3 -- src/pages/Explorar/utils/coverageZones.js" output="e34dd474 test(explorar): covers edges of the coverage zone aggregate
+1570c9bb test(explorar): locks the privacy contract of the coverage zones
+3c65f112 fix(explorar): coverage zone aggregates without leaking a person's id" />

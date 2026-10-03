@@ -1,0 +1,151 @@
+---
+title: "A zona de cobertura que não conta pessoas"
+description: "A /explorar do Dogwalk ganhou zonas de cobertura, e a primeira versão carregava o vínculo entre cuidador e região numa página pública sem login. O conserto não foi esconder um campo: foi decidir que a zona só carrega agregados — e transformar o teste que exigia o dado em teste que exige a ausência dele."
+date: 2026-09-16 20:00:00 -03:00
+pubDate: 2026-10-03 08:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "privacy", "mapbox-gl", "testing", "react", "guardrails"]
+cover: /covers/dogwalk-a-zona-que-nao-conta-pessoas.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A funcionalidade que quase nasceu furada
+
+Setembro na onda 3 do Dogwalk. A `/explorar` é pública — não pede login, não pede cookie, não pede nada. Ela carrega a lista de cuidadores disponíveis e mostra no mapa onde eles atendem.
+
+A terceira onda da campanha foi o bloco 3: **zonas de cobertura**. A ideia era simples e, olhando de longe, parecia inofensiva. Em vez de espalhar um pino por cuidador, a página desenha a área que aquela região efetivamente atende. Um cuidador atende 5 km, vira um círculo. Três cuidadores na mesma cidade, viram um círculo só, maior. A página fica mais limpa e a pessoa visitante entende na hora onde o serviço existe.
+
+O código nasceu com 278 linhas e a aparência estava certa. Rodava, desenhava, legendava.
+
+Só que tinha um detalhe que eu não escrevi em lugar nenhum, porque na minha cabeça ele era óbvio demais para ser problema: **a zona carregava a lista de identificadores de quem caiu dentro dela**.
+
+## O contrato que eu mesmo tinha escrito dez dias antes
+
+Dez dias antes, na mesma campanha, a onda 3 fechou com uma regra escrita no AGENTS.md e travada em teste end-to-end: a rota pública **não expõe lat/lng exato de pessoa**. Não é "não exibe". Não exibe no payload, não expõe na requisição, não está no fonte.
+
+E aí eu fiz o overlay de zonas por cima dessa rota, e o `providerIds` — o vínculo direto entre um identificador e uma região — subiu junto. Não estava no DOM. Estava no objeto que o JavaScript da página carrega, e isso é o mesmo que estar no payload da API.
+
+A questão que me travou não era jurídica, era de projeto: **qual era o propósito da zona?** Servia para alguém entender onde o serviço existe. Não servia para saber quem atende onde. Então o identificador não tinha função nenhuma ali — ele era entulho que eu carreguei porque agrupar por cidade é conveniente quando você quer voltar do agregado para a lista.
+
+Esse é o tipo de detalhe que só aparece quando você escreve a função em voz alta. Enquanto eu pensava em "zone", eu pensava em "cluster". Cluster é uma estrutura que guarda a lista dos seus membros. Zona de cobertura não é um cluster: é uma afirmação sobre um território.
+
+## O conserto: agregar por região, nunca por pessoa
+
+O fix não foi remover um campo do objeto. Foi trocar a unidade de agrupamento inteira.
+
+`coverageZones.js` deixou de agrupar por cuidador e passou a agrupar por região. A chave do grupo vem da cidade declarada; quando o cuidador não declarou cidade, cai numa célula de grade de 0,1 grau — cerca de 11 km, que é região, não é o nome que a gente dá a um ponto.
+
+```javascript
+function regionKeyFor(point) {
+  const city = String(point?.city || '').trim();
+  if (city) {
+    return { key: `city:${city.toLowerCase()}`, label: city };
+  }
+  const lat = Number(point.lat).toFixed(1);
+  const lng = Number(point.lng).toFixed(1);
+  return { key: `grid:${lat},${lng}`, label: `Região ${lat}, ${lng}` };
+}
+```
+
+E o agregado que sai daí carrega quatro coisas. Só quatro:
+
+```javascript
+properties: {
+  label: zone.label,
+  radius_km: zone.radiusKm,
+  provider_count: zone.providerCount,
+  uses_declared_radius: zone.usesDeclaredRadius,
+}
+```
+
+Contagem, centro, raio, e um booleano dizendo se aquele raio foi declarado pelo cuidador ou é o padrão. Nenhum identificador, nenhum nome, nenhum preço, nenhum contato. O vínculo pessoa-região simplesmente não tem mais por onde sair, porque a função que produz a zona nunca teve acesso a ele.
+
+O comentário do módulo registra a decisão inteira em duas frases que eu quero preservar:
+
+> A zona publica SÓ agregados (contagem, centro, raio): nunca id, nome, preço ou contato do cuidador — o vínculo pessoa↔região não sai deste módulo.
+
+E há um detalhe de superfície que reforça a mesma ideia: a função **não usa** o endpoint que devolve cuidadores com nome, bio e preço para chamador anônimo. Não é que a resposta foi filtrada no caminho — o pedido nem existe. Tudo roda em memória, sobre o dataset que a página pública já buscou.
+
+## Um círculo que mente a quilometragem
+
+Houve um segundo problema no mesmo PR, menos constrangedor e mais sutil. Eu ia desenhar as zonas com o layer `circle` do MapLibre, que é uma linha de comando. O `circle-radius` é medido em **pixels**, não em metros. Isso significa que o raio que a gente mostra "5 km" no zoom 12 vira "5 km" aparente no zoom 14 e vira um ponto no zoom 18. A mesma zona, três mentiras diferentes.
+
+A solução foi converter o raio em polígono geográfico de verdade, gerado com 72 segmentos:
+
+```javascript
+// Geometria: POLÍGONO geográfico via buildCirclePolygon — o layer `circle` do
+// MapLibre mede o raio em PIXELS e mentiria a quilometragem em cada zoom.
+```
+
+Um source GeoJSON só, com N polígonos dentro — um por região. Nunca um polígono por pessoa, que seria a mesma cara do vazamento em formato geométrico. E o raio é honesto: usa o `service_radius` que o cuidador declarou e, quando ele não declarou nada, aplica o padrão de 5 km que é o mesmo que o onboarding dele grava — e a interface deixa isso explícito em vez de fingir uma precisão que o dado não tem.
+
+## O teste que virou prova de ausência
+
+A parte que eu guardei de verdade deste trabalho não foi o conserto. Foi o que aconteceu com o arquivo de teste.
+
+Havia um teste que **exigia** que a zona carregasse os identificadores dos cuidadores. Ele nasceu assim porque era assim que a função tinha sido escrita — o teste descrevia o comportamento, e o comportamento era o errado. Sesenta e seis linhas depois, aquele mesmo teste virou a trava do contrário:
+
+```javascript
+// agregado: a zona conta o cuidador, mas NUNCA carrega o id da pessoa (LGPD)
+expect(result.zones.every(zone => !('providerIds' in zone))).toBe(true);
+```
+
+Um teste que afirma a não existência de uma propriedade é uma ferramenta diferente de todo o resto da suíte. Qualquer teste normal verifica que algo foi feito. Esse verifica que algo **não** pode ser feito, e por isso pega o próximo developer que acha que vai "enriquecer a zona com os caregivers".
+
+A lista de agulhas do teste principal é a parte que me deu orgulho:
+
+```javascript
+const serialized = `${JSON.stringify(result.zones)} ${JSON.stringify(result.geojson)}`;
+[
+  'w-secreto-1',
+  'w-secreto-2',
+  'providerIds',
+  'provider_ids',
+  'Dona Maria',
+  'Joao Passeador',
+  'maria@example.com',
+  '11 99999-0000',
+  'CPF',
+  '@joao',
+  'price_per_walk',
+  'bio',
+].forEach(needle => expect(serialized).not.toContain(needle));
+```
+
+Doze agulhas. Duas são identificadores técnicos, duas são o nome do campo em camelCase e em snake_case — porque alguém, um dia, vai "padronizar" o nome do campo, e o teste precisa pegar as duas grafias. As outras dez são nome, e-mail, telefone, documento, usuário, preço e bio. Não é que o teste sabe o que é dado pessoal. Ele lista o que **não pode** aparecer, e qualquer coisa que alguém invente de novo para colocar ali não vai estar na lista.
+
+O teste de ausência mais simples ainda compara o conjunto exato de chaves:
+
+```javascript
+expect(Object.keys(result.geojson.features[0].properties).sort()).toEqual(
+  ['label', 'provider_count', 'radius_km', 'uses_declared_radius'].sort(),
+);
+```
+
+Lista fechada em vez de lista proibida. Quando alguém quiser adicionar um campo, ele quebra esse teste e tem que ir lá, com a mão, na linha onde o nome do campo novo aparece. Isso é o oposto de um vazamento silencioso.
+
+## O que me levei
+
+| Item | Valor |
+|------|-------|
+| Agulhas no teste de ausência | 12 |
+| Campos que a zona pública carrega | 4 |
+| Campos que a zona pública não pode carregar | id, nome, preço, contato, bio |
+| Endpoint legado que o módulo não usa | 1 |
+| Raio padrão quando não declarado | 5 km |
+| Célula de grade para cuidador sem cidade | 0,1 grau (~11 km) |
+| Segmentos do polígono geográfico | 72 |
+| Linhas do fix (2 arquivos) | 278 |
+| Commits do arco (fix + contrato + bordas) | 3 |
+
+A lição que ficou é curta e eu pretendo continuar aplicando: **agregado não é a versão anonymous do dado**. Agregado é um dado diferente, com pergunta diferente. "Quantos cuidadores atendem aqui" e "quem atende aqui" não compartilham nada além do prefixo — e se eu preciso das duas respostas, eu tenho duas estruturas.
+
+O outro lado disso é o teste de ausência. A suíte toda do Dogwalk tem centenas de testes dizendo que as coisas funcionam. Esse é o primeiro que diz que uma coisa não pode existir, e é o único que teria pegado o furo antes de ele chegar à produção. Vale a pena, para cada regra que eu não quero quebrar, escrever o teste que a impede de quebrar.
+
+<Terminal command="git log --oneline -3 -- src/pages/Explorar/utils/coverageZones.js" output="e34dd474 test(explorar): cobre bordas do agregado das zonas de cobertura
+1570c9bb test(explorar): trava contrato LGPD das zonas de cobertura
+3c65f112 fix(explorar): zona de cobertura agrega sem vazar id de pessoa" />
