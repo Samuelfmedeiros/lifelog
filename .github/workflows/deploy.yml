@@ -97,6 +97,12 @@ jobs:
 
     - name: PT/EN Sync check
       run: python3 scripts/check-lang-sync.py
+    - name: Duplicate topic check (mesmo tema no mesmo dia)
+      # A seleção por carência (contagem + gap de 2 dias) distribui PROJETOS,
+      # não temas: dois slots do mesmo dia podem cair no mesmo assunto. Foi o
+      # caso real de 03/10/2026 — Post B escolheu Dogwalk enquanto o Post A
+      # (08h) e o Refazer (12:18) já tinham escrito sobre zonas de cobertura.
+      run: python3 scripts/check-duplicate-topic.py
     - name: Tag vocabulary check (Opção C)
       run: python3 scripts/check-tags.py --strict
 
