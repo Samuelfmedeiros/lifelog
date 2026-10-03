@@ -277,3 +277,8 @@
 - **fix** (`e52e755`): capa AI de nova-historia-seguranca-2026-09-28 (watchdog).
 - **fix** (`03a8073`): capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
 - 2 commits no dia; working tree segue com trabalho de outra sessao (posts MDX + M api/ocultos-data.mjs, intactos).
+
+## [2026-10-02] - 2 fixes de View Transitions em branch de feature; main 8 atras do origin (push nao entrega)
+- fix (`61fa7c8`): remove o opt-in cross-document de View Transitions na main — primeiro clique abre o post.
+- fix (`b4c66f8`): remove o opt-in cross-document de View Transitions (css).
+- 2 commits de hoje, ambos em branch de feature; `main` segue 8 atras do `origin/main` (push recusado por non-fast-forward) — commit de docs ficou local para nao acionar o deploy da `main`.
