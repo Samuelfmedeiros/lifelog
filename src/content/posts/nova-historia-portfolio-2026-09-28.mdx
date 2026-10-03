@@ -1,76 +1,76 @@
 ---
-title: "Nova história do Portfolio — o capítulo mais recente da jornada"
-description: "Uma nova história do Portfolio — o capítulo mais recente da jornada: setup → conflito → resolução."
+title: "Portifólio — o proxy que fechou a porta e ainda salvou o formulário"
+description: "Como um domínio próprio ausente na lista de origens do Capivara deixou o formulário de contato morto, e o proxy same-origin que devolveu o rastreamento."
 category: samuel-projects
-date: 2026-09-28 08:00:00 -03:00
-pubDate: 2026-09-28 08:00:00 -03:00
+date: 2026-09-28 14:00:00 -03:00
+pubDate: 2026-09-28 14:00:00 -03:00
 project: portfolio
-tags: [portfolio, update, frontend]
+tags: [portfolio, security, allowlist, deploy]
 icon: "🚀"
 cover: /covers/nova-historia-portfolio-2026-09-28.webp
+featured: false
 hidden: true
+lang: pt
 ---
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-# Nova história do Portfolio — o capítulo mais recente da jornada
+A maioria dos problemas que parecem bug de front-end é, na verdade, bug de rede.
 
-Tudo começou quando eu percebi que o antigo portfólio estagnado não refletia mais o que eu vinha construindo nos últimos meses. O **setup** foi simples: decidir recomeçar do zero com Next.js 13 e App Router, trazendo o componente de projetos que já tinha prototipado no LifeLog. A ideia era ter uma vitrine que tivesse o mesmo cuidado visual dos posts do blog, mas com foco em demonstrações interativas.
+O Portifólio rodava em um domínio de hospedagem e o formulário de contato funcionava. Quando passei a atender também pelo domínio próprio, a primeira impressão foi de que tudo continuava igual — mesma interface, mesmo build, mesmas rotas. Não era verdade. O formulário de contato simplesmente parou de enviar mensagens, o registro de download do currículo sumiu do banco e o rastreamento de visitas zerou. No console do navegador, três linhas de erro idênticas: `TypeError: Failed to fetch`.
 
-O **conflito** apareceu logo nos primeiros dias de deploy. O pré‑render das páginas de projeto estava gerando HTML enorme porque eu estava incluindo todos os screenshots e vídeos diretamente no bundle. O Lighthouse despencou para 45 em performance, e o Core Web Vitals mostrou CLS acima de 0,25 devido ao layout shift das galerias de imagens que carregavam tardiamente. Além disso, o tema claro estava quebrando no mobile porque o `overflow-x: auto` da navbar não estava sendo aplicado corretamente no breakpoint de 480px — o menu ficava invisível quando os links não coubiam na tela.
+## O que estava acontecendo de verdade
 
-A **resolução** veio em três etapas. Primeiro, migrei toda a mídia para o Cloudflare Images e passei a buscar os assets on‑demand via SWR, reduzindo o tamanho inicial do JavaScript de 1,2 MB para 180 kB. Segundo, escrevi um pequeno hook `useOverflowNavbar` que detecta quando a soma das larguras dos links ultrapassa a largura da viewport e injeta a classe `overflow-x-auto` dinamicamente, garantindo que o menu nunca desapareça. Por fim, adicionei um componente `ProjectDemo` que encapsula cada exemplo em um iframe com sandbox e um fallback de screenshot, de modo que o usuário possa interagir com o código sem afetar o desempenho da página principal.
+O formulário não falhava por estar quebrado. Ele nem chegava a enviar a requisição. O navegador fazia uma verificação automática antes do envio — o preflight — e ela voltava com erro, sem o cabeçalho de autorização. O navegador cancelava ali mesmo, antes de tocar nos dados que a pessoa havia digitado. Do lado do servidor do site, não havia registro nenhum: a requisição nunca saiu.
 
-Depois dessas mudanças, o build passou no Lighthouse com 98 de performance, 100 de acessibilidade e 100 de boas práticas. O portfólio agora carrega em menos de 1,5 s em rede 3G e permanece fiel à visão original: um espaço onde cada projeto pode ser visto, tocado e compreendido.
+O motivo era uma lista explícita de origens autorizadas, mantida no serviço para onde o site fala. Quando alguém entrava pelo domínio novo, essa lista não reconhecia a origem. Não por má vontade — o domínio simplesmente nunca foi cadastrado ali. E o navegador não distingue "domínio não autorizado" de "servidor fora do ar": para quem está do outro lado da tela, a diferença é sempre a mesma três-palavras, `Failed to fetch`.
 
-<details>
-  <summary>Trecho do hook de navbar</summary>
+Esse é o tipo de falha que não aparece em teste automatizado. Os testes rodam no mesmo domínio do serviço de API, onde a origem é sempre a mesma — o problema só existe quando alguém chega por um caminho diferente. Por isso a correção não podia ser validada no lugar errado: ela precisava ser testada a partir de uma origem que não fosse a do próprio serviço.
 
-```tsx
-import { useEffect, useState } from 'react'
+## A correção
 
-export function useOverflowNavbar() {
-  const [overflow, setOverflow] = useState(false)
+A solução foi não pedir ao navegador que atravessasse a fronteira de domínios. Em vez disso, criei uma rota intermediária no próprio site: o navegador fala apenas com a origem dele, e o servidor fala com o serviço. Quando duas máquinas conversam, política de origem cruzada simplesmente não se aplica — a checagem acontece no navegador, e o navegador deixou de cruzar fronteiras.
 
-  useEffect(() => {
-    const update = () => {
-      const navbar = document.querySelector('.navbar-links')
-      if (!navbar) return
-      const linksWidth = Array.from(navbar.children)
-        .reduce((sum, el) => sum + el.offsetWidth, 0)
-      setOverflow(linksWidth > window.innerWidth)
-    }
-
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [])
-
-  return overflow
-}
-```
-</details>
-
-<details>
-  <summary>Uso no componente Navbar</summary>
-
-```tsx
-import { useOverflowNavbar } from '@/hooks/useOverflowNavbar'
-
-export default function Navbar() {
-  const hasOverflow = useOverflowNavbar()
-  return (
-    <nav className={cn('navbar', { 'overflow-x-auto': hasOverflow })}>
-      {/* ... */}
-    </nav>
-  )
-}
-```
-</details>
+O truque está em como a rota decide o que pode passar. Ela não confia em nada do que chega na URL. Cada pedaço do caminho é decodificado repetidamente até não mudar mais, e só depois é verificado: um pedaço que resolve para `.` ou `..`, ou que contém barra invertida, é rejeitado de imediato.
 
 <Terminal
   commands={[
-    { cmd: 'pnpm run build' },
-    { cmd: 'pnpm run dev' }
+    { cmd: "sed -n '30,32p' src/app/api/pf/\\[...path\\]/route.ts", output: "const CAPIVARA = \"https://capivara.seu.pet\";\nconst ALLOWED_PREFIXES = [\"portifolio/public/\", \"umami/\"];\nconst MAX_SEGMENTS = 8;" },
+    { cmd: "sed -n '34,40p' src/app/api/pf/\\[...path\\]/route.ts", output: "function decodeFully(segment: string): string {\n  let prev = segment;\n  let cur = segment;\n  // decodifica em LOOP: decode unico deixa `%252e` passar\n  do {\n    cur = decodeURIComponent(prev);\n  } while (cur !== prev && (prev = cur));\n  return cur;\n}" },
+    { cmd: "sed -n '69p' src/app/api/pf/\\[...path\\]/route.ts", output: "  if (!ALLOWED_PREFIXES.some((prefix) => joined.startsWith(prefix))) return null;" }
+  ]}
+/>
+
+A lista de prefixos é fechada de propósito: dois caminhos liberados, nada mais. Sem ela, a rota seria apenas um intermediário até qualquer endereço — trocar o destino do proxy seria uma linha de código, e o formulário de contato, o rastreador de visitas e o serviço de mensagens ficariam pendurados no mesmo fio. Fechar a lista é o que separa "proxy seguro" de "proxy aberto".
+
+## O detalhe que quase passou
+
+Um detalhe nessa validação quase passou, e é o tipo de detalhe que só aparece quando você já teve o mesmo problema antes.
+
+Poucos dias antes, um guarda de segurança do próprio projeto — o que impede o download direto dos documentos do currículo — foi contornado por codificação de porcentagem na URL. O guarda comparava a string exatamente como recebia, e um valor codificado passava batido na comparação mesmo apontando para o mesmo arquivo. Não era uma falha nova; era a mesma aula, aplicada em outro lugar.
+
+Por isso a rota intermediária não decodifica uma vez só. Decodifica em laço, até a string estabilizar, e só depois valida. Um caminho como `%252e%252e` — que é `.%2e`, que por sua vez é `..` — fica dois níveis de codificação mais fundo, e só aparece inteiro na volta final. Quem decodifica uma vez estava vulnerável a quem pensasse nisso.
+
+## O que mudou depois
+
+O formulário voltou a enviar mensagens, o registro de downloads voltou a contar e o rastreamento voltou a aparecer no painel. E o ganho maior foi de arquitetura: o site deixou de depender de configuração espalhada em outro serviço para funcionar. A lista de origens autorizadas continua existindo lá — mas agora ela protege o serviço contra chamadas diretas de fora, em vez de ser a única coisa segurando o site de pé.
+
+Um detalhe de processo também saiu daí. O Portifólio passou a ter um alarme próprio que confere, a cada rodada de verificação automática, se as chamadas entre os serviços continuam funcionando. Não substitui teste nenhum — mas pega a regressão no mesmo dia, antes que alguém perceba no formulário que o botão parou de responder.
+
+## O que eu levaria para o próximo projeto
+
+Duas regras. Primeira: nunca confie em teste automatizado para provar que uma integração entre domínios funciona. Teste a partir de uma origem diferente, ou o teste vai passar enquanto a pessoa está vendo um erro. Segunda: quando a validação de uma entrada depender de comparação de string, decodifique até estabilizar antes de comparar. A comparação é a última linha de defesa — não a primeira.
+
+O erro não era de interface, nem de framework, nem de configuração do site. Era um domínio novo que ninguém atualizou em outro lugar. A correção levou uma tarde; o que demorou foi entender que o problema não era visível de dentro da aplicação.
+
+## Widget de terminal
+
+Os comandos abaixo mostram, direto do código, as três decisões que sustentam o proxy: o destino, a lista fechada de caminhos e a validação dos segmentos.
+
+<Terminal
+  commands={[
+    { cmd: "git log --oneline -1 -- src/app/api/pf/\\[...path\\]/route.ts", output: "0b9f0a5 fix(cors): rotas same-origin para a API do portifolio e o tracker do Umami" },
+    { cmd: "ls src/**/*.test.ts 2>/dev/null | wc -l", output: "47" },
+    { cmd: "grep -n 'x-forwarded-for' src/app/api/pf/\\[...path\\]/route.ts | head -1", output: "58:  const ip = req.headers.get(\"x-forwarded-for\")?.split(\",\")[0]?.trim() ?? \"unknown\";" }
   ]}
 />
