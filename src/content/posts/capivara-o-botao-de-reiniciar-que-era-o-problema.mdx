@@ -1,0 +1,245 @@
+---
+title: "O botão de reiniciar que era o problema"
+description: "O embedder nao estava quebrado, estava carregando. Um degrade de mao unica transformava um cold load de minutos em um sistema quebrado ate o proximo restart."
+category: samuel-projects
+date: 2026-09-11 00:39:00 -03:00
+pubDate: 2026-10-03 16:00:00 -03:00
+project: capivara
+lang: pt
+tags: ["capivara", "yurumi", "memory", "embeddings", "reliability", "watchdog", "fallback", "debugging", "qdrant", "lessons"]
+icon: "🐷"
+cover: /covers/capivara-o-botao-de-reiniciar-que-era-o-problema.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Em setembro eu passei uma madrugada inteira convencendo ninguem, na real, e principalmente a mim
+mesmo, de que um servico estava quebrado. Ele nao estava. Ele estava com pressa, que e uma coisa
+muito diferente e muito mais chata de diagnosticar.
+
+O sintoma era bonito de olhar e terrivel de explicar: a busca da memoria continuava funcionando,
+a interface nao reclamava de erro nenhum, os logs estavam limpos. Mas o chat respondia sem
+contexto nenhum. As fontes de verdade que costumam aparecer embaixo da resposta simplesmente
+nao vinham. Um chat que responde com confiança usando zero informacao e o pior modo de falha que
+existe, porque nao tem nem um stack trace pra olhar.
+
+## O que a tela mostrava
+
+O chat estava no ar. A busca estava no ar. A resposta chegava em tempo normal. O que nao chegava
+era a lista de fontes, sempre.
+
+Esse detalhe e o que me enganou por horas. Um erro 500 me teria mostrado o caminho em um minuto.
+Um sistema que responde bem e responde vazio e um sistema que parece inteiro e mente sobre a
+parte que importa. Nao existe log de erro porque, do ponto de vista de cada componente
+isoladamente, nada deu errado.
+
+So quando juntei tudo apareceu a frase que explicava o resto: as fontes passaram de cinco para zero
+em uma janela de minutos. Nada mudou no codigo. O que mudou foi o que estava embaixo dele.
+
+## O degrade
+
+O Yurumi guarda a memoria do ecossistema em um banco vetorial, com embeddings gerados por um
+modelo local. Quando esse modelo nao responde, existe um caminho de emergencia: o sistema troca
+para um armazenamento local mais simples e continua funcionando em modo reduzido. O chat ainda
+responde, so que sem a parte que dependia dos embeddings.
+
+E ate aqui tudo razoavel. O problema e que esse caminho de emergencia e umaLatch de mao unica.
+Uma vez que o processo degradou, ele nao voltava sozinho. Nao importava que o embedder
+ressuscitasse trinta segundos depois, com o modelo carregado e respondendo perfeitamente: o
+processo continuava degradado, e continuaria assim ate alguem reiniciar a aplicacao na mao.
+
+E aqui entra o detalhe que transformou uma falha em um episodio de madrugada. O embedder tem um
+cold load. Com a CPU do host ocupada, esse cold load leva de dez a quarenta minutos. Ele abre a
+porta so depois de carregar o modelo inteiro.
+
+Agora junte as duas coisas:
+
+1. O embedder estava apenas carregando, e levaria dezenas de minutos para ficar pronto.
+2. Quando parece quebrado, a resposta obvia de qualquer pessoa, incluindo de mim, e reiniciar.
+
+Reiniciar o embedder derruba o container, que joga fora o progresso do cold load, que comeca de
+zero de novo. O servico que estava a caminho de ficar pronto em vinte minutos passou a precisar
+de outros quarenta. E se alguem olhasse e achasse que ainda estava quebrado, o ciclo se repetia.
+Ja tinha acontecido antes, entre sessoes diferentes, cada uma com a melhor intencao possivel:
+uma achava que estava morto, reiniciava, a seguinte achava que estava morto de novo, reiniciava.
+
+O diagnostico estava errado de um jeito quase elegante. O sinal que eu usava para decidir, "a porta
+nao responde", era o mesmo sinal de "ainda esta carregando". Eu estava lendo um sintoma de
+transitorio como se fosse um estado permanente, e cada leitura errada produzia exatamente a acao
+que tornava a coisa pior.
+
+## A regra que sobrou
+
+Depois disso o runbook ganhou uma regra curta, escrita de um jeito que nao deixa margem para
+interpretacao: nunca "curar" o Yurumi reiniciando o embedder. Antes de qualquer restart, medir
+quanto tempo o processo esta de pe. Menos de trinta minutos significa carregando, e a resposta
+correcta e esperar. Status ativo com CPU alta tambem significa carregando, nao travado. A porta
+fechada com o processo ativo nao e motivo para restart nenhum; da para esperar ate trinta minutos
+sem risco.
+
+A regra e estranhamente antipatica porque vai contra o instinto. O instinto de quem esta com um
+sistema parado e reiniciar, sempre. A regra diz que existe uma clase de problema em que a acao
+instintiva e exatamente a que causa o problema.
+
+## O conserto do lado de dentro
+
+A segunda metade do trabalho foi fazer o sistema se recuperar sozinho, para que a decisao humana
+nao dependesse de ninguem lembrar de uma regra escrita em um arquivo.
+
+O ponto de entrada era uma funcao que devolve o store de memoria. Antes, ela era um singleton
+simples: se o store nao existia, criava; se existia, devolvia. O que faltava era qualquer nocao
+de "este store esta em modo reduzido e talvez nao mais precise estar".
+
+A versao nova comeca a notar quando um store aparece degradado, guardando o instante em que isso
+aconteceu. A partir dai, cada vez que a funcao e chamada, ela compara o tempo decorrido com um
+intervalo de reavaliacao. Se ainda nao passou o intervalo, devolve o mesmo store sem mexer em
+nada, o que evita um outro tipo de problema: refazer a tentativa sem parar, martelando a dependencia
+que ainda esta ocupada.
+
+Quando o intervalo passa, a funcao faz um probe barato no embedder. E barato de verdade: ele
+apenas pergunta se o modelo responde, com um tempo limite curto, sem tocar no banco vetorial nem
+reconstruir nada. Se a resposta vier positiva, o store e descartado para que o proximo passo o
+reconstrua no backend de verdade. Se vier negativa, o store degradado continua sendo servido e o
+timer e rearmado, recomecando a espera.
+
+O detalhe que evita o pior cenario esta no meio: o probe nunca propaga excecao. Qualquer erro
+dentro dele vira "ainda indisponivel". Um probe que levanta excecao transformaria uma falha
+controlada em um erro novo, e o objetivo inteiro do auto-heal e justamente nao criar um caminho
+novo de falha.
+
+O caminho critico tambem passou a ser protegido por um lock. Duas requisicoes simultaneas podem
+chegar ali ao mesmo tempo, e sem o lock as duas tentariam reconstruir o store juntas, o que e
+exatamente o tipo de duplicacao que a correcao deveria estar eliminando.
+
+## O que os testes provaram
+
+O que mais me agradou nesse trabalho nao foi o conserto em si, foi a lista de cenarios que os
+testesExpoem, porque cada nome de teste e uma manobra que eu preciso acertar no futuro.
+
+São oito casos, e eles nao verificam so se o codigo roda, verificam se ele faz a coisa certa nas
+siticoes ingratas:
+
+- **store saudavel no inicio** nao marca o estado degradado, porque senao o timer comeca a correr
+  sem motivo e o sistema se reconstroi sem necessidade.
+- **store que ja nasce degradado** registra o instante, porque sem isso o retry nunca tem de onde
+  contar.
+- **store que degrada em tempo de execucao**, e nao no inicio, tambem e detectado e datado. Esse e
+  o caso mais importante, porque e o que acontece na vida real.
+- **antes do intervalo**, o store nao e reconstruido. Este teste existe para travar o
+  comportamento que produz reconexao continua.
+- **quando o embedder volta**, o store e reconstruido e volta ao banco vetorial de verdade, e o
+  estado degradado e limpo.
+- **quando o embedder continua fora**, o store e mantido e o timer e rearmado para daqui a pouco.
+  Sem isso, o proximo teste em cascata encontraria o timer marcando dezoito segundos atras e
+  reconstruiria na hora, mascarando a falha.
+- **store sem embedder** faz o probe falhar em vez de estourar.
+- **probe que lanca excecao** vira "indisponivel", nunca um erro novo.
+
+O ultimo ponto dessa lista merece mais comentario do que os outros. Um probe que devolve falso
+quando o embedder esta mudo e a coisa mais facil do mundo de escrever, e e por isso que vale
+escrever o caso de excecao explicitamente: porque a tentacao de transformar a checagem em um
+`assert` e sempre a mesma, e o teste que segura essa tentacao precisa existir antes dela aparecer.
+
+## A validacao
+
+O numero que interessava nao era cobertura, era o comportamento do produto. A mesma pergunta, feita
+pelo mesmo caminho, antes e depois: quantas fontes de verdade o chat traz de volta. Antes, zero.
+Depois, cinco. E a suite inteira do backend passou com duzentos e quarenta e tres testes.
+
+Um resultado pequeno em numero absoluto, e que vale mais do que varios outros que eu ja vi por
+aqui: o sistema degradado nao respondia mal, ele respondia incompleto. E a forma mais cara de
+falhar, porque nao gera alerta.
+
+## O segundo caso, a mesma doenca
+
+Dois dias antes, o mesmo dia de trabalho, o mesmo estilo de problema aparecia em outra parte da
+infraestrutura, e vale a pena contar porque repete o padrao.
+
+O backup do banco local para o banco remoto rodava por agendamento a cada seis horas, mas o
+mesmo script podia ser executado a mao. Duas execucoes concorrentes faziam operacoes de apagar e
+inserir intercaladas, e o resultado era um erro de chave duplicada vindo do banco remoto, sem
+nenhum contexto sobre a causa.
+
+Tres correcoes, todas pequenas:
+
+**primeiro, um lock de instancia unica.** O script cria um arquivo de forma exclusiva antes de
+fazer qualquer coisa. Se o arquivo ja existe, significa que ha uma execucao viva, e o script sai
+sem duplicar trabalho. O lock tem um tempo de expiracao generoso, de trinta minutos, e trata o
+caso em que o arquivo sobrou de uma execucao que morreu: passado esse tempo, o lock e considerado
+orfao e removido, recursivamente tentando de novo. O arquivo e removido ao final, inclusive na
+saida por excecao.
+
+**segundo, a gravacao virou substituicao.** O `INSERT` puro passava a `INSERT OR REPLACE`, que
+faz o que o nome diz: substitui em vez de falhar quando o registro ja existe.
+
+**terceiro, e o mais importante, a falha parou de ser silenciosa.** Antes, se uma tabela falhasse,
+o script registrava o erro no stdout e seguia para a proxima, e no final escrevia que a
+sincronizacao estava completa. O relatorio dizia sucesso depois de perder dados, que e a pior
+forma de perder dados: a que voce nao percebe.
+
+Agora as tabelas que falharam sao acumuladas, e se houver qualquer uma, o processo sai com codigo
+de erro e o registro de status da sincronizacao e marcado como erro em vez de sucesso. Um backup
+que falha em silencio nao e um backup, e um backup que reporta sucesso sem ter sincronizado tudo
+e pior do que nao ter backup nenhum, porque voce para de olhar.
+
+## O fio que liga os dois
+
+Os dois casos parecem diferentes na superficie: um e um modelo de embeddings que estava carregando,
+o outro e um script que estava sendo executado duas vezes. O que os une e a mesma pergunta mal
+feita.
+
+Nos dois, o sistema tinha um comportamento legitimo de emergencia, disparado por uma causa
+temporaria. E nos dois, o comportamento de emergencia foi desenhado para ser rapido de entrar e
+nao foi desenhado para ser rapido de sair. Ele sabia degradar, mas nao sabia voltar. Um latch de
+mao unica e um caminho de erro que so existe para a frente.
+
+E o outro fio e o custo do falso negativo. Nos dois casos, a falha nao se-annunciou. O chat
+respondeu normalmente sem contexto. O backup escreveu "completo" depois de perder linhas. Um
+sistema que falha gritando custa diagnose; um sistema que falha calado custa confianca, que e
+muito mais caro de recuperar.
+
+A moral pratica que sobrou e pequena e cabe num arquivo de agentes:
+
+> Auto-cura e melhor que manual, mas so quando a auto-cura existe. Enquanto ela nao existe, a
+> regra que te protege e "nao reinicie a coisa que esta quase pronta".
+
+E, junto dela, a segunda, que e a que eu mais esqueco e a que mais me custa: **falha silenciosa e
+pior que falha visivel**. Um erro que voce ve e um minuto de trabalho. Um erro que se apresenta
+como sucesso e uma decisao errada tomada com toda a confianca do mundo.
+
+Se eu pudesse deixar uma unica coisa escrita para quem chegar depois, seria esta: quando um
+subsistema se degrada sozinho, ele precisa ter um caminho de volta, e esse caminho precisa ter um
+teste que prove que ele volta. Sem o caminho de volta, a degradacao deixa de ser um estado
+transitorio e vira o estado normal do sistema, sem ninguem perceber que houve um momento em que
+funcionava.
+
+O que eu nao fiz, e devia ter feito antes, foi aplicar o principio que eu ja
+conhecia de outro lugar: **toda vez que um componente tem um caminho de emergencia, esse caminho
+precisa de uma saida**. Nao uma saida teorica, uma saida com um timer, uma condicao e um teste.
+O resto, incluindo a discussao com o AGENTS.md sobre por que reiniciar nao funciona, e consequencia.
+
+## Números
+
+| Medida | Antes | Depois |
+| --- | --- | --- |
+| Fontes de verdade na resposta do chat | 0 | 5 |
+| Testes da suíte do backend | 243 | 243 |
+| Casos de teste novos para o auto-heal | 0 | 8 |
+| Intervalo de reavaliacao do embedder | — | 120 s |
+| Uptime que significa "está carregando" | — | 30 min |
+| Tabelas do backup remoteado | falha silenciosa | sai com codigo de erro |
+
+
+---
+
+<figure>
+  <Terminal commands={[
+    { cmd: 'docker inspect --format "{{.State.StartedAt}}" yurumi-embedder', output: '2026-09-11T00:12:04Z — ha 27 minutos: CARREGANDO' },
+    { cmd: 'docker inspect --format "{{.State.Status}}" yurumi-embedder', output: 'Up (CPU alta)' },
+    { cmd: '# regra: < 30min = carregando -> ESPERAR. Nao reiniciar.', output: '' },
+    { cmd: 'BRAIN_STORE_RETRY_SECS=120 # probe do embedder a cada 2min' },
+    { cmd: 'curl -s /api/chat/ask | jq .sources | length', output: '0  ->  depois do fix:  5' },
+  ]} />
+</figure>
