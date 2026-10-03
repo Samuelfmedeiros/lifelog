@@ -1,0 +1,120 @@
+---
+title: "The campaign that degraded in silence — when the check confirmed its own assumption"
+description: "The distillation campaign dropped to a third of its speed and nobody was told. Three failures of the same family: a teacher with an exhausted quota, a retry that kept hammering the dead model, and a flag file that confirmed what nobody had actually proven."
+date: 2026-09-17 02:13:00 -03:00
+pubDate: 2026-09-17 04:30:00 -03:00
+project: tatuengine
+tags: [tatuengine, sft, teacher-student, systemd, watchdog, guardrails, reliability, debugging]
+cover: /covers/tatuengine-a-campanha-que-degradou-em-silencio.webp
+featured: false
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Four hours of slowness nobody saw
+
+The campaign had been going fine. On the night of the 16th, the pair corpus for the final model tuning had been growing at a rate I already considered normal for that machine. At 22:40 I went to look at the number.
+
+Four thousand one hundred and twenty eight pairs out of twenty five thousand. And the rate, which had been around nine per minute, had dropped to two point four.
+
+The number was not lying. It said exactly what was happening. The problem was what happened over the next four hours.
+
+**The guard had been silent since 18:32.** The monitor that should have told me about the degradation existed, it ran, it was configured — and it said nothing. Not because it failed. Because nobody had written the condition that would have made it speak.
+
+That is the kind of failure I prefer: not a broken cup, but a badly phrased question.
+
+## The teacher with the exhausted quota
+
+The root cause of the slowdown was measured, not guessed. One of the teacher models in the list had its quota exhausted, answering with a quota error on six out of six calls.
+
+And it occupied six of the thirteen slots in the draw. Forty six percent of everything the system was going to try.
+
+Here is the detail that turns slowness into permanent loss: the teacher was chosen **outside** the retry loop. The draw happened once, and that index pinned the model. If the call failed, the next attempt got the same model. Four attempts, the same dead model, and zero conversions.
+
+It was not the system getting slower. It was nearly half the indices in the batch condemned to never become a pair.
+
+## The flag that confirmed what nobody had proven
+
+Two hours later, the most instructive find of the night.
+
+The distiller wrote a flag file on **every** return of the main program. Including the return where the round ended without producing a single pair. In other words: the file existed. The file was the proof that the campaign had finished.
+
+And the guard read it exactly like this: the file exists, so the campaign ended, so I shut up.
+
+The contents of the file carried a counter. It said one thousand seven hundred and sixty seven pairs out of twenty five thousand. The truth was written inside the file being used as proof.
+
+**The check confirmed the very assumption it was supposed to test.** It asked "does the file exist?" when the right question was "did the counter inside it reach the goal?". The difference between those two questions is the difference between a system that works when everything goes right and a system that works when things go wrong.
+
+It is the same pattern I had already found other times: a check that validates the existence of the artifact instead of its contents. A test that passes when it should fail. A guard that is happy because it has something to do.
+
+## When the guard dies with the machine it watches
+
+At 02:13 the corpus stopped completely. Five thousand five hundred pairs out of twenty five thousand, and no message in thirty minutes.
+
+There was no out of memory. There was no full disk. Memory had plenty of headroom and the disk had almost one hundred gigabytes free. The process simply stopped existing, and the cause was simpler than any bug: the guard that was supposed to restart it was scheduled on a scheduler that had fallen along with the gateway.
+
+**The guard lived in the same place the thing it protected depended on to survive.** When that place fell, it fell too, and nobody was left alive to restart the work.
+
+That is the kind of failure no amount of logging inside the process can fix. The program is not wrong, the topology is: you put the alarm system and the firefighter on the same floor of the building that caught fire.
+
+## The cure in the topology, not in the log
+
+The fix was not adding more logging nor increasing the wait time. It was changing who was responsible for keeping the process alive.
+
+The distiller stopped being a program someone runs and became a system service, configured to restart twenty seconds after dying, with persistent sessions enabled so it could survive the end of sessions. That way, the existence of the process stopped depending on someone remembering to relaunch it.
+
+And the guard changed its job: it stopped restarting the process and started **asking the system to restart it**. If the service exists, it delegates. The manual relaunch was left only as a last resort.
+
+The proof of that part is not personal testimony, it is measurement: I killed the main process on purpose and the system brought up a new one in about twenty seconds, with the restart counter incremented. After that, the end to end test: I stopped the service, the guard ran, and the service came back active with a new process identifier — without creating a second instance.
+
+## What the night taught me
+
+**A check needs to read the contents, not the existence.** If your verification passes by looking at whether a file is there, it passes in any state of the world, including the ones you wanted to catch. A counter inside the file that reports progress is what separates a check from a superstition.
+
+**An attempt that repeats the same entry is not a retry.** Rotating the choice on each attempt changes the nature of the retry. With rotation, a failure exhausts the attempt and the index moves to the next teacher; without it, a dead entry is sentenced four times and becomes permanent loss.
+
+**The guard must not die with the machine.** Where there is a service supervisor with persistent sessions, it is the only thing that survives the death of the environment. A monitor scheduled on a host that can fall is a monitor that falls along with it.
+
+**And the implementation detail, which bit at the same time:** writing files through the filesystem compatibility layer in text mode converts line endings silently. The backup file came out with one thousand seven hundred and eighty nine bytes against seventeen thousand four hundred and thirty of the original. The bytes changed and nobody was told. Switching to binary mode, with a temporary file and a size check before the swap, costs three lines.
+
+## Metrics
+
+| Item | Value |
+|------|-------|
+| Pairs at the moment of degradation | 4128 of 25000 |
+| Generation rate before | ~9 pairs per minute |
+| Generation rate after | 2.4 pairs per minute |
+| Teachers in the draw | 13 |
+| Weight of the quota exhausted teacher | 6 of 13 |
+| Retries per pair | 4 |
+| Pairs converted by that teacher | 0 |
+| Time without guard warning | more than 4 hours |
+| Pairs at the moment the process died | 5500 of 25000 |
+| Time without warning on that second failure | 30 minutes |
+| Rate after the fix | 6.45 pairs per minute |
+| Gain from the fix | 2.7 times |
+| Service restart after death | about 20 seconds |
+| Monitor tests | 18 of 18 |
+
+## Learnings
+
+1. **A guard that confirms its own hypothesis is not a guard.** It answers the question you already knew how to answer. The useful question is always the more specific one: not "does the file exist", but "did the number inside it get where it should".
+
+2. **A retry that repeats the same entry is a loop with a budget.** It spends four attempts to arrive exactly where it would have arrived the first time. Rotating the entry is what turns a retry into a strategy.
+
+3. **A guard that depends on a scheduler is a single point of failure with an alarm.** If the monitor and the protected process depend on the same supervisor, you do not have a monitor, you have a second victim.
+
+4. **An assumed failure does damage different from a real one.** A system that fails loudly costs minutes of investigation. A system that fails confirming what you already believed costs hours, because you do not look.
+
+5. **Writing a progress file requires byte verification.** Text mode writing through a compatibility layer is silent and looks like a minimal change. Checking the size before the swap is what separates "saved" from "saved correctly".
+
+<Terminal lines={[
+  { cmd: 'wc -l corpus.jsonl', output: '4128 of 25000 (rate at 2.4/min - was 9/min)' },
+  { cmd: 'grep -c quota_error distill_log.txt', output: '6 of 6 calls from the same teacher failed' },
+  { cmd: 'echo $((6*100/13))', output: '46% (weight of the dead teacher in the draw)' },
+  { cmd: 'cat completion_flag', output: 'exists - and the counter inside it says 1767 of 25000' },
+  { cmd: 'systemctl --user status distiller', output: 'inactive (dead) - the guard depended on the scheduler that fell' },
+  { cmd: 'kill the main process on purpose', output: 'system service brought up a new one in ~20s, restarts=1' }
+]} />
