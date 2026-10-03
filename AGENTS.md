@@ -514,3 +514,13 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - `03a8073` fix: capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
 - Working tree de outra sessao, nao tocada daqui: M api/ocultos-data.mjs + ~34 untracked (artefatos .loop-*, posts MDX PT+EN ainda nao versionados, docs/CHANGELOG.md untracked/duplicata sem decisao, capas public/covers, scripts/.dryrun-atomic.mjs).
 - Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.
+
+## Sessao 2026-10-02 (fim de dia) - 2 fixes de View Transitions em branch de feature; main 8 atras do origin (push nao entrega)
+
+- Dois commits de hoje, ambos em branches de feature — NENHUM na `main` (HEAD `eb3bdb4`, 29/09):
+- - `61fa7c8` fix(vt): remove o opt-in cross-document na main — o primeiro clique abria o post (`fix/vt-double-click-main`, ja no origin).
+- - `b4c66f8` fix(css): remove o opt-in cross-document de View Transitions (`fix/remove-vt-nav-optin`, local).
+- **`main` esta 8 commits atras do `origin/main`** → `git push origin main` RECUSADO (non-fast-forward). O commit de docs desta rodada fica local; integrar a `main` e publicar NAO foi feito nesta rodada.
+- **Cuidado (deploy):** `.github/workflows/deploy.yml` dispara em `push` na `main` — publicar a main vira deploy de producao; por isso nada foi mergeado/pushado aqui.
+- Working tree de outra sessao, nao tocada aqui: 301 arquivos em `src/content/` com ruido de CRLF-vs-LF (o proprio git avisa `CRLF will be replaced by LF`) + `api/ocultos-data.mjs` modificados, mais ~20 untracked (`.loop-*`, prompts do Roger). Nada disso foi addado.
+- Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.
