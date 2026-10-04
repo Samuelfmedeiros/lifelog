@@ -1,0 +1,87 @@
+---
+
+title: "A chave de um, a fatura de outro"
+description: "O Arachne deixa cada pessoa colocar a propria chave de modelo. A garantia de que essa chave so sai para o dono dependia de um campo opcional que, quando vazio, abria o caminho legado — e esse caminho era compartilhado por workspace. Um if de uma linha e meia era a borda entre a sua chave e a do seu colega."
+date: 2026-10-04 12:00:00 -03:00
+pubDate: 2026-10-04 12:00:00 -03:00
+lang: "pt"
+project: "arachne"
+tags: [arachne, security, auth, testing]
+cover: "/covers/arachne-a-chave-de-um-a-fatura-de-outro.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../components/TerminalWidget.astro'
+
+O Arachne tem uma feature que eu sempre achei honesta: cada pessoa traz a propria chave de modelo e paga a própria conta. Nada de gastar a cota dos outros sem querer, nada de chave da empresa misturada no meio. O sistema inteiro dependia de uma coisa simples para manter essa honestidade — que a chave de um fosse guardada para um só.
+
+Essa coisa simples era um campo. E o campo era opcional.
+
+## O modelo mental estava certo
+
+Internamente o Arachne tem o que chamo de um único ponto de escolha de modelo. Uma função resolve, e ela segue uma ordem fixa e explícita: primeiro tenta a chave de quem está chamando, depois tenta a chave do workspace, depois a chave da plataforma, e por último o modelo local. O motivo fica registrado junto, num campo que diz de onde veio o pagamento — porque o custo da chave é do dono dela, não nosso.
+
+Essa ordem está escrita no código como uma cascade de quatro `if`, cada um com seu comentário explicando o porquê. Ler aquilo é confortável: dá pra ver a intenção de quem escreveu, dá pra entender por que cada degrau existe. O problema nunca foi a ordem. O problema foi o segundo degrau.
+
+O segundo degrau é o caminho legado: configs que nasceram antes de existir o conceito de dono. E Configuração legada, na prática, significa uma linha no banco sem dono preenchido.
+
+## A linha que decidia tudo
+
+O caminho legado filtra as configs do workspace procurando uma que sirva. E a escolha, na versão antiga, era uma linha só:
+
+```python
+cfg = None
+for c in rows:
+    cfg = c
+    break
+```
+
+Primeira config ativa do workspace, sem perguntar de quem é. Lê-se como código de compatibilidade inocuo — você pega a config do workspace porque é o que o código antigo fazia. Funcionava, porque no modelo antigo não existia chave de alguém: a chave era do workspace, ponto. Todo mundo no workspace usava a mesma chave porque a chave era do workspace.
+
+Só que o modelo mudou. E o código de compatibilidade ficou.
+
+Quando configs começaram a carregar um dono, existiram dois tipos ao mesmo tempo no mesmo workspace: as novas, com dono preenchido, e as antigas, sem dono. E a linha de compatibilidade não distinguia. Ela pegava a primeira config ativa que encontrasse — fosse de quem fosse.
+
+O detalhe que fecha a armadilha: o filtro nem olhava o dono. Não era "pega a config sem dono para manter a retrocompatibilidade". Era literalmente "pega a primeira". Se num workspace compartilhado a config com dono tivesse um id menor que a config legada — o que é o normal, porque a legada foi a primeira a ser criada — o filtro devolvia a chave do colega, com dono e tudo.
+
+## Por que a falha só apareceu no teste
+
+A suíte de testes dessa onda tem quinze casos, e dois deles são o coração da história. Um monta uma config com dono no workspace, e pergunta ao caminho legado o que ele devolve quando o solicitante é outra pessoa do mesmo workspace. A resposta esperada é nenhuma — o filtro precisa recusar. E o outro confirma que a compatibilidade continua funcionando: uma config antiga sem dono ainda deve ser servida por workspace, porque ninguém pode perder a chave por causa de uma correção de segurança.
+
+O segundo teste é o que impede a correção de ser uma regressão silenciosa.
+
+O que esses dois testes juntos documentam, e o que me detiene aqui é o detalhe: esse foi um dos poucos bugs de segurança que eu vi ser escrito como dois testes de comportamento, e não como uma lista de "não pode fazer isso". O teste diz o que o sistema faz quando o cenário é hostil. "Quando config tem dono e o solicitante é outro, o caminho legado não devolve nada." "Quando config não tem dono, o caminho legado ainda devolve." Duas frases que, juntas, descrevem a fronteira inteira. O resto — a linha de código, o nome do filtro, a assinatura — é implementação. As frases são o contrato.
+
+## O conserto
+
+O filtro ganhou a condição que faltava. Uma config sem dono continua valendo — compatibilidade. Uma config com dono só é servida para o próprio dono. E essa última parte é a que fecha o buraco de verdade: não é só "sem dono passa". É "com dono alheio, não passa". Qualquer chave com dono explícito continua invisível para quem não é o dono dela, mesmo morando no mesmo workspace. Isso vale mesmo para o caminho legado: workspace compartilhado deixou de ser uma porta dos fundos.
+
+```python
+cfg = None
+for c in rows:
+    if not c.owner_email or c.matches_owner(email):
+        cfg = c
+        break
+if not cfg:
+    return None
+```
+
+Uma condição a mais. O `matches_owner` normaliza antes de comparar, porque comparar e-mail com caixa e espaço diferente é o tipo de detalhe que faz uma correção parecer que não funciona: o dono é "Dono@exemplo.com" num lugar, " dono@exemplo.com " no request, e um `==` simples devolve falso — e aí o sistema "protege" a chave do dono dela. Um guard de posse que erra o dono é pior que um guard ausente, porque parece funcionando. Normalizar é o que garante que o guard verifique quem é a pessoa e não como ela escreveu o endereço.
+
+## A parte que eu quase esqueci
+
+Quando a correção ficou pronta, o detalhe que me fez parar foi o endpoint de teste de chave. Ele não só guardava a config — ele *acionava* a chave. Era um medidor: mandava uma requisição real ao provedor usando a config de alguém. Guardar o get era metade do trabalho; o `/test` era um botão que, com o id certo, media a chave do colega. Quem achou isso não foi leitura de código — foi reler a rota inteira perguntando "o que essa rota faz, não o que ela parece fazer".
+
+Foi o que me fez entender que a posse precisa ser verificada em cada operação que toca a chave, não só na leitura. Get, update, delete, test — quatro verbs, uma regra. O guard de posse no lugar certo é o que faz "não é o dono" virar a mesma resposta em todos eles. E a resposta certa para "não é seu" é 404, não 403: 403 confirma que o recurso existe. Quem recebe 403 sabe que o id existe e que existe para outra pessoa — o que já é uma informação. O 404 não mente sobre nada.
+
+## O que eu levo
+
+Duas coisas, e nenhuma delas é sobre segurança.
+
+A primeira: campo opcional que expressa propriedade é armadilha. Se um campo carrega "de quem é", ele deveria ser obrigatório no momento em que o conceito aparece. `owner_email` nasceu opcional porque existem configs antigas, e aí a compatibilidade virou um `if` — mas o `if` não distinguishia "não tem dono" de "tem dono diferente". Quando a regra é "sem dono passa, com dono alheio não passa", a optionalidade não é mais um detalhe de migração: ela é a própria superfície do bug.
+
+A segunda, mais cara: caminho legado é um lugar onde regra nova não chega. A regra nova — a chave tem dono — foi escrita no caminho novo, e o caminho antigo ficou com a regra antiga. Um caminho de compatibilidade não é só código que ainda roda; é código que ainda *decide*. E enquanto ele decidir, ele decide errado.
+
+Nenhum dos dois consertos exigia uma linha revolucionária. Exigia que eu parasse de ler o filtro como "compatibilidade" e passasse a ler como "autorização". Não era um filtro. Era uma autorização mal escrita, esperando alguém parar e reescrever em vez de aceitar o que já estava ali.
+
+<Terminal commands={[{ cmd: 'git log --oneline -1 -- api/app/llm_gateway/gateway.py' }, { cmd: 'grep -n "owner_email or c.matches_owner" api/app/llm_gateway/gateway.py' }, { cmd: 'grep -n "def test_intruso_do_mesmo_workspace_nao_ve_chave_alheia" api/tests/test_byok_owner_wave_a.py' }]} />
