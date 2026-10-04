@@ -1,0 +1,169 @@
+---
+title: "The guard that never got to run"
+description: "The filter protecting my resume download listed two exact strings. Encoding a single letter in the path was enough to keep my code from ever being called, and the platform served the file straight off disk."
+category: samuel-projects
+date: 2026-09-13 00:00:00 -03:00
+pubDate: 2026-10-04 08:00:00 -03:00
+project: portfolio
+lang: en
+tags: ["portfolio", "security", "nextjs", "privacy", "testing", "lessons"]
+icon: "🚀"
+cover: /covers/portfolio-o-guard-que-nunca-chegou-a-rodar.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+In September I spent an entire afternoon writing a filter to protect my resume download, and a
+week later I found out it was not filtering anything. It was not a bug. It was a wrong assumption
+about what a URL path is.
+
+## What I thought was protected
+
+The resume has two possible download paths. One goes through a modal that records consent, logs
+the event, and triggers a notification. The other is trying to open the file directly by its public
+address, with none of those three things.
+
+I did not care about the second one for secrecy, but for traceability: without recorded consent
+and without a logged event, the download vanished from my radar completely. An access report that
+cannot count how many times the resume left is not a report, it is decoration.
+
+So I wrote the filter. The idea was simple and, from a distance, looked bulletproof: I had two file
+names, so I listed the two exact paths and returned 404 for anything that matched. I tested the
+exact path, got a 404, closed the laptop.
+
+## The symptom
+
+Two days later, measuring the file in production across both domains, I got this:
+
+```
+/Samuel_Andrade_2026.pdf        404
+/%53amuel_Andrade_2026.pdf      200
+/Sam%75el_Andrade_2026.pdf      200
+/Samuel_Andrade_2026.p%64f      200
+/Samuel%5FAndrade%5F2026%2epdf  200
+```
+
+Every 200 delivered the real file: same size, same hash, same content as the repository. The
+protection existed only for the exact written form of the name, and for nothing else.
+
+The detail I had not considered: `%53` is `S`, `%75` is `u`, `%5F` is `_`, `%2e` is `.`. They are
+the same letters. It is literally the same file, written a different way.
+
+## Two layers, failing together
+
+There were two independent reasons, and either one alone was enough for the file to escape.
+
+The first is the `matcher`. It decides which requests reach my code by comparing the raw path
+against a list. If the path does not match, my code is not executed — there is no chance for it to
+reject anything. And the comparison happens before any decoding. So `Sam%75el_Andrade_2026.pdf`
+simply is not the string I listed, the filter is never called, and the request proceeds straight to
+the static file server.
+
+The second is the `Set.has()`. Even if the `matcher` did match, I compared the path normalized in
+an insufficient way: I only lowercased it. `%75` is still `%75` after `toLowerCase()`. The set has
+nothing to match.
+
+And worst of all, the two together made the filter impossible to test honestly. A test that sends
+the exact path passes. A test that sends the encoded path also "passes", because the `matcher`
+simply never calls my code — and the test only fails if it looks at the response status. It was
+enough for the test to verify "the filter responded" instead of "the filter rejected", and it would
+stay green forever.
+
+## The entire class of the problem
+
+What I had built was a closed list of correct forms against an open space of equivalent forms.
+
+A file name has infinitely many valid representations in a URL. Every character can be written out
+or encoded. The encoding can be single or double. The letter can be upper or lower case. The path
+can have duplicated slashes, `.` and `..` segments, a trailing slash, a trailing space. Filtering
+by list requires knowing all the forms — and the list is never complete, because the next form
+shows up the following day, on its own, without warning.
+
+The inversion is the entire trick. Instead of listing the forms that should pass, I discard the list
+and reduce every request to a single canonical form. If no representation can escape, there is no
+representation left to list.
+
+## The fix
+
+Three layers, in this order.
+
+The first is the most expensive and the most important: remove the `matcher`. Without a path list,
+the filter runs on every request. No encoding can "not match", because there is no list to match
+against. Every request enters my code and I decide what to do with it. The price is that the
+filter is now also called for every image and script on the site. The function is a string
+comparison, no I/O, no database, no network — negligible next to what already happens on every asset
+request.
+
+The second is normalization all the way through. I decode percent-encoding repeatedly until the
+value stops changing, which also covers double encoding (`%2575` becomes `%75` becomes `u`). Then I
+collapse `.` and `..` segments and duplicated slashes, and compare the last path segment in lower
+case. There are two passes, and the second is necessary: `%2e%2e` only becomes `..` after decoding,
+and can only be collapsed on the following pass. Any path with a null byte is rejected before any
+comparison, because a null byte is an attempt, not an address.
+
+The third is the log. Only on the blocking path do I write a log line with the path and the agent
+that asked. Nothing on the allowed path, so the cost is zero in normal flow. And the log sits
+inside a block that can never throw: the filter now runs on every request, and an exception there
+would turn a privacy problem into a site being down. I prefer a silent 404 to taking everything
+down.
+
+## How you prove a filter works
+
+The part I had skipped is the most important, and the one that would have saved me the week.
+
+A test that passes proves nothing if it would never have failed. The way to prove it is the
+negative control: run the same test against the broken target and require that it fails.
+
+I did that with an end-to-end spec: it sends the vectors I had measured in production and requires
+a blocking response. Against the old version, in production, it flagged exactly six failures, the
+six forms that served the file. After the fix, against the local build, sixteen out of sixteen
+passed.
+
+The number six matters as much as the sixteen. It was not "the test failed". It was "the test
+failed on exactly the cases I measured in the real world". A test that fails on three vectors I
+never observed is validating my imagination, not the problem.
+
+The unit test grew from five cases to fifty-nine: the vectors measured in production, the paths
+that have to keep working, and a contract that fails if someone declares the `matcher` again. That
+last one is what really matters, because it turns the decision into a rule the repository does not
+let you undo without noticing.
+
+## Numbers
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Path forms serving the file in production | 5 of 6 | 0 of 6 |
+| Cases in the filter's unit test | 5 | 59 |
+| End-to-end test cases | 0 | 16 |
+| Negative control against the broken version | — | 6 expected failures |
+| Lines in the filter | 29 | 138 |
+| Requests that pass through the filter | only the listed ones | all |
+
+## What was left of the lesson
+
+The first is the one I want to remember: filtering by path is comparing shapes, and whoever
+resolves the path is the server, not me. As long as comparison and resolution are done in
+different shapes, there is a gap between the two, and that is the gap the file goes through.
+
+The second: a green test without a negative control is not proof, it is decoration. I could have
+written thirty cases, all passing, and still had the resume exposed.
+
+The third is the most annoying and the most useful: a filter that is never called does not look
+broken by any signal. It throws no error, it shows up in no log, it breaks nothing. It is simply not
+there. And because the absence of an error looks a lot like the presence of protection, it is very
+easy to look at the 404 on the exact path and conclude everything is fine.
+
+---
+
+<figure>
+  <Terminal commands={[
+    { cmd: '# the old filter: two exact strings in the matcher list', output: '/Samuel_Andrade_2026.pdf -> 404   (the only protected path)' },
+    { cmd: '# same letter, a different way of writing the path', output: '/Sam%75el_Andrade_2026.pdf -> 200   (the filter was never called)' },
+    { cmd: '# now: no matcher, comparison by canonical form', output: 'the filter runs on every request -> I always decide' },
+    { cmd: 'normalize("/Sam%2575el_Andrade_2026.pdf")', output: '/samuel_andrade_2026.pdf' },
+    { cmd: 'normalize("/./a/b/../../Samuel_Andrade_2026.pdf/")', output: '/samuel_andrade_2026.pdf' },
+    { cmd: '# negative control, then the fix', output: '6 failures against the broken version -> 16/16 pass' },
+  ]} />
+</figure>
