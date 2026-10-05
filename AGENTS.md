@@ -1,5 +1,11 @@
 # 📖 LifeLog — Session Hub
 
+## Sessao 2026-10-05 (fim de dia) - 19 commits (release de 12 posts + refazer #67 + VRT/e2e) e main DIVERGIDA
+- Dia de pipeline: 12 `release(post)` PT+EN + ocultos, 4 `refazer` (recusa #67 e duplicados), 4 de VRT/e2e (`f247b39`, `3082f3b`, `08f2c6a`, `d9c2424`) e `3ac1da1` (VRT abre PR de verdade).
+- **BLOQUEIO**: `main` local 2 commits a frente / **38 atras** do `origin/main` - `git push origin main` rejeitado como `non-fast-forward`. Nada foi forcado nem resetado; a fusao dos 2 commits locais (`f727600`, `eb36b2a`) com o remoto precisa de decisao do dono.
+- `e2e/known-failures.json` staged e nao tocado; 325 entradas na working tree.
+- HEAD main local `f727600`; remoto `3ac1da1`.
+
 > Blog pessoal estilo devlog — documentando a jornada de Samuel Medeiros
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
