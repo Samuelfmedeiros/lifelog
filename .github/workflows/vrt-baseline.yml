@@ -218,7 +218,7 @@ jobs:
         # vrt/regenerate-baseline (o gatilho confiavel) nunca abria PR. Agora roda
         # nos dois; se os baselines mudaram, usa a branch do step anterior.
         if: always() && steps.baselines.outputs.mudou == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: ${{ steps.versionar.outputs.branch || format('vrt/baseline-{0}', github.run_number) }}
           base: main
