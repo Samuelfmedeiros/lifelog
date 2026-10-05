@@ -126,12 +126,34 @@ jobs:
             --workers=1
 
       - name: Conferir que os baselines mudaram de fato
+        id: baselines
         run: |
           if git diff --quiet -- e2e/vrt.spec.ts-snapshots/; then
             echo "::notice::render estavel — o baseline ja refletia o estado atual. Nada a renovar."
+            echo "mudou=false" >> "$GITHUB_OUTPUT"
           else
             git --no-pager diff --stat -- e2e/vrt.spec.ts-snapshots/
+            echo "mudou=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # BUG (05/10/2026): o step acima so imprimia o diff e seguia. Os .png
+      # regenerados no runner eram descartados no fim do job e o PR nunca saia
+      # (medido: run 37384441746 regenerou tudo e pulou o step de PR). Commit+push
+      # dos baselines aqui, num branch proprio, para o step de PR ter o que abrir.
+      # Nunca merge direto na main.
+      - name: Versionar os baselines regenerados
+        id: versionar
+        if: steps.baselines.outputs.mudou == 'true'
+        run: |
+          set -euo pipefail
+          BR="vrt/baseline-${{ github.run_number }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BR"
+          git add -- e2e/vrt.spec.ts-snapshots/
+          git commit -m "test(vrt): baselines regenerados na CI ubuntu (run ${{ github.run_number }})"
+          git push --force origin "$BR"
+          echo "branch=$BR" >> "$GITHUB_OUTPUT"
 
       # Remove os VRT da divida SO depois que o baseline novo foi gerado. Remover e
       # sempre livre; adicionar entrada exige aprovacao explicita do Samuel.
@@ -192,10 +214,13 @@ jobs:
           retention-days: 30
 
       - name: Abrir PR (nunca merge direto em main)
-        if: github.event_name == 'workflow_dispatch'
+        # BUG (05/10/2026): era so `workflow_dispatch`, entao o push em
+        # vrt/regenerate-baseline (o gatilho confiavel) nunca abria PR. Agora roda
+        # nos dois; se os baselines mudaram, usa a branch do step anterior.
+        if: always() && steps.baselines.outputs.mudou == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: vrt/baseline-${{ github.run_number }}
+          branch: ${{ steps.versionar.outputs.branch || format('vrt/baseline-{0}', github.run_number) }}
           base: main
           title: 'test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet'
           commit-message: 'test(vrt): baselines regenerados na CI ubuntu + ratchet pago'
