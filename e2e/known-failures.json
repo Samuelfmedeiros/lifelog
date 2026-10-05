@@ -1,5 +1,5 @@
 {
   "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
   "failures": [],
-  "$ultimaRevisao": "2026-10-01: 4 entradas de a11y REMOVIDAS (divida PAGA). Suite a11y verde 14/14 verificada em runtime win32 (axe-core, analise de DOM, nao de pixel). Plataforma da CI e ubuntu-latest: a validacao definitiva e o proprio CI. As 3 entradas de VRT foram pagas separadamente pelo PR #61, com baselines regenerados no runtime da CI (ubuntu-latest) - ver .github/workflows/vrt-baseline.yml. Ratchet agora com ZERO entradas: o gate completo passa e nenhum teste novo fica fora dele."
+  "$ultimaRevisao": "2026-10-05: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: n/a"
 }
