@@ -1,0 +1,88 @@
+---
+title: "O teto que eu não escrevi"
+description: "Um pip install resolveu. Depois um bisect medido mostrou que a fronteira entre funcionar e quebrar estava numa dependência, não no meu código. E, no caminho, doze cópias de uma função de cinco linhas viraram um helper só."
+date: 2026-10-04 14:20:00 -03:00
+pubDate: 2026-10-05 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "python", "dependencies", "timezone", "debugging", "testing"]
+cover: /covers/dogwalk-o-teto-que-eu-nao-escrevi.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A linha que não mexe em nada
+
+O backend do Dogwalk parou de criar registro. Não era erro de sintaxe, não era migração pendente, não era o servidor no ar errado. Todo INSERT que tocava `created_at` ou `updated_at` morria — e o log dizia exatamente onde:
+
+```
+sqlmodel/sql/sqltypes.py:34 -> UTCDateTime.process_bind_param
+```
+
+Uma exceção de biblioteca, sobre um campo de data. Aquele tipo de bug que faz você suspectar de tudo: do modelo, do schema, da conexão, do fuso, do driver.
+
+O que me intrigava era a ausência de mudança na minha própria base. Nenhum arquivo do backend tinha mudado. Nenhuma linha minha estava errada. O código estava igual ao de ontem — e o de ontem gravava data sem reclamar.
+
+## O que mudou não foi o código, foi o chão
+
+Aqui está a parte que me custou tempo: o motor tinha sido atualizado sozinho. Uma dependência transitiva subiu de versão sem ninguém pedir, o backend continuou funcionando por alguns dias e depois parou. Não foi um deploy meu. Foi o chão se mexendo debaixo dos pés.
+
+E, olhando a exceção com calma, a história ficava óbvia. A partir de certa versão o SQLModel passou a usar `UTCDateTime`, que **rejeita `datetime` naive**. E o meu backend usava naive em todo lugar — o helper de tempo deliberadamente devolvia data sem timezone, com `tzinfo=None`, porque era o contrato do projeto. O contrato estava certo. Quem mudou de verdade foi a biblioteca, e ela mudou sem avisar.
+
+Um valor antes aceito porque "todo mundo fazia assim" vira erro em uma linha de changelog. Por isso a correção não foi no meu código: foi no teto.
+
+## Medir em vez de adivinhar
+
+Antes de escrever qualquer coisa no arquivo de dependências, eu precisava saber onde exatamente estava a fronteira. Podia ser `<0.0.47` — o número "óbvio" que eu teria chutado sem pensar. Mas o bisect medido, versão a versão:
+
+| Versão | `datetime` naive | Comportamento |
+| --- | --- | --- |
+| `0.0.44` | aceita | grava o campo |
+| `0.0.45` | rejeita | levanta na hora do bind |
+| `0.0.46` | rejeita | idêntico ao `0.0.45` |
+
+O teto real era `0.0.45`, não `0.0.47`. Se eu tivesse escrito o número "seguro" e "conservador" aparentemente, eu teria travado o projeto por dois patch releases de uma dependência, por causa de uma versão que não quebrava nada.
+
+Vale registrar como isso foi confirmado: instalar a versão antiga num ambiente novo, com Python 3.11, e rodar a suíte — 62 testes, duas execuções seguidas. Sem atalhos. O número que eu escrevi no arquivo era um número medido, e não um palpite.
+
+## A limpeza que veio de brinde
+
+Resolvido o derrube, sobrou uma coisa que vinha me incomodando há meses. Doze arquivos em `app/models/` declaravam a mesma `_utcnow()` local — cinco linhas de data, copiada e colada doze vezes. O contrato era o mesmo nos doze, mas cada cópia podia divergir sozinha.
+
+A correção foi um helper de tempo, num ponto só:
+
+```python
+# app/core/time.py — o contrato de tempo do backend, decidido uma vez
+from datetime import datetime, timezone
+
+def _utcnow() -> datetime:
+    """Instante atual em UTC, sem timezone anexado."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def to_iso(value: datetime | None) -> str | None:
+    """Serializa para JSON; None continua None."""
+    if value is None:
+        return None
+    return value.isoformat()
+```
+
+Depois disso os doze passaram a importar de lá. O contrato não mudou: continua naive em UTC, então a serialização JSON da API segue idêntica. Não foi refatoração por estética. A duplicação estava escondendo justamente o ponto único onde o contrato de tempo do backend é decidido — e o teto de dependência que acabei de escrever só foi possível porque esse ponto único passou a existir.
+
+Vale a pena notar a assimetria: a mesma duplicação que escondia o contrato também multiplicava o risco. Se um dia alguém ajustasse o helper num dos doze arquivos, o comportamento de cada tabela passaria a divergir, sem nenhum aviso.
+
+## O que eu levei
+
+Dependência é meu código, só que não é meu arquivo. Quando tudo quebra e nada meu mudou, a primeira pergunta não é "o que eu quebrei" — é "o que mudou sem mim".
+
+E tem um detalhe operacional que vale mais que a lição: eu podia ter escrito `sqlmodel<0.0.47` no arquivo e seguido a vida, com um sistema que não trava. O teto de `0.0.45` só existe porque alguém, antes de mim, mediu em vez de chutar. Eu só não podia deixar essa medição ser desperdiçada com um número inventado.
+
+Isso é uma diferença de módulo a módulo: antes, doze cópias da função; agora, um ponto único. O que me protege amanhã é o mesmo mecanismo que me trouxe até aqui.
+
+<Terminal commands={[
+  { cmd: 'git log -1 --format=%B aa484452 | head -4', note: 'o commit que escreveu o teto' },
+  { cmd: 'grep -n "sqlmodel" backend/requirements.txt', note: 'o teto que ficou no arquivo' },
+  { cmd: 'git show --stat --format="" ae7622ae | tail -3', note: '14 arquivos, um contrato so' },
+  { cmd: 'find backend/app -name "*.py" -newer backend/app/core/time.py', note: 'o que ainda define o proprio tempo' }
+]} />
