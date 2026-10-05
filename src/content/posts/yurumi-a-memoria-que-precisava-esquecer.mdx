@@ -1,0 +1,248 @@
+---
+title: "Yurumi: a memória que precisava esquecer"
+description: "Quatro camadas de memória com prazos diferentes, um TTL que nunca expirava de verdade e a decisão que resolveu: dormir não é apagar. Como o ciclo de vida da memória deixou de ser um campo solto no payload."
+date: 2026-09-25 19:40:00 -03:00
+pubDate: 2026-10-05 08:00:00 -03:00
+project: yurumi
+lang: pt
+tags: [yurumi, memory, agents, architecture, lessons, reliability]
+cover: /covers/yurumi-a-memoria-que-precisava-esquecer.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Uma memória que nunca esquece não é uma memória boa. É um arquivo morto que ainda
+custa embedding, ainda aparece na busca e ainda compete com a resposta boa.
+
+O Yurumi nasceu como store de vetores e, com o tempo, ganhou as peças de um agente:
+intenção, ações, identidade, grafo. Mas uma peça faltava, e ela não era código —
+era política. **Quanto tempo uma memória deveria viver?** Enquanto isso estava sem
+resposta, o campo de expiração já existia no payload de cada memória, escrito com
+cuidado, e mesmo assim não expirava nada.
+
+## O campo que todo mundo escrevia e ninguém lia
+
+O TTL já estava modelado desde o começo: um `expires_at` em ISO dentro do payload, e
+duas funções que deveriam fazer o trabalho pesado.
+
+```python
+def is_expired(expires_at: Optional[str]) -> bool:
+    """True se a memória expirou (ou sem expires_at = nunca expira)."""
+    if not expires_at:
+        return False
+    try:
+        return datetime.fromisoformat(expires_at) < datetime.now(timezone.utc)
+    except (ValueError, TypeError):
+        return False
+
+
+def build_expiry_filter(include_expired: bool = False) -> dict:
+    if include_expired:
+        return {}
+    now = datetime.now(timezone.utc).isoformat()
+    return {"must": [{"key": "expires_at", "range": {"gt": now}}]}
+```
+
+Olhando esse código hoje, os dois defeitos aparecem na mesma tela. São pequenos e do
+mesmo tipo: **a falha se disfarça de sucesso**.
+
+O primeiro: `datetime.fromisoformat(expires_at)` devolvia um timestamp *naive*,
+enquanto `datetime.now(timezone.utc)` devolvia um *aware*. Comparar os dois não é
+diferença de fuso — é `TypeError`. E o `except` engolia o erro e devolvia `False`.
+
+Traduzido para português de quem opera o sistema: a memória **não expirava**. Não
+"expira em outro fuso", não "expira com folga" — não expirava. O pior desfecho
+possível para um TTL, porque o sintoma é indistinguível de "ainda está no prazo".
+
+O segundo era mais silencioso ainda. `build_expiry_filter` devolvia `{}` — um dicionário
+vazio de filtro. Um filtro vazio num motor de busca vetorial significa literalmente
+"não filtre nada". A função tinha assinatura de quem filtrava, nome de quem filtrava,
+e comportamento de quem não filtrava.
+
+> O `except TypeError: return False` foi a linha mais cara do módulo inteiro, e não
+> custou performance — custou meses de uma feature que todo mundo acreditava estar viva.
+
+## O consolo de quem confia no próprio código
+
+O que torna esse tipo de bug sobreviver meses não é a linha errada. É a **ausência de
+um teste que mentisse junto**. Ninguém escrevia `assert is_expired(ontem) is True` porque
+ninguém estava olhando — todo mundo via o campo preenchido no payload e concluía que
+o sistema estava funcionando.
+
+O consolo era o próprio formato do dado. Uma memória com `expires_at` escrito,
+legível, bem formado, é indistinguível de uma memória respeitada. O campo carregava a
+intenção; a ausência de teste carregava a ilusão.
+
+O consolo do segundo defeito era mais sutil: `build_expiry_filter` tinha
+`include_expired` como parâmetro, docstring explicando cada ramo, e um retorno `{}`
+que parecia decisão de projeto. Ele **era** decisão de projeto no ramo certo e bug no
+ramo errado — a mesma linha fazendo as duas coisas.
+
+## A correção: normalizar antes de comparar
+
+A cura foi simples: nunca comparar timestamp de duas origens sem antes colocá-los
+no mesmo regime.
+
+```python
+def _parse(dt_str: str) -> datetime:
+    """datetime.fromisoformat normalizando pra aware (UTC se naive)."""
+    dt = datetime.fromisoformat(dt_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def is_expired(expires_at: Optional[str]) -> bool:
+    if not expires_at:
+        return False
+    try:
+        return _parse(expires_at) < datetime.now(timezone.utc)
+    except (ValueError, TypeError):
+        return False
+
+
+def build_expiry_filter(include_expired: bool = False) -> dict:
+    if include_expired:
+        return {}
+    now = datetime.now(timezone.utc).isoformat()
+    return {"must": [{"key": "expires_at", "range": {"gt": now}}]}
+```
+
+Três mudanças, três decisões distintas:
+
+**Extrair o parse.** A normalização deixou de estar escondida dentro da comparação e
+virou função com nome. `_parse` é testável sozinha — o teste não precisa montar
+timestamp vencido pra provar que a conversão funciona.
+
+**Normalizar o regime, não o valor.** A memória guarda ISO sem timezone porque quem
+escreve é o chamador e ele pode estar em qualquer lugar. O ponto de comparação é
+sempre UTC. Assumir fuso do outro lado é assumir que todo mundo pensou no mesmo
+instante.
+
+**O filtro virou filtro de verdade.** O ramo padrão devolve a condição real
+(`expires_at > now`) e o ramo `include_expired=True` devolve `{}` **de propósito** —
+quem pede para ver tudo (o job de limpeza) não quer filtro nenhum. A diferença entre
+os dois ramos passou a ser intenção documentada, não acidente.
+
+## E aí a decisão que mudou o desenho
+
+Resolver o TTL foi a cura do sintoma. A decisão de verdade veio depois, quando percebi
+que o problema de fundo não era expirar — era **não existir um ciclo de vida**.
+
+O Yurumi tinha um campo de expiração e nada mais. Uma memória de conversa, um
+aprendizado de projeto e um procedimento estável tinham o mesmo tratamento: mesmo
+campo, mesma ausência de política. Isso é o mesmo bug do TTL, um nível acima.
+
+A resposta foi modelar quatro camadas, no mesmo espírito do ciclo de vida do MemGPT —
+que o Yurumi segue de perto:
+
+| Camada | Nome | TTL default | Natureza |
+|---|---|---|---|
+| L1 | working | 1 dia | o que está no contexto agora |
+| L2 | episodic | 7 dias | o que aconteceu, com data e lugar |
+| L3 | semantic | 30 dias | o que se tornou verdade geral |
+| L4 | procedural | nunca expira | como se faz, estável |
+
+E a regra que faz a coisa funcionar: **o TTL default só entra se o payload não tem TTL
+próprio**. Metadata vence. O chamador sempre pode sobrescrever, porque ele sabe o
+contexto e o sistema não.
+
+```python
+def apply_layer_ttl(code: Optional[str], payload: dict) -> dict:
+    """Grava o expires_at default da camada se o payload NÃO tem TTL próprio."""
+    # procedural (L4) SEMPRE remove expires_at (como permanent=True)
+    if code == "L4":
+        payload.pop("expires_at", None)
+        return payload
+    if "expires_at" not in payload:
+        expiry = expires_at_for(code)
+        if expiry:
+            payload["expires_at"] = expiry
+    return payload
+```
+
+Um detalhe que só apareceu depois: **L4 não guarda `expires_at` — ele remove o
+campo**. A ausência do campo é a afirmação. Uma memória procedural que carrega
+`expires_at: null` continua sendo uma memória que pode um dia ser expurada por um bug
+de filtro. Ela não carrega prazo nenhum, e isso é intencional, não esquecimento.
+
+Essa decisão está registrada num ADR curto, do jeito que deveria: contexto, decisão,
+consequências — positivas e negativas — e as alternativas rejeitadas. Ficou escrito
+que L4 é redundante com `permanent=True`, mantido por clareza semântica. É o tipo de
+vergonha pequena que a documentação em vez do código.
+
+## O que eu levaria para qualquer TTL
+
+Três regras, todas nascidas desse bug específico:
+
+**Um filtro que pode retornar vazio é uma decisão, não um default.** O `{}` do
+`include_expired=True` é legítimo. O `{}` do caminho padrão era um bug. A diferença
+entre eles é só a intenção de quem chamou — que precisa estar escrita em algum lugar
+legível.
+
+**Exceção que engole `TypeError` em função de comparação é armadilha.** Comparação de
+timestamp entre regimes diferentes é o tipo de coisa que só falha em produção, quando
+um `expires_at` gravado por máquina em UTC encontra um `now()` local. Normalizar
+antes de comparar custa três linhas.
+
+**Teste que prova o bug é o que impede a volta dele.** Os dois defeitos aqui eram
+baratos de achar depois de consertados. A alternativa honesta era um teste com nome
+honesto, do tipo `test_ttl_naive_nao_e_engolido_como_nao_expirado`, que falha no
+código antigo e passa no novo.
+
+## E a consolidação, que é o outro lado
+
+Esquecer é metade do problema. A outra metade é lembrar demais: o mesmo fato anotado
+com palavras diferentes três vezes em três dias. O Yurumi tem uma peça separada pra
+isso, a `consolidate.py`, que agrupa memórias por similaridade e funde as duplicatas
+latentes.
+
+A escolha do texto canônico é a parte que mais importa: **o mais longo**. Não o mais
+recente, não o mais popular — o mais longo, porque é o que carrega mais informação
+naquele cluster. Num sistema onde o custo de uma memória é o embedding e a
+competição na busca, pagar o preço de manter a versão mais longa é barato comparado a
+perder o detalhe que só ela tinha.
+
+E a Similaridade que decide isso é cosseno sobre vetores normalizados, calculada com
+numpy quando existe e com um fallback em Python puro quando não — porque a versão
+ingênua, um `O(n²)` em Python, travava com algumas milhares de memórias.
+
+```python
+# normaliza + matmul: (n, n) de similaridade num passe só
+mat = np.array(vecs, dtype=np.float32)
+norm = np.linalg.norm(mat, axis=1, keepdims=True)
+norm[norm == 0] = 1.0
+mat_n = mat / norm
+sim = mat_n @ mat_n.T
+```
+
+O detalhe que define o comportamento: a janela padrão é de 2 mil memórias, as mais
+recentes. Não porque o resto foi esquecido, mas porque o job roda frequente e a
+cobertura se completa ao longo do tempo. Um ETL que varre tudo de uma vez é mais
+bonito no desenho e pior na operação.
+
+<Terminal
+  commands={[
+    { cmd: 'cat docs/decisions/0004-memory-layers.md', output: 'ADR-0004 — Memory Layers L1-L4 (TTL por camada)\n  Status: Aceito (2026-08-28)\n  L1 working 1d | L2 episodic 7d | L3 semantic 30d | L4 procedural nunca' },
+    { cmd: 'python -m core.consolidate --threshold 0.90', output: '{ "clusters": 12, "candidates": 47, "merged": 47, "applied": false }' },
+  ]}
+/>
+
+O que me leva à parte que ainda é trabalho em andamento: o `expires_at` é timestamp,
+não contador de uso. Uma memória pode estar dentro do prazo e continuar obsoleta,
+porque ninguémconsultou aquilo em seis semanas. Memória que ninguém usa é candidata a
+esquecimento mesmo tendo prazo. Esse é o próximo passo, e ele vai exigir uma métrica
+que ainda não existe — não do texto da memória, mas de quando ela apareceu num
+resultado que alguém usou.
+
+## O que fica
+
+Memória é política com prazo. O TTL é a forma mais barata de expressar essa política,
+e por isso mesmo a mais fácil de deixar quebrada em silêncio: um campo preenchido
+convence, um filtro vazio não denuncia, e um `except` que transforma exceção em
+resposta faz o resto.
+
+O Yurumi aprendeu a guardar, a buscar e a agrupar. Aprendeu também que guardar bem é
+a metade do trabalho — a metade difícil é o que fazer com o que já passou do prazo.
