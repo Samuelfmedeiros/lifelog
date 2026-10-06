@@ -25,9 +25,12 @@ concurrency:
 jobs:
   indexnow:
     name: Submeter sitemap ao IndexNow
+    # Nao exigimos CI verde: o deploy de producao e feito pela integracao Git
+    # da Vercel (creator vercel[bot]); o step legado do CLI pode falhar sem
+    # afetar o site. O proprio job confere o site (HTTP 200) antes de submeter.
     if: >-
       github.event_name == 'workflow_dispatch'
-      || github.event.workflow_run.conclusion == 'success'
+      || github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
