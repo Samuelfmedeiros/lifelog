@@ -1,0 +1,55 @@
+name: SEO — indexacao (IndexNow)
+
+# Roda DEPOIS do deploy de producao (workflow_run do CI/CD) e submete as URLs
+# do sitemap para os buscadores do protocolo IndexNow: Bing, Yandex, Seznam,
+# Naver. O Google NAO consome IndexNow — para ele a descoberta vem do
+# sitemap.xml declarado no robots.txt + Search Console.
+#
+# Idempotente: pode rodar quantas vezes quiser; o buscador so reprocessa o que
+# mudou. Preview de post oculto (/ocultos/) nunca e submetido.
+
+on:
+  workflow_run:
+    workflows: ['LifeLog CI/CD']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seo-indexing
+  cancel-in-progress: false
+
+jobs:
+  indexnow:
+    name: Submeter sitemap ao IndexNow
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      INDEXNOW_HOST: lifelog-sepia.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Esperar o site responder 200
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$INDEXNOW_HOST/" || true)
+            if [ "$code" = "200" ]; then
+              echo "site no ar (tentativa $i)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "site nao respondeu 200 em 5 min"
+          exit 1
+
+      - name: Submeter URLs ao IndexNow
+        run: node scripts/indexnow-submit.mjs
