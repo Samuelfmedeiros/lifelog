@@ -1,0 +1,68 @@
+---
+title: "O router que existia e ninguém montou"
+description: "O Arachne tinha uma funcionalidade inteira escrita, testada e verde — e que nunca esteve ligada. Quando destravei a montagem, ela continuou quebrada com 422 em toda chamada. Duas verdades passaram por cima do mesmo código sem tocar nele: teste que chama a função da rota direto nunca vê a app montada."
+date: 2026-10-06 12:00:00 -03:00
+pubDate: 2026-10-06 12:00:00 -03:00
+lang: "pt"
+project: "arachne"
+tags: [arachne, fastapi, api, testing, debugging]
+cover: "/covers/arachne-o-router-que-existia-e-ninguem-montou.webp"
+featured: false
+hidden: true
+---
+import Terminal from '../../components/TerminalWidget.astro'
+
+Tem um tipo específico de bug que eu passei a temer mais que o erro barulhento: o recurso que existe inteiro, tem arquivo próprio, tem teste passando, e simplesmente nunca foi ligado. Ninguém vê erro. Nenhum log reclama. A tela só devolve um 404 e o usuário conclui que a feature não existe — porque, do ponto de vista dele, ela não existe mesmo.
+
+O Arachne tinha uma dessas. Uma funcionalidade de configuração de modelo por dono, escrita com CRUD completo, sete rotas e testes. Verde no CI desde que nasceu. E inatingível em produção desde o primeiro dia.
+
+## O ponto cego
+
+O Arachne tem um módulo de configuração de LLM por dono: cada pessoa cadastra a própria chave, escolhe o modelo, testa a conexão. É a parte visível de uma política que a gente levou uma onda inteira para fechar — a chave de quem chama tem que ser usada por quem chamou, e ninguém mais. O módulo tem o arquivo de rotas, o modelo, os schemas, os helpers de posse. Está tudo lá.
+
+Só que montar o arquivo de rotas é um passo separado de escrever o arquivo de rotas. No FastAPI você declara um roteador e depois precisa registrá-lo na aplicação principal, passar esse roteador para o `include_router`. São duas ações em dois lugares. Escrever o roteador é fácil de lembrar. Registrar é o passo entediante — e é exatamente o passo que sumiu.
+
+O commit que fechou a onda dizia no corpo que as rotas estavam montadas. O diff montava outro roteador, o do gateway, e o do CRUD ficou de fora. Não foi má-fé: foi um commit grande, um resumo escrito de memória, e a diferença entre o que o autor achou que fez e o que o diff fez de fato.
+
+E aí veio a parte que dói. A busca no histórico inteiro por aquele roteador, em qualquer commit, em qualquer branch, veio vazia. Não é que ele foi montado um dia e desmontado depois. Ele nunca esteve montado. Da criação até agora, a única coisa que existia era o arquivo.
+
+## Verde por construção errada
+
+Se o recurso nunca esteve ligado, como os testes passavam? Aqui está a lição que eu acho mais transferível de todo esse episódio — e não é sobre FastAPI.
+
+Os testes daquele módulo não chamavam a aplicação. Eles chamavam a função da rota direto, passando um objeto simples no lugar do request, um `SimpleNamespace` montado à mão. Para a função em si, isso é indistinguível do real: ela recebe um objeto com os atributos que espera, executa, devolve a resposta. O teste passa. Verde.
+
+O que o teste nunca viu foi o caminho completo: aplicação montada, roteador registrado, schema gerado, requisição entrando pela rede e sendo resolvida pelo framework. Chamar a função pula exatamente todos os passos onde o bug morava. É a diferença entre testar uma peça e testar a máquina que monta a peça — e nessa caso a máquina de montar é que estava faltando.
+
+Escrevi então um teste que não testa função nenhuma, testa a montagem. Ele varre o repositório, coleta todos os `APIRouter` declarados com prefixo, e compara com os que algum `include_router` referencia de fato. A diferença entre as duas listas é o bug — por definição. Quando ele acusa, não é um palpite sobre comportamento: é a lista literal de roteadores órfãos.
+
+Falsifiquei antes de confiar. Tirei o registro de novo, rodando o teste contra a versão quebrada: ele falhou, como devia. Um teste de guarda que nunca falha contra o bug que ele afirma pegar não é guarda, é enfeite.
+
+## Montou, e ainda não funcionava
+
+Registrei o roteador. A aplicação passou de 735 para 774 rotas, o prefixo apareceu com quatro caminhos e sete métodos. E a chamada continuou quebrada — agora com outro erro.
+
+Não era mais 404. Era 422, sempre, em toda requisição. Um 422 é o framework dizendo "o corpo que você mandou não satisfaz o que a rota espera". O corpo estava certo. O problema era o que a rota esperava.
+
+As seis rotas com corpo declaravam o parâmetro do request sem anotação de tipo. Em Python isso parece um detalhe cosmético: o parâmetro está ali, o nome está certo, a intenção está clara para quem lê. Só que o framework decide o que injetar pela anotação, não pelo nome. Sem ela, ele não reconhece aquilo como o objeto da requisição — trata como se fosse mais um parâmetro que veio da query string. Ou seja: o framework passa a exigir, em toda chamada, um parâmetro obrigatório de query chamado `request`, que ninguém jamais envia. Daí o 422 uniforme.
+
+A prova mais limpa não é a resposta HTTP, é o schema. O documento OpenAPI descreve, para cada rota, o que ela espera. Antes, a listagem de configurações declarava três parâmetros, sendo um deles o `request` marcado como obrigatório. Depois, dois, nenhum obrigatório. É a assinatura do bug e da cura no mesmo lugar.
+
+E por que a suíte não pegou de novo? Mesma causa raiz. Aqueles testes também chamavam as funções direto, com o mesmo objeto falso. Nunca passaram pela aplicação montada, nunca olharam o schema. Um bug que só existe no acoplamento entre as peças é invisível para um teste que não tem acoplamento nenhum.
+
+## O que ficou
+
+Deixei dois guardas em vez de um porque eram duas falhas diferentes, ainda que da mesma família: um vigia o que está montado, o outro vigia a forma do que a rota declara. O segundo é específico e barato — nenhuma rota pode expor um parâmetro de query, header ou cookie com nome reservado do framework. É a classe de erro que se repete sempre que alguém escreve uma rota rápido e a anotação escapa.
+
+As duas correções juntas foram menores que qualquer uma das ondas anteriores do projeto. O custo nunca esteve nas linhas. O custo esteve em meses de uma feature que existia para o desenvolvedor e não existia para o usuário, coberta por testes que davam boa noite.
+
+A regra que tiro daqui é simples e incômoda: se um recurso depende de ser registrado, ele precisa de um teste que verifique o registro, não a função. Verde de função não diz nada sobre a máquina. E um recurso que ninguém consegue alcançar é indistinguível, de fora, de um recurso que não foi escrito.
+
+Terminal
+
+<Terminal commands={[
+  { cmd: 'git log --all -S llm_byo -- api/app/main.py', out: '(vazio em todos os commits — nunca esteve montado)' },
+  { cmd: 'GET /api/llm-byo/configs', out: 'antes: 404 (openapi "llm-byo": 0 paths)\ndepois: 422 -> corrigido (openapi: 4 paths / 7 metodos)' },
+  { cmd: 'openapi — params de GET /configs', out: 'antes: [request*(obrigatorio), workspace_id, active_only]\ndepois: [workspace_id, active_only]' },
+  { cmd: 'guard — roteadores montados (falsificado)', out: 'contra a versao quebrada: 2 failed (guarda funciona)' }
+]} />
