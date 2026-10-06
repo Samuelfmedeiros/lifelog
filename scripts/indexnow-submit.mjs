@@ -19,6 +19,12 @@ const LIMIT_ARG = process.argv.indexOf('--limit');
 const LIMIT = LIMIT_ARG > -1 ? Number(process.argv[LIMIT_ARG + 1]) : 0;
 const MAX_PER_CALL = 10000; // limite do protocolo
 
+// A verificacao do host pode demorar a propagar no buscador: quando o arquivo da
+// chave acabou de ser publicado, a API responde 403 SiteVerificationNotCompleted.
+// Sem retry o job fica vermelho por corrida de tempo (aconteceu no merge de 06/10).
+const RETRIES = Number(process.env.INDEXNOW_RETRIES || 6);
+const RETRY_WAIT_MS = Number(process.env.INDEXNOW_RETRY_WAIT_MS || 60000);
+
 const SITEMAPS = [`https://${HOST}/sitemap-index.xml`, `https://${HOST}/sitemap.xml`];
 
 async function fetchText(url) {
@@ -100,8 +106,19 @@ async function submit(urls) {
   let sent = 0;
   for (let i = 0; i < urls.length; i += MAX_PER_CALL) {
     const batch = urls.slice(i, i + MAX_PER_CALL);
-    const { status, text } = await submit(batch);
-    // 200/202 = aceito; 422 = chave ainda nao verificada pelo buscador
+    let status = 0;
+    let text = '';
+    for (let attempt = 1; attempt <= RETRIES; attempt += 1) {
+      ({ status, text } = await submit(batch));
+      // 200/202 = aceito. 403 SiteVerificationNotCompleted / 422 = o buscador
+      // ainda nao confirmou a chave do host — espera e tenta de novo.
+      const pendente = (status === 403 && /SiteVerificationNotCompleted/i.test(text)) || status === 422;
+      if (status < 400 || !pendente || attempt === RETRIES) break;
+      console.log(
+        `[indexnow] verificacao do host ainda propagando (HTTP ${status}) — tentativa ${attempt}/${RETRIES}, aguardando ${Math.round(RETRY_WAIT_MS / 1000)}s`,
+      );
+      await new Promise((r) => setTimeout(r, RETRY_WAIT_MS));
+    }
     console.log(`[indexnow] lote ${i / MAX_PER_CALL + 1}: ${batch.length} URLs -> HTTP ${status} ${text}`.trim());
     if (status >= 400) process.exit(1);
     sent += batch.length;
