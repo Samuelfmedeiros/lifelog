@@ -1,0 +1,54 @@
+---
+title: "Dogwalk: o fuso horário que o cliente notaria antes de nós"
+description: "Pinar o sqlmodel, um helper único de tempo e o next-walk que aparecia com três horas de desvio — a rodada tz-aware de 05/10."
+category: samuel-projects
+date: 2026-10-06 08:00:00 -03:00
+pubDate: 2026-10-06 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, timezone, api, testing]
+cover: /covers/nova-historia-dogwalk-2026-10-06.webp
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O shift de três horas
+
+A data que o cliente vê na home vinha de um campo `datetime` sem timezone — e, quando o agregado do dia chegava do banco em UTC e o frontend assumia local, o "próximo passeio" do `NextWalkHero` podia nascer três horas no futuro ou três horas no passado, dependendo de que caminho escreveu aquele valor. Nenhum teste reclamava: o formato batia, o tipo batia, só a âncora é que não.
+
+O incômodo é que não havia um lugar para apontar como culpado. Cada módulo do backend montava horário à mão — `datetime.now()` de um lado, string sem offset do outro — e a regra de verdade muda de arquivo em arquivo.
+
+## O conflito: dependências que endurecem o contrato
+
+A deixa veio das dependências. O `sqlmodel` a partir de 0.0.45 passou a exigir `datetime` com timezone explícito (tz-aware): valores naive que antes passavam no seed e no rollback passaram a derrubar o boot. Com a roda travada, ficou claro que o problema nunca foi "uma função errada" — era a ausência de um contrato de tempo único. De brinde, outro vazamento apareceu nos testes: o lock de login de `login_attempts` sobrevivia ao rollback e sujava o teste seguinte, fazendo a suíte flakear sem culpa aparente.
+
+## A resolução: três commits, um contrato
+
+A rodada de 05/10 entrou no master em três frentes:
+
+- **Pin no sqlmodel** (`aa484452`): fixado em `<0.0.45` enquanto a migração `b1_timezone_aware_datetimes.py` fica pronta — o boot volta a subir hoje e o contrato tz-aware chega com migração, não compipema quebrada.
+- **Limpeza de `login_attempts` no conftest** (`989f8216`): o lock de login que vazava pelo rollback é descartado entre os testes — cada caso recomeça do zero.
+- **Helper único de tempo** (`ae7622ae`): `app/core/time.py` centraliza toda construção de `datetime`, com o contrato preso em `test_time_contract.py`. Depois dele (`7a8f579d`), o schema vira tz-aware e o `NextWalkHero` converte para o fuso local na exibição (`3c91e277`) — é o commit que devolve ao cliente a hora real do passeio.
+
+O helper segue simples: UTC na borda do servidor, conversão só onde o usuário enxerga.
+
+```python
+from datetime import datetime, timezone
+
+def get_utc_now() -> datetime:
+    """Retorna o timestamp atual em UTC com timezone explicito."""
+    return datetime.now(timezone.utc)
+```
+
+## Por que três horas e não nenhuma
+
+A migração `b1_timezone_aware_datetimes` reflete a decisão: em vez de fingir neutralidade, o banco assume fuso. O cliente não precisaria entender o `sqlmodel` nem o helper — mas a diferença de três horas no "próximo passeio" era dele, e teria reclamado a qualquer momento. Agora é o contrato de teste que reclama primeiro.
+
+<Terminal
+  commands={[
+    { cmd: 'pytest backend/app/tests/test_time_contract.py', output: 'passados - contrato tz-aware verificado' },
+    { cmd: 'pip show sqlmodel | grep Version', output: 'Version: 0.0.44 (pino <0.0.45, boot estabilizado)' },
+    { cmd: 'alembic heads', output: 'b1_timezone_aware_datetimes (cabeça)' }
+  ]}
+/>
