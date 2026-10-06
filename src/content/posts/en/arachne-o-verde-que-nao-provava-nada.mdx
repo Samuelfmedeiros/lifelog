@@ -1,0 +1,133 @@
+---
+title: "Arachne: The Green That Proved Nothing"
+description: "Three surfaces that said OK without running: the backup that skipped a 300MB database, the retention that watched half the files, and eight assertions that never executed."
+category: samuel-projects
+date: 2026-10-06 12:00:00 -03:00
+pubDate: 2026-10-06 12:00:00 -03:00
+project: arachne
+tags: [arachne, testing, backup, false-positive]
+cover: /covers/arachne-o-verde-que-nao-provava-nada.webp
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Three greens, no proof
+
+Between September 28 and October 2, three different things in Arachne reported success without doing what they claimed. A backup that listed each database by name and silently skipped one of them. A cleanup routine that swept one family of files and ignored the other two. Eight security tests that passed without ever reaching the assertion.
+
+None of them took the product down. All of them delivered the worst thing a status can deliver: the feeling that everything was covered.
+
+## Case 1 — the 300MB database that was never copied
+
+The backup script lists the auxiliary databases in an array. Each entry is `name:path`, and the loop prints the result for each one: `OK` when the file exists, `Skip` when it does not.
+
+`code_graph` was the only one of the three with the wrong path — it was missing the `api/` segment in the middle. The loop did what it was told: could not find the file, printed `Skip`, moved on. A 300MB database stayed out of every backup, with the script finishing green.
+
+```bash
+# BEFORE the path pointed somewhere that does not exist
+DBS=(
+  "code_graph:${DB_DIR}/app/knowledge_graph/code_graph.db"
+  "observability:${DB_DIR}/data/observability.db"
+  "agent_memory:${DB_DIR}/data/agent_memory.db"
+)
+
+# AFTER — the real path has api/ in the middle
+DBS=(
+  "code_graph:${DB_DIR}/api/app/knowledge_graph/code_graph.db"
+  "observability:${DB_DIR}/data/observability.db"
+  "agent_memory:${DB_DIR}/data/agent_memory.db"
+)
+```
+
+The detail that stings: `Skip` is not an error, it is a decision. The script had no way to know whether the file was absent because it never existed or because the path was wrong. It treated both cases the same — and one of them was a bug.
+
+## Case 2 — the retention that watched half the files
+
+In the same script, the cleanup of old backups swept a single pattern: `*.db.gz`, the SQLite auxiliaries. Dumps of the primary database and the WAL files lived under two other name families — and were never touched.
+
+The result piled up over two months: 126 Postgres dumps and 5.2GB in a folder that was supposed to stay small, until it pressed against the project disk.
+
+There was a second bug hiding behind the first. Before retention runs, the script resolves the address of a mirror host. When that host was offline, the resolver exited with an error code — and `set -e` killed the script right there. The cleanup, which came immediately after, never got to run. The dumps accumulated not because retention was wrong, but because it was never reached.
+
+```bash
+# BEFORE: with no fallback, `set -e` aborted the routine when the mirror
+# host was down. Retention, which came later, never executed.
+MIRROR="$(resolve_mirror_address 2>/dev/null)"
+
+# AFTER: a mirror failure degrades quietly instead of taking the script down.
+MIRROR="$(resolve_mirror_address 2>/dev/null || echo)"
+```
+
+The cure came with a guard that measures the result, not the intention:
+
+```bash
+for pat in "arachne_pg_*.sql.gz" "arachne_wal_*.tar.gz"; do
+    removed=$(find "$BACKUP_DIR" -maxdepth 1 -name "$pat" \
+        -mtime +${RETENTION_DAYS} -delete -print 2>/dev/null | wc -l)
+    [ "$removed" -gt 0 ] && log "  Removed ${removed} old ${pat}"
+done
+
+# Anti-regression guard: if the folder is still above 6G after cleanup, shout.
+post_size_mb=$(du -sm "$BACKUP_DIR" 2>/dev/null | awk '{print $1}')
+if [ "${post_size_mb:-0}" -gt 6144 ]; then
+    warn "backups at ${post_size_mb}MB after cleanup — retention may have stopped"
+fi
+```
+
+The difference between before and after is not the new glob. It is the last line: a condition that asks whether the disk is still full after cleanup said it ran. If the answer is yes, something lied, and the script speaks up.
+
+## Case 3 — the eight assertions that never ran
+
+A few days earlier, a security test for the quickstart URL gate passed green every day. Eight cases covering rejection of embedded credentials, invalid port, invalid hostname, unsupported scheme.
+
+The assertion was written inside the `with pytest.raises` block. That means it sat after the line that raises the exception — and never executed. An error with an empty message passed the test. A validation bug would have passed too.
+
+```python
+# BEFORE: the assertion sits AFTER the line that raises. It never executes.
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+    assert str(exc_info.value) != ""
+
+# AFTER: it proves the REASON for the reject, not merely that a reject happened.
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+assert "userinfo not allowed" in str(exc_info.value), exc_info.value
+```
+
+The five messages became part of the contract: `userinfo not allowed`, `invalid port`, `invalid hostname`, `empty url` and `unsupported scheme`. The test stopped asking "did it raise something?" and started asking "did it raise for the right reason?"
+
+## The pattern behind all three
+
+The three cases share one shape. A status surface that measures its own intention instead of measuring the result.
+
+- The backup measured "does the file exist?" and called it success when the answer was "no, and I chose to skip".
+- Retention measured "did cleanup run?" and never ran, because a previous step aborted.
+- The test measured "did some exception come up?" without checking why.
+
+The answer I applied across all three fronts is the same: every guard started measuring the effect in the world. The backup shouts if the folder is still above 6GB after cleaning. CI blocks when the served SPA bundle diverges from the source. The URL test fails if the message is not the expected one.
+
+## Metrics
+
+| Surface | What the status said | What was actually happening | Guard in place |
+|---|---|---|---|
+| Auxiliary backups | `Skip code_graph` | path missing `api/` — 300MB out of every backup | corrected path + per-family globs |
+| Dump retention | silence (script exited earlier) | 126 dumps and 5.2GB piled up since 08/02 | cleanup of all 3 families + warning above 6GB |
+| Quickstart URL gate | 24 passed | 8 assertions inside the block, never executed | contract over the real reject message |
+| SPA bundle | deploy green | `index.html` and `assets/` from different generations | test that locks consistency before deploy |
+
+## What comes next
+
+The backup guard makes the script speak when cleanup does not clean. The SPA guard catches divergence in CI, before any deploy — an `rsync` running during collection had already served a bundle that no longer existed.
+
+The lesson recorded is the same in each case: if a surface cannot fail, it is not a verification. It is decoration.
+
+<Terminal
+  commands={[
+    { cmd: 'bash scripts/backup-db.sh --quiet', output: 'code_graph 300MB OK | observability OK | agent_memory OK' },
+    { cmd: 'pytest tests/test_quickstart_url_security.py', output: '24 passed' },
+    { cmd: 'pytest tests/test_spa_build_consistency.py', output: 'build contract verified — index.html and assets/ from the same generation' },
+    { cmd: 'du -sm /var/backups/arachne', output: 'regular cleanup — folder below the guard limit' }
+  ]}
+/>
