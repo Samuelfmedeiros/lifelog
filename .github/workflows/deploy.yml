@@ -216,12 +216,11 @@ jobs:
         if-no-files-found: ignore
 
     # ── Deploy ─────────────────────────────────────────────────
-    - name: Deploy to Vercel (Production)
-      if: github.ref_name == 'main' && github.event_name != 'pull_request'
-      env:
-        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      run: |
-        npx vercel@latest --prod --token="$VERCEL_TOKEN" --yes
+    # 06/10/2026 - step `npx vercel --prod` REMOVIDO: o deploy de producao e feito pela
+    # integracao Git do Vercel (creator=vercel[bot]), que publica no push para main.
+    # O CLI era redundante e falhava por token ("No teams available"), deixando o run
+    # vermelho sem impedir o deploy real. Para voltar com o CLI, restaure este step com
+    # um token Vercel valido (decisao 2 do plano 2026-10-06-indexacao-google-portfolio-lifelog).
 
     # ── Health Check ──────────────────────────────────────────
     - name: Health Check
