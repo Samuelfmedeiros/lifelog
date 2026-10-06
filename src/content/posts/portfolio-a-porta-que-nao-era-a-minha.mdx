@@ -1,0 +1,134 @@
+---
+title: "A porta que não era a minha"
+description: "O harness de testes do portfólio media contraste numa porta. Quando o endereço vinha de variável de ambiente, o servidor da branch nunca subia — e quem respondia ali era outro programa. O teste nunca mentiu, só respondeu outra pergunta."
+category: samuel-projects
+date: 2026-09-16 20:00:00 -03:00
+pubDate: 2026-10-06 18:00:00 -03:00
+project: portfolio
+lang: pt
+tags: ["portfolio", "testing", "e2e", "playwright", "nextjs", "lessons"]
+icon: "🚀"
+cover: /covers/portfolio-a-porta-que-nao-era-a-minha.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+A rodada de testes do portfólio me devolveu um erro com nome estranho: identidade do preview
+violada, a porta 3450 não serve o portfólio. Eu li aquilo como ruído de infraestrutura e segui
+adiante. Dois dias depois, entendi que o aviso estava certo e que o problema era pior do que ele
+dizia.
+
+## O que o harness faz
+
+A rodada de qualidade do portfólio sobe o site da branch numa porta local e audita aquilo que
+subiu: contraste e estrutura de região, em dois temas. Não é um teste de unidade, é uma medição
+sobre uma página real — e medição sobre página real tem uma premissa embutida que quase ninguém
+escreve: a página que eu vou medir é a página da minha branch.
+
+Na minha máquina a porta padrão da config é a 3000. Só que a 3000 já tem dono: o staging do
+projeto mora lá. Por isso o harness usa uma porta própria, a 3450, e aponta a suíte para ela
+declarando o endereço numa variável de ambiente.
+
+Foi exatamente essa declaração que quebrou tudo.
+
+## A linha que apagou o servidor
+
+A config do Playwright subia o servidor do preview assim: se a variável de ambiente estivesse
+definida, não suba nada. Faz sentido se você ler a variável como "o operador já tem um servidor
+rodando". Só que o harness define a variável justamente para escolher a porta — não porque havia
+algo rodando nela.
+
+O resultado é que o servidor da branch nunca subia. A porta ficava com quem chegasse primeiro. E
+como a config também liberava o reuso de servidor existente fora do CI, qualquer coisa que já
+estivesse escutando naquela porta era adotada em silêncio.
+
+Nesse desenho existem dois modos de falhar, e o segundo é o perigoso:
+
+1. Ninguém responde na porta. O teste aborta com um erro que parece problema de ambiente, e você
+   aprende a ignorar.
+2. Alguém responde. Um app qualquer, de qualquer projeto, de qualquer sessão que esqueceu um
+   servidor de pé. O Playwright conecta, a página carrega, e a auditoria mede o contraste do site
+   de outra pessoa.
+
+O segundo modo não dá erro. Ele dá relatório.
+
+## O detalhe que me incomodou
+
+O que me fez parar não foi o erro. Foi perceber que eu não tinha como saber qual dos dois modos
+aconteceu.
+
+Se a medição tivesse rodado contra uma página alheia por três semanas, o resultado no relatório
+seria indistinguível de sucesso: zero violações de contraste no site de outra pessoa. O teste não
+mentiu em nenhum momento. Ele respondeu com precisão uma pergunta que não era a minha.
+
+É a mesma família de problema do filtro que nunca é chamado, e da suíte que passa porque o
+recurso certo não estava ligado. O veredito verde é interpretado como "o meu código está bom"
+quando o que ele diz, no máximo, é "o que estava naquela porta está bom".
+
+Só que aqui tem um agravante: a premissa estava enterrada dentro de um `beforeEach`. Ela não
+aparecia no nome do teste, não aparecia na asserção, não aparecia no relatório. A única coisa que
+a denunciava era uma condição verificada em silêncio — e verificação silenciosa é a que apodrece,
+porque quando ela falha você não sabe se falhou.
+
+## As três partes da correção
+
+**A config passou a escolher a porta certa.** Se o endereço da variável é local, a config deriva a
+porta dele e sobe o servidor da branch nessa porta, de verdade. Endereço remoto continua sem
+servidor local — testar contra produção é um override explícito, nunca um default. E o anti-padrão
+do default apontando para produção já tinha sido fechado antes, por um guard que impede esse
+caminho voltar.
+
+**A verificação de identidade saiu de dentro do `beforeEach`.** Ela virou uma spec própria, barata,
+sem auditoria: carrega a home e exige três sinais que aquele site tem e poucos têm ao mesmo tempo —
+o elemento principal com identificador, o atalho de pulo para o conteúdo, e o título com o meu nome.
+Custa uma navegação e falha na primeira, com causa nomeada. A auditoria de contraste continua
+existindo, mas agora ela só roda depois de saber que está olhando para o site certo.
+
+**O contrato virou teste de unidade.** Cinco casos carregam a config real com ambientes diferentes e
+travam a derivação: sem variável, porta padrão e reuso em desenvolvimento; endereço local, servidor
+na porta pedida; endereço local em outro formato de loopback, mesmo comportamento; endereço remoto,
+nenhum servidor local; no CI, sem reuso.
+
+Esse último é o que eu considero o valor real da rodada. A spec de identidade protege a medição de
+hoje. O teste de unidade protege a configuração de amanhã: se alguém reintroduzir a linha que
+desliga o servidor quando a variável existe, o teste fica vermelho antes de a auditoria voltar a
+medir o site de outra pessoa.
+
+## Números
+
+| Medida | Antes | Depois |
+| --- | --- | --- |
+| Porta do preview da branch | nenhum servidor subia | servidor da branch na porta sob teste |
+| Quem respondia na porta de teste | o que estivesse lá | a branch sob medição |
+| Identidade verificada antes de medir | não | sim (elemento principal + atalho + título) |
+| Specs de identidade do preview | 0 | 2 |
+| Testes que travam a configuração | 0 | 5 |
+
+## O que ficou
+
+Esse trabalho ficou pronto em 17 de setembro e só chegou ao tronco em 5 de outubro. Dezenove dias
+com a cura escrita e o repositório medindo a porta errada — porque o que não entra no tronco não
+existe, por mais correto que esteja no disco. Foi o lembrete mais caro da rodada.
+
+A outra lição é sobre onde colocar a verificação. Premissa silenciosa dentro de preparação de teste
+é premissa que ninguém revisa e que falha sem avisar. O lugar dela é o nome do teste, ou uma spec
+própria, ou uma asserção explícita. Em qualquer outro lugar ela é decoração.
+
+E a terceira, que vale para além de teste: quem consome uma medida deveria provar, antes, que está
+medindo o objeto certo. Baixo custo, e é a diferença entre um relatório e um relatório sobre outra
+coisa.
+
+---
+
+<figure>
+  <Terminal commands={[
+    { cmd: '# o aviso que eu li como ruido', output: 'ERRO_IDENTIDADE_PREVIEW: 3450 nao serve o portifolio' },
+    { cmd: '# a config antiga, em uma linha', output: 'webServer: process.env.TEST_BASE_URL ? undefined : { ... }' },
+    { cmd: '# quem respondia na porta antes', output: 'quem chegasse primeiro — e a auditoria media essa pagina' },
+    { cmd: '# agora o servidor da branch sobe na porta pedida', output: 'next start -p 3450  (endereco remoto continua sem servidor local)' },
+    { cmd: '# contrato de identidade, antes de medir contraste', output: 'elemento principal + atalho de pulo + titulo = e o meu site' },
+    { cmd: 'vitest run src/test/playwright-config.test.ts', output: '5 passed — a derivacao da porta nao volta a ser silenciosa' },
+  ]} />
+</figure>

@@ -1,0 +1,133 @@
+---
+title: "The port that was not mine"
+description: "The portfolio test harness measured contrast on a port. When the address came from an environment variable, the branch server never started, and something else answered there. The test never lied. It just answered a different question."
+category: samuel-projects
+date: 2026-09-16 20:00:00 -03:00
+pubDate: 2026-10-06 18:00:00 -03:00
+project: portfolio
+lang: en
+tags: ["portfolio", "testing", "e2e", "playwright", "nextjs", "lessons"]
+icon: "🚀"
+cover: /covers/portfolio-a-porta-que-nao-era-a-minha.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+The portfolio test round handed me an error with a strange name: preview identity violated, port
+3450 does not serve the portfolio. I read it as infrastructure noise and moved on. Two days later I
+understood that the warning was right, and that the problem was worse than what it said.
+
+## What the harness does
+
+The portfolio quality round starts the branch site on a local port and audits what came up: contrast
+and region structure, across two themes. It is not a unit test, it is a measurement over a real page.
+And a measurement over a real page carries an assumption almost nobody writes down: the page I am
+about to measure is the page from my branch.
+
+On my machine the default port in the config is 3000. Except 3000 already has an owner: the project
+staging lives there. So the harness uses a port of its own, 3450, and points the suite at it by
+declaring the address in an environment variable.
+
+That declaration is exactly what broke everything.
+
+## The line that erased the server
+
+The Playwright config started the preview server like this: if the environment variable was defined,
+start nothing. That makes sense if you read the variable as "the operator already has a server
+running". Except the harness defines the variable precisely to choose the port, not because
+something was running on it.
+
+The result is that the branch server never started. The port went to whoever arrived first. And
+because the config also allowed reusing an existing server outside CI, anything already listening on
+that port was adopted silently.
+
+In that design there are two ways to fail, and the second one is the dangerous one:
+
+1. Nobody answers on the port. The test aborts with an error that looks like an environment problem,
+   and you learn to ignore it.
+2. Someone answers. Any app, from any project, from any session that forgot a server running. The
+   browser connects, the page loads, and the audit measures the contrast of somebody else's site.
+
+The second mode does not raise an error. It raises a report.
+
+## The detail that bothered me
+
+What stopped me was not the error. It was realizing I had no way to know which of the two modes had
+happened.
+
+If the measurement had been running against a foreign page for three weeks, the line in the report
+would be indistinguishable from success: zero contrast violations on somebody else's site. The test
+never lied at any point. It answered, with precision, a question that was not mine.
+
+It is the same family as the filter that never gets called, and the suite that passes because the
+right resource was not switched on. A green verdict gets read as "my code is fine" when what it
+actually says, at best, is "whatever was on that port is fine".
+
+There is an aggravating factor here, though: the assumption was buried inside a `beforeEach`. It did
+not show in the test name, it did not show in the assertion, it did not show in the report. The only
+thing that gave it away was a condition checked in silence. And a silent check is the one that rots,
+because when it fails you cannot tell that it failed.
+
+## The three parts of the fix
+
+**The config started choosing the right port.** If the address in the variable is local, the config
+derives the port from it and actually starts the branch server on that port. A remote address still
+runs without a local server, so testing against production stays an explicit override and never a
+default. And the anti-pattern of a production default had already been closed earlier, by a guard
+that keeps that path from coming back.
+
+**The identity check moved out of the `beforeEach`.** It became its own spec, cheap, with no audit:
+it loads the home page and requires three signals that site has and few have together at once, the
+main element with an id, the skip link to the content, and the title with my name. It costs one
+navigation and fails on the first one, with a named cause. The contrast audit still exists, but now
+it only runs after knowing it is looking at the right site.
+
+**The contract became a unit test.** Five cases load the real config under different environments and
+lock the derivation down: no variable, default port and reuse in development; local address, server
+on the requested port; local address on another loopback form, same behavior; remote address, no
+local server; in CI, no reuse.
+
+That last one is what I consider the real value of the round. The identity spec protects today's
+measurement. The unit test protects tomorrow's configuration: if anyone reintroduces the line that
+switches the server off when the variable exists, the test goes red before the audit goes back to
+measuring somebody else's site.
+
+## Numbers
+
+| Measure | Before | After |
+| --- | --- | --- |
+| Branch preview port | no server ever started | branch server on the tested port |
+| Who answered on the test port | whatever was there | the branch under measurement |
+| Identity verified before measuring | no | yes (main element + skip link + title) |
+| Preview identity specs | 0 | 2 |
+| Tests that lock the configuration | 0 | 5 |
+
+## What stayed
+
+This work was finished on September 17 and only reached the trunk on October 5. Nineteen days with
+the cure written and the repository measuring the wrong port, because what does not reach the trunk
+does not exist, however correct it may be on disk. That was the most expensive reminder of the
+round.
+
+The other lesson is about where to put the check. A silent assumption inside test setup is an
+assumption nobody reviews and that fails without warning. Its place is the test name, or a spec of
+its own, or an explicit assertion. Anywhere else it is decoration.
+
+And the third one, which reaches beyond testing: whoever consumes a measurement should prove first
+that they are measuring the right object. Low cost, and it is the difference between a report and a
+report about something else.
+
+---
+
+<figure>
+  <Terminal commands={[
+    { cmd: '# the warning I read as noise', output: 'ERRO_IDENTIDADE_PREVIEW: 3450 nao serve o portifolio' },
+    { cmd: '# the old config, in one line', output: 'webServer: process.env.TEST_BASE_URL ? undefined : { ... }' },
+    { cmd: '# who answered on the port before', output: 'whoever arrived first — and the audit measured that page' },
+    { cmd: '# now the branch server starts on the requested port', output: 'next start -p 3450  (a remote address still runs with no local server)' },
+    { cmd: '# identity contract, before measuring contrast', output: 'main element + skip link + title = this is my site' },
+    { cmd: 'vitest run src/test/playwright-config.test.ts', output: '5 passed — the port derivation never goes silent again' },
+  ]} />
+</figure>
