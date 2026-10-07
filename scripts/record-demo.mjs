@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 
-const URL = 'https://lifelog-sepia.vercel.app';
+const URL = 'https://lifelog.seu.pet';
 const OUTPUT = '/tmp/lifelog-demo.mp4';
 
 (async () => {

@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-await page.goto("https://lifelog-sepia.vercel.app/", { waitUntil: "networkidle", timeout: 60000 });
+await page.goto("https://lifelog.seu.pet/", { waitUntil: "networkidle", timeout: 60000 });
 // scroll até o fim para forçar lazy-load
 await page.evaluate(async () => {
   for (let y = 0; y < document.body.scrollHeight; y += 800) {
@@ -18,7 +18,7 @@ console.log("total:", await page.$$eval("img", els => els.length));
 
 // posts recentes individualmente
 for (const slug of ["a-historia-do-seguranca", "a-historia-do-estudos", "dogwalk-o-backup-que-mentia"]) {
-  await page.goto(`https://lifelog-sepia.vercel.app/post/${slug}/`, { waitUntil: "networkidle", timeout: 60000 });
+  await page.goto(`https://lifelog.seu.pet/post/${slug}/`, { waitUntil: "networkidle", timeout: 60000 });
   await page.waitForTimeout(2000);
   const imgs = await page.$$eval("img", els => els.map(i => ({ src: i.getAttribute("src"), w: i.naturalWidth, complete: i.complete })));
   console.log(`\n${slug}:`, JSON.stringify(imgs));

@@ -1,6 +1,6 @@
 const { chromium } = require('@playwright/test');
 
-const URL = process.env.URL || 'https://lifelog-sepia.vercel.app';
+const URL = process.env.URL || 'https://lifelog.seu.pet';
 const OUTPUT = '/tmp/lifelog-demo.mp4';
 
 (async () => {

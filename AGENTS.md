@@ -9,7 +9,7 @@
 > Blog pessoal estilo devlog — documentando a jornada de Samuel Medeiros
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
-> **Live:** https://lifelog-sepia.vercel.app
+> **Live:** https://lifelog.seu.pet
 > **Status:** ✅ Operacional — 54 posts bilíngues (108 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — **3 posts/dia hidden: 08:00/12:00/16:00 → /ocultos** (28/08; liberação manual do Samuel)
 
@@ -337,7 +337,7 @@ lifelog/
 
 ## 🔗 Links
 
-- **Live:** https://lifelog-sepia.vercel.app
+- **Live:** https://lifelog.seu.pet
 - **GitHub:** https://github.com/Samuelfmedeiros/lifelog
 - **Deploy:** Push na master → CI/CD → Vercel
 - **Gerenciador:** pnpm 10+

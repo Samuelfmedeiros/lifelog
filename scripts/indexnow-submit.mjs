@@ -12,7 +12,7 @@
  *   node scripts/indexnow-submit.mjs --limit 10 # submete as 10 primeiras
  */
 
-const HOST = process.env.INDEXNOW_HOST || 'lifelog-sepia.vercel.app';
+const HOST = process.env.INDEXNOW_HOST || 'lifelog.seu.pet';
 const KEY = process.env.INDEXNOW_KEY || '88232e858891487ce38601cfa8976794';
 const DRY = process.argv.includes('--dry');
 const LIMIT_ARG = process.argv.indexOf('--limit');

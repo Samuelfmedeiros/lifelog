@@ -85,7 +85,7 @@ test.describe('Theme Rail', () => {
 
     const cta = links.nth(0);
     await expect(cta).toHaveClass(/cta/);
-    await expect(cta).toHaveAttribute('href', 'https://samuelmedeiros.vercel.app');
+    await expect(cta).toHaveAttribute('href', 'https://portifolio.seu.pet');
 
     await expect(links.nth(1)).toHaveAttribute('href', '/');
     await expect(links.nth(2)).toHaveAttribute('href', '/arquivo');

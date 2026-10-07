@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 // Regressão da caçada de 13/09 — SEO base, noindex de ocultos, sitemap/rss.
 // Roda contra o preview server (:4321) com baseURL PT e EN normais.
 
-const SITE = 'https://lifelog-sepia.vercel.app';
+const SITE = 'https://lifelog.seu.pet';
 
 test.describe('SEO base (caçada 13/09)', () => {
   test('canonical presente e absoluto em post PT', async ({ page }) => {

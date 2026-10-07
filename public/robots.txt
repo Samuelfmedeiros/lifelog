@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /ocultos
 
-Sitemap: https://lifelog-sepia.vercel.app/sitemap.xml
+Sitemap: https://lifelog.seu.pet/sitemap.xml
