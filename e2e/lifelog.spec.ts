@@ -271,7 +271,7 @@ test.describe('RSS Feed', () => {
     // O antigo "PT + EN" no mesmo feed era o bug B5 (assinante recebia misto).
     expect(items).toBe(ptCount);
     expect(text).toContain('<language>pt-br</language>');
-    expect(text).not.toContain('<link>https://lifelog-sepia.vercel.app/en/post/');
+    expect(text).not.toContain('<link>https://lifelog.seu.pet/en/post/');
 
     // Todos os slugs e contexto de títulos presentes
     for (const post of POSTS) {
@@ -286,7 +286,7 @@ test.describe('RSS Feed', () => {
     const items = (text.match(/<item>/g) || []).length;
     expect(items).toBe(POSTS.length);
     expect(text).toContain('<language>en-us</language>');
-    expect(text).not.toContain('<link>https://lifelog-sepia.vercel.app/post/');
+    expect(text).not.toContain('<link>https://lifelog.seu.pet/post/');
     // slugs EN sao traduzidos (ex.: bitmamba-1b-training... vs treinando...),
     // entao nao da pra exigir o slug PT aqui; a contagem + prefixo /en/post/ garante.
   });

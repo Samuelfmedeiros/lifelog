@@ -2,7 +2,7 @@ import { test } from '@playwright/test';
 
 test('mobile theme check', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); // iPhone 14
-  await page.goto('https://lifelog-sepia.vercel.app/', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(3000);
   
   // Check if the is:global styles are in the page

@@ -30,7 +30,7 @@ const { Content } = await render(post);
 // JSON-LD (SEO): BlogPosting + BreadcrumbList. Google usa para rich results
 // (data, autor, imagem) e para entender a pagina como artigo.
 const _pub = post.data.pubDate || post.data.date;
-const SITE = 'https://lifelog-sepia.vercel.app';
+const SITE = (Astro.site?.toString() || 'https://lifelog.seu.pet').replace(/\/$/, '');
 const _canonPath = noindex
   ? Astro.url.pathname
   : (locale === 'en' ? `/en/post/${post.id.replace(/^en\//, '')}/` : `/post/${post.id}/`);
@@ -52,7 +52,7 @@ const postSchema = {
   author: {
     '@type': 'Person',
     name: 'Samuel Medeiros',
-    url: 'https://samuelmedeiros.vercel.app',
+    url: 'https://portifolio.seu.pet',
   },
   publisher: {
     '@type': 'Organization',

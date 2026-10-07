@@ -1,8 +1,12 @@
 import { getCollection } from 'astro:content';
+import type { APIContext } from 'astro';
 
-const SITE_URL = 'https://lifelog-sepia.vercel.app';
+// Fonte unica: `site` do astro.config.mjs (context.site). Fallback mantem o
+// dominio proprio — nunca o host *.vercel.app.
+const FALLBACK_SITE_URL = 'https://lifelog.seu.pet';
 
-export async function GET() {
+export async function GET(context: APIContext) {
+  const SITE_URL = (context.site?.toString() || FALLBACK_SITE_URL).replace(/\/$/, '');
   const allPosts = await getCollection('posts');
   const posts = allPosts.filter(p => !p.data.hidden);
 
