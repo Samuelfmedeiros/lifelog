@@ -236,7 +236,7 @@ test.describe('Sobre', () => {
     await goto('/sobre');
 
     // Portfolio link — use the content ul's portfolio link
-    const portfolioLink = page.locator('article a[href*="samuelmedeiros"]').first();
+    const portfolioLink = page.locator('article a[href*="portifolio"]').first();
     await expect(portfolioLink).toBeVisible();
 
     // RSS link — use first (content area)
@@ -418,7 +418,7 @@ test.describe('Navegação', () => {
     await goto('/');
     const portfolio = page.locator('nav a[target="_blank"]');
     await expect(portfolio).toBeVisible();
-    await expect(portfolio).toHaveAttribute('href', /samuelmedeiros/);
+    await expect(portfolio).toHaveAttribute('href', /portifolio/);
   });
 });
 
