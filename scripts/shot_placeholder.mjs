@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-await page.goto("https://lifelog-sepia.vercel.app/", { waitUntil: "networkidle", timeout: 60000 });
+await page.goto("https://lifelog.seu.pet/", { waitUntil: "networkidle", timeout: 60000 });
 await page.waitForTimeout(4000);
 // procurar elementos que são placeholder visual (svg no lugar de img, ou div com pattern)
 const info = await page.evaluate(() => {

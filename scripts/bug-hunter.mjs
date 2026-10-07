@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const FINDINGS_DIR = resolve(ROOT, 'docs/agents/qualidade/bug-hunter/findings');
 const REPORT_PATH = resolve(FINDINGS_DIR, `audit-${new Date().toISOString().split('T')[0]}.json`);
-const PREVIEW = 'https://lifelog-sepia.vercel.app';
+const PREVIEW = 'https://lifelog.seu.pet';
 
 // Rotas do LifeLog (blog SSG estático, i18n PT/EN)
 // NOTA: /tags e /en/tags NÃO existem — TagCloud linka pra busca (?q=) no /arquivo.

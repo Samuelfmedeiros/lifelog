@@ -227,7 +227,7 @@ jobs:
       if: github.ref_name == 'main' && github.event_name != 'pull_request'
       run: |
         sleep 15
-        BASE="https://lifelog-sepia.vercel.app"
+        BASE="https://lifelog.seu.pet"
         FAIL=0
         TOTAL_OK=0
         TOTAL_FAIL=0
@@ -311,7 +311,7 @@ jobs:
         TEXT="✅ *LifeLog CI*
 
         📦 *Status:* Sucesso
-        🔗 *URL:* https://lifelog-sepia.vercel.app
+        🔗 *URL:* https://lifelog.seu.pet
         📝 *Commit:* \`$COMMIT_SHA\` — $COMMIT_SUBJECT
         📄 *Alterações ($FILE_COUNT arquivos):*
         $CHANGED"

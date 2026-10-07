@@ -19,8 +19,8 @@ async function scan(url, label) {
   await page.screenshot({ path: `demo_capture/check_${label}.png` });
 }
 
-await scan("https://lifelog-sepia.vercel.app/arquivo/", "arquivo");
-await scan("https://lifelog-sepia.vercel.app/en/", "en_home");
-await scan("https://lifelog-sepia.vercel.app/en/archive/", "en_archive");
+await scan("https://lifelog.seu.pet/arquivo/", "arquivo");
+await scan("https://lifelog.seu.pet/en/", "en_home");
+await scan("https://lifelog.seu.pet/en/archive/", "en_archive");
 await browser.close();
 console.log("\nDONE");

@@ -19,7 +19,16 @@ Uso:  python3 scripts/check-alternates.py [--dist dist]
 import argparse, os, re, sys, unicodedata
 from urllib.parse import unquote
 
-SITE = "https://lifelog-sepia.vercel.app"
+# Host canonico (fonte unica): env SITE_URL > default. O dist e local, entao o
+# host e irrelevante para resolver rota/asset — strip_origin remove QUALQUER
+# origem e evita que trocar de dominio volte a quebrar este guardiao.
+SITE = os.environ.get("SITE_URL", "https://lifelog.seu.pet").rstrip("/")
+_ORIGIN_RE = re.compile(r"^https?://[^/]+")
+
+
+def strip_origin(url):
+    """Remove a origem absoluta; devolve o caminho relativo ao dist."""
+    return _ORIGIN_RE.sub("", url)
 
 HEAD_ASSET_RE = re.compile(
     r'<(?:link|meta)[^>]*?(?:href|content)="(/(?:icons/|covers/|patterns/|manifest\.json|sw\.js|favicon\.svg|rss\.xml|en/rss\.xml)[^"]*)"'
@@ -78,7 +87,7 @@ def main():
 
             for hl, href in ALERT_RE.findall(txt):
                 checked += 1
-                path = href.replace(SITE, "")
+                path = strip_origin(href)
                 if not route_exists(dist, path):
                     broken_alts.append((rel, hl, path))
 
@@ -87,7 +96,7 @@ def main():
                     missing_assets.append((rel, asset))
 
             for og in OG_IMAGE_RE.findall(txt):
-                path = og.replace(SITE, "")
+                path = strip_origin(og)
                 if not path.startswith("/"):
                     missing_assets.append((rel, og))
                 elif not os.path.isfile(os.path.join(dist, norm(path).lstrip("/"))):

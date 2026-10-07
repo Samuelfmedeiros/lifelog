@@ -10,7 +10,7 @@ page.on("response", r => {
   }
 });
 
-await page.goto("https://lifelog-sepia.vercel.app/", { waitUntil: "networkidle", timeout: 60000 });
+await page.goto("https://lifelog.seu.pet/", { waitUntil: "networkidle", timeout: 60000 });
 await page.evaluate(async () => {
   for (let y = 0; y < document.body.scrollHeight; y += 800) {
     window.scrollTo(0, y);

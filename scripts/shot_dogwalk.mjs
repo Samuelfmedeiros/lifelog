@@ -4,7 +4,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
 // slug correto com data
-const url = "https://lifelog-sepia.vercel.app/post/2026-08-12-dogwalk-o-backup-que-mentia/";
+const url = "https://lifelog.seu.pet/post/2026-08-12-dogwalk-o-backup-que-mentia/";
 await page.goto(url, { waitUntil: "networkidle", timeout: 60000 });
 await page.waitForTimeout(2500);
 console.log("URL FINAL:", page.url());
