@@ -1,0 +1,83 @@
+---
+title: "The indexing that had to find itself — JSON-LD, verification, and IndexNow"
+description: "A blog with 366 pages needs to tell search engines it exists. The story of how the LifeLog gained JSON-LD, host verification, and IndexNow — and the retry the search engine's verification required."
+date: 2026-10-08 16:00:00 -03:00
+pubDate: 2026-10-08 16:00:00 -03:00
+project: descobertas
+tags: [descobertas, seo, indexnow, json-ld, deploy, ci-cd]
+cover: /covers/descobertas-a-indexacao-que-precisava-se-encontrar-sozinha.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The blog that grew without telling anyone
+
+Every post published on the LifeLog becomes two pages: one in Portuguese, one in English. By October 2026, the blog reached 183 posts per language — 366 static pages, each with original content, tags, and proper metadata. The deploy goes up, the CI passes, the site loads.
+
+But search engines didn't know.
+
+It's not an exaggeration. Google and Bing don't guess that a new site exists. They need an invitation: either someone links from outside, or the site owner declares, in a verifiable way, "I control this content." The LifeLog grew for months without that invitation. The sitemap existed, the robots.txt was there, but the layer that turns a beautiful site into a findable site was missing.
+
+## Three pieces that fit together
+
+The solution came in three parts, each solving a different problem:
+
+**JSON-LD** — structured data in the header of every post. Instead of relying on the search engine to parse semantic HTML, JSON-LD explicitly declares: this is a BlogPosting, it has this author, this date, this URL. Google reads JSON-LD as a technical spec sheet; HTML remains for humans.
+
+**Host verification** — public text files that prove ownership. Google Search Console and Bing Webmaster Tools ask for a file with a specific token at the root of the site. Without that file, the property is not confirmed; without a confirmed property, search reports are empty.
+
+**IndexNow** — a protocol that submits URLs directly to Bing, Yandex, Seznam, and Naver. Google does not consume IndexNow; for Google, discovery comes from the sitemap declared in robots.txt. But for the other engines, IndexNow is the difference between waiting weeks and being indexed in hours.
+
+## The obstacle that wasn't in the plan
+
+Host verification has a behavior that no document mentions clearly: when the token file is first published, the search engine may not have indexed it yet. The IndexNow API responds with `403 SiteVerificationNotCompleted` — and gives up.
+
+The first indexing workflow ran on October 6 and went red. It was not a configuration error or a code bug: it was a race condition. The file was live, but Bing hadn't read it yet. The script tried to submit the URLs, the API denied, and the job failed.
+
+The solution was a retry loop with 60-second waits between attempts, up to 6 attempts. The script now accepts that the search engine is slower than the deploy and waits. In production, the second attempt passed. All sitemap URLs — 366 of them — were submitted.
+
+## The detail that almost broke everything
+
+The IndexNow script had the host and key set by environment variables, with fallback to literal values in code. The host was the blog's canonical domain. But there was a problem: the alternates verification script in CI resolved the host by a hardcoded string, not by the environment variable. When the canonical host changed, the verification script kept testing the old host.
+
+The fix was simple: every reference to the host now comes from the environment variable, and the fallback exists only for local development. The CI workflow checks the site with HTTP 200 before submitting any URLs — if the site doesn't respond, the job fails before spending API calls.
+
+## What remains
+
+Today, every publication on the LifeLog triggers the indexing workflow automatically. The CI/CD completes, the SEO workflow checks the site, collects sitemap URLs (ignoring hidden post previews), and submits to IndexNow with retry. JSON-LD has been part of every post since the build.
+
+None of this is visible to blog readers. But it's what makes a post appear in Google search three days after publication, instead of three weeks — or never.
+
+## Lessons Learned
+
+**Search engines are slower than deploys.** Any integration involving property verification needs retry with backoff. Assuming the search engine already read the token file is assuming too much.
+
+**Structured data is the common denominator.** JSON-LD is the format all search engines understand. Semantic HTML helps, but it doesn't replace explicit declaration.
+
+**Environment variables are optional until they're not.** Hardcoded strings work until the day they need to change. Then the fix is easy, but the diagnosis costs one red workflow.
+
+**IndexNow doesn't replace sitemaps.** They're different layers: the sitemap is the map, IndexNow is the notice that the map changed. One without the other works worse.
+
+## Next Steps
+
+Google Search Console now receives impression and position data for each post. The next step is to use that data to decide which posts deserve updates — content that ranks well but has high bounce rates, or that ranks poorly but receives backlinks.
+
+| Metric | Value |
+|--------|-------|
+| PT Pages | 183 |
+| EN Pages | 183 |
+| Total URLs submitted to IndexNow | 366 |
+| Max retries on verification | 6 |
+| Wait between retries | 60s |
+| Indexing workflows | 1 |
+
+<Terminal
+  commands={[
+    { cmd: 'node scripts/indexnow-submit.mjs --dry', output: 'Collecting URLs from sitemap...\n366 URLs found (183 PT + 183 EN)\nHidden post previews: skipped' },
+    { cmd: 'node scripts/indexnow-submit.mjs --limit 10', output: 'Submitting 10 URLs to IndexNow...\nBing: 200 OK\nYandex: 200 OK\nSeznam: 200 OK\nNaver: 200 OK' },
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://lifelog.seu.pet/', output: '200' }
+  ]}
+/>

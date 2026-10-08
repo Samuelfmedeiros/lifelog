@@ -1,0 +1,83 @@
+---
+title: "A indexação que precisava se encontrar sozinha — JSON-LD, verificação e IndexNow"
+description: "Um blog com 366 páginas precisa dizer aos buscadores que existe. A história de como o LifeLog ganhou JSON-LD, verificação de host e IndexNow — e do retry que a verificação do buscador exigiu."
+date: 2026-10-08 16:00:00 -03:00
+pubDate: 2026-10-08 16:00:00 -03:00
+project: descobertas
+tags: [descobertas, seo, indexnow, json-ld, deploy, ci-cd]
+cover: /covers/descobertas-a-indexacao-que-precisava-se-encontrar-sozinha.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O blog que cresceu sem dizer a ninguém
+
+Todo post publicado no LifeLog vira duas páginas: uma em português, outra em inglês. Em outubro de 2026, o blog chegou a 183 posts em cada idioma — 366 páginas estáticas, cada uma com conteúdo original, tags e metadados próprios. O deploy sobe, o CI fica verde, o site aparece.
+
+Mas os buscadores não sabiam.
+
+Não é exagero. O Google e o Bing não adivinham que um site novo existe. Eles precisam de um convite: ou alguém linka de fora, ou o dono do site declara, de forma verificável, "eu controle este conteúdo". O LifeLog cresceu durante meses sem esse convite. O sitemap existia, o robots.txt estava lá, mas faltava a camada que transforma um site bonito em um site encontrável.
+
+## Três peças que se encaixam
+
+A solução veio em três partes, cada uma resolvendo um problema diferente:
+
+**JSON-LD** — dados estruturados no cabeçalho de cada post. Em vez de depender que o buscador entenda HTML semântico, o JSON-LD declara explicitamente: isto é um BlogPosting, tem este autor, esta data, esta URL. O Google lê JSON-LD como uma ficha técnica; o HTML continua sendo para humanos.
+
+**Verificação de host** — arquivos de texto público que provam domínio. O Google Search Console e o Bing Webmaster Tools pedem um arquivo com um token específico na raiz do site. Sem esse arquivo, a propriedade não é confirmada; sem propriedade confirmada, os relatórios de busca ficam vazios.
+
+**IndexNow** — um protocolo que submete URLs diretamente para Bing, Yandex, Seznam e Naver. O Google não consome IndexNow; para ele, a descoberta vem do sitemap declarado no robots.txt. Mas para os outros buscadores, IndexNow é a diferença entre esperar semanas e ser indexado em horas.
+
+## O obstáculo que não estava no plano
+
+A verificação de host tem um comportamento que nenhum documento menciona com clareza: quando o arquivo de token é publicado pela primeira vez, o buscador pode ainda não tê-lo indexado. A API do IndexNow responde com `403 SiteVerificationNotCompleted` — e desiste.
+
+O primeiro workflow de indexação rodou no dia 06 de outubro e ficou vermelho. Não era erro de configuração nem de código: era uma corrida de tempo. O arquivo estava no ar, mas o Bing ainda não o tinha lido. O script tentou submeter as URLs, a API negou, e o job falhou.
+
+A solução foi um loop de retry com espera de 60 segundos entre tentativas, até 6 tentativas. O script agora aceita que o buscador é mais lento que o deploy e espera. Em produção, a segunda tentativa passou. As URLs do sitemap — todas as 366 — foram submetidas.
+
+## O detalhe que quase quebrou tudo
+
+O script de IndexNow tinha o host e a chave definidos por variáveis de ambiente, com fallback para valores literais no código. O host era o domínio canônico do blog. Mas havia um problema: o script de verificação de alternados no CI resolvia o host por uma string hardcoded, não pela variável de ambiente. Quando o host canônico mudou, o script de verificação continuava testando o host antigo.
+
+O fix foi simples: toda referência ao host agora vem da variável de ambiente, e o fallback só existe para desenvolvimento local. O workflow de CI confere o site com HTTP 200 antes de submeter qualquer URL — se o site não responde, o job falha antes de gastar chamadas de API.
+
+## O que ficou
+
+Hoje, toda publicação no LifeLog dispara o workflow de indexação automaticamente. O CI/CD completa, o workflow de SEO confere o site, coleta as URLs do sitemap (ignorando as de preview de posts ocultos) e submete ao IndexNow com retry. O JSON-LD acompanha cada post desde o build.
+
+Nada disso é visível para quem lê o blog. Mas é o que faz um post aparecer na busca do Google três dias depois de publicado, em vez de três semanas — ou nunca.
+
+## Aprendizados
+
+**Buscadores são mais lentos que deploys.** Qualquer integração que envolva verificação de propriedade precisa de retry com backoff. Assumir que o buscador já leu o arquivo de token é assumir demais.
+
+**Dados estruturados são o denominador comum.** JSON-LD é o formato que todos os buscadores entendem. HTML semântico ajuda, mas não substitui a declaração explícita.
+
+**Variável de ambiente não é opcional.** String hardcoded no código funciona até o dia em que precisa mudar. Aí o fix é fácil, mas o diagnóstico custa um workflow vermelho.
+
+**IndexNow não substitui sitemap.** São camadas diferentes: o sitemap é o mapa, o IndexNow é o aviso de que o mapa mudou. Um sem o outro funciona pior.
+
+## Próximos passos
+
+O Google Search Console agora recebe dados de impressão e posição para cada post. O próximo passo é usar esses dados para decidir quais posts merecem atualização — conteúdo que ranqueia bem mas tem alta taxa de rejeição, ou que ranqueia mal mas recebe backlinks.
+
+| Métrica | Valor |
+|---------|-------|
+| Páginas PT | 183 |
+| Páginas EN | 183 |
+| Total de URLs submetidas ao IndexNow | 366 |
+| Retry máximo na verificação | 6 |
+| Espera entre retries | 60s |
+| Workflow de indexação | 1 |
+
+<Terminal
+  commands={[
+    { cmd: 'node scripts/indexnow-submit.mjs --dry', output: 'Coletando URLs do sitemap...\n366 URLs encontradas (183 PT + 183 EN)\nPreview de posts ocultos: ignorado' },
+    { cmd: 'node scripts/indexnow-submit.mjs --limit 10', output: 'Submetendo 10 URLs ao IndexNow...\nBing: 200 OK\nYandex: 200 OK\nSeznam: 200 OK\nNaver: 200 OK' },
+    { cmd: 'curl -s -o /dev/null -w "%{http_code}" https://lifelog.seu.pet/', output: '200' }
+  ]}
+/>
