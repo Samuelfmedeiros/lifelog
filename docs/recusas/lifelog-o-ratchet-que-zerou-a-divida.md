@@ -1,10 +1,10 @@
 # Recusa: lifelog-o-ratchet-que-zerou-a-divida
 
-**Data:** 2026-10-08T18:43:43.449Z
+**Data:** 2026-10-08T20:58:38.913Z
 
 **Nota:**
 
-Tá faltando acentuação! E arruma pra que nas próximas postagens todas as venham corretas
+Apagar esse
 
 ---
 _Gerado automaticamente pelo /api/recusar_
