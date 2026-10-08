@@ -1,0 +1,120 @@
+---
+title: "O sistema de recusas — como o LifeLog aprendeu a ouvir 'não' e transformar em ação"
+description: "Um post recusado não é um fracasso: é um sinal de que o leitor está prestando atenção. O ciclo de refazer do LifeLog — monitor de issues, agente que reescreve, verificação no ar — nasceu de uma recusa simples e virou um dos sistemas mais interessantes do blog. Este post cobre como funciona, o que já quebrou, e as lições sobre corrida entre agentes, cache immutable e issues órfãs."
+category: samuel-projects
+date: 2026-10-08 10:00:00 -03:00
+pubDate: 2026-10-08 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "automation", "pipeline", "github", "workflow"]
+cover: /covers/nova-historia-descobertas-2026-10-08.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O "não" que melhorou o blog
+
+Ninguém gosta de receber um "não". Mas no LifeLog, o "não" é parte do processo. Quando um post sobe para o /ocultos e o Samuel não gosta, ele abre uma issue no GitHub com a label `refazer` e uma nota curta: "Apagar esse!", "A capa não combina", "O começo está confuso". O monitor de recusas detecta, o agente refaz, o post volta para o /ocultos. O ciclo é simples de descrever e cheio de detalhes de implementação.
+
+Este post é sobre esse sistema — como ele nasceu, o que já quebrou, e as lições que cada recusa ensinou.
+
+## O nascimento: uma recusa que virou automação
+
+O sistema de recusas não foi planejado. Ele nasceu de uma frustração: o Samuel recusou um post, o agente refez manualmente, e ninguém garantiu que o refazer realmente chegou ao ar. A issue ficou aberta, o post antigo continuou no /ocultos, e o novo ficou preso no working tree de outra sessão.
+
+A solução foi um script — `lifelog-recusas-watch.py` — que monitora issues abertas com a label `refazer` e dispara o ciclo de refazer. O script roda periodicamente, compara a lista de issues abertas com a execução anterior, e quando detecta uma nova, inicia o processo.
+
+O ciclo completo tem 6 passos:
+
+1. **Detectar** — o monitor vê a issue aberta com a label `refazer`
+2. **Ler a nota** — o agente lê o corpo da issue para entender o pedido
+3. **Triagem** — a nota é de AJUSTE ("tire X", "mais abstrato") ou de APAGAR ("Não quero essa postagem")?
+4. **Executar** — ajustar o post ou remover os 3 artefatos (PT, EN, capa)
+5. **Verificar** — provar que o resultado está no ar: 404 público, 200 preview, capa 200
+6. **Fechar** — PATCH na issue com `state=closed` e `state_reason=completed`
+
+## A triagem: ajuste vs. remoção
+
+A nota de recusa é o coração do sistema. Ela determina o que o agente faz, e a diferença entre os dois caminhos é grande:
+
+| Nota | Ação | Resultado no ar |
+|------|------|-----------------|
+| "Tire X", "mais abstrato", "refazer tudo" | Reescrever | Preview 200 com o novo texto |
+| "Apagar esse!", "Não quero essa postagem" | Remover | 404 público, post sai do ar |
+
+A regra é simples: **nota de ajuste = reescrever, nota de apagar = remover**. Nunca reescrever por conta própria quando a nota pede remoção — isso já aconteceu e gerou confusão.
+
+O caso mais interessante é o "Apagar esse e criar um novo". Nesse caso, o agente remove os 3 artefatos do post recusado E cria um post novo com tema diferente. A lição aqui é que o tema novo não pode repetir o ângulo dos posts do dia — se dois posts do dia já falaram sobre "verde que não prova nada", o terceiro não pode herdar esse ângulo.
+
+## A corrida entre agentes
+
+O LifeLog tem múltiplas sessões rodando em paralelo — crons de post, watchdogs, sessões manuais. Quando duas sessões tentam commitar ao mesmo tempo, o push é rejeitado com `non-fast-forward` ou `cannot lock ref`.
+
+A solução foi um protocolo de 4 passos antes de commitar:
+
+1. `git fetch` — ver se a origin/main andou
+2. `git log HEAD..origin/main` — listar commits que chegaram
+3. `git -c rebase.autoStash=true pull --rebase origin main` — integrar sem perder working tree
+4. `git add` seletivo — só os arquivos do próprio post
+
+O rebase com `autoStash` é o que salva o trabalho de outra sessão: ele stashed as mudanças locais, faz o rebase, e reaplica o stash. Se houver conflito em `api/ocultos-data.mjs` (todo post hidden mexe nesse arquivo gerado), a solução é `git checkout --theirs` + rodar `node scripts/gen-ocultos.mjs` de novo para reconciliar a lista inteira.
+
+## O cache immutable que escondeu uma capa nova
+
+Um dos bugs mais difíceis de diagnosticar foi o cache immutable de capas no Vercel. Quando um post é recusado por causa da capa e o agente gera uma capa nova, o arquivo é sobrescrito no mesmo path (`/covers/<slug>.webp`). Mas o Vercel serve assets estáticos com `Cache-Control: public, max-age=31536000, immutable` — um ano de cache. O browser e a edge não re-requisitam, e o Samuel continua vendo a capa velha.
+
+A solução foi simples: **rework de capa = renomear o arquivo**. Em vez de sobrescrever `/covers/<slug>.webp`, o agente cria `/covers/<slug>-v2.webp` e atualiza o `cover:` no frontmatter PT e EN. A nova URL obriga fetch novo em qualquer cliente.
+
+O caso real: o post `tatuengine-o-step-322` teve a capa refeita 2 vezes no mesmo path. O Samuel continuava vendo a capa com pseudo-texto, mesmo com o deploy servindo bytes novos. O `git log --oneline -- <capa>` mostrou que o path foi reescrito 2 vezes, cada uma congelando uma versão em cache alheio.
+
+## A issue órfã que o monitor nunca mais mostra
+
+O monitor de recusas enumera **issues abertas**. Quando outra sessão executa o refazer completo (commit + push) mas **não fecha a issue**, o slug deixa de aparecer no monitor — o trabalho ficou feito e a issue órfã, invisível para toda automação futura.
+
+A regra que nasceu disso: **output vazio no monitor significa "mudar" (ou "nada"), nunca "já resolvido, descarte"**. Quando o monitor esvaziou depois de um commit de refazer, a sessão seguinte precisou:
+
+1. Verificar as issues do diff anterior com `GET /repos/<repo>/issues/<N>`
+2. Se `state == open`, a recusa é pendente de fechamento
+3. Confirmar o estado real do artefato em `origin/main`
+4. Fechar via REST com `PATCH` e `state_reason=completed`
+
+O caso real: a issue #67 (`tatuengine-a-campanha-que-degradou-em-silencio`, nota "Apagar esse!") foi resolvida em sessão paralela, mas a issue ficou aberta. O monitor esvaziou, e a issue ficou invisível até alguém reabrir o filtro.
+
+## A verificação que prova que funcionou
+
+O ciclo de refazer não termina quando o commit sobe. Ele termina quando a verificação prova que o resultado está no ar. O gate de verificação tem 5 checks:
+
+1. **Issue fechada** — `state == closed` e `state_reason == completed`
+2. **Commit na origin/main** — `git branch -r --contains <commit>` lista `origin/main`
+3. **Rotas do slug** — `/post/<slug>/` 404, `/en/post/<slug>/` 404, `/ocultos/preview/pt|en/<slug>/` 200
+4. **Capa no ar** — HEAD 200 com o tamanho correto (AI ~350-630KB, PIL ~24KB)
+5. **Texto da correção** — grep da frase de prova no HTML do preview
+
+O script `verify-recusa-resolvida.py` automatiza esses checks. Ele recebe o número da issue, o slug e as frases de prova (PT e EN), e retorna rc=0 só se todos os checks passarem. Erro de rede sai como `ERRO:` (NÃO VERIFICÁVEL), nunca verde.
+
+## As lições
+
+O sistema de recusas ensinou 5 lições que valem para qualquer pipeline de conteúdo:
+
+1. **Recusa é sinal de qualidade, não fracasso.** Um post recusado significa que o leitor está prestando atenção e se importa com o resultado.
+
+2. **A nota é o contrato.** "Tire X" e "Apagar esse!" são instruções completamente diferentes. O agente precisa ler a nota antes de agir, nunca assumir.
+
+3. **Corrida entre agentes é real.** Múltiplas sessões no mesmo repo exigem protocolo de fetch + rebase + add seletivo antes de commitar.
+
+4. **Cache immutable é armadilha.** Trocar conteúdo no mesmo URL é invisível para quem já carregou. Rework = nova URL.
+
+5. **Fechar a issue é parte do trabalho.** O commit sem o fechamento deixa uma issue órfã que o monitor nunca mais mostra. O ciclo só termina quando a issue fecha.
+
+O sistema de recusas é, no fundo, um sistema de feedback. O Samuel diz "não", o agente ajusta, o blog melhora. E cada recusa — mesmo as que doem — deixa o sistema um pouco mais robusto.
+
+<Terminal
+  commands={[
+    { label: 'monitor', cmd: 'python3 lifelog-recusas-watch.py  # detecta issues com label refazer' },
+    { label: 'triagem', cmd: 'gh issue view <N> --json body  # le a nota: ajuste ou apagar?' },
+    { label: 'verificacao', cmd: 'python3 verify-recusa-resolvida.py <N> <slug> --probar "PT::frase" "EN::frase"' },
+    { label: 'fechamento', cmd: 'PATCH /repos/<repo>/issues/<N> {"state":"closed","state_reason":"completed"}' },
+  ]}
+/>

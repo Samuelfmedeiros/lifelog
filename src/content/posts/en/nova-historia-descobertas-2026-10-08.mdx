@@ -1,0 +1,120 @@
+---
+title: "The refusal system — how LifeLog learned to listen to 'no' and turn it into action"
+description: "A refused post is not a failure: it's a signal that the reader is paying attention. LifeLog's refazer cycle — issue monitor, agent that rewrites, verification in production — was born from a simple refusal and became one of the blog's most interesting systems. This post covers how it works, what has broken, and the lessons about agent races, immutable cache, and orphan issues."
+category: samuel-projects
+date: 2026-10-08 10:00:00 -03:00
+pubDate: 2026-10-08 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "automation", "pipeline", "github", "workflow"]
+cover: /covers/nova-historia-descobertas-2026-10-08.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The "no" that made the blog better
+
+Nobody likes hearing "no". But in LifeLog, "no" is part of the process. When a post goes up to /ocultos and Samuel doesn't like it, he opens a GitHub issue with the `refazer` label and a short note: "Delete this!", "The cover doesn't match", "The beginning is confusing". The refusal monitor detects it, the agent refaz, the post goes back to /ocultos. The cycle is simple to describe and full of implementation details.
+
+This post is about that system — how it was born, what has broken, and the lessons each refusal taught.
+
+## The birth: a refusal that became automation
+
+The refusal system was not planned. It was born from a frustration: Samuel refused a post, the agent refaz manually, and nobody guaranteed that the refazer actually reached production. The issue stayed open, the old post stayed in /ocultos, and the new one got stuck in another session's working tree.
+
+The solution was a script — `lifelog-recusas-watch.py` — that monitors open issues with the `refazer` label and triggers the refazer cycle. The script runs periodically, compares the list of open issues with the previous run, and when it detects a new one, starts the process.
+
+The full cycle has 6 steps:
+
+1. **Detect** — the monitor sees the open issue with the `refazer` label
+2. **Read the note** — the agent reads the issue body to understand the request
+3. **Triage** — is the note an ADJUSTMENT ("remove X", "more abstract") or a DELETION ("I don't want this post")?
+4. **Execute** — adjust the post or remove the 3 artifacts (PT, EN, cover)
+5. **Verify** — prove the result is in production: 404 public, 200 preview, cover 200
+6. **Close** — PATCH the issue with `state=closed` and `state_reason=completed`
+
+## Triage: adjustment vs. removal
+
+The refusal note is the heart of the system. It determines what the agent does, and the difference between the two paths is large:
+
+| Note | Action | Result in production |
+|------|--------|---------------------|
+| "Remove X", "more abstract", "redo everything" | Rewrite | Preview 200 with the new text |
+| "Delete this!", "I don't want this post" | Remove | 404 public, post goes off the air |
+
+The rule is simple: **adjustment note = rewrite, deletion note = remove**. Never rewrite on your own when the note asks for removal — this has already happened and caused confusion.
+
+The most interesting case is "Delete this and create a new one". In that case, the agent removes the 3 artifacts of the refused post AND creates a new post with a different theme. The lesson here is that the new theme cannot repeat the angle of the day's posts — if two posts of the day already talked about "green that proves nothing", the third cannot inherit that angle.
+
+## The race between agents
+
+LifeLog has multiple sessions running in parallel — post crons, watchdogs, manual sessions. When two sessions try to commit at the same time, the push is rejected with `non-fast-forward` or `cannot lock ref`.
+
+The solution was a 4-step protocol before committing:
+
+1. `git fetch` — check if origin/main moved
+2. `git log HEAD..origin/main` — list commits that arrived
+3. `git -c rebase.autoStash=true pull --rebase origin main` — integrate without losing working tree
+4. Selective `git add` — only the files of your own post
+
+The rebase with `autoStash` is what saves another session's work: it stashes local changes, does the rebase, and reapplies the stash. If there's a conflict in `api/ocultos-data.mjs` (every hidden post touches this generated file), the solution is `git checkout --theirs` + run `node scripts/gen-ocultos.mjs` again to reconcile the full list.
+
+## The immutable cache that hid a new cover
+
+One of the hardest bugs to diagnose was the immutable cache of covers on Vercel. When a post is refused because of the cover and the agent generates a new cover, the file is overwritten at the same path (`/covers/<slug>.webp`). But Vercel serves static assets with `Cache-Control: public, max-age=31536000, immutable` — one year of cache. The browser and the edge don't re-request, and Samuel keeps seeing the old cover.
+
+The solution was simple: **cover rework = rename the file**. Instead of overwriting `/covers/<slug>.webp`, the agent creates `/covers/<slug>-v2.webp` and updates the `cover:` in the PT and EN frontmatter. The new URL forces a fresh fetch in any client.
+
+The real case: the post `tatuengine-o-step-322` had the cover redone 2 times at the same path. Samuel kept seeing the cover with pseudo-text, even with the deploy serving new bytes. The `git log --oneline -- <cover>` showed that the path was rewritten 2 times, each one freezing a version in someone else's cache.
+
+## The orphan issue the monitor never shows again
+
+The refusal monitor enumerates **open issues**. When another session executes the full refazer (commit + push) but **doesn't close the issue**, the slug stops appearing in the monitor — the work was done and the issue is orphaned, invisible to all future automation.
+
+The rule that came from this: **empty monitor output means "changed" (or "nothing"), never "already resolved, discard"**. When the monitor emptied after a refazer commit, the next session needed to:
+
+1. Check the issues from the previous diff with `GET /repos/<repo>/issues/<N>`
+2. If `state == open`, the refusal is pending closure
+3. Confirm the real state of the artifact in `origin/main`
+4. Close via REST with `PATCH` and `state_reason=completed`
+
+The real case: issue #67 (`tatuengine-a-campanha-que-degradou-em-silencio`, note "Delete this!") was resolved in a parallel session, but the issue stayed open. The monitor emptied, and the issue stayed invisible until someone reopened the filter.
+
+## The verification that proves it worked
+
+The refazer cycle doesn't end when the commit goes up. It ends when the verification proves the result is in production. The verification gate has 5 checks:
+
+1. **Issue closed** — `state == closed` and `state_reason == completed`
+2. **Commit in origin/main** — `git branch -r --contains <commit>` lists `origin/main`
+3. **Slug routes** — `/post/<slug>/` 404, `/en/post/<slug>/` 404, `/ocultos/preview/pt|en/<slug>/` 200
+4. **Cover in production** — HEAD 200 with the correct size (AI ~350-630KB, PIL ~24KB)
+5. **Correction text** — grep the proof phrase in the preview HTML
+
+The script `verify-recusa-resolvida.py` automates these checks. It receives the issue number, the slug, and the proof phrases (PT and EN), and returns rc=0 only if all checks pass. Network errors come out as `ERRO:` (NOT VERIFIABLE), never green.
+
+## The lessons
+
+The refusal system taught 5 lessons that apply to any content pipeline:
+
+1. **Refusal is a quality signal, not a failure.** A refused post means the reader is paying attention and cares about the result.
+
+2. **The note is the contract.** "Remove X" and "Delete this!" are completely different instructions. The agent needs to read the note before acting, never assume.
+
+3. **Agent race is real.** Multiple sessions in the same repo require a fetch + rebase + selective add protocol before committing.
+
+4. **Immutable cache is a trap.** Changing content at the same URL is invisible to those who already loaded it. Rework = new URL.
+
+5. **Closing the issue is part of the work.** The commit without the closure leaves an orphan issue that the monitor never shows again. The cycle only ends when the issue closes.
+
+The refusal system is, at its core, a feedback system. Samuel says "no", the agent adjusts, the blog improves. And each refusal — even the painful ones — leaves the system a little more robust.
+
+<Terminal
+  commands={[
+    { label: 'monitor', cmd: 'python3 lifelog-recusas-watch.py  # detects issues with refazer label' },
+    { label: 'triage', cmd: 'gh issue view <N> --json body  # reads the note: adjust or delete?' },
+    { label: 'verification', cmd: 'python3 verify-recusa-resolvida.py <N> <slug> --probar "PT::phrase" "EN::phrase"' },
+    { label: 'closure', cmd: 'PATCH /repos/<repo>/issues/<N> {"state":"closed","state_reason":"completed"}' },
+  ]}
+/>
