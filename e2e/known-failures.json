@@ -1,5 +1,5 @@
 {
   "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
   "failures": [],
-  "$ultimaRevisao": "2026-10-06: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: renovacao de baseline por divida vencida"
+  "$ultimaRevisao": "2026-10-08: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: renovacao de baseline por divida vencida — home dark/light/mobile"
 }
