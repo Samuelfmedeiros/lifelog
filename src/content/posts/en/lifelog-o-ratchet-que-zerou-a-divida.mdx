@@ -1,0 +1,72 @@
+---
+title: "The ratchet that cleared the debt"
+description: "How the LifeLog went from 7 entries in known-failures.json to zero — and why that matters more than it seems."
+date: 2026-10-08 10:00:00 -03:00
+pubDate: 2026-10-08 12:00:00 -03:00
+project: lifelog
+tags: [lifelog, testing, e2e, ci-cd, quality]
+cover: /covers/lifelog-o-ratchet-que-zerou-a-divida.webp
+hidden: true
+lang: en
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## What a test ratchet is
+
+A ratchet is a simple mechanism: you can only improve, never regress. In the LifeLog, it lives in `e2e/known-failures.json` — a file that lists tests that are failing but that the CI ignores. The idea is that each entry must be paid off before it can be removed from the list. Adding an entry requires explicit approval. Removing is always free.
+
+The problem is that a ratchet only works when someone pays the debt. If you add entries and never remove them, the file becomes a list of excuses. The CI stays green, but the tests are not passing — they are being ignored.
+
+## The accumulated debt
+
+In September 2026, `known-failures.json` had 7 entries. Four for a11y (accessibility) and three for VRT (visual regression testing). The a11y entries were tests that axe-core flagged as violations but that, in practice, were false positives — axe does not compose translucent alpha correctly, and the tests flagged violations even with real contrast above the minimum.
+
+The VRT entries were worse: baselines that did not match the CI runtime. Snapshots were generated in one environment and the CI ran in another. Pixels were different, tests failed, and someone added the entries to the ratchet to make the CI pass.
+
+The result was a green CI that meant nothing. Tests were being ignored, not passing.
+
+## The payoff
+
+The debt was paid in three moves.
+
+First, the a11y entries. Commit `ac15b57` removed the 4 entries from the file. The a11y suite passed 14/14 verified in local runtime with axe-core — it was no longer necessary to ignore the tests. The ratchet was left with 3 entries.
+
+Second, the VRT entries. Commit `3082f3b` regenerated the baselines in the CI runtime. Snapshots were remade in `ubuntu-latest`, the same environment where the CI runs. Tests started comparing equal pixels. Commit `f247b39` created a workflow that regenerates baselines automatically when needed — PR #62.
+
+Third, commit `eb3bdb4` fixed the TerminalWidget in the September posts. The component had a loose array, missing import, and an HTML comment that broke the build. This was not a ratchet entry, but it was a technical debt that needed to be paid.
+
+## What zero means
+
+With zero entries in `known-failures.json`, the CI becomes a real gate again. No test is left outside it. Any future regression becomes a blocker again.
+
+This matters because a CI that ignores tests is not a CI — it is an excuse list. The value of CI is in blocking what is broken. If you ignore the tests that are broken, the CI blocks nothing.
+
+The ratchet exists to ensure the debt is paid. But it only works when someone pays. The LifeLog paid. The file now has zero entries and the CI is a real gate again.
+
+## What comes next
+
+The next step is to keep it at zero. This means that any new test that fails will block the CI — and will have to be fixed before merging. No excuses, no ratchet entries.
+
+It also means that the baseline regeneration workflow must be used carefully. If baselines are regenerated every time a test fails, the ratchet loses its meaning. Regeneration should only be done when the change is intentional — not to mask a bug.
+
+The ratchet is a tool. Like any tool, it only works when used right.
+
+## Terminal widget
+
+Below is a sample command to check the ratchet state:
+
+<Terminal
+  commands={[
+    {
+      cmd: 'cat e2e/known-failures.json | jq ".failures | length"',
+      output: '0',
+      description: 'Zero entries = debt paid'
+    },
+    {
+      cmd: 'git log --oneline --grep="ratchet" | head -5',
+      output: 'ac15b57 test(e2e): paga a divida de a11y — ratchet com zero entradas\n3082f3b test(vrt): regeneras baselines no runtime da CI e paga a divida do ratchet (#61)',
+      description: 'History of the debt payoff'
+    }
+  ]}
+/>
