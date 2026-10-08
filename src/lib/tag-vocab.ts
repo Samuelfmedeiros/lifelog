@@ -38,6 +38,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'adafactor' },
   { slug: 'agents', pt: 'Agentes' },
   { slug: 'agents-md', pt: 'Agentes-MD' },
+  { slug: 'agent-loop', pt: 'Loop de Agente' },
   { slug: 'ai', pt: 'IA' },
   { slug: 'ai-jail' },
   { slug: 'alerts', pt: 'Alertas' },
@@ -116,6 +117,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'detection', pt: 'Detecção' },
   { slug: 'dev' },
   { slug: 'devops' },
+  { slug: 'distill', pt: 'Destilacao' },
   { slug: 'docker' },
   { slug: 'documentation', pt: 'Documentação' },
   { slug: 'douglas' },
@@ -206,6 +208,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'migration', pt: 'Migração' },
   { slug: 'ml' },
   { slug: 'mobile' },
+  { slug: 'model', pt: 'Modelo' },
   { slug: 'monitoring', pt: 'Monitoramento' },
   { slug: 'multi-engine' },
   { slug: 'multimodal' },
@@ -237,6 +240,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'pets' },
   { slug: 'phase-field', pt: 'Campo de Fase' },
   { slug: 'pipeline' },
+  { slug: 'pills', pt: 'Pills' },
   { slug: 'pix' },
   { slug: 'playwright' },
   { slug: 'pnpm' },
@@ -261,6 +265,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'queue' },
   { slug: 'qwen2.5vl' },
   { slug: 'rag' },
+  { slug: 'ratchet', pt: 'Ratchet' },
   { slug: 'rate-limit' },
   { slug: 'reasoning', pt: 'Raciocínio' },
   { slug: 'react' },
@@ -376,6 +381,7 @@ export const TAG_VOCAB: TagDef[] = [
 
 // Alias → slug canônico (PT→EN, plural/singular, variantes).
 export const TAG_ALIASES: Record<string, string> = {
+  'modelo': 'model',
   'a11y': 'accessibility',
   'acessibilidade': 'accessibility',
   'agent': 'agents',
