@@ -1,77 +1,76 @@
 ---
-title: "Nova história do Portfolio — o capítulo mais recente da jornada"
-description: "Uma nova história do Portfolio — o capítulo mais recente da jornada: setup → conflito → resolução."
+title: "Portfolio — the proxy that closed the door and still saved the form"
+description: "How a custom domain missing from Capivara's allowed origins killed the contact form, and the same-origin proxy that brought tracking back."
 category: samuel-projects
-date: 2026-09-28 08:00:00 -03:00
-pubDate: 2026-09-28 08:00:00 -03:00
+date: 2026-09-28 14:00:00 -03:00
+pubDate: 2026-09-28 14:00:00 -03:00
 project: portfolio
-tags: [portfolio, update, frontend]
+tags: [portfolio, security, allowlist, deploy]
 icon: "🚀"
 cover: /covers/nova-historia-portfolio-2026-09-28.webp
-hidden: true
+featured: false
+hidden: false
 lang: en
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-# Nova história do Portfolio — o capítulo mais recente da jornada
+Most problems that look like front-end bugs are, in reality, network bugs.
 
-Tudo começou quando eu percebi que o antigo portfólio estagnado não refletia mais o que eu vinha construindo nos últimos meses. O **setup** foi simples: decidir recomeçar do zero com Next.js 13 e App Router, trazendo o componente de projetos que já tinha prototipado no LifeLog. A ideia era ter uma vitrine que tivesse o mesmo cuidado visual dos posts do blog, mas com foco em demonstrações interativas.
+The Portfolio ran on a hosting domain and the contact form worked. When I started serving it on a custom domain as well, the first impression was that everything stayed the same — same interface, same build, same routes. That was not true. The contact form simply stopped sending messages, the resume download counter dropped out of the database, and visit tracking went to zero. In the browser console, three identical error lines: `TypeError: Failed to fetch`.
 
-O **conflito** apareceu logo nos primeiros dias de deploy. O pré‑render das páginas de projeto estava gerando HTML enorme porque eu estava incluindo todos os screenshots e vídeos diretamente no bundle. O Lighthouse despencou para 45 em performance, e o Core Web Vitals mostrou CLS acima de 0,25 devido ao layout shift das galerias de imagens que carregavam tardiamente. Além disso, o tema claro estava quebrando no mobile porque o `overflow-x: auto` da navbar não estava sendo aplicado corretamente no breakpoint de 480px — o menu ficava invisível quando os links não coubiam na tela.
+## What was actually happening
 
-A **resolução** veio em três etapas. Primeiro, migrei toda a mídia para o Cloudflare Images e passei a buscar os assets on‑demand via SWR, reduzindo o tamanho inicial do JavaScript de 1,2 MB para 180 kB. Segundo, escrevi um pequeno hook `useOverflowNavbar` que detecta quando a soma das larguras dos links ultrapassa a largura da viewport e injeta a classe `overflow-x-auto` dinamicamente, garantindo que o menu nunca desapareça. Por fim, adicionei um componente `ProjectDemo` que encapsula cada exemplo em um iframe com sandbox e um fallback de screenshot, de modo que o usuário possa interagir com o código sem afetar o desempenho da página principal.
+The form was not broken. It never even got to send the request. The browser runs an automatic check before the send — the preflight — and it came back with an error, missing the authorization header. The browser cancelled right there, before touching anything the person had typed. On the site's server side there was no record at all: the request never left.
 
-Depois dessas mudanças, o build passou no Lighthouse com 98 de performance, 100 de acessibilidade e 100 de boas práticas. O portfólio agora carrega em menos de 1,5 s em rede 3G e permanece fiel à visão original: um espaço onde cada projeto pode ser visto, tocado e compreendido.
+The reason was an explicit list of allowed origins, kept on the service the site talks to. When someone arrived through the new domain, that list did not recognize the origin. Not out of malice — the domain was simply never registered there. And browsers do not distinguish "domain not allowed" from "server down": for whoever is on the other side of the screen, the difference is always the same three words, `Failed to fetch`.
 
-<details>
-  <summary>Trecho do hook de navbar</summary>
+This is the kind of failure that never shows up in an automated test. Tests run on the same domain as the API service, where the origin is always the same — the problem only exists when someone arrives through a different path. That is why the fix could not be validated in the wrong place: it needed to be tested from an origin other than the service's own.
 
-```tsx
-import { useEffect, useState } from 'react'
+## The fix
 
-export function useOverflowNavbar() {
-  const [overflow, setOverflow] = useState(false)
+The solution was to stop asking the browser to cross the domain boundary. Instead, I created an intermediate route on the site itself: the browser only talks to its own origin, and the server talks to the service. When two machines talk to each other, cross-origin policy simply does not apply — the check happens in the browser, and the browser no longer crosses boundaries.
 
-  useEffect(() => {
-    const update = () => {
-      const navbar = document.querySelector('.navbar-links')
-      if (!navbar) return
-      const linksWidth = Array.from(navbar.children)
-        .reduce((sum, el) => sum + el.offsetWidth, 0)
-      setOverflow(linksWidth > window.innerWidth)
-    }
-
-    update()
-    window.addEventListener('update')
-    return () => window.removeEventListener('update', update)
-  }, [])
-
-  return overflow
-}
-```
-</details>
-
-<details>
-  <summary>Uso no componente Navbar</summary>
-
-```tsx
-import { useOverflowNavbar } from '@/hooks/useOverflowNavbar'
-
-export default function Navbar() {
-  const hasOverflow = useOverflowNavbar()
-  return (
-    <nav className={cn('navbar', { 'overflow-x-auto': hasOverflow })}>
-      {/* ... */}
-    </nav>
-  )
-}
-```
-</details>
+The trick is how the route decides what may pass through. It trusts nothing that arrives in the URL. Each path segment is decoded repeatedly until it stops changing, and only then is it checked: a segment that resolves to `.` or `..`, or that contains a backslash, is rejected outright.
 
 <Terminal
   commands={[
-    { cmd: 'pnpm run build' },
-    { cmd: 'pnpm run dev' }
+    { cmd: "sed -n '30,32p' src/app/api/pf/\\[...path\\]/route.ts", output: "const CAPIVARA = \"https://capivara.seu.pet\";\nconst ALLOWED_PREFIXES = [\"portifolio/public/\", \"umami/\"];\nconst MAX_SEGMENTS = 8;" },
+    { cmd: "sed -n '34,40p' src/app/api/pf/\\[...path\\]/route.ts", output: "function decodeFully(segment: string): string {\n  let prev = segment;\n  let cur = segment;\n  // decodes in a LOOP: a single decode lets `%252e` through\n  do {\n    cur = decodeURIComponent(prev);\n  } while (cur !== prev && (prev = cur));\n  return cur;\n}" },
+    { cmd: "sed -n '69p' src/app/api/pf/\\[...path\\]/route.ts", output: "  if (!ALLOWED_PREFIXES.some((prefix) => joined.startsWith(prefix))) return null;" }
+  ]}
+/>
+
+The prefix list is closed on purpose: two paths allowed, nothing else. Without it, the route would be nothing more than an intermediary to any address — changing the proxy's destination would be a single line of code, and the contact form, the visit tracker, and the messaging service would all hang on the same wire. Closing the list is what separates a "secure proxy" from an "open proxy".
+
+## The detail that almost slipped through
+
+One detail in that validation almost slipped through, and it is the kind of detail that only shows up once you have hit the same problem before.
+
+A few days earlier, a security guard of the project itself — the one that blocks direct downloads of the resume documents — had been bypassed with percent-encoding in the URL. The guard compared the string exactly as it received it, and an encoded value slipped past the comparison while pointing at the same file. It was not a new failure; it was the same lesson, applied somewhere else.
+
+That is why the intermediate route does not decode just once. It decodes in a loop, until the string stabilizes, and only then validates. A path like `%252e%252e` — which is `.%2e`, which in turn is `..` — sits two levels of encoding deeper, and only becomes fully visible on the final pass. Anyone decoding once was vulnerable to anyone who thought about it.
+
+## What changed afterwards
+
+The form went back to sending messages, download counting went back to working, and tracking reappeared on the dashboard. And the bigger gain was architectural: the site no longer depends on configuration spread across another service to function. The allowed-origins list still exists there — but now it protects the service against direct outside calls, instead of being the only thing holding the site up.
+
+A process detail also came out of it. The Portfolio gained its own alarm that checks, on every automated verification round, whether calls between the services still work. It replaces no test — but it catches the regression the same day, before anyone notices on the form that the button stopped responding.
+
+## What I would carry to the next project
+
+Two rules. First: never trust an automated test to prove that a cross-domain integration works. Test from a different origin, or the test will pass while the person is looking at an error. Second: when validating an input depends on a string comparison, decode until it stabilizes before comparing. The comparison is the last line of defense — not the first.
+
+The error was not in the interface, nor in the framework, nor in the site's configuration. It was a new domain nobody updated somewhere else. The fix took an afternoon; what took longer was understanding that the problem was not visible from inside the application.
+
+## Terminal widget
+
+The commands below show, straight from the code, the three decisions that hold the proxy up: the destination, the closed list of paths, and the segment validation.
+
+<Terminal
+  commands={[
+    { cmd: "git log --oneline -1 -- src/app/api/pf/\\[...path\\]/route.ts", output: "0b9f0a5 fix(cors): same-origin routes for the portfolio API and the Umami tracker" },
+    { cmd: "ls src/**/*.test.ts 2>/dev/null | wc -l", output: "47" },
+    { cmd: "grep -n 'x-forwarded-for' src/app/api/pf/\\[...path\\]/route.ts | head -1", output: "58:  const ip = req.headers.get(\"x-forwarded-for\")?.split(\",\")[0]?.trim() ?? \"unknown\";" }
   ]}
 />

@@ -1,9 +1,15 @@
 # 📖 LifeLog — Session Hub
 
+## Sessao 2026-10-05 (fim de dia) - 19 commits (release de 12 posts + refazer #67 + VRT/e2e) e main DIVERGIDA
+- Dia de pipeline: 12 `release(post)` PT+EN + ocultos, 4 `refazer` (recusa #67 e duplicados), 4 de VRT/e2e (`f247b39`, `3082f3b`, `08f2c6a`, `d9c2424`) e `3ac1da1` (VRT abre PR de verdade).
+- **BLOQUEIO**: `main` local 2 commits a frente / **38 atras** do `origin/main` - `git push origin main` rejeitado como `non-fast-forward`. Nada foi forcado nem resetado; a fusao dos 2 commits locais (`f727600`, `eb36b2a`) com o remoto precisa de decisao do dono.
+- `e2e/known-failures.json` staged e nao tocado; 325 entradas na working tree.
+- HEAD main local `f727600`; remoto `3ac1da1`.
+
 > Blog pessoal estilo devlog — documentando a jornada de Samuel Medeiros
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
-> **Live:** https://lifelog-sepia.vercel.app
+> **Live:** https://lifelog.seu.pet
 > **Status:** ✅ Operacional — 54 posts bilíngues (108 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — **3 posts/dia hidden: 08:00/12:00/16:00 → /ocultos** (28/08; liberação manual do Samuel)
 
@@ -331,7 +337,7 @@ lifelog/
 
 ## 🔗 Links
 
-- **Live:** https://lifelog-sepia.vercel.app
+- **Live:** https://lifelog.seu.pet
 - **GitHub:** https://github.com/Samuelfmedeiros/lifelog
 - **Deploy:** Push na master → CI/CD → Vercel
 - **Gerenciador:** pnpm 10+
@@ -513,4 +519,14 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - `e52e755` fix: capa AI de nova-historia-seguranca-2026-09-28 (watchdog, 79838 bytes webp).
 - `03a8073` fix: capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
 - Working tree de outra sessao, nao tocada daqui: M api/ocultos-data.mjs + ~34 untracked (artefatos .loop-*, posts MDX PT+EN ainda nao versionados, docs/CHANGELOG.md untracked/duplicata sem decisao, capas public/covers, scripts/.dryrun-atomic.mjs).
+- Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.
+
+## Sessao 2026-10-02 (fim de dia) - 2 fixes de View Transitions em branch de feature; main 8 atras do origin (push nao entrega)
+
+- Dois commits de hoje, ambos em branches de feature — NENHUM na `main` (HEAD `eb3bdb4`, 29/09):
+- - `61fa7c8` fix(vt): remove o opt-in cross-document na main — o primeiro clique abria o post (`fix/vt-double-click-main`, ja no origin).
+- - `b4c66f8` fix(css): remove o opt-in cross-document de View Transitions (`fix/remove-vt-nav-optin`, local).
+- **`main` esta 8 commits atras do `origin/main`** → `git push origin main` RECUSADO (non-fast-forward). O commit de docs desta rodada fica local; integrar a `main` e publicar NAO foi feito nesta rodada.
+- **Cuidado (deploy):** `.github/workflows/deploy.yml` dispara em `push` na `main` — publicar a main vira deploy de producao; por isso nada foi mergeado/pushado aqui.
+- Working tree de outra sessao, nao tocada aqui: 301 arquivos em `src/content/` com ruido de CRLF-vs-LF (o proprio git avisa `CRLF will be replaced by LF`) + `api/ocultos-data.mjs` modificados, mais ~20 untracked (`.loop-*`, prompts do Roger). Nada disso foi addado.
 - Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.

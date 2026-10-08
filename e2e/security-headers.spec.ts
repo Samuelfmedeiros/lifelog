@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
  * não no dev server local). Usa a API de request (sem browser) pra checar
  * os headers de forma rápida e determinística.
  */
-const PROD_URL = 'https://lifelog-sepia.vercel.app/';
+const PROD_URL = 'https://lifelog.seu.pet/';
 
 test.describe('Security Headers (DAST)', () => {
   test('HSTS está presente', async ({ request }) => {

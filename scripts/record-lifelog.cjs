@@ -11,27 +11,27 @@ const { chromium } = require('playwright');
   console.log('Recording...');
 
   // 1. Home PT
-  await page.goto('https://lifelog-sepia.vercel.app', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet', { waitUntil: 'networkidle' });
   console.log('✓ Home PT');
   await page.waitForTimeout(2000);
 
   // 2. Archive with TagCloud
-  await page.goto('https://lifelog-sepia.vercel.app/arquivo', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet/arquivo', { waitUntil: 'networkidle' });
   console.log('✓ Archive PT');
   await page.waitForTimeout(2000);
 
   // 3. Filter by tag
-  await page.goto('https://lifelog-sepia.vercel.app/?q=arachne', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet/?q=arachne', { waitUntil: 'networkidle' });
   console.log('✓ Filter by tag');
   await page.waitForTimeout(1500);
 
   // 4. Post
-  await page.goto('https://lifelog-sepia.vercel.app/post/lifelog-ritmo-diario-capa-ai', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet/post/lifelog-ritmo-diario-capa-ai', { waitUntil: 'networkidle' });
   console.log('✓ Post PT');
   await page.waitForTimeout(2000);
 
   // 5. English
-  await page.goto('https://lifelog-sepia.vercel.app/en/', { waitUntil: 'networkidle' });
+  await page.goto('https://lifelog.seu.pet/en/', { waitUntil: 'networkidle' });
   console.log('✓ Home EN');
   await page.waitForTimeout(2000);
 

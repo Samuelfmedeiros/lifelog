@@ -1,0 +1,148 @@
+---
+title: "O falso verde do worktree sujo"
+description: "Um PR aprovado, um merge-tree que passa e mesmo assim o CI volta ao vermelho: o trabalho local de outra sessao reintroduzia o erro que o PR acabara de consertar. O guard que transforma isso em reprovacao antes do commit."
+category: samuel-projects
+date: 2026-10-02 15:20:00 -03:00
+pubDate: 2026-10-05 12:00:00 -03:00
+project: estudos
+tags: [estudos, testing, ci, python, git, reliability, lessons]
+cover: /covers/estudos-o-falso-verde-do-worktree-sujo.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O dia que um PR verde voltou vermelho depois de aprovado
+
+Em 2 de outubro, um PR foi aprovado com todos os checks verdes. A revisao estava feita, o lint passava, a suite de testes dava 4 de 4. A intencao era simples: mergear, fechar a issue, seguir a vida.
+
+O que aconteceu nos minutos seguintes foi mais barato de aprender do que de corrigir: o CI do branch principal voltou ao vermelho com o mesmo erro de ordenacao de imports que aquele PR existia justamente para arrumar. Nao porque o PR estava errado. Porque o PR nao era a coisa que ia ser mergeada.
+
+O repositorio tinha 447 linhas modificadas em um arquivo que era exatamente o arquivo que o PR tocava, e esse trabalho vinha de outra sessao, aberta ao lado da minha. O commit que eu faria nao seria o conteudo do PR: seria o PR mais 447 linhas de outra pessoa, coladas no meio.
+
+## O que o verde do PR provava, e o que nao provava
+
+Tres sinais diferentes diziam "verde", e nenhum deles media a mesma coisa:
+
+- **A revisao do PR passou.** Verdade, e irrelevante para o meu commit: a revisao mede o conteudo do PR.
+- **`git merge-tree` saiu com codigo zero.** Ele prova que a fusao textual nao vai conflitar. Nao prova que o resultado passa no lint, porque o resultado nao estava no comando.
+- **A suite rodou verde no branch do PR.** De novo, mede o branch do PR.
+
+Nenhum desses tres comandos chegou perto de ler o working tree. O working tree era o unico lugar onde o erro estava, e o unico lugar que ninguem mediu.
+
+Esse e o padrao que me passa a incomodar: a verificacao mais distante do objeto que sera efetivamente alterado e a que parece mais autoritativa. Um codigo de saida zero bem costumeizado e mais convincente que um unico `git diff` aberto na tela.
+
+## A solucao: um guard que compara com base limpa
+
+Em vez de confiar no PR, o guard tenta Reproduzir o commit antes de ele existir. A logica cabe em tres perguntas:
+
+1. Ha trabalho sujo rastreado no repositorio?
+2. Rodando o mesmo linter do CI no arquivo, a versao limpa passa?
+3. Copiando o arquivo sujo por cima da versao limpa, passa?
+
+So interessa a terceira pergunta. Um erro novo e exatamente isso: a base estava limpa e, com a minha modificacao por cima, parou de estar.
+
+```python
+base = _temp_repo(repo, ref, "head")   # worktree descartavel da referencia limpa
+
+for rel in tracked_mod:
+    base_rc, base_txt = _lint(base, rel)
+
+    dirty_wt = _temp_repo(repo, ref, "dirty")
+    try:
+        shutil.copy2(os.path.join(repo, rel), os.path.join(dirty_wt, rel))
+        dirty_rc, dirty_txt = _lint(dirty_wt, rel)
+    finally:
+        _git(repo, "worktree", "remove", "--force", dirty_wt)
+
+    new_err = dirty_rc not in (0, 127) and base_rc == 0
+    if new_err:
+        print("GUARD REPROVOU: trabalho sujo reproduz erro de CI")
+```
+
+As duas copias da base sao worktrees temporarios, criados com `git worktree add --detach` e destruidos no `finally`. O guard nao mergeia, nao comitava e nao encostava na worktree principal: ele apenas removia, ao fim, dois diretorios descartaveis. Um guard que altera o repositorio para medir o repositorio deixa de ser um guard e vira mais uma fonte de divergencia.
+
+## A parte que eu nao esperava: baseline vermelho
+
+O primeiro achado de verdade apareceu quando o HEAD local ja estava vermelho. Rodar o linter no arquivo sujo devolvia erro, sim, mas a pergunta "esse erro e novo?" ficou sem resposta: a base limpa tambem reprovava.
+
+Comparar contra um baseline que ja falha nao prova erro novo nem prova verde. Prova que a medicao nao tem contra o que ser comparada. Nesse caso o guard escolhe falar em vez de decidir:
+
+```python
+elif base_rc != 0:
+    found.append({
+        "arquivo": rel,
+        "erro": "BASELINE JA REPROVA (%s): %s" % (args.baseline_ref, base_txt.splitlines()[0]),
+    })
+```
+
+E a cura foi passar a referencia limpa explicita, o SHA do PR ja aprovado, em vez do HEAD que estava sob suspeita:
+
+```bash
+preflight-ruff-dirty-worktree.py --baseline-ref aac6e35
+```
+
+Com a referencia certa, o resultado ficou limpo e honesto ao mesmo tempo: PR sozinho, zero; PR mais o trabalho local, um. O guard tinha acabado de Reproduzir exatamente o numero que eu nao conseguia ver.
+
+## O contrato em tres estados
+
+O detalhe que mais me marcou nao foi a deteccao, foi o contrato. O guard nao devolve sim ou nao. Devolve tres valores, porque existem tres situacoes reais:
+
+| Codigo | Significado | Decisao |
+|--------|-------------|---------|
+| 0 | Trabalho sujo nao introduz erro novo | Pode commitar |
+| 1 | Trabalho sujo reproduz erro do CI | Nao commitar antes de corrigir |
+| 2 | Guard nao conseguiu medir | Nao verificavel, tratar como nao medido |
+
+O codigo 2 existe porque o linter e executado por `uvx`, e `uvx` pode nao estar instalado. A primeira versao do script tratava binario ausente como "sem erro" e saia com zero. Era um falso verde com dois niveis: o do repositorio e o do proprio guard. A regra que ficou: **quando o instrumento nao mede, o resultado nao e verde, e nao-verificavel**.
+
+De quebra isso obrigou o codigo de saida a ser independente do formato: a opcao de saida em JSON nao pode virar o unico lugar onde o resultado aparece, senao formatar o relatorio passa a ser decidir o veredito.
+
+## Numeros do incidente
+
+| Medida | Valor |
+|--------|-------|
+| Erro de lint do PR | `I001` em `core/procedural/routes.py` |
+| Branch principal antes do merge | vermelho (I001 e erro interno do pytest) |
+| PR sozinho | rc=0, 4 de 4 |
+| PR mais o trabalho local | rc=1 |
+| Linhas modificadas de outra sessao no mesmo arquivo | 447 |
+| Arquivos em que o trabalho alheio tocava area do PR | 1 |
+| Worktrees temporarios criados e destruidos por rodada | 2 |
+| Estado do pytest | sobreviveu ao merge; a falha era do conftest |
+
+Todos os numeros sao do incidente real e podem ser conferidos no historico do repositorio. O ultimo merece nota: a falha do pytest nao voltou depois do merge. Uma parte do trabalho de outra sessao ia virar problema serio. A outra parte era solida, e o merge preservou o que prestava.
+
+## Aprendizados
+
+1. **Verifique o objeto que sera alterado, nao o objeto que foi aprovado.** O PR verde e a worktree suja sao coisas diferentes, e so uma delas vai para o branch principal.
+2. **Baseline vermelho nao prova nada.** Quando a referencia limpa ja falha, a medicao precisa de outra referencia, ou precisa declarar que nao consegue medir.
+3. **Instrumento ausente e resultado negativo, nao positivo.** Trois estados sao mais honestos que dois quando existe a chance de o sensor nao estar ligado.
+4. **Guard que altera o repositorio para medir o repositorio e uma fonte de bug.** Worktree descartavel, leitura, linter, remocao no `finally`.
+5. **Erro novo e uma definicao operacional, e vale construir-la.** "Base limpa passa, base suja falha" e testavel, versionavel e discutivel num code review.
+
+## O que vem a seguir
+
+O guard responde sobre lint de arquivos rastreados. Ele nao ve conteudo nao rastreado, nao ve o que o CI roda alem do linter, e nao ve o caso de dois arquivos sujos que so erroam juntos.
+
+A proxima linha e atravessar a mesma fronteira de outro lado: verificar se o que sera commitado passa os *mesmos* gates que o CI vai rodar, usando a referencia do PR aprovado como base limpa. A pergunta nao muda. Muda o instrumento.
+
+<Terminal
+  commands={[
+    { cmd: 'git status --porcelain' },
+    { cmd: ' M core/procedural/routes.py  (447 linhas, outra sessao)' },
+    { cmd: 'git worktree add --detach $TMP 9f74e6f' },
+    { cmd: 'uvx ruff check --select I001 core/procedural/routes.py' },
+    { cmd: 'base limpa .... rc=0' },
+    { cmd: 'base + local .. rc=1' },
+    { cmd: 'I001 imports nao ordenados em core/procedural/routes.py:238' },
+    { cmd: '--- o que o PR sozinho dizia ---' },
+    { cmd: 'PR #26: All checks passed (4/4)' },
+    { cmd: '--- o que eu ia commitar ---' },
+    { cmd: 'PR #26 + 447 linhas de outra sessao: rc=1' },
+    { cmd: '--- a regra ---' },
+    { cmd: 'medir o que vai ser commitado, nao o que ja foi aprovado' }
+  ]}
+/>

@@ -1,0 +1,115 @@
+---
+title: "Os nomes que o Windows não aceita"
+description: "Um arquivo chamado NUL, um router chamado aux.py e um symlink que só existe no Linux: três arquivos que entraram sem resistência no Dogwalk e quebraram o git status em qualquer clone NTFS. A origem é quase sempre a mesma — o .gitignore não vence arquivo já rastreado."
+date: 2026-09-15 20:45:00 -03:00
+pubDate: 2026-10-03 08:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "windows", "git", "refactoring", "lessons", "ci"]
+cover: /covers/dogwalk-os-nomes-que-o-windows-nao-aceita.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Três arquivos que só existiam na minha máquina
+
+O Windows clone do Dogwalk começou a responder coisas que não faziam sentido. `git status` travava com `error: short read while indexing NUL`. `git diff` devolvia `fatal: failed to stat DESIGN.md: Function not implemented`. E o `git checkout` do master devolvia `error: invalid path 'backend/app/routers/aux.py'`.
+
+Nenhum desses arquivos estava no servidor. Nenhum deles tinha qualquer ligação com o produto — o Dogwalk é uma plataforma de passeios com dogs, com agendamento, repasse e perfil de cuidador. Eram três arquivos de lixo que o Linux aceitou com um sorriso, commitou, e que só estouram quando alguém abria o mesmo repositório em NTFS.
+
+O mais confuso é que o repositório estava saudável no CI. GitHub roda Linux. Todo commit passava. Só a cópia de trabalho do Windows é que não conseguia nem listar o próprio conteúdo.
+
+## NUL: um artefato de máquina, rastreado como se fosse código
+
+O primeiro dos três se chama `NUL`. Um arquivo de 6.000 bytes, no diretório raiz, com um nome que é uma palavra reservada do Windows desde o MS-DOS — antes do NTFS, antes de qualquer coisa que eu pudesse ter esquecido.
+
+Ele entrou no dia 09/09 por um auto-sync. A versão antiga daquele script usava `git add -A`, que adiciona tudo que existe na árvore de trabalho sem perguntar. No dia 10/09 alguém escreveu a regra certa no `.gitignore`. Duas semanas depois o arquivo continuava lá, e o motivo é a parte que me interessou:
+
+> **Um arquivo que já está rastreado não é mais filtrado pelo `.gitignore`.**
+
+O `.gitignore` nunca governa arquivo que o Git já conhece. Ele governa o que pode *entrar*. Depois que entrou, ele vira herança permanente — até alguém rodar `git rm --cached` na mão.
+
+O mesmo valia para `GPS|GPS`. Esse nome tinha um `|` no meio, que é caractere reservado do Windows para device, e existia por um motivo que já não me lembro — resíduo de algum teste antigo de geolocalização que nunca foi limpo.
+
+O commit que resolveu os dois chama `chore(repo): destrackeia NUL e GPS|GPS`. Nenhuma linha de conteúdo mudou. O trabalho inteiro foi fazer o Git esquecê-los.
+
+## aux.py: o arquivo que tirou um router do versionamento
+
+O terceiro era mais sério, porque não era lixo — era código em produção.
+
+`backend/app/routers/aux.py` era o módulo que registrava os endpoints de reviews, chat, notificações e financeiro. `AUX` é palavra reservada do Windows com ou sem extensão, e o `git checkout` simplesmente se recusava a materializar o caminho. O efeito colateral era pior que o erro visível: o índice do clone NTFS ficava rasgado, e os arquivos do router saíam do controle de versão sem que ninguém tivesse pedido.
+
+Quando descobri isso, a checagem óbvia foi: o router ainda está rodando? Sim — o backend respondia 200 no `/health` e o app funcionava no Linux. A falha era estrutural, silenciosa, específica de quem trabalha na mesma árvore em dois sistemas de arquivos diferentes.
+
+O conserto foi um `git mv` com renomeação em 100%, zero mudança de conteúdo. Os dois pontos de import mudaram junto: `main.py` e o arquivo de teste. E há um detalhe bonito nisso: o teste faz monkeypatch do módulo, então o import de lá virou `import ... as aux` — o nome interno continua sendo `aux`, a constante que os testes esperavam não mudou, e o diff de comportamento é literalmente zero.
+
+O mesmo dia, a mesma hora, um segundo problema com o mesmo formato: `DESIGN.md` na raiz era um symlink apontando para `design-system/DESIGN.md`. Symlink funciona no Linux, funciona no macOS, e no NTFS só funciona com privilégio de desenvolvedor ou num diretório marcado como reparse point. O clone Windows devolvia `Function not implemented` — a mensagem que o Windows dá para uma syscall que ele simplesmente não implementou naquele contexto. O arquivo virou conteúdo real na raiz, quatro linhas, e o canônico continua onde estava.
+
+## A prova de que renomear não mudou nada
+
+Renomear um arquivo que carrega rotas é o tipo de coisa que a gente aceita por garantia só porque o nome é péssimo. Então a prova veio antes do commit:
+
+```
+openapi() -> 148 paths ANTES e DEPOIS, diff vazio (ROUTES_IDENTICAL)
+pytest tests/test_reviews.py 8/8
+GET /health -> 200
+```
+
+Cento e quarenta e oito rotas antes. Cento e quarenta e oito depois. Diff vazio. O renomeio foi uma mudança de nome de arquivo, e o teste crawling completo provou que a superfície pública da API não se moveu um milímetro. É o tipo de verificação que custa dois minutos e vale um ano de confiança.
+
+## O guard que impede a próxima vez
+
+Corrigir os três casos resolve esta semana. A pergunta que interessa é o que acontece no próximo `git add -A` que eu rodar com a cabeça em outro lugar.
+
+O guard é um script curto que lê a lista de arquivos rastreados e classifica cada caminho contra três regras do NTFS:
+
+```python
+RESERVED = re.compile(r"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$", re.I)
+ILLEGAL_CHARS = set('<>":|?*')
+
+def offender(path):
+    base = path.rsplit("/", 1)[-1]
+    if RESERVED.match(base):
+        return "reserved-windows-name"
+    if ILLEGAL_CHARS & set(path):
+        return "illegal-windows-char"
+    if base != base.rstrip(". ") and base.strip(". "):
+        return "trailing-dot-or-space"
+    return None
+```
+
+Três checagens, na ordem certa: nome reservado (incluindo `COM3` e `LPT9`, que quase ninguém lembra que existem), caractere ilegal em qualquer ponto do caminho, e ponto ou espaço no fim do nome — outra regra do Windows que o Linux não tem e que também quebra checkout.
+
+O detalhe que eu mais gosto é a segunda função. O erro de um nome é `invalid path`; o efeito real é que *outro arquivo, não-ofensivo, sai do versionamento sem aviso*. O script não olha o caminho que está errado — ele declara que o caminho que está errado é crime de todos os clones Windows que existem.
+
+E ele não é um script que alguém lembra de rodar. Está no workflow, como primeiro passo depois do checkout:
+
+```yaml
+- name: Guard — nenhum path invalido no Windows (15/09)
+  working-directory: .
+  run: python3 scripts/check-win-invalid-paths.py
+```
+
+Exit 0 passa, exit 1 derruba o pipeline com a lista dos ofensores no stdout. Mais um log dedicado com timestamp, escrevendo `OK tracked=<n>` ou `VIOLATION <motivo>: <caminho>`, porque a prova de que um problema recorre é ter o registro das vezes em que ele não recorreram.
+
+## O que três nomes enseñam
+
+- **`.gitignore` é filtro de entrada, não de permanência.** Ele nunca expulsa. Se um arquivo perigoso entrou uma vez, ele só sai com `git rm --cached` — e essa é uma tarefa de manutenção periódica.
+- **A plataforma onde o CI roda não é a plataforma onde todo mundo trabalha.** Um repositório pode passar todas as validações e ainda assim quebrar para um terço das pessoas do time. "Funciona no CI" é uma afirmação sobre o CI.
+- **Erro de caminho nomeado tem efeito lateral silencioso.** O sintoma que você vê (`invalid path`) não é o estrago que houve. O estrago é o índice rasgado e os arquivos que sumiram do tracking.
+- **Renomear arquivo que carrega rota não é operação de baixo risco sem prova.** Duas páginas do OpenAPI antes e depois, com diff, é o que separa um renomeio de um incidente.
+
+Um repositório é uma coleção de decisões sobre quais sistemas de arquivos ele promete suportar. O Dogwalk promete Linux no servidor, NTFS na mesa e macOS no notebook — e essa promessa agora tem um teste rodando em CI, que é a única forma de promessa não virar espero.
+
+## O que vem depois
+
+O mesmo commit limpou uma última categoria do mesmo tipo: evidência de verificação ao vivo. O commit `chore: nao versionar evidencias de verificacao ao vivo` destrackeia PNGs de prova (`output/prod-*`) que tinham entrado por resíduo de um loop automático. Não quebravam clone nenhum, mas entulham o histórico com arquivos que ninguém vai abrir.
+
+A fila natural agora é o inverso: um `pre-commit` que rode o mesmo guard antes do commit existir, e não só no CI. O CI garante que ninguém consiga empurrar caminho inválido para o master; o hook garante que a pessoa descubra no terminal, em vez de alguém descobrir em produção.
+
+<Terminal command="git log --oneline -4 --format=%s" output="chore(ci): remove deploy autonomo do local-ci.sh
+docs: fim de dia 2026-09-16 - rodada self-contained (secao AGENTS + entrada CHANGELOG)
+fix(explorar): zona de cobertura agrega sem vazar id de pessoa
+fix(repo): DESIGN.md raiz vira arquivo real (symlink 9p quebra clone Windows)" />

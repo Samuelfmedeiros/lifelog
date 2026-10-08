@@ -1,5 +1,14 @@
 # 📋 CHANGELOG — LifeLog
 
+## 2026-10-05 - 19 commits no dia (release de 12 posts + refazer #67 + VRT/e2e) e main DIVERGIDA
+- **release(posts)**: 12 commits `release(post)` liberando pares PT+EN com `ocultos-data` (Dogwalk x3, Capivara, Arachne, Portifolio x2, Yurumi x2, TatuEngine, seguranca, portfolio) + os `feat(lifelog)` dos ocultos.
+- **refazer** (`5681ee2`, `ba60378`, `139d4e3`, `ed1d84e`): recusas dos posts rejeitados - #67 (a campanha que degradou em silencio) e dos duplicados de portfolio/seguranca.
+- **test(vrt)/e2e** (`f247b39`, `3082f3b`, `08f2c6a`, `d9c2424`): workflows de regeneracao de baseline, ratchet de a11y zerado e guard de tema duplicado no mesmo dia.
+- **fix(ci)** (`3ac1da1`): o workflow de VRT regenera os baselines e abre PR de verdade. **dependabot** (`282071c`): `peter-evans/create-pull-request` 6 -> 8.
+- **BLOQUEIO - push RECUSADO**: `git push origin main` volta `non-fast-forward`. `main` local esta **2 commits a frente e 38 atras** do `origin/main` (tip remoto `3ac1da1`, de 05/10 19:53). Sem force-push e sem reset: resolver os 2 commits locais (`f727600`, `eb36b2a`) contra o remoto exige decisao do dono.
+- `e2e/known-failures.json` segue staged (nao tocado). Working tree com 325 entradas, em sua maioria `.bak-*`/estados de loop.
+- 19 commits em todas as branches - **push do dia recusado** - HEAD main local: `f727600`.
+
 ## [2026-09-15] - resgate da tree suja: a11y dos cards + pills yurumi + 3 posts orfaos
 - **fix(a11y)** PostCard: chips de tag fora da âncora do card (HTML invalido derrubava nome acessivel).
 - **fix(e2e)** lifelog.spec.ts ganha yurumi; ratchet 8->7 (entrada das pills paga).
@@ -277,3 +286,8 @@
 - **fix** (`e52e755`): capa AI de nova-historia-seguranca-2026-09-28 (watchdog).
 - **fix** (`03a8073`): capa AI de nova-historia-portfolio-2026-09-28 (watchdog).
 - 2 commits no dia; working tree segue com trabalho de outra sessao (posts MDX + M api/ocultos-data.mjs, intactos).
+
+## [2026-10-02] - 2 fixes de View Transitions em branch de feature; main 8 atras do origin (push nao entrega)
+- fix (`61fa7c8`): remove o opt-in cross-document de View Transitions na main — primeiro clique abre o post.
+- fix (`b4c66f8`): remove o opt-in cross-document de View Transitions (css).
+- 2 commits de hoje, ambos em branch de feature; `main` segue 8 atras do `origin/main` (push recusado por non-fast-forward) — commit de docs ficou local para nao acionar o deploy da `main`.

@@ -13,9 +13,11 @@ export interface Props {
   locale?: string;
   noindex?: boolean;
   alternatePath?: string | null;
+  schema?: Record<string, unknown> | null;
+  schemaExtra?: Record<string, unknown> | null;
 }
 
-const { title, description, theme, image, type, locale, noindex, alternatePath } = Astro.props;
+const { title, description, theme, image, type, locale, noindex, alternatePath, schema, schemaExtra } = Astro.props;
 const lang = locale === 'en' ? 'en' : 'pt-BR';
 const dataLocale = locale || 'pt';
 const t = getTranslations(dataLocale);
@@ -23,7 +25,8 @@ const pageTitle = `${title} — LifeLog`;
 const pageDesc = description || t.home.description;
 const themeAttr = theme || 'dev';
 const ogType = type || 'website';
-const SITE_URL = 'https://lifelog-sepia.vercel.app';
+// Deriva do `site` do astro.config.mjs (fonte unica).
+const SITE_URL = (Astro.site?.toString() || 'https://lifelog.seu.pet').replace(/\/$/, '');
 // Imagem OG: capa do post ou a imagem padrao do site (public/og-default.png,
 // 1200x630). SEMPRE emite og:image — sem ela o LinkedIn descarta o card e cai
 // em fallback de busca pelo dominio (bug Arachne, 14/09/2026).
@@ -37,7 +40,7 @@ const ogImageAbs = ogImage.startsWith('http') ? ogImage : `${SITE_URL}${ogImage}
 const homeHref = dataLocale === 'en' ? '/en/' : '/';
 const archiveHref = dataLocale === 'en' ? '/en/archive' : '/arquivo';
 const aboutHref = dataLocale === 'en' ? '/en/about' : '/sobre';
-const portfolioHref = 'https://samuelmedeiros.vercel.app';
+const portfolioHref = 'https://portifolio.seu.pet';
 
 // Language switcher: stay on the SAME page when changing locale.
 // (was hardcoded to home — switching language from /tag/... or /post/...
@@ -180,10 +183,22 @@ const footerText = dataLocale === 'en'
     <meta name="description" content={pageDesc} />
     <title>{pageTitle}</title>
     {noindex === true && <meta name="robots" content="noindex, nofollow" />}
+    {import.meta.env.PUBLIC_GOOGLE_SITE_VERIFICATION && <meta name="google-site-verification" content={import.meta.env.PUBLIC_GOOGLE_SITE_VERIFICATION} />}
+    {import.meta.env.PUBLIC_BING_SITE_VERIFICATION && <meta name="msvalidate.01" content={import.meta.env.PUBLIC_BING_SITE_VERIFICATION} />}
     <link rel="canonical" href={SITE_URL + canonPath} />
     {alternates && <link rel="alternate" hreflang="pt-BR" href={SITE_URL + alternates.pt} />}
     {alternates && <link rel="alternate" hreflang="en" href={SITE_URL + alternates.en} />}
     {alternates && <link rel="alternate" hreflang="x-default" href={SITE_URL + alternates.pt} />}
+    {schema && (
+      <script
+        type="application/ld+json"
+        set:html={JSON.stringify(
+          schemaExtra
+            ? { '@context': 'https://schema.org', '@graph': [schema, schemaExtra] }
+            : schema
+        )}
+      />
+    )}
 
     <!-- Open Graph / Facebook -->
     <meta property="og:title" content={pageTitle} />

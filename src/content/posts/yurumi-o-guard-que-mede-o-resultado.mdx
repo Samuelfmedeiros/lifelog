@@ -1,0 +1,105 @@
+---
+title: "Yurumi: o guard que parou de perguntar se o código existe"
+description: "O indexador escrevia 4.541 notas em C:/mnt/d e o vault real ficava congelado — o guard antigo só conferia se as funções estavam no arquivo, nunca o resultado em disco. Dois sintomas, uma cura: medir o destino."
+date: 2026-10-01 19:20:00 -03:00
+pubDate: 2026-10-03 16:00:00 -03:00
+project: yurumi
+tags: [yurumi, guardrails, watchdog, integrity, reliability, observability, lessons]
+cover: /covers/yurumi-o-guard-que-mede-o-resultado.webp
+featured: false
+hidden: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O guard que sabia tudo e não alarmava
+
+O Yurumi tem um indexador que varre repositórios e joga notas de código num vault no disco D:. Ele roda há meses, todo dia, sem falhar. O log dizia `OK` todo dia às 7h.
+
+O log dizia `OK` mesmo quando o vault estava congelado há duas semanas.
+
+Esse é o tipo de falha que não tem alarme: o processo existe, o cron dispara, o script roda até o fim, o exit code é zero. Tudo funciona. Só que os arquivos estavam indo para o lugar errado — e o lugar errado existia.
+
+## O sintoma A: 4.541 notas no disco errado
+
+Em 12/09 eu abri a árvore do disco C: por causa de outra coisa e vi uma pasta que não deveria existir. `C:\mnt\d\SAMUEL` — 4.541 arquivos Markdown, dezenas de megabytes, espalhados por uma árvore inteira de diretórios que eu nunca criei.
+
+O vault real, em `D:\SAMUEL\Hermes Memory`, estava lá, com as notas certas. Só que nada novo chegava nele.
+
+A causa era uma linha de código. O indexador tem uma constante com o caminho do vault, e ela foi escrita no formato POSIX — `/mnt/d/SAMUEL/Hermes Memory`. No WSL isso é perfeito: `/mnt/d` é o caminho de acesso ao disco D: pelo subsistema Linux. No Windows, porém, Python resolve `/mnt/d/...` como um caminho **relativo** ao drive atual. Com o drive atual sendo C:, o caminho vira `C:\mnt\d\SAMUEL\Hermes Memory`.
+
+E o script criava os diretórios. Com `parents=True`, `mkdir` não reclama se o pai não existe — ele constrói a árvore do zero. Então o indexador não falhava: ele criava o diretório que ele mesmo estava esperando encontrar. Um erro de configuração que se autocomprova e se mantém vivo.
+
+## O sintoma B: silêncio com exit code zero
+
+Duas semanas depois eu resolvi aquele primeiro bug. O vault voltou a receber notas. E aí apareceu o segundo sintoma, mais chato.
+
+O indexador simplesmente parou de escrever. Sem erro, sem exceção, sem traceback. O cron logava `OK` — porque o script terminava com êxito, tendo processado zero arquivos.
+
+O culpado era o `rglob`. O indexador usava `rglob("*.py")` para varrer a árvore do repositório, e `rglob` não tem poda nativa. Quando o repositório tem um `node_modules` — e tem, se você usa pnpm — o `rglob` entra nele pelas junções de 9P do WSL. Cada arquivo de dependência vira um syscall de stat através da ponte. Num projeto com Capivara no meio da árvore, a descoberta levava **130 segundos**. Nesses projetos o run inteiro passava do limite do cron e era cortado antes de escrever qualquer nota.
+
+Resultado: zero output, zero erro, exit code zero. O pior tipo de falha, porque não parece falha.
+
+## O que os dois tinham em comum
+
+O guard antigo — o script que roda às 7h e valida se o indexador ainda está inteiro — verificava sete coisas. E as sete eram assim:
+
+```
+'EXTRA_PROJECTS = {'
+'def walk_files('
+'def _resolve_extra_path('
+'write_if_changed'
+'if project_filter:'
+'D:/SAMUEL/Hermes Memory'
+os.name
+```
+
+Traduzindo: "o arquivo ainda tem a constante de projetos extras? Ainda tem a função que poda o `node_modules`? Ainda tem a ramificação de sistema operacional?"
+
+Em termos simples: **o código ainda existe**. Todas as sete verificações são sobre presença de texto no arquivo. O guard fazia sete perguntas, todas com a mesma resposta possível, todas sobre se a peça continuava no arquivo. Nenhuma sobre se o resultado aparecia em disco.
+
+Um dia o arquivo pode ter todas as sete funções, o script rodar até o fim e mesmo assim não escrever uma única nota — porque a constante aponta para outro caminho, ou porque o `rglob` gastou o tempo todo varrendo `node_modules`. O guard multivitaminado passava os dois dias com `OK`.
+
+## A virada: perguntar pelo resultado
+
+A reescrita do guard trocou a pergunta. Em vez de "este código existe?", agora é "este resultado existe?".
+
+Três mudanças, e a ordem importa.
+
+**Um: o guard checa o disco, não o arquivo.** A verificação nova não lê o script do indexador. Ela mede a nota mais recente dentro do vault de verdade e compara com a data do último commit do repositório. Se o repositório andou muito além da última nota, o indexador parou. Essa é a única checagem que realmente prova que algo está funcionando.
+
+**Dois: os sintomas viraram checks nomeados.** O caminho fantasma ganhou nome próprio — `FANTASMA` — e o indexador parado ganhou o nome `ATRASADO`. Nomes que correspondem a sintomas observados, não aoice buckets abstratos. Quando o log diz `FALHA: FANTASMA`, eu sei exatamente o que aconteceu sem abrir o log.
+
+**Três: cada check novo carrega o porquê.** O guard não tem uma lista de strings; tem um dicionário, e cada token obrigatório vem acompanhado de uma frase que explica qual falha ele previne. O token `'D:/SAMUEL/Hermes Memory'` não é só "tem que estar no arquivo" — é "sem isso escreve em `C:/mnt/d`". A próxima pessoa que mexer no indexador lê o porquê antes de remover a linha.
+
+## O guard como está hoje
+
+Rodando às 7h, o log tem vinte e sete linhas. Vinte e quatro são `OK`. As outras três são as duas falhas que já aconteceram:
+
+```
+2026-09-14 01:07:13 | FALHA: FANTASMA: C:\mnt\d\SAMUEL existe -- notas saindo fora do vault
+2026-09-29 07:00:08 | FALHA: ATRASADO: repo commitado 11d depois da nota mais nova do vault
+2026-10-01 07:01:13 | FALHA: ATRASADO: repo commitado 14d depois da nota mais nova do vault
+```
+
+O log não tem uma linha para o momento em que o primeiro arquivo apareceu na árvore errada. Nem tem linha para o dia em que o `rglob` começou a engolir o run. O log tem linhas para quando alguém foi ver.
+
+O que vale: os 14 dias do `ATRASADO` acabaram em `OK` quatro horas depois do alarme. O guard não conserta indexador nenhum — ele mede. Mas medir é o que permite que alguém olhe. E alguém olhando é o que transforma um silêncio em uma linha de log.
+
+## O que aprendi
+
+- **Presença de código não é resultado.** Um guard que lê o arquivo que deveria estar correto não pode falhar mesmo quando o que importa quebrou. Ele tinha sete perguntas e nenhuma sobre o mundo.
+- **Caminho relativo é uma bomba silenciosa.** `/mnt/d/...` no Windows não dá erro — dá `C:\mnt\...`. E `mkdir(parents=True)` transforma a falha em diretório. A falha deixa de ser erro e vira estrutura permanente, até alguém apagar a pasta à mão.
+- **Um guard que nunca falhou nunca foi testado.** Vinte e quatro `OK` consecutivos dizem que o caminho feliz funciona. As três linhas de falha dizem que a detecção funciona. Só um dos dois grupos prova que o guard presta.
+- **O sintoma é o que importa no log.** "FANTASMA" e "ATRASADO" dizem o que aconteceu. "check_2_failed" diz que uma condição de teste falhou, e é isso que eu vou ler daqui a seis meses quando não lembrar mais o contexto.
+
+<Terminal commands={[
+  { cmd: 'grep -c . ~/.yurumi/code-to-vault-guard.log', description: 'Quantas vezes o guard rodou — 27 linhas, 24 delas OK' },
+  { cmd: 'grep FANTASMA ~/.yurumi/code-to-vault-guard.log', description: 'A primeira falha: 4.541 notas escritas no disco errado' },
+  { cmd: 'grep ATRASADO ~/.yurumi/code-to-vault-guard.log', description: 'A segunda falha: indexador parou e ninguém reclamou' },
+  { cmd: 'ls C:/mnt/d/SAMUEL', description: 'O caminho fantasma, depois de limpo' }
+]} />
+
+---
+
+*O próximo post vai ser sobre o guard de contagem de memória no Yurumi — mesma doença, outro sintoma: um limite que nunca foi testado contra o número real de notas.*

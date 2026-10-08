@@ -1,0 +1,124 @@
+---
+title: "The captcha that took the whole login down"
+description: "A single config line with a placeholder where the key should be killed production login and signup for almost nine hours — and the real key existed nowhere at all. The story of the best-intentioned lockout I ever shipped, and of the doctor that diagnoses a pair without ever seeing the secret."
+date: 2026-09-16 03:30:00 -03:00
+pubDate: 2026-10-04 09:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, security, secrets, cloudflare, debugging, ci-cd, api]
+cover: /covers/dogwalk-o-captcha-que-derrubou-o-login.webp
+featured: false
+hidden: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There is an enormous difference between "the captcha is broken" and "the captcha is broken and I do not know why". The first sentence is an incident. The second one is an overnight shift.
+
+In the early hours of September 16, PataPass login was returning 403 for everybody. Not "sometimes". Not "for some users". Everybody. And the detail that kept me awake was not the 403 — it was the reason the system was behaving exactly as designed.
+
+## The detail that confused me
+
+The PataPass captcha was configured in **fail-closed** mode: when validation does not pass, access is denied. That is the correct choice. A captcha that fails open is a captcha that does not exist.
+
+The problem is that fail-closed turns any configuration mistake into total unavailability. If the key that validates the token goes missing, the system does not degrade — it stops.
+
+And that is exactly what happened.
+
+One line of the application environment file — the line read by the service manager at boot — had, since the previous afternoon, a **placeholder** where the real key should be:
+
+```
+TURNSTILE_SECRET_KEY=COLE_A_SECRET_AQUI
+```
+
+The placeholder name said everything. It was the exact text I leave in example files, substituted in the working copy and forgotten in the file that shipped to production. That afternoon, someone — or some sync routine — uncommented that line to test something. On the next restart, fail-closed picked up the placeholder, tried to validate, could not, and started refusing every login and every signup with a 403.
+
+Nine hours of downtime. The system was never more correct than it was: it did exactly what it had been told to do.
+
+## The really uncomfortable part: the key did not exist
+
+If the placeholder were the only broken version, the fix would be to write the right key and be done. It was not.
+
+When I went looking for the real key, I ran the sweep you run when you inherit a configuration that is months old: full disk on both environments, command history, git history, backups, environment variables, the CI provider metadata, and the twelve cloud credentials on the machine, tested one by one.
+
+The result was negative everywhere. The key **did not exist in any reachable place**.
+
+That is the detail that made me stop and write this story. If the key never existed, who was validating the captcha before? Answer: nobody, reliably. The published frontend was using the captcha provider's **test key** — which, by design, approves every challenge. The backend was "validating" against a credential that could not validate anything.
+
+In other words: there was a captcha that did not captcha, backed by a backend checking an unlocked door. Except the backend believed it was checking a locked door. And when someone fixed the configuration so validation would start failing for real, the whole system felt it.
+
+A security control that never exercised its error path has no error path. It only has the moment when someone exercises it — and that moment is always in production, almost always in the middle of the night.
+
+## The diagnosis that never sees the secret
+
+The first instinct is to print the configuration. That is the wrong instinct.
+
+The rule I followed, and that I want to record here because it saved hours: **diagnosing a secret never requires seeing the secret**. It requires seeing the **result** of using it.
+
+I proved the pair by calling the validation endpoint with the key and a deliberately fake token, and I only looked at the error codes coming back:
+
+```bash
+# intentionally invalid response: does not test the captcha, it tests the PAIR
+curl -s -m 20 https://challenges.cloudflare.com/turnstile/v0/siteverify \
+  -d "secret=$SECRET" \
+  -d "response=doctor-fake-par-check"
+```
+
+And here is the trick I did not know about: the error codes separate two worlds that look identical from a distance.
+
+- `invalid-input-response` — **the pair is good.** The key exists, was accepted, and the system got far enough to reject the fake token. That is a proof of life.
+- `invalid-input-secret` — **the key is dead.** The provider never even looked at the token.
+
+A test with a fake token is supposed to fail. When it fails in exactly the right way, that is the best news of the day. The error is the signal of life.
+
+I ran it with the credential sitting in CI. Result: `invalid-input-secret`. That key was dead at the provider — and, by coincidence, it was in a format that did not match the official format, which explains why nobody had noticed before: it had never worked.
+
+## The doctor that came after
+
+With the diagnosis in hand, I wrote two tools — one that runs in CI and one that runs locally — following a single rule: **neither of them prints, logs or returns the secret value**. They only print length, hash prefix and response codes.
+
+The local script does a bit more: it lists the captcha widgets on the account, finds the one whose public pair matches what production actually uses, and only then writes the credential into the environment file — and only if three conditions hold at the same time:
+
+1. the credential format matches the expected shape;
+2. the pair validation answers `invalid-input-response`, meaning valid pair;
+3. the environment file has **exactly one** anchor line for that key.
+
+Each one of those conditions aborts the operation without writing anything. The third one looks like overkill, but it is the one that prevents the worst possible mistake in this situation: writing the key in the wrong place and moving on with an environment file that now has two conflicting entries — which is how you get a defect that only shows up in one specific environment, on somebody's machine, at three in the morning.
+
+And the backup is taken first, with an explicit name. That is not overkill. That is the reason you have a way back.
+
+## The rule that stayed behind
+
+After fixing it, I wrote a rule into the project documentation that is short and I will not paraphrase:
+
+> Never write the captcha key into the environment file without the pair validation confirming the pair **before** the restart.
+
+The reason mirrors the incident. Active and invalid key is a dead login. Commented-out key is verification switched off. There is no intermediate configuration that is safe by accident — there is only the configuration that was **verified** before it became production.
+
+I verified live after the fix: with the key in place, the endpoint started returning 401 for wrong credentials and 400 for a password that fails format validation. Real errors, at the right level, with the right response. That is the difference between a system that fails and a system that works.
+
+## What I take away from it
+
+Three things, and none of them is about captcha.
+
+**First: a security control is only worth the error path it exercises.** A verifier that has never seen a fake token is decoration. The fake-pair test is what turns the control into a control.
+
+**Second: diagnosing without secrets is a skill, not a trick.** If you need to see the value in order to diagnose, you build systems that leak. If you only need the return code, you build systems that anyone can diagnose anywhere, with any permission — including none at all.
+
+**Second, continued: a configuration mistake is an availability incident, not a security one.** Fail-closed was right. It was simply configured with the wrong value. When a security control takes the product down, the first question is not "how do we bypass the control" — it is "which value is the control reading".
+
+**Third: the list of places to look for a secret is finite and I memorised it.** Disk, command history, git history, backups, environment variables, CI metadata, account credentials. When all seven come back negative, the conclusion is not "keep looking" — it is "this value was probably never written", and the fix is to create, not to recover.
+
+Login was back before dawn. The real captcha, with real validation, came later — once someone authorised creating the right widget. But the incident had already taught me what I needed to know, and none of that depended on any permission.
+
+<Terminal commands={[
+  { cmd: '# proof of life for the pair: fake token, we only watch the error code' },
+  { cmd: 'curl -s -m 20 https://challenges.cloudflare.com/turnstile/v0/siteverify -d "secret=$SECRET" -d "response=doctor-fake-par-check" | grep -oE \'"error-codes":\\[[^]]*\\]\'' },
+  { cmd: '' },
+  { cmd: '# invalid-input-response => pair GOOD (key exists and was accepted)' },
+  { cmd: '# invalid-input-secret  => key DEAD (they never looked at the token)' },
+  { cmd: '' },
+  { cmd: '# diagnosis never needs to see the secret - only the result' },
+  { cmd: 'printf %s "$SECRET" | sha256sum | cut -c1-12   # prefix, never the value' },
+  { cmd: 'echo "len=${#SECRET}"' },
+]} />

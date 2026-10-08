@@ -1,0 +1,54 @@
+---
+title: "Dogwalk: The Timezone Shift the Client Would Have Noticed First"
+description: "Pinning sqlmodel, a single time helper, and the next-walk hero fix — the tz-aware release from 10/05."
+category: samuel-projects
+date: 2026-10-06 08:00:00 -03:00
+pubDate: 2026-10-06 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, timezone, api, testing]
+cover: /covers/nova-historia-dogwalk-2026-10-06.webp
+hidden: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The three-hour shift
+
+The date rendered on the interface came from a timezone-naive `datetime` field. When daily aggregates arrived from the database in UTC and the frontend interpreted them as local, the `NextWalkHero` countdown could jump three hours forward or backward depending on the query path. No test complained: types matched, formats matched, only the anchor was wrong.
+
+The frustration was that no single place owned the flaw. Every backend module constructed time manually — `datetime.now()` here, a naive string there — and the source of truth differed across files.
+
+## The conflict: dependency hardening
+
+The push came from dependencies. Starting at version 0.0.45, `sqlmodel` began enforcing explicit tz-aware `datetime` objects. Naive values that previously passed seed and rollback steps started crashing backend boots. With the engine stuck, it became clear the issue was never a single bad function—it was the lack of a unified time contract. To make things worse, integration tests suffered from a login lock leak: `login_attempts` survived transaction rollbacks and contaminated subsequent tests, making CI flake unpredictably.
+
+## The resolution: three commits, one contract
+
+The 10/05 round landed in master across three fronts:
+
+- **Pinned sqlmodel** (`aa484452`): locked at `<0.0.45` while the migration `b1_timezone_aware_datetimes.py` matures—re-enabling reliable boots without broken updates.
+- **Cleared login_attempts in conftest** (`989f8216`): state leaks between integration tests are explicitly purged, ensuring each test starts fresh.
+- **Unified time helper** (`ae7622ae`): `app/core/time.py` centralizes datetime creation backed by `test_time_contract.py`. Following that (`7a8f579d`), the schema turns tz-aware and `NextWalkHero` safely converts to local time on display (`3c91e277`) — the exact commit returning the correct walk schedule to the user.
+
+The helper remains deliberately lean: UTC at the server boundary, conversion only where the user looks.
+
+```python
+from datetime import datetime, timezone
+
+def get_utc_now() -> datetime:
+    """Returns the current UTC timestamp with explicit timezone."""
+    return datetime.now(timezone.utc)
+```
+
+## Why three hours and not zero
+
+Migration `b1_timezone_aware_datetimes` reflects the choice: instead of feigning neutrality, the database adopts timezone awareness. The client didn't need to know about `sqlmodel` or the helper—but a three-hour offset in the next walk card would have sparked immediate notice. Now the test contract speaks up first.
+
+<Terminal
+  commands={[
+    { cmd: 'pytest backend/app/tests/test_time_contract.py', output: 'passed · tz-aware contract verified' },
+    { cmd: 'pip show sqlmodel | grep Version', output: 'Version: 0.0.44 (pinned <0.0.45, boot stabilized)' },
+    { cmd: 'alembic heads', output: 'b1_timezone_aware_datetimes (head)' }
+  ]}
+/>

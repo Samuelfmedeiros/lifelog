@@ -1,0 +1,102 @@
+---
+title: "The key the search engine has to find on its own"
+description: "To tell search engines that a change is real, the protocol requires me to publish a file at the root of my site that anyone can read. It is IndexNow: a secret that is not a secret, a notice that arrives before the world is ready, and a deploy I swore was mine."
+category: samuel-projects
+date: 2026-10-06 13:00:00 -03:00
+pubDate: 2026-10-06 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "seo", "ci", "deploy", "vercel", "lessons"]
+cover: /covers/lifelog-a-chave-que-o-buscador-precisa-achar-sozinho.webp
+featured: false
+hidden: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Today the blog gained two things nobody can see by looking at the screen. An invisible signature in the HTML of every post, telling Google that the thing is an article, who wrote it, when it was published and what the cover is. And a notice sent to four search engines that are not Google, saying the site has changed.
+
+Both depend on an idea that took me a while to accept: to tell a search engine that my change is real, I have to publish at the root of my own site a file that anyone can read.
+
+## What the protocol asks for
+
+IndexNow solves a problem that is easy to explain and annoying to live with. There is the sitemap, which is the list of everything the site has, and there is the wait: you publish, the crawler comes whenever it feels like it, sometimes days later. IndexNow swaps the wait for a notice. Instead of hoping the crawler shows up, the site raises its hand and says: this changed here.
+
+The interesting part is what comes before the notice. No search engine will accept my message without knowing that I control the domain I am announcing. So the protocol asks a very direct question: host at the root of your site a file whose name is your key, and whose content is your key again. The engine fetches that file. If it answers, you are the owner.
+
+Google does not consume IndexNow, and that is no accident: it has its own path, Search Console, and it would rather discover through the sitemap declared in `robots.txt`. The ones who consume the protocol are Bing, Yandex, Seznam and Naver. I wrote that in the script's header because my first question was "so what is this even for?" — it is for the four that are not Google, and that is reason enough.
+
+## The proof is an exposed file
+
+There is something quietly elegant here. The proof that I control the site is me leaving a file on the site, visible, unauthenticated, no token, nothing. The trust mechanism is the opposite of hiding: it is exposing in a very specific way.
+
+I made the script check the file before submitting anything. Not out of distrust of the engine, but out of distrust of myself: it is easy for the file not to have shipped, for the build to have wiped the folder, or for me to have rotated the key on the server and forgotten the file. If the check fails, the process stops right there, with a message naming exactly which URL did not answer. Failing early with an address beats submitting, getting a generic error, and spending half an hour looking for the cause in the wrong place.
+
+## The race that turned the run red
+
+The notice was not accepted on the first try.
+
+The key had just been published. The engine answered, very politely, that site verification was not complete yet. And it was right. The file existed in the repository, the deploy had finished, but propagation to the node that answers the engine takes a few minutes. The engine was not lying: it had simply arrived before the world was ready.
+
+The answer I wrote for that was patience with a name. A few attempts, with a wait between them, and one detail that made the difference: keep trying only if the error is exactly this one. A site that fails verification is still a real error and should fail immediately. A site that is still propagating is a race, and races get waited out.
+
+It is a small distinction, and it is the difference between a job that sometimes goes red for nothing and a job that goes red when it matters. The temptation here was the usual one: turn the step into something that never fails, because "it is only a matter of time". It is not the same case. I want it to fail if the key is not live. I want it to wait if the key is live and the engine just has not seen it yet.
+
+## A file my script looked for first
+
+While checking the submission in production, I found something that made me laugh and then made me think.
+
+The script tries two sitemap addresses, in this order: the index and the direct one. The index answered with an error page. The direct one answered with 353 URLs. And the submission worked anyway, because I had written the script to try one, find out it does not exist, and move on to the other without drama.
+
+What bothered me was not the 404. It was remembering why the first address is there at all. I wrote it because that is how large sitemaps are usually organized: an index pointing at several child files. It is a real convention, from enormous sitemaps, and mine is not one of them. I had transcribed the convention into the code without ever having the file.
+
+The script survived because it was tolerant. But the lesson is not about the script being pretty. It is that writing the format the world usually uses is not the same thing as having the file the world usually uses. If I had written the script assuming the index — which would also have been reasonable — it would be failing to this day, in a discreet silence, with nobody noticing for weeks.
+
+## The green that was not the deploy
+
+The same day, the pipeline run went red. Not because of IndexNow: because of an old step that told Vercel to publish the site from the command line.
+
+The detail is that this step was not publishing anything. The production deploy already happens through the Git integration: when a push lands on main, Vercel itself publishes, and the deploy author is Vercel's own bot. The CLI step was the second one doing the same job, and the first one to fail — it broke on an invalid token, wrote "no teams available" to the log, and painted the run red. The site went up fine, on time, without it.
+
+It took me longer than I would like to accept that the answer was to delete it. Deleting a deploy step feels dangerous, because intuition says deploy is exactly the thing you do not touch. Except the step was not the deploy. It was a statement about the deploy, that nobody was reading, duplicating someone else's work. I removed the step and left a comment in its place explaining why it left and how to bring it back if a valid token ever returns. A decision without an address is a decision someone will undo by mistake six months later.
+
+## The boundary
+
+Part of this work is about what is NOT announced.
+
+The previews of hidden posts exist on the site, are reachable by direct link, and must never reach any search engine. They ship with `noindex, nofollow`, the whole folder is excluded in `robots.txt`, and the submission script filters out any URL containing that path before it builds the batch. Not one lock; three, at different layers, because something that must not be found deserves more than one chance at not being found.
+
+I confirmed the result from the outside, which is the only place where that bill gets settled: zero references to the hidden folder in the sitemap we sent. The only two lines on the sitemap containing that word are a published post whose title happens to talk about hidden posts.
+
+| Metric | Before | After |
+|---|---|---|
+| Sitemap URLs submitted | 0 (never submitted) | 353 |
+| Structured data in posts | none | BlogPosting + BreadcrumbList |
+| Search engines notified on push | none | 4 (via IndexNow) |
+| Nonexistent sitemap index | unhandled | falls back to the direct file |
+| Key checked before submitting | absent | HEAD on the public URL |
+| Redundant deploy steps in CI | 2 | 1 |
+| Hidden previews in the batch | open risk | 3 layers + 0 in the sitemap |
+
+## What stays
+
+**Proof can be public.** The trust mechanism I like most here is the one that hides nothing: a file at the root, readable by anyone, proving exactly one thing — that whoever controls the domain put it there. Security that works by being verifiable, not by being secret.
+
+**The right error at the wrong time looks like the wrong error.** The site verification was legitimate, correct and useless for a few minutes. Telling "this will not work" apart from "this does not work yet" is what separates an honest retry from a mask.
+
+**Transcribing the convention is not having the file.** I wrote into the code the format large sitemaps use, without having any. Tolerance saved it — but I would rather know why the line is there than depend on it being right by accident.
+
+**If the step is not the deploy, it does not deserve the deploy's name.** A redundant step that fails on a token fools you twice: it paints green things red, and it trains everyone to ignore red.
+
+<Terminal
+  title="the-notice-the-site-sends"
+  commands={[
+    { cmd: 'git log --oneline -3 -- scripts/indexnow-submit.mjs', output: '96f4ee7 fix(indexnow): retry quando a verificacao do host ainda esta propagando (#70)\n0f50da7 fix(indexnow): retry quando a verificacao do host ainda esta propagando\n215bbf1 seo: JSON-LD nos posts + verificacao Google/Bing + IndexNow pos-deploy' },
+    { cmd: 'curl -s -o /dev/null -w %{http_code} https://lifelog-sepia.vercel.app/sitemap.xml', output: '200' },
+    { cmd: 'curl -s -o /dev/null -w %{http_code} https://lifelog-sepia.vercel.app/sitemap-index.xml', output: '404' },
+    { cmd: 'curl -s https://lifelog-sepia.vercel.app/sitemap.xml | grep -c loc', output: '353' },
+    { cmd: 'git show fd1b96d --stat', output: ' .github/workflows/deploy.yml | 11 +++++------\n 1 file changed, 5 insertions(+), 6 deletions(-)' },
+  ]}
+/>
+
+In the end, what changed today was not how many people arrive at the blog. It was the direction of who notifies whom. Before, the site waited to be found. Now it raises its hand — and shows the key on the door, for anyone who wants to check that the house is its own.

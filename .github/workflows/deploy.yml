@@ -97,6 +97,12 @@ jobs:
 
     - name: PT/EN Sync check
       run: python3 scripts/check-lang-sync.py
+    - name: Duplicate topic check (mesmo tema no mesmo dia)
+      # A seleção por carência (contagem + gap de 2 dias) distribui PROJETOS,
+      # não temas: dois slots do mesmo dia podem cair no mesmo assunto. Foi o
+      # caso real de 03/10/2026 — Post B escolheu Dogwalk enquanto o Post A
+      # (08h) e o Refazer (12:18) já tinham escrito sobre zonas de cobertura.
+      run: python3 scripts/check-duplicate-topic.py
     - name: Tag vocabulary check (Opção C)
       run: python3 scripts/check-tags.py --strict
 
@@ -210,19 +216,18 @@ jobs:
         if-no-files-found: ignore
 
     # ── Deploy ─────────────────────────────────────────────────
-    - name: Deploy to Vercel (Production)
-      if: github.ref_name == 'main' && github.event_name != 'pull_request'
-      env:
-        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      run: |
-        npx vercel@latest --prod --token="$VERCEL_TOKEN" --yes
+    # 06/10/2026 - step `npx vercel --prod` REMOVIDO: o deploy de producao e feito pela
+    # integracao Git do Vercel (creator=vercel[bot]), que publica no push para main.
+    # O CLI era redundante e falhava por token ("No teams available"), deixando o run
+    # vermelho sem impedir o deploy real. Para voltar com o CLI, restaure este step com
+    # um token Vercel valido (decisao 2 do plano 2026-10-06-indexacao-google-portfolio-lifelog).
 
     # ── Health Check ──────────────────────────────────────────
     - name: Health Check
       if: github.ref_name == 'main' && github.event_name != 'pull_request'
       run: |
         sleep 15
-        BASE="https://lifelog-sepia.vercel.app"
+        BASE="https://lifelog.seu.pet"
         FAIL=0
         TOTAL_OK=0
         TOTAL_FAIL=0
@@ -306,7 +311,7 @@ jobs:
         TEXT="✅ *LifeLog CI*
 
         📦 *Status:* Sucesso
-        🔗 *URL:* https://lifelog-sepia.vercel.app
+        🔗 *URL:* https://lifelog.seu.pet
         📝 *Commit:* \`$COMMIT_SHA\` — $COMMIT_SUBJECT
         📄 *Alterações ($FILE_COUNT arquivos):*
         $CHANGED"

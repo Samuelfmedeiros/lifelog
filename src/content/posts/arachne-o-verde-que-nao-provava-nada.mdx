@@ -1,0 +1,133 @@
+---
+title: "Arachne: o verde que não provava nada"
+description: "Três superfícies que diziam OK sem executar: o backup que pulava um banco de 300MB, a retenção que só olhava metade dos arquivos e oito asserções que nunca rodavam."
+category: samuel-projects
+date: 2026-10-06 12:00:00 -03:00
+pubDate: 2026-10-06 12:00:00 -03:00
+project: arachne
+tags: [arachne, testing, backup, false-positive]
+cover: /covers/arachne-o-verde-que-nao-provava-nada.webp
+hidden: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Três verdes, nenhuma prova
+
+Entre 28 de setembro e 2 de outubro, três coisas diferentes no Arachne reportaram sucesso sem ter feito o que diziam fazer. Um backup que listava o nome de cada banco e pulava um deles em silêncio. Uma rotina de limpeza que varria uma família de arquivos e ignorava as outras duas. Oito testes de segurança que passavam sem nunca chegar a executar a asserção.
+
+Nenhuma delas derrubou o produto. Todas entregaram a pior coisa que um status pode entregar: a sensação de que estava tudo coberto.
+
+## Caso 1 — o banco de 300MB que nunca era copiado
+
+O script de backup lista os bancos auxiliares num array. Cada entrada é `nome:caminho`, e o laço imprime o resultado de cada um: `OK` quando o arquivo existe, `Skip` quando não existe.
+
+O `code_graph` era o único dos três com o caminho errado — faltava o segmento `api/` no meio. O laço fazia o que foi mandado: não achava o arquivo, imprimia `Skip` e seguia. Um banco de 300MB ficou fora de todo backup, com o script terminando em verde.
+
+```bash
+# ANTES o caminho apontava para um lugar que não existe
+DBS=(
+  "code_graph:${DB_DIR}/app/knowledge_graph/code_graph.db"
+  "observability:${DB_DIR}/data/observability.db"
+  "agent_memory:${DB_DIR}/data/agent_memory.db"
+)
+
+# DEPOIS — o caminho real tem api/ no meio
+DBS=(
+  "code_graph:${DB_DIR}/api/app/knowledge_graph/code_graph.db"
+  "observability:${DB_DIR}/data/observability.db"
+  "agent_memory:${DB_DIR}/data/agent_memory.db"
+)
+```
+
+O detalhe que dói: `Skip` não é um erro, é uma decisão. O script não tinha como saber se o arquivo estava ausente porque nunca existiu ou porque o caminho estava errado. Ele tratava os dois casos iguais — e um deles era bug.
+
+## Caso 2 — a retenção que só olhava metade dos arquivos
+
+No mesmo script, a limpeza de backups antigos varria um único padrão: `*.db.gz`, os auxiliares SQLite. Os dumps do banco principal e os arquivos de WAL viviam em outras duas famílias de nome — e nunca eram tocados.
+
+O resultado acumulou por dois meses: 126 dumps do Postgres e 5,2GB numa pasta que deveria se manter pequena, até encostar no disco do projeto.
+
+Havia um segundo bug escondido atrás do primeiro. Antes da retenção, o script resolve o endereço de um host de espelho. Quando esse host estava offline, o resolvedor saía com código de erro — e o `set -e` matava o script exatamente ali. A limpeza, que vinha logo depois, nunca chegava a rodar. Os dumps se acumulavam não porque a retenção estava errada, mas porque ela nunca era alcançada.
+
+```bash
+# ANTES: sem fallback, o `set -e` abortava a rotina quando o espelho estava
+# fora do ar. A retenção, que vinha depois, nunca executava.
+ESPELHO="$(resolve_endereco_espelho 2>/dev/null)"
+
+# DEPOIS: a falha do espelho degrada em silêncio em vez de derrubar o script.
+ESPELHO="$(resolve_endereco_espelho 2>/dev/null || echo)"
+```
+
+A cura veio com uma guarda que mede o resultado, não a intenção:
+
+```bash
+for pat in "arachne_pg_*.sql.gz" "arachne_wal_*.tar.gz"; do
+    removed=$(find "$BACKUP_DIR" -maxdepth 1 -name "$pat" \
+        -mtime +${RETENTION_DAYS} -delete -print 2>/dev/null | wc -l)
+    [ "$removed" -gt 0 ] && log "  Removed ${removed} old ${pat}"
+done
+
+# GUARDA anti-regressão: se a pasta continuar acima de 6G depois da limpeza, grita.
+post_size_mb=$(du -sm "$BACKUP_DIR" 2>/dev/null | awk '{print $1}')
+if [ "${post_size_mb:-0}" -gt 6144 ]; then
+    warn "backups em ${post_size_mb}MB após a limpeza — retenção pode ter parado"
+fi
+```
+
+A diferença entre o antes e o depois não é o glob novo. É a última linha: uma condição que pergunta se o disco ainda está cheio depois que a limpeza disse que rodou. Se a resposta for sim, alguma coisa mentiu, e o script fala.
+
+## Caso 3 — as oito asserções que nunca rodavam
+
+Alguns dias antes, um teste de segurança do gate de URL do quickstart passava em verde todos os dias. Oito casos cobrindo rejeição de credenciais embutidas, porta inválida, hostname inválido, esquema não suportado.
+
+A asserção estava escrita dentro do bloco `with pytest.raises`. Isso significa que ela ficava depois da linha que levanta a exceção — e nunca executava. Um erro com mensagem vazia passava no teste. Um bug de validação passaria também.
+
+```python
+# ANTES: a asserção está DEPOIS da linha que levanta. Nunca executa.
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+    assert str(exc_info.value) != ""
+
+# DEPOIS: prova o MOTIVO do reject, não apenas que houve reject.
+with pytest.raises(ValueError) as exc_info:
+    normalize_quickstart_url("https://user:pass@example.com")
+assert "userinfo not allowed" in str(exc_info.value), exc_info.value
+```
+
+As cinco mensagens passaram a ser parte do contrato: `userinfo not allowed`, `invalid port`, `invalid hostname`, `empty url` e `unsupported scheme`. O teste deixou de perguntar "levantou alguma coisa?" e passou a perguntar "levantou pela razão certa?".
+
+## O padrão por trás dos três
+
+Os três casos têm a mesma forma. Uma superfície de status que mede a própria intenção em vez de medir o resultado.
+
+- O backup media "o arquivo existe?" e chamava de sucesso quando a resposta era "não, e eu decidi pular".
+- A retenção media "a limpeza rodou?" e nunca chegou a rodar, porque um passo anterior abortou.
+- O teste media "alguma exceção subiu?" sem verificar por qual motivo.
+
+A resposta que apliquei nas três frentes é a mesma: cada guarda passou a medir o efeito no mundo. O backup grita se a pasta continuar acima de 6GB depois de limpar. O CI trava quando o bundle do SPA servido divergir da fonte. O teste de URL reprova se a mensagem não for a esperada.
+
+## Métricas
+
+| Superfície | O que o status dizia | O que estava acontecendo | Guarda no lugar |
+|---|---|---|---|
+| Backup auxiliares | `Skip code_graph` | caminho sem `api/` — 300MB fora de todo backup | caminho corrigido + globs por família |
+| Retenção de dumps | silêncio (script terminava antes) | 126 dumps e 5,2GB acumulados desde 02/08 | limpeza das 3 famílias + aviso se ficar acima de 6GB |
+| Gate de URL do quickstart | 24 passed | 8 asserções dentro do bloco, nunca executadas | contrato sobre a mensagem real do reject |
+| Bundle do SPA | deploy verde | `index.html` e `assets/` de gerações diferentes | teste que trava a consistência antes do deploy |
+
+## O que vem a seguir
+
+A guarda do backup faz o script falar quando a limpeza não limpa. A do SPA pega a divergência no CI, antes de qualquer deploy — um `rsync` que roda durante a coleta já tinha servido um bundle que não existia mais.
+
+A lição que ficou registrada é a mesma em cada caso: se uma superfície não é capaz de falhar, ela não é uma verificação. É decoração.
+
+<Terminal
+  commands={[
+    { cmd: 'bash scripts/backup-db.sh --quiet', output: 'code_graph 300MB OK | observability OK | agent_memory OK' },
+    { cmd: 'pytest tests/test_quickstart_url_security.py', output: '24 passed' },
+    { cmd: 'pytest tests/test_spa_build_consistency.py', output: 'contrato de build verificado — index.html e assets/ da mesma geração' },
+    { cmd: 'du -sm /var/backups/arachne', output: 'limpeza regular — pasta abaixo do limite de guarda' }
+  ]}
+/>

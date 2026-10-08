@@ -1,0 +1,119 @@
+---
+title: "The gate that accepted 200 without reading the content"
+description: "A health check that only looked at the HTTP status let truncated and empty responses through for days. The probe that came after measures the body, not the envelope."
+category: samuel-projects
+date: 2026-09-17 21:30:00 -03:00
+pubDate: 2026-10-04 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "validation", "testing", "observability", "reliability", "quality"]
+icon: "🌊"
+cover: /covers/tatuengine-o-gate-que-aceitava-200-sem-ler-o-conteudo.webp
+hidden: false
+lang: 'en'
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+Two weeks ago I installed a gate at the door of TatuEngine. It sat between the pipeline and the training run: if the previous stage had gone wrong, training would not start. That was exactly what I wanted, a guard that does not let broken things through.
+
+The problem is that my guard only looked at the envelope.
+
+## What the gate measured
+
+The pre-boot gate was a small function, one of those that looks harmless. The idea was simple: before starting anything, confirm the previous artifacts were in place and responding.
+
+```python
+# what the gate did
+if request.status_code == 200:
+    print("gate: OK")
+    proceed()
+else:
+    stop()
+```
+
+One code, one comparison, one decision. That's all.
+
+The problem: **200 is the code the server returns when the request arrived.** It is not the code it returns when the response is right. An empty body comes with 200. A body truncated halfway comes with 200. A response that came back but has the completely wrong shape comes with 200.
+
+My guard treated all three cases as success.
+
+## The symptom: green with the content missing
+
+Training would not start on some runs. Nothing broke loudly: there was no error, no traceback, no red log. The gate said OK, the pipeline moved on, and training died right after for a reason nobody could explain.
+
+When it happened the first time, my reaction was the usual one: look more carefully. And what showed up was inconsistent. Sometimes it worked, sometimes it did not. The gate was green in both cases.
+
+The part that cost me the most time was not the bug itself, it was realizing that the bug was **lying about itself**. Every real failure carries its own explanation. This one carried an "OK" that meant nothing.
+
+## What I was measuring in the wrong place
+
+It takes a while to accept that the failure is not in what you are looking at, but in what you chose not to look at. The gate was measuring the wrong layer.
+
+The service exposes the HTTP envelope. What I needed to know was whether the envelope **carried** anything. There were three layers, and I was standing in the outermost one:
+
+| Layer | What answers | What I measured |
+|-------|--------------|-----------------|
+| Transport | the HTTP status | yes, and only that |
+| Shape | the body has the expected format | no |
+| Content | the required fields are present | no |
+
+Two of the three layers I simply was not looking at. The gate was a nice name for "the machine responded". It was not "the machine responded correctly".
+
+## The probe that does not trust 200
+
+The fix was writing the check I should have written from the start: a probe that **opens the response and looks inside**.
+
+```python
+# the probe, measuring the body and not the envelope
+response = request(target)
+
+if response.status_code != 200:
+    fail(f"transport: {response.status_code}")
+
+body = response.json()
+
+if not body:
+    fail("empty body with 200")
+
+for field in required_fields:
+    if field not in body:
+        fail(f"missing field: {field}")
+
+if len(body) < minimum_expected:
+    fail(f"response too short: {len(body)}")
+```
+
+The difference between the two versions is not in the line count, the second block has more lines because it asks more questions. The difference is that **every question is about the content**, not about the arrival.
+
+When the response came back truncated, the `len(body)` call caught it before training started. When it came back with the right format but the wrong field, the loop caught it. Every failure started carrying the name of what failed, instead of just a generic "failed".
+
+## The detail I did not expect
+
+The old gate had an interesting and bad property: it was **cheap to write**. One comparison costs almost nothing. The probe costs more, it needs to open the response, look at fields, compare sizes. Someone in a hurry (me, in a hurry) picks the cheap version.
+
+And there is a genuine argument in favor of the cheap version: if you call the probe on every request, it adds real latency to the path. That is true, it is not an excuse. But the answer is *where* you call it, not *whether* you call it.
+
+The split that ended up working: the heavy check does not run on every step. It runs **at the boundary**, at the point where the data changes hands. Once, in the right place, it costs almost nothing and covers exactly the point where the error can enter.
+
+## What I took from it
+
+Three things, and the second one is the one I use the most.
+
+**1. The guard has to live where it can die.** The first gate ran in a process I did not control. If that process went down, the gate went down with it, and nothing was left holding the door. A guard that lives with the possible problem is not a guard. When the wall falls, it falls with it. It was only after I moved the check to a point I actually controlled that the protection stopped being theoretical.
+
+**2. "It worked" is not the same as "it is right".** That distinction is the whole core. A check that returns true is saying "there was no error", not "the result is what I expected". Every time I accept a green check as proof, I am accepting a weaker claim than I think I am accepting.
+
+**3. Green that never fails means nothing.** A gate that went months without failing a single time should have made me suspicious, not reassured. It is not that it was good, it is that it was not looking anywhere at all.
+
+## What comes next
+
+The check already runs at the boundary. What is missing is turning it into part of the contract instead of a script someone remembers to run: when the response format changes, the contract has to change with it, and the build has to refuse before training starts.
+
+That is what I am doing now.
+
+<Terminal commands={[
+  { cmd: 'git log --oneline -1', output: 'commit of the probe that measures the body and not the envelope' },
+  { cmd: 'check: transport -> shape -> content', output: '3 layers, 3 questions' },
+  { cmd: 'result', output: 'what failed now arrives saying what failed' }
+]} />

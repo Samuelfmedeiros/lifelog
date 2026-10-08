@@ -204,7 +204,7 @@ localStorage: lifelog-theme | lifelog-palette
 
 ### 🌐 Vercel (Deploy + CDN)
 ```
-URL:           https://lifelog-sepia.vercel.app
+URL:           https://lifelog.seu.pet
 GitHub:        https://github.com/Samuelfmedeiros/lifelog
 Framework:     Astro 7
 Build:         npm run build → dist/

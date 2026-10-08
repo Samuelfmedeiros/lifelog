@@ -1,0 +1,102 @@
+---
+title: "A chave que o buscador precisa achar sozinho"
+description: "Para avisar os buscadores de que uma mudança é de verdade, o protocolo exige que eu publique na raiz do meu site um arquivo que qualquer um pode ler. É o IndexNow: um segredo que não é segredo, um aviso que chega antes do mundo estar pronto, e um deploy que eu jurava que era meu."
+category: samuel-projects
+date: 2026-10-06 13:00:00 -03:00
+pubDate: 2026-10-06 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "seo", "ci", "deploy", "vercel", "lessons"]
+cover: /covers/lifelog-a-chave-que-o-buscador-precisa-achar-sozinho.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Hoje o blog ganhou duas coisas que ninguém consegue ver olhando a tela. Uma assinatura invisível no HTML de cada post, dizendo ao Google que aquilo é um artigo, de quem é, quando foi publicado e qual é a capa. E um aviso enviado a quatro buscadores que não são o Google, dizendo que o site mudou.
+
+As duas dependem de uma ideia que levei um tempo para aceitar: para dizer a um buscador que a minha mudança é de verdade, eu preciso publicar na raiz do meu próprio site um arquivo que qualquer pessoa pode ler.
+
+## O que o protocolo pede
+
+O IndexNow resolve um problema simples de explicar e chato de viver. Existe o sitemap, que é a lista de tudo que o site tem, e existe a espera: você publica, o buscador passa quando quiser, às vezes em dias. O IndexNow troca a espera por um aviso. Em vez de torcer para o crawler aparecer, o site levanta a mão e diz: mudou isso aqui.
+
+O detalhe interessante é o que vem antes do aviso. Nenhum buscador vai aceitar o meu recado sem saber que eu mando no domínio que estou anunciando. Então o protocolo faz uma pergunta muito direta: hospede na raiz do seu site um arquivo cujo nome é a sua chave, e cujo conteúdo é a sua chave de novo. O buscador busca esse arquivo. Se ele responder, você é o dono.
+
+O Google não consome IndexNow, e isso não é acidente: ele tem o próprio caminho, o Search Console, e prefere que a descoberta venha do sitemap declarado no `robots.txt`. Quem consome o protocolo são Bing, Yandex, Seznam e Naver. Escrevi isso no cabeçalho do script porque a primeira pergunta que eu me fiz foi "então para que serve?" — serve para os quatro que não são o Google, e isso é motivo suficiente.
+
+## A prova é um arquivo exposto
+
+Tem uma coisa meio elegante aqui. A prova de que eu controlo o site é eu deixar um arquivo no site, visível, sem autenticação, sem token, sem nada. O mecanismo de confiança é o oposto de esconder: é expor de um jeito específico.
+
+Fiz o script verificar o arquivo antes de submeter qualquer coisa. Não por desconfiança do buscador, mas por desconfiança de mim: é fácil o arquivo não ter subido, o build ter limpado a pasta, ou eu ter trocado a chave no servidor e esquecido o arquivo. Se a verificação falha, o processo para ali, com uma mensagem dizendo exatamente qual URL não respondeu. Abortar cedo e com endereço é melhor que submeter, levar um erro genérico e passar meia hora procurando a causa no lugar errado.
+
+## A corrida que deixou o run vermelho
+
+O aviso não foi aceito de primeira.
+
+A chave tinha acabado de ser publicada. O buscador respondeu, com toda a educação, que a verificação do site ainda não estava completa. E ele estava certo. O arquivo existia no repositório, o deploy tinha terminado, mas a propagação até o nó que responde ao buscador leva alguns minutos. O buscador não estava mentindo: ele só tinha chegado antes do mundo estar pronto.
+
+A resposta que eu escrevi para isso foi paciência com nome. Algumas tentativas, com espera entre elas, e um detalhe que fez diferença: só continuar tentando se o erro for exatamente esse. Um site que não verifica continua sendo um erro de verdade e deve falhar na hora. Um site que ainda está propagando é uma corrida, e corrida se espera.
+
+É uma distinção pequena e é a diferença entre um job que às vezes fica vermelho por nada e um job que fica vermelho quando importa. A tentação aqui era a de sempre: transformar o passo em algo que nunca falha, porque "é só uma questão de tempo". Não é o mesmo caso. Eu quero que ele falhe se a chave não estiver no ar. Quero que ele espere se a chave estiver no ar e o buscador ainda não tiver visto.
+
+## Um arquivo que o meu script procurava primeiro
+
+Enquanto conferia a submissão em produção, encontrei uma coisa que me fez rir e depois me fez pensar.
+
+O script tenta dois endereços de sitemap, nessa ordem: o índice e o direto. O índice respondeu com uma página de erro. O direto respondeu com 353 URLs. E o envio funcionou assim mesmo, porque eu tinha escrito o script para tentar um, descobrir que não existe, e seguir para o outro sem drama.
+
+O que me incomodou não foi o 404. Foi lembrar por que o primeiro endereço estava ali. Eu o escrevi porque é assim que sitemaps grandes costumam ser organizados: um índice apontando para vários arquivos filhos. É uma convenção real, de sitemaps enormes, e o meu não é um deles. Eu tinha transcrito a convenção no código sem nunca ter tido o arquivo.
+
+O script sobreviveu porque era tolerante. Mas a lição não é sobre o script ser bonito. É que escrever o formato que o mundo costuma usar não é a mesma coisa que ter o arquivo que o mundo costuma usar. Se eu tivesse escrito o script assumindo o índice — o que também seria razoável — ele estaria falhando até hoje, num silêncio discreto, sem ninguém notar por semanas.
+
+## O verde que não era o deploy
+
+No mesmo dia, o run do pipeline ficou vermelho. Não pelo IndexNow: por um passo antigo que mandava a Vercel publicar o site pela linha de comando.
+
+O detalhe é que esse passo não publicava coisa nenhuma. O deploy de produção já acontece pela integração do Git: quando o push chega na main, a própria Vercel publica, e o autor do deploy é o bot dela. O passo do CLI era o segundo a fazer a mesma coisa, e o primeiro a falhar — ele quebrava por token inválido, escrevia "no teams available" no log e pintava o run de vermelho. O site subia bem, no horário, sem ele.
+
+Levei mais tempo do que gostaria para aceitar que a saída era apagar. Apagar um passo de deploy parece perigoso, porque a intuição diz que deploy é exatamente a coisa que não se mexe. Só que o passo não era o deploy. Era uma afirmação sobre o deploy, que ninguém estava lendo, repetindo o trabalho de outro. Removi o passo e deixei um comentário no lugar explicando por que ele saiu e como trazê-lo de volta caso um dia o token volte. Uma decisão sem endereço é uma decisão que alguém vai desfazer por engano seis meses depois.
+
+## A fronteira
+
+Tem uma parte desse trabalho que é sobre o que NÃO é anunciado.
+
+Os previews dos posts ocultos existem no site, são acessíveis por link direto e nunca devem chegar a buscador nenhum. Eles saem com `noindex, nofollow`, a pasta inteira está fora do `robots.txt`, e o script de submissão filtra qualquer URL que contenha aquele caminho antes de montar o lote. Não é uma trava só; são três, em camadas diferentes, porque uma coisa que não deve ser encontrada merece mais de uma chance de não ser.
+
+Confirmei o resultado do lado de fora, que é o único lugar onde essa conta fecha: zero referências à pasta de ocultos no sitemap enviado. As duas únicas linhas que aparecem com essa palavra no sitemap são um post publicado cujo título, por acaso, fala de posts ocultos.
+
+| Métrica | Antes | Depois |
+|---|---|---|
+| URLs no sitemap submetidas | 0 (nunca submetido) | 353 |
+| Estrutura de dados nos posts | nenhuma | BlogPosting + BreadcrumbList |
+| Buscadores avisados no push | nenhum | 4 (via IndexNow) |
+| Índice no sitemap não existente | não tolerado | fallback para o direto |
+| Verificação da chave antes do envio | ausente | HEAD na URL pública |
+| Passos de deploy redundantes na CI | 2 | 1 |
+| Previews de ocultos no lote | risco aberto | 3 camadas + 0 no sitemap |
+
+## O que fica
+
+**A prova pode ser pública.** O mecanismo de confiança que eu mais gosto aqui é o que não esconde nada: um arquivo na raiz, legível por qualquer um, que só prova uma coisa — que quem manda no domínio deixou ele ali. Segurança que funciona por ser verificável, não por ser secreta.
+
+**Erro certo na hora errada parece erro errado.** A verificação do site era legítima, correta e inútil por alguns minutos. Distinguir "não vai dar certo" de "ainda não deu certo" é o que separa um retry honesto de uma máscara.
+
+**Transcrever a convenção não é ter o arquivo.** Escrevi no código o formato que sitemaps grandes usam, sem ter nenhum. Foi tolerância que salvou — mas eu prefiro saber por que a linha está lá do que depender dela estar certa por acaso.
+
+**Se o passo não é o deploy, ele não merece o nome do deploy.** Um passo redundante que falha por token engana duas vezes: pinta de vermelho o que está verde, e treina todo mundo a ignorar vermelho.
+
+<Terminal
+  title="o-aviso-que-o-site-manda"
+  commands={[
+    { cmd: 'git log --oneline -3 -- scripts/indexnow-submit.mjs', output: '96f4ee7 fix(indexnow): retry quando a verificacao do host ainda esta propagando (#70)\n0f50da7 fix(indexnow): retry quando a verificacao do host ainda esta propagando\n215bbf1 seo: JSON-LD nos posts + verificacao Google/Bing + IndexNow pos-deploy' },
+    { cmd: 'curl -s -o /dev/null -w %{http_code} https://lifelog-sepia.vercel.app/sitemap.xml', output: '200' },
+    { cmd: 'curl -s -o /dev/null -w %{http_code} https://lifelog-sepia.vercel.app/sitemap-index.xml', output: '404' },
+    { cmd: 'curl -s https://lifelog-sepia.vercel.app/sitemap.xml | grep -c loc', output: '353' },
+    { cmd: 'git show fd1b96d --stat', output: ' .github/workflows/deploy.yml | 11 +++++------\n 1 file changed, 5 insertions(+), 6 deletions(-)' },
+  ]}
+/>
+
+No fim, o que mudou hoje não foi a quantidade de gente que chega no blog. Foi a direção de quem avisa quem. Antes, o site esperava ser encontrado. Agora ele levanta a mão — e mostra a chave na porta, para quem quiser conferir que a casa é dele.

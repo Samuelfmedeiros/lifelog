@@ -1,0 +1,119 @@
+---
+title: "O gate que aceitava 200 sem ler o conteúdo"
+description: "Um health check que só olhava o código HTTP deixou passar respostas truncadas e vazias por dias. A sonda que veio depois mede o corpo, não o envelope."
+category: samuel-projects
+date: 2026-09-17 21:30:00 -03:00
+pubDate: 2026-10-04 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "validation", "testing", "observability", "reliability", "quality"]
+icon: "🌊"
+cover: /covers/tatuengine-o-gate-que-aceitava-200-sem-ler-o-conteudo.webp
+hidden: false
+lang: 'pt'
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+Duas semanas atrás eu instalei um portão na porta do TatuEngine. Ele ficava entre o pipeline e o treino: se a etapa anterior tivesse errado, o treino não começava. Era exatamente o que eu queria, um guarda que não deixa passar coisa quebrada.
+
+O problema é que o meu guarda só olhava o envelope.
+
+## O que o portão media
+
+O gate de pré-boot era uma função pequena, dessas que a gente acha tranquilas. A ideia era simples: antes de iniciar qualquer coisa, confirmar que os artefatos anteriores estavam no lugar e respondiam.
+
+```python
+# o que o portão fazia
+if requisicao.status_code == 200:
+    print("gate: OK")
+    seguir()
+else:
+    parar()
+```
+
+Um código, uma comparação, uma decisão. Só isso.
+
+O problema: **200 é o código que o servidor devolve quando a requisição chegou.** Não é o código que devolve quando a resposta está certa. Um corpo vazio vem com 200. Um corpo truncado no meio vem com 200. Uma resposta que voltou mas está com a forma completamente errada vem com 200.
+
+O meu guarda tratava esses três casos como sucesso.
+
+## O sintoma: verde com o conteúdo faltando
+
+O treino não começava em algumas rodadas. Nada quebrava de forma ruidosa: não havia erro, não havia traceback, não havia log vermelho. O portão dizia OK, o pipeline seguia, e o treino morria logo depois por um motivo que ninguém conseguia explicar.
+
+Quando isso aconteceu pela primeira vez, a minha reação foi a mesma de sempre: olhar mais devagar. E o que apareceu foi incoerente. Às vezes funcionava, às vezes não. O portão estava verde nos dois casos.
+
+A parte que me custou tempo não foi o bug, foi perceber que o bug estava me **mentindo sobre si mesmo**. Toda falha de verdade carrega a própria explicação. Esse carregava um "OK" que não significava nada.
+
+## O que eu estava medindo no lugar errado
+
+Leva um tempo até a gente aceitar que a falha não está no que a gente está olhando, e sim no que a gente decidiu não olhar. O portão media a camada errada.
+
+O serviço expõe o envelope HTTP. O que eu precisava saber era se o envelope **carregava** alguma coisa. Existiam três camadas, e eu estava na mais externa:
+
+| Camada | O que responde | O que eu media |
+|--------|----------------|----------------|
+| Transporte | o codigo HTTP | sim, e so |
+| Forma | o corpo tem o formato esperado | nao |
+| Conteudo | os campos obrigatorios existem | nao |
+
+Duas das tres camadas eu simplesmente nao estava olhando. O gate era um nome bonito para "a maquina respondeu". Nao era "a maquina respondeu certo".
+
+## A sonda que nao confia no 200
+
+A correcao foi escrever a verificacao que eu queria ter escrito desde o comeco: uma sonda que **abre a resposta e olha dentro**.
+
+```python
+# a sonda, medindo o corpo e nao o envelope
+resposta = requisitar(destino)
+
+if resposta.status_code != 200:
+    falhar(f"transporte: {resposta.status_code}")
+
+corpo = resposta.json()
+
+if not corpo:
+    falhar("corpo vazio com 200")
+
+for campo in campos_obrigatorios:
+    if campo not in corpo:
+        falhar(f"campo ausente: {campo}")
+
+if len(corpo) < minimo_esperado:
+    falhar(f"resposta curta demais: {len(corpo)}")
+```
+
+A diferenca entre as duas versoes nao esta nas linhas, o segundo bloco tem mais linhas porque faz mais perguntas. A diferenca e que **cada pergunta e sobre o conteudo**, e nao sobre a chegada.
+
+Quando a resposta vinha truncada, o `len(corpo)` acusava antes do treino começar. Quando vinha com o formato certo mas o campo errado, o laco acusava. Cada falha passou a carregar o nome do que falhou, e nao so um "falhou".
+
+## O detalhe que eu nao esperava
+
+O portao antigo tinha uma propriedade interessante e ruim: ele era **barato de escrever**. Uma comparacao nao custa quase nada. A sonda custa mais, ela precisa abrir a resposta, olhar campos, comparar tamanho. Alguem com pressa (eu, com pressa) escolhe a versao barata.
+
+E ha um argumento genuino a favor da versao barata: se voce chama a sonda a cada requisicao, ela adiciona latencia real ao caminho. Isso e verdade, nao e desculpa. Mas a resposta e *onde* voce a chama, nao *se* voce a chama.
+
+A separacao que acabou funcionando: a verificacao pesada nao roda a cada passo. Ela roda **na fronteira**, no ponto onde o dado muda de dono. Uma vez, no lugar certo, custa quase nada e cobre exatamente o ponto em que o erro pode entrar.
+
+## O que eu levei disso
+
+Tres coisas, e a segunda e a que eu mais uso.
+
+**1. O guarda tinha que estar no lugar que pode morrer.** O primeiro portao rodava num processo que eu nao controlava. Se aquele processo caisse, o portao caia junto, e nada ficava segurando a porta. Um guarda que mora com o possivel problema nao e um guarda. Quando a parede cai, ele vai junto. Foi quando movi a checagem para um ponto que eu realmente controlava que a protecao deixou de ser teorica.
+
+**2. "Funcionou" nao e o mesmo que "esta certo".** Essa distincao e o nucleo inteiro. Um check que devolve verdadeiro esta dizendo "nao houve erro", nao "o resultado e o que eu esperava". Cada vez que eu aceito um check verde como prova, eu estou aceitando uma afirmacao mais fraca do que eu acho que estou aceitando.
+
+**3. Verde que nunca falha e sinal de nada.** Um gate que passou por meses sem reprovar uma unica vez devia me deixar desconfiado, nao tranquilo. Nao e que ele estivesse bom, e que ele nao estava olhando para lugar nenhum.
+
+## O que vem a seguir
+
+A verificacao ja roda na fronteira. Falta ela virar parte do contrato e nao um script que alguem lembra de rodar: quando o formato da resposta mudar, o contrato tem que mudar junto, e o build tem que recusar antes de o treino comecar.
+
+Isso e o que estou fazendo agora.
+
+<Terminal commands={[
+  { cmd: 'git log --oneline -1', output: 'commit da sonda que mede o corpo e nao o envelope' },
+  { cmd: 'verificacao: transporte -> forma -> conteudo', output: '3 camadas, 3 perguntas' },
+  { cmd: 'resultado', output: 'o que falhou agora chega dizendo o que falhou' }
+]} />

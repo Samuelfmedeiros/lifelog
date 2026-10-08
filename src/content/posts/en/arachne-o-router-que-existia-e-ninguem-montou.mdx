@@ -1,0 +1,68 @@
+---
+title: "The router that existed and nobody mounted"
+description: "Arachne had a whole feature written, tested and green — and that was never wired up. When I fixed the mounting, it stayed broken with a 422 on every call. Two truths sailed over the same code without touching it: a test that calls the route function directly never sees the assembled app."
+date: 2026-10-06 12:00:00 -03:00
+pubDate: 2026-10-06 12:00:00 -03:00
+lang: "en"
+project: "arachne"
+tags: [arachne, fastapi, api, testing, debugging]
+cover: "/covers/arachne-o-router-que-existia-e-ninguem-montou.webp"
+featured: false
+hidden: false
+---
+import Terminal from '../../../components/TerminalWidget.astro'
+
+There is a specific kind of bug I have come to fear more than the loud error: the feature that exists in full, has its own file, has a passing test, and was simply never wired up. No error surfaces. No log complains. The screen just returns a 404 and the user concludes the feature does not exist — because, from where they stand, it does not.
+
+Arachne had one of those. A per-owner model configuration feature, written with a full CRUD, seven routes and tests. Green in CI since it was born. And unreachable in production since day one.
+
+## The blind spot
+
+Arachne has a per-owner LLM configuration module: each person registers their own key, picks the model, tests the connection. It is the visible part of a policy that took us an entire wave to close — the key of whoever calls must be used by whoever called, and nobody else. The module has the routes file, the model, the schemas, the ownership helpers. It is all there.
+
+The catch is that mounting the routes file is a separate step from writing the routes file. In FastAPI you declare a router and then you have to register it on the main application, pass that router to `include_router`. Two actions in two places. Writing the router is easy to remember. Registering it is the boring step — and the boring step is exactly the one that went missing.
+
+The commit that closed the wave said in its body that the routes were mounted. The diff mounted a different router, the gateway one, and the CRUD one was left out. It was not bad faith: it was a big commit, a summary written from memory, and the gap between what the author thought they did and what the diff actually did.
+
+Then came the part that hurts. Searching the entire history for that router, in any commit, on any branch, came back empty. It is not that it was mounted once and unmounted later. It was never mounted. From creation until now, the only thing that existed was the file.
+
+## Green for the wrong reason
+
+If the feature was never wired up, how did the tests pass? Here is the lesson I find most transferable from this whole episode — and it is not about FastAPI.
+
+Those module tests did not call the application. They called the route function directly, passing a plain object in place of the request, a hand-built `SimpleNamespace`. To the function itself, that is indistinguishable from the real thing: it receives an object with the attributes it expects, runs, returns the response. The test passes. Green.
+
+What the test never saw was the full path: application assembled, router registered, schema generated, request coming in over the wire and resolved by the framework. Calling the function skips exactly every step where the bug lived. It is the difference between testing a part and testing the machine that assembles the part — and here it was the assembly machine that was missing.
+
+So I wrote a test that tests no function at all; it tests the mounting. It scans the repository, collects every `APIRouter` declared with a prefix, and compares it against the ones some `include_router` actually references. The difference between the two lists is the bug — by definition. When it flags something, it is not a guess about behavior: it is the literal list of orphan routers.
+
+I falsified it before trusting it. I removed the registration again, running the test against the broken version: it failed, as it should. A guard test that never fails against the bug it claims to catch is not a guard, it is decoration.
+
+## Mounted, and still not working
+
+I registered the router. The application went from 735 to 774 routes, the prefix showed up with four paths and seven methods. And the call stayed broken — now with a different error.
+
+It was no longer a 404. It was a 422, always, on every request. A 422 is the framework saying "the body you sent does not satisfy what the route expects". The body was right. The problem was what the route expected.
+
+The six routes with a body declared the request parameter without a type annotation. In Python that looks like a cosmetic detail: the parameter is right there, the name is correct, the intent is clear to whoever reads it. But the framework decides what to inject from the annotation, not from the name. Without it, it does not recognize that as the request object — it treats it as just another parameter coming from the query string. That is: the framework starts demanding, on every call, a required query parameter named `request`, which nobody ever sends. Hence the uniform 422.
+
+The cleanest proof is not the HTTP response, it is the schema. The OpenAPI document describes, for each route, what it expects. Before, the config listing declared three parameters, one of them the `request` marked as required. After, two, none required. It is the signature of the bug and the cure in the same place.
+
+And why did the suite miss it again? Same root cause. Those tests also called the functions directly, with the same fake object. They never went through the assembled application, never looked at the schema. A bug that only exists in the coupling between parts is invisible to a test that has no coupling at all.
+
+## What is left
+
+I left two guards instead of one because they were two different failures, even if from the same family: one watches what is mounted, the other watches the shape of what the route declares. The second is specific and cheap — no route may expose a query, header or cookie parameter with a reserved framework name. It is the class of error that repeats every time someone writes a route quickly and the annotation slips.
+
+The two fixes together were smaller than any of the project's earlier waves. The cost was never in the lines. The cost was in months of a feature that existed for the developer and did not exist for the user, covered by tests that said good night.
+
+The rule I take from here is simple and uncomfortable: if a feature depends on being registered, it needs a test that verifies the registration, not the function. Function green says nothing about the machine. And a feature nobody can reach is indistinguishable, from the outside, from a feature that was never written.
+
+Terminal
+
+<Terminal commands={[
+  { cmd: 'git log --all -S llm_byo -- api/app/main.py', out: '(empty across all commits — it was never mounted)' },
+  { cmd: 'GET /api/llm-byo/configs', out: 'before: 404 (openapi "llm-byo": 0 paths)\nafter: 422 -> fixed (openapi: 4 paths / 7 methods)' },
+  { cmd: 'openapi — params of GET /configs', out: 'before: [request*(required), workspace_id, active_only]\nafter: [workspace_id, active_only]' },
+  { cmd: 'guard — mounted routers (falsified)', out: 'against the broken version: 2 failed (the guard works)' }
+]} />

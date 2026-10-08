@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // twitter:image — sem elas o LinkedIn descarta o card e cai em fallback de
 // busca pelo dominio. Paginas sem capa de post usam a imagem padrao 1200x630.
 
-const SITE = 'https://lifelog-sepia.vercel.app';
+const SITE = 'https://lifelog.seu.pet';
 
 test.describe('OG image em todas as paginas (handoff Arachne 14/09)', () => {
   const pagesWithoutCover = ['/', '/en/', '/sobre/', '/arquivo/', '/tag/dogwalk/', '/en/archive/'];

@@ -2,7 +2,7 @@
 
 Dev · Projects · Studies · Discoveries
 
-**Live:** https://lifelog-sepia.vercel.app
+**Live:** https://lifelog.seu.pet
 **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Fuse.js · Playwright
 
 > 🌐 **English** · [🇧🇷 Português](README.pt-BR.md)
@@ -92,7 +92,7 @@ icon: 🕷️
 ## 🚀 Deploy & CI/CD
 
 - **Platform:** Vercel (auto-deploy via GitHub)
-- **URL:** https://lifelog-sepia.vercel.app
+- **URL:** https://lifelog.seu.pet
 - **CI/CD:** GitHub Actions — push on main triggers:
   1. Project validation
   2. `pnpm install` + cache

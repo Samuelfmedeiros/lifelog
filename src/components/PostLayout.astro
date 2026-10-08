@@ -26,9 +26,51 @@ export interface Props {
 const { post, locale, prevPost, nextPost, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref, noindex, alternatePath } = Astro.props;
 const coverImage = post.data.cover;
 const { Content } = await render(post);
+
+// JSON-LD (SEO): BlogPosting + BreadcrumbList. Google usa para rich results
+// (data, autor, imagem) e para entender a pagina como artigo.
+const _pub = post.data.pubDate || post.data.date;
+const SITE = (Astro.site?.toString() || 'https://lifelog.seu.pet').replace(/\/$/, '');
+const _canonPath = noindex
+  ? Astro.url.pathname
+  : (locale === 'en' ? `/en/post/${post.id.replace(/^en\//, '')}/` : `/post/${post.id}/`);
+const _img = post.data.cover
+  ? (post.data.cover.startsWith('http') ? post.data.cover : SITE + post.data.cover)
+  : SITE + '/og-default.png';
+const postSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: post.data.title,
+  description: post.data.description,
+  image: [_img],
+  datePublished: _pub.toISOString(),
+  dateModified: _pub.toISOString(),
+  inLanguage: locale === 'en' ? 'en' : 'pt-BR',
+  articleSection: post.data.project,
+  keywords: post.data.tags.join(', '),
+  mainEntityOfPage: { '@type': 'WebPage', '@id': SITE + _canonPath },
+  author: {
+    '@type': 'Person',
+    name: 'Samuel Medeiros',
+    url: 'https://portifolio.seu.pet',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'LifeLog',
+    logo: { '@type': 'ImageObject', url: SITE + '/og-default.png' },
+  },
+};
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'LifeLog', item: SITE + (locale === 'en' ? '/en/' : '/') },
+    { '@type': 'ListItem', position: 2, name: post.data.title, item: SITE + _canonPath },
+  ],
+};
 ---
 
-<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale} noindex={noindex} alternatePath={alternatePath}>
+<BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale} noindex={noindex} alternatePath={alternatePath} schema={noindex ? null : postSchema} schemaExtra={noindex ? null : breadcrumbSchema}>
   <article data-project={post.data.project}>
     <div class="max-w-3xl mx-auto px-4 py-8">
       <!-- Cover Image -->

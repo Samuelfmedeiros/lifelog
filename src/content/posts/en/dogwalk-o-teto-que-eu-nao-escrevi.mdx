@@ -1,0 +1,88 @@
+---
+title: "The Ceiling I Never Wrote"
+description: "A pip install fixed it. Then a measured bisect showed the line between working and breaking sat in a dependency, not in my code. And along the way, twelve copies of a five-line function became a single helper."
+date: 2026-10-04 14:20:00 -03:00
+pubDate: 2026-10-05 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "python", "dependencies", "timezone", "debugging", "testing"]
+cover: /covers/dogwalk-o-teto-que-eu-nao-escrevi.webp
+featured: false
+hidden: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The line that changes nothing
+
+The Dogwalk backend stopped creating records. It was not a syntax error, not a pending migration, not the wrong server running. Every INSERT touching `created_at` or `updated_at` died, and the log pointed exactly where:
+
+```
+sqlmodel/sql/sqltypes.py:34 -> UTCDateTime.process_bind_param
+```
+
+A library exception, over a date field. The kind of bug that makes you suspect everything: the model, the schema, the connection, the timezone, the driver.
+
+What bothered me was the lack of movement in my own codebase. No backend file had changed. Not one line of mine was wrong. The code was identical to yesterday's, and yesterday's code wrote dates without complaining.
+
+## What changed wasn't the code, it was the ground
+
+Here is the part that cost me time: the engine had upgraded itself. A transitive dependency moved up a version without anyone asking, the backend kept working for a few days, and then stopped. It was not my deploy. It was the ground shifting under my feet.
+
+And reading the exception calmly, the story became obvious. From a certain version on, SQLModel switched to `UTCDateTime`, which **rejects naive `datetime`**. My backend used naive everywhere, because that was the project's contract. The contract was right. What actually changed was the library, and it changed without warning.
+
+A value that was accepted before because "everyone did it that way" becomes an error in a changelog line. Which is why the fix wasn't in my code: it was in the ceiling.
+
+## Measure instead of guessing
+
+Before writing anything to the dependencies file, I needed to know exactly where the boundary sat. It could have been `<0.0.47`, the "obvious" number I would have guessed without thinking. But the measured bisect, version by version:
+
+| Version | naive `datetime` | Behaviour |
+| --- | --- | --- |
+| `0.0.44` | accepted | writes the field |
+| `0.0.45` | rejected | raises at bind time |
+| `0.0.46` | rejected | identical to `0.0.45` |
+
+The real ceiling was `0.0.45`, not `0.0.47`. If I had written the "safe" and "conservative" number and moved on, I would have frozen the project over two patch releases of a dependency, because of a version that broke nothing.
+
+Worth recording how that was confirmed: installing the old version in a fresh environment, on Python 3.11, and running the suite. 62 tests, two consecutive runs. No shortcuts. The number I wrote into the file was a measured number, not an opinion.
+
+## The cleanup that came for free
+
+Once the outage was fixed, something was left that had bothered me for months. Twelve files under `app/models/` declared their own local `_utcnow()`, five lines of date code, copy-pasted twelve times. The contract was the same in all twelve, but each copy could drift on its own.
+
+The fix was a time helper, in one place only:
+
+```python
+# app/core/time.py - the backend's time contract, decided once
+from datetime import datetime, timezone
+
+def _utcnow() -> datetime:
+    """Current instant in UTC, with no timezone attached."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def to_iso(value: datetime | None) -> str | None:
+    """Serializes to JSON; None stays None."""
+    if value is None:
+        return None
+    return value.isoformat()
+```
+
+After that the twelve imported from there. The contract did not change: still naive in UTC, so the API's JSON serialization stays identical. This was not refactoring for aesthetics. The duplication was hiding precisely the single point where the backend's time contract is decided, and the dependency ceiling I just wrote was only possible because that single point started to exist.
+
+Worth noting the asymmetry: the same duplication that hid the contract also multiplied the risk. If someone someday adjusted the helper in one of those twelve files, each table's behaviour would diverge with no warning at all.
+
+## What I took away
+
+A dependency is my code, except it isn't my file. When everything breaks and nothing of mine changed, the first question isn't "what did I break" — it's "what changed without me".
+
+There's an operational detail worth more than the lesson: I could have written `sqlmodel<0.0.47` in the file and gone on with my life, with a system that never crashes. The `0.0.45` ceiling only exists because someone, before me, measured instead of guessing. All I could not do was let that measurement be wasted with an invented number.
+
+That's the difference, module by module: before, twelve copies of the function; now, a single point. What protects me tomorrow is the same mechanism that brought me here.
+
+<Terminal commands={[
+  { cmd: 'git log -1 --format=%B aa484452 | head -4', note: 'the commit that wrote the ceiling' },
+  { cmd: 'grep -n "sqlmodel" backend/requirements.txt', note: 'the ceiling that stayed in the file' },
+  { cmd: 'git show --stat --format="" ae7622ae | tail -3', note: '14 files, one contract' },
+  { cmd: 'find backend/app -name "*.py" -newer backend/app/core/time.py', note: 'what still defines its own time' }
+]} />

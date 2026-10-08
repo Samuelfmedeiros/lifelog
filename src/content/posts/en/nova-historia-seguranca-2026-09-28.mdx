@@ -1,6 +1,6 @@
 ---
-title: "Nova história do Segurança — configuração, desafios e melhorias contínuas"
-description: "Reflection on the ecosystem's security posture, recent 64% scan results, and the plan to reach >85%."
+title: "New chapter for Security — setup, challenges and continuous improvement"
+description: "Reflection on the ecosystem's security posture, the recent 64% scan results, and the plan to reach >85%."
 category: samuel-projects
 date: 2026-09-28 12:00:00 -03:00
 pubDate: 2026-09-28 12:00:00 -03:00
@@ -9,31 +9,31 @@ tags: [seguranca, security, monitoring, audit]
 icon: "🔒"
 cover: /covers/nova-historia-seguranca-2026-09-28.webp
 featured: false
-hidden: true
+hidden: false
 lang: en
 ---
 
+import Terminal from '../../../components/TerminalWidget.astro'
+
 The journey of the Security project began with the consolidation of defense-in-depth practices for the entire Samuel ecosystem. Rather than treating security as a set of punctual checks, we adopted a continuous posture: isolated sandbox with ai-jail and bwrap, automated OWASP pipeline, cron watchdogs that verify everything from environment variables to backup integrity, and an autonomous agent that investigates state drifts.
 
-In the early months, the focus was on getting the sensors working. The weekly security scan, which runs every Sunday at 08:15, began generating detailed HTML reports for each control. The first result, in July 2026, showed 64% accuracy: 29 passes, 15 warnings, and zero criticals. This number was no surprise; it reflected exactly the maturation state we expected—many components were already protected, but there were configuration gaps and missing automation in response.
+In the early months, the focus was on getting the sensors working. The weekly security scan, which runs every Sunday at 08:15, began generating detailed HTML reports for each control. The first result, in July 2026, showed 64% accuracy: 29 passes, 15 warnings, and zero criticals. This number was no surprise; it reflected exactly the maturation state we expected — many components were already protected, but there were configuration gaps and missing automation in response.
 
-Warnings appeared in areas such as outdated dependencies, missing security headers in some services, and unreinforced password policies. Although no criticals were detected, the 15 attention points indicated that, if left uncorrected, they could evolve into exploitable flaws in a real attack scenario. Meanwhile, the security Kanban accumulated tasks: 25 already completed, three open, and one blocked—the most urgent being the KB data ingestion issue, where a type mismatch caused silent failures in threat indicator updates.
+Warnings appeared in areas such as outdated dependencies, missing security headers in some services, and unreinforced password policies. Although no criticals were detected, the 15 attention points indicated that, if left uncorrected, they could evolve into exploitable flaws in a real attack scenario. Meanwhile, the security Kanban accumulated tasks: 25 already completed, three open, and one blocked — the most urgent being the KB data ingestion issue, where a type mismatch caused silent failures in threat indicator updates.
 
 The conflict resided precisely in the tension between what already worked and what still needed adjustment. On one hand, the environment and health watchdogs were automatically correcting drifts every 30 and 60 minutes, keeping services within expected parameters. On the other, the 64% score showed that the attack surface still had weak points requiring manual intervention or automation improvements. The decision not to treat the number as a final judgment, but as a starting point, allowed the team to focus on corrective actions without losing sight of the long term.
 
-Resolution came through a four‑pronged plan. First, create the `emergency-checklist` skill to centralize incident response procedures, filling a gap identified in the cron jobs. Second, improve the scan score via auto‑correction scripts for known warnings, such as automatic dependency updates and standardized security header application. Third, fix the KB ingestion bug by adjusting type handling in the update pipelines to ensure data is assimilated without truncation or precision loss. Finally, document an incident‑response runbook that consolidates lessons from past events—like the TatuEngine backup truncation and the sequence drift detected by the security engineering agent—into an accessible guide for all ecosystem members.
+Resolution came through a four-pronged plan. First, create the `emergency-checklist` skill to centralize incident response procedures, filling a gap identified in the cron jobs. Second, improve the scan score via auto-correction scripts for known warnings, such as automatic dependency updates and standardized security header application. Third, fix the KB ingestion bug by adjusting type handling in the update pipelines to ensure data is assimilated without truncation or precision loss. Finally, document an incident-response runbook that consolidates lessons from past events — like the TatuEngine backup truncation and the sequence drift detected by the security engineering agent — into an accessible guide for all ecosystem members.
 
-Today, after applying these measures, the first signs of improvement are already visible: the general sweep and secrets‑audit cron jobs run without interruption, the autonomous security agent investigates recent incidents with greater precision, and the security posture dashboard reflects an increasing number of controls passing in weekly scans. The path to surpassing the 85% barrier still requires discipline and attention to detail, but the foundation is already laid. The Security story is not about reaching a final state, but about a continuous cycle of evaluation, adjustment, and learning—exactly what is expected from a truly effective security posture.
+Today, after applying these measures, the first signs of improvement are already visible: the general sweep and credential-audit cron jobs run without interruption, the autonomous security agent investigates recent incidents with greater precision, and the security posture dashboard reflects an increasing number of controls passing in weekly scans. The path to surpassing the 85% barrier still requires discipline and attention to detail, but the foundation is already laid. The Security story is not about reaching a final state, but about a continuous cycle of evaluation, adjustment, and learning — exactly what is expected from a truly effective security posture.
 
-## TerminalWidget demonstration
+## Terminal widget
 
-Below is a sample command that illustrates how the security watchdogs verify environment variables and auto‑correct drifts. The output shows a typical run where a deviant variable is detected and reset to the baseline value.
-
-import Terminal from '../../../components/TerminalWidget.astro'
+Below is a sample command that illustrates how the security watchdogs verify environment variables and auto-correct drifts. The output shows a typical run where a deviant variable is detected and reset to the baseline value.
 
 <Terminal
   commands={[
-    { cmd: "bash -c 'source ~/.hermes/scripts/env-watchdog.sh && echo \"Checking env...\" && ./env-watchdog.sh --check'", output: "Checking env...\n[WARN] LOG_LEVEL drifted from 'info' to 'debug'\n[INFO] Applying correction: LOG_LEVEL=info\n[OK] All parameters within expected range." },
-    { cmd: "bash -c './security-scan-weekly.sh --summary'", output: "Security Scan Weekly - Summary\nDate: 2026-09-22\nScore: 71% (35 Approved, 12 Warning, 0 Critical)\nNext steps: address password policy warnings and complete the emergency checklist." }
+    { cmd: "./env-watchdog.sh --check", output: "Checking env...\n[WARN] LOG_LEVEL drifted from 'info' to 'debug'\n[INFO] Applying correction: LOG_LEVEL=info\n[OK] All parameters within expected range." },
+    { cmd: "./security-all-scanner.sh --summary", output: "Security Sweep - Summary\nDate: 2026-09-22\nScore: 71% (35 approved, 12 warnings, 0 criticals)\nNext steps: address password policy warnings and complete the emergency checklist." }
   ]}
 />
