@@ -1,6 +1,6 @@
 # Recusa: lifelog-o-ratchet-que-zerou-a-divida
 
-**Data:** 2026-10-08T20:58:38.913Z
+**Data:** 2026-10-09T13:58:22.584Z
 
 **Nota:**
 
