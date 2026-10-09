@@ -217,9 +217,19 @@ jobs:
         # BUG (05/10/2026): era so `workflow_dispatch`, entao o push em
         # vrt/regenerate-baseline (o gatilho confiavel) nunca abria PR. Agora roda
         # nos dois; se os baselines mudaram, usa a branch do step anterior.
+        #
+        # BUG (08/10/2026): `peter-evans/create-pull-request` com o GITHUB_TOKEN
+        # padrao falhou com "GitHub Actions is not permitted to create or approve
+        # pull requests". Nao e permissao que falta no workflow (`pull-requests:
+        # write` ja estava la) — e restricao do GitHub para repos PUBLICOS, onde o
+        # token automatico nunca cria PR. A unica saida suportada e passar um token
+        # com mais privilegio. O secret GH_PAT (classic PAT, scope `repo`) foi
+        # criado no repo pra isso; a action cai sozinho no GITHUB_TOKEN se o
+        # secret estiver vazio, entao PRs gerados por fork continuam funcionando.
         if: always() && steps.baselines.outputs.mudou == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.GH_PAT || github.token }}
           branch: ${{ steps.versionar.outputs.branch || format('vrt/baseline-{0}', github.run_number) }}
           base: main
           title: 'test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet'
