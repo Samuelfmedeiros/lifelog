@@ -220,6 +220,12 @@ jobs:
         if: always() && steps.baselines.outputs.mudou == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
+          # Repo PUBLICO: o GITHUB_TOKEN automatico NAO pode criar PR
+          # (erro medido: "GitHub Actions is not permitted to create or approve
+          # pull requests"). Sem PR, os baselines regenerados na CI ubuntu eram
+          # descartados. O GH_PAT (scope repo) resolve; se o secret estiver vazio
+          # (fork), a action cai sozinha no GITHUB_TOKEN.
+          token: ${{ secrets.GH_PAT || github.token }}
           branch: ${{ steps.versionar.outputs.branch || format('vrt/baseline-{0}', github.run_number) }}
           base: main
           title: 'test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet'
