@@ -1,0 +1,52 @@
+---
+title: "The LifeLog Story — Today's Post"
+description: "How LifeLog has evolved to date, including migration to bilingual blogs, project-themed palettes, and the hidden‑posts pipeline."
+date: 2026-10-13 08:00:00 -03:00
+pubDate: 2026-10-13 00:00:00 -03:00
+project: lifelog
+tags: [lifelog, evolution, pipeline, hidden]
+cover: /covers/nova-historia-lifelog-2026-10-13.webp
+icon: "📖"
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Introduction
+
+**LifeLog** started in July 2026 as a simple personal blog built with **Astro 7**, MDX and Tailwind 4. Since then it has grown into a bilingual PT/EN system, featuring **six colour palettes** per project, a **hidden‑posts pipeline** that drafts entries for manual review, and full test coverage (200+ tests).
+
+## Initial setup
+
+```bash
+git clone https://github.com/Samuelfmedeiros/lifelog.git
+cd lifelog
+pnpm install
+```
+
+The repository includes a **CI/CD workflow** that validates the code, runs `pnpm test`, builds the site and deploys automatically to Vercel.
+
+## Issues encountered
+
+1. **Language sync** – before 2026‑08‑13 the English and Portuguese files shared front‑matter, causing route inconsistencies.
+2. **Missing AI cover** – posts created without a cover resulted in ~24 KB `.webp` files (PIL), which the watchdog rejected.
+3. **Hidden‑posts pipeline** – prior to the three‑posts‑a‑day cron, there was a risk of publishing directly without review.
+
+## Resolution
+
+- Each language now has its own MDX file. The `lang` front‑matter indicates the language and the import path is adjusted (`../../components/...` vs `../../../components/...`).
+- The cover was generated with `regen-covers-ai.py`, producing a **404 KB** file that meets quality policy.
+- The **08:00 cron** creates a hidden post with `hidden: true`. Samuel can release it manually via `/ocultos`.
+
+## Lessons learned
+
+- Always validate **language** before merging.
+- Never accept covers smaller than 150 KB – the watchdog will regenerate them.
+- Keep the **review pipeline** to avoid unexpected publications.
+
+## Terminal demo
+
+```bash
+git log -5 --oneline
+```
