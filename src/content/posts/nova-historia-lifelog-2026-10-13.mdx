@@ -1,0 +1,52 @@
+---
+title: "A história do LifeLog — O post de hoje"
+description: "Como o LifeLog evoluiu até agora, incluindo a migração para blogs bilíngues, temas por projeto e o pipeline de posts ocultos."
+date: 2026-10-13 08:00:00 -03:00
+pubDate: 2026-10-13 00:00:00 -03:00
+project: lifelog
+tags: [lifelog, evolucao, pipeline, hidden]
+cover: /covers/nova-historia-lifelog-2026-10-13.webp
+icon: "📖"
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Introdução
+
+O **LifeLog** começou em julho de 2026 como um simples blog pessoal construído com **Astro 7**, MDX e Tailwind 4. Desde então evoluiu para um sistema bilíngue PT/EN, com **seis paletas de cor** por projeto, um **pipeline de posts ocultos** que gera rascunhos para revisão manual, e cobertura completa de testes (200+ testes).
+
+## Configuração inicial
+
+```bash
+git clone https://github.com/Samuelfmedeiros/lifelog.git
+cd lifelog
+pnpm install
+```
+
+O repositório tem um **workflow CI/CD** que valida o código, roda `pnpm test`, gera a build e faz deploy automático na Vercel.
+
+## Conflitos encontrados
+
+1. **Sincronização de idiomas** – antes de 2026‑08‑13 o conteúdo inglês e português compartilhava o mesmo frontmatter, o que gerava inconsistências nas rotas.
+2. **Capa AI ausente** – posts criados sem capa resultavam em arquivos `.webp` de ~24 KB (PIL), que eram rejeitados pelo watchdog.
+3. **Pipeline de posts ocultos** – antes da implementação do cron de 3 posts/dia, havia risco de publicar diretamente sem revisão.
+
+## Resolução
+
+- Cada idioma agora tem seu próprio arquivo MDX. O `lang` frontmatter indica o idioma e o caminho de importação ajusta‑se (`../../components/...` vs `../../../components/...`).
+- A capa foi gerada com `regen-covers-ai.py`, produzindo um arquivo de **404 KB**, cumprindo a política de qualidade.
+- O cron **08:00** cria um post oculto com `hidden: true`. Samuel pode liberar manualmente via `/ocultos`.
+
+## Lições aprendidas
+
+- Sempre validar **idioma** antes de mergear.
+- Nunca aceitar capas menores que 150 KB – o watchdog as regenera.
+- Manter o **pipeline de revisão** para evitar publicações inesperadas.
+
+## Terminal de demonstração
+
+```bash
+git log -5 --oneline
+```
