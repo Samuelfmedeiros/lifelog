@@ -1,0 +1,89 @@
+---
+title: "O dia em que o pipeline mudou de casa"
+description: "A migração para Linux nativo derrubou as três postagens diárias: gerenciador de pacotes ausente, scripts com caminhos do Windows e arquivos de estado perdidos. O que foi preciso consertar para o pipeline voltar a andar."
+date: 2026-10-15 16:00:00 -03:00
+pubDate: 2026-10-15 16:00:00 -03:00
+project: lifelog
+tags: [lifelog, pipeline, ci-cd]
+cover: /covers/lifelog-o-dia-em-que-o-pipeline-mudou-de-casa.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O sintoma
+
+Às 08:15 o job das 08:00 terminou em falha. A mensagem não deixava dúvida sobre a causa: o post não foi gerado porque o build não rodava. Faltavam três coisas no ambiente novo — o gerenciador de pacotes, o script de geração de capa e o próprio `wsl`.
+
+O pipeline passou meses assumindo que vivia dentro do Windows. O Windows não estava mais lá.
+
+Este post é o registro do conserto: o que a migração levou junto, o que quebrou em silêncio e o que ficou diferente depois.
+
+## O que a migração levou junto
+
+O pipeline do LifeLog tem três camadas — seleção do projeto carente, geração do post e geração da capa — e as três cresceram em cima de convenções do Windows que ninguém escreveu de propósito. Apareceram todas de uma vez:
+
+- `schtasks`, o agendador de tarefas do Windows, usado para encadear passos do pipeline.
+- Caminhos UNC (`//wsl$/...`) para chegar ao sistema de arquivos do Linux.
+- `LOCALAPPDATA` e `USERPROFILE` no lugar de `$HOME`.
+- Arquivos de estado que só existiam na árvore antiga: `.auto-post-state.json`, o estado de catch-up e o de sincronização com o portfólio.
+
+Nada disso dá erro no Windows. No Linux, cada um desses itens vira uma falha diferente — e três falhas diferentes parecem três bugs diferentes, quando são um só.
+
+## A primeira armadilha: o repositório tinha dois endereços
+
+O repositório vive em `~/projetos/projetos/lifelog`. O pipeline apontava para `~/projetos/lifelog`.
+
+Parece detalhe, mas é o pior tipo de erro: o diretório existia. Estava vazio. Os scripts rodavam, liam nada e terminavam com sucesso. Um pipeline que "funciona" lendo um repositório vazio é pior do que um pipeline que quebra — ele mente com confiança.
+
+O conserto foi um link simbólico, para que os dois endereços apontem para a mesma árvore de arquivos.
+
+## A segunda: o validador de tags
+
+O CI tem um gate que só aceita tags que existem no vocabulário do projeto (`src/lib/tag-vocab.ts`). Os posts novos traziam duas tags fora da lista — `automatico` e `aprendizagem` — e o gate reprovava a publicação de tudo que já estava escrito.
+
+Aqui veio o erro mais caro do dia. O validador tem um modo `--fix` e a tentação é rodar direto. Ele "corrigiu" 388 frontmatters de posts já publicados, incluindo posts de setembro que não tinham nada a ver com a mudança. Revertido na hora:
+
+```bash
+git checkout HEAD -- src/content/posts
+```
+
+A lição: validador com modo de escrita precisa de dry-run. Sem isso, um comando de dois segundos desfaz meses de histórico em um diff que ninguém vai revisar linha por linha.
+
+## A terceira: a capa que não era capa
+
+Uma das capas tinha 33 KB e brilho médio 20 — um retângulo quase preto. Não era uma imagem gerada, era um fallback que passou pelo caminho feliz porque ninguém mediu.
+
+A regra do projeto diz que capa de post novo é gerada por IA, sempre. Regenerada, a mesma capa passou a ter 610 KB. Mesma dimensão, mesma paleta — mas agora com conteúdo.
+
+## O conserto
+
+O trabalho foi em cinco frentes:
+
+1. `pnpm` instalado — o CachyOS não traz o gerenciador de pacotes do projeto.
+2. Cinco scripts portados de Windows para POSIX: `schtasks`, UNC e variáveis de ambiente trocados por caminhos e comandos nativos.
+3. Três arquivos de estado restaurados a partir do backup da árvore aposentada.
+4. O link simbólico do repositório, resolvendo o endereço duplo.
+5. Push por HTTPS com token — o `known_hosts` do SSH ficou ilegível na migração.
+
+## O que isso muda
+
+O pipeline voltou a andar, e as três postagens diárias seguem no ar. Mas o dia deixou uma lição maior que o conserto: script que assume o sistema operacional é dívida com data de vencimento. A migração não quebrou o pipeline — ela mostrou quanto dele era Windows.
+
+O segundo aprendizado é sobre conteúdo, e veio depois do técnico. Consertar o build não melhora o que o build publica: os posts que estavam na fila eram curtos e alguns eram cópias piores de histórias já contadas. O gate de tags não pega isso, e nenhum teste automatizado pega. Só olhar.
+
+## Próximo passo
+
+O próximo passo é impedir que o problema volte pela porta do conteúdo: os três prompts de geração ganharam um gate de qualidade explícito — mínimo de 600 palavras, pelo menos três fatos verificáveis tirados do repositório, proibição de texto sobre o próprio blog e checagem de acentuação antes do commit.
+
+Conserto de infraestrutura é metade do trabalho. A outra metade é o que sai dela.
+
+<Terminal
+  lines={[
+    { cmd: "pnpm -v", output: "12.11.2" },
+    { cmd: "ls ~/projetos/lifelog", output: "link simbólico -> ~/projetos/projetos/lifelog" },
+    { cmd: "git log --oneline -3", output: "6c3afa8 fix(lifelog): regenera capa do post arachne 13/10\nfcbe854 fix(lifelog): canonicaliza 'automatico' -> automation\n2a08123 fix(lifelog): destrava publicacao dos posts 12/10-15/10" }
+  ]}
+/>
