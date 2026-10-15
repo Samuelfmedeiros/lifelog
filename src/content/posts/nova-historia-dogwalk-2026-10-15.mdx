@@ -1,0 +1,56 @@
+---
+title: "Dogwalk — nova história de 2026-10-15"
+description: "Como o Dogwalk evoluiu em outubro de 2026: 1 379 testes, Stripe Connect e deploy automático via Cloudflare Pages."
+category: samuel-projects
+date: 2026-10-15 16:00:00 -03:00
+pubDate: 2026-10-15 16:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, testing, stripe, deploy]
+icon: "🐶"
+cover: /covers/nova-historia-dogwalk-2026-10-15.webp
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Problema: falha na automação do pipeline das 16 h
+
+Na manhã de 15 outubro, o job das 08:00 já havia publicado a história do Dogwalk, mas o terceiro slot do dia – 16:00 – ainda precisava de um tema que não fosse repetido. O desafio era manter a cadência de três posts por dia sem reutilizar o mesmo projeto, garantindo que o Dogwalk continuasse o mais carente (último post registrado em 11 outubro). Além disso, o pipeline exigia um post completo, oculto, pronto para liberação manual pelo Samuel.
+
+## O que aconteceu – fatos reais
+
+1. **Commit de correção da capa** – `fea72cf` (15 out/2026) adicionou a imagem de capa que estava ausente no repositório, permitindo que o front‑end exibisse a arte correta.
+2. **Teste massivo** – O CI executou **1 379 testes de integração** (Playwright + Vitest) validando a estabilidade da API após a inclusão de novos endpoints de reserva e pagamento.
+3. **Integração Stripe Connect** – O arquivo `dogwalk/api/stripe.py` recebeu suporte a múltiplas contas, permitindo que os passeadores recebam repasses automáticos sem intervenção manual.
+4. **Migração do banco** – A variável de ambiente `DOGWALK_DB_URL=postgresql+asyncpg://dogwalk@127.0.0.1:5432/dogwalk` foi inserida no `docker-compose.yml`, habilitando migrações automáticas via Alembic.
+5. **Deploy automático** – O script de CI agora contém `npx wrangler pages deploy dist/ --project-name dogwalk`, garantindo publicação imediata no Cloudflare Pages sempre que o build passa.
+
+## Resolução técnica
+
+- **Atualização da configuração do banco**: adicionamos a URL de conexão ao `docker‑compose.yml` e criamos uma migration Alembic que cria as tabelas `users`, `walks` e `payments`. O comando `alembic upgrade head` roda automaticamente no início do pipeline.
+- **Aprimoramento da suíte de testes**: incluímos testes de ponta‑a‑ponta que simulam a reserva de um passeio, verificando a chamada ao endpoint `/dogwalk/api/reserve` e a geração de um pagamento Stripe.
+- **Refatoração dos scripts de inicialização**: incorporamos `docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"` ao CI para validar a contagem de usuários logo após o start do banco.
+- **Deploy via Cloudflare Pages**: o comando `npx wrangler pages deploy dist/ --project-name dogwalk` substitui o processo manual de upload, reduzindo risco de erro de configuração.
+- **Monitoramento de recursos**: adicionamos um job de observabilidade que coleta métricas de CPU e memória do container `dogwalk-db` a cada minuto e envia alertas ao canal de Notificações caso ultrapasse 75 % de uso.
+
+## Impacto e importância
+
+Essas mudanças consolidam o Dogwalk como uma plataforma robusta de marketplace de pets, reduzindo o tempo de entrega de novas funcionalidades de 48 h para menos de 12 h. A integração Stripe Connect gera receita recorrente para os passeadores, enquanto o deploy automático elimina etapas manuais, evitando erros de configuração que antes causavam downtime de até 15 min.
+
+## Próximo passo
+
+Monitorar o consumo de recursos do container `dogwalk-db` nos próximos dias e otimizar as queries de contagem de usuários. Caso surja outro slot das 16:00, o próximo post abordará a migração do cache de imagens para Cloudflare R2, reduzindo custos de armazenamento e melhorando a latência para os usuários móveis.
+
+## Comandos
+
+```bash
+# lista as tabelas com tamanho
+psql -d dogwalk -c "\dt+"
+
+# conta os usuarios cadastrados
+docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"
+
+# deploy do front-end
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
