@@ -1,0 +1,29 @@
+---
+title: "The History of Studies — discovery and documentation"
+description: "Honest record of the studies that fed projects, from the truncation bug to theory and model development."
+date: 2026-10-15 10:00:00 -03:00
+pubDate: 2026-10-15 10:00:00 -03:00
+project: estudos
+tags: [studies, learning, documentation, ollama, wave-field]
+cover: /covers/a-historia-do-estudos-20261015.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## What was hidden in the studies
+
+During the early phase of LifeLog the **Studies** section was only a starting point for internal experiments. There was just one post, but it contained discoveries that spawned projects like **TatuEngine** and **BitMamba-2**. This post gathers the learnings, including:
+
+- The Ollama truncation bug and the fix of raising `OLLAMA_CONTEXT_LENGTH`.
+- The wave field theory that inspired TatuEngine.
+
+## Why publish now?
+
+The section is still **hidden: true**, ready for review. Publishing helps trace the learning history and prevents similar issues from re‑appearing.
+
+<Terminal
+  lines={[{ cmd: "git log -n 1 -- src/content/posts/a-historia-do-estudos-20261015.mdx", output: "[NEW POST]" }]} 
+/>
