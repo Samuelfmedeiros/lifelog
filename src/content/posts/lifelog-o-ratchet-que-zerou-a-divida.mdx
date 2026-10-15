@@ -1,0 +1,72 @@
+---
+title: "O ratchet que zerou a divida"
+description: "Como o LifeLog passou de 7 entradas no known-failures.json para zero — e por que isso importa mais do que parece."
+date: 2026-10-08 10:00:00 -03:00
+pubDate: 2026-10-08 12:00:00 -03:00
+project: lifelog
+tags: [lifelog, testing, e2e, ci-cd, quality]
+cover: /covers/lifelog-o-ratchet-que-zerou-a-divida.webp
+hidden: true
+lang: pt
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O que e um ratchet de testes
+
+Um ratchet e uma mecanica simples: voce so pode melhorar, nunca piorar. No LifeLog, ele vive em `e2e/known-failures.json` — um arquivo que lista testes que estao falhando mas que o CI ignora. A ideia e que cada entrada tem que ser paga antes de sair da lista. Adicionar entrada exige aprovacao explicita. Remover e sempre livre.
+
+O problema e que um ratchet so funciona quando alguem paga a divida. Se voce adiciona entradas e nunca remove, o arquivo vira uma lista de desculpas. O CI fica verde, mas os testes nao estao passando — eles estao sendo ignorados.
+
+## A divida acumulada
+
+Em setembro de 2026, o `known-failures.json` tinha 7 entradas. Quatro de a11e (acessibilidade) e tres de VRT (visual regression testing). As entradas de a11e eram testes que o axe-core marcava como violacao mas que, na pratica, eram falsos positivos — o axe nao compoe alpha translucido direito, e os testes marcavam violacao mesmo com contraste real acima do minimo.
+
+As entradas de VRT eram piores: baselines que nao batiam com o runtime da CI. Os snapshots eram gerados em um ambiente e o CI rodava em outro. Os pixels eram diferentes, os testes falhavam, e alguem adicionou as entradas no ratchet para o CI passar.
+
+O resultado era um CI verde que nao significava nada. Os testes estavam sendo ignorados, nao passando.
+
+## O pagamento
+
+A divida foi paga em tres movimentos.
+
+Primeiro, as entradas de a11e. O commit `ac15b57` removeu as 4 entradas do arquivo. A suite de a11e passou 14/14 verificada em runtime local com axe-core — nao era mais necessario ignorar os testes. O ratchet ficou com 3 entradas.
+
+Segundo, as entradas de VRT. O commit `3082f3b` regenerou os baselines no runtime da CI. Os snapshots foram refeitos em `ubuntu-latest`, o mesmo ambiente onde o CI roda. Os testes passaram a comparar pixels iguais. O commit `f247b39` criou um workflow que regenera os baselines automaticamente quando necessario — o PR #62.
+
+Terceiro, o commit `eb3bdb4` corrigiu o TerminalWidget nos posts de setembro. O componente estava com array solto, import faltando e comentario HTML quebrava o build. Isso nao era uma entrada do ratchet, mas era uma divida tecnica que precisava ser paga.
+
+## O que o zero significa
+
+Com zero entradas no `known-failures.json`, o CI volta a ser um gate de verdade. Nenhum teste fica fora dele. Qualquer regressao futura volta a ser bloqueio.
+
+Isso importa porque um CI que ignora testes nao e um CI — e uma lista de desculpas. O valor do CI esta em ele bloquear o que esta quebrado. Se voce ignora os testes que estao quebrados, o CI nao bloqueia nada.
+
+O ratchet existe para garantir que a divida seja paga. Mas so funciona quando alguem paga. O LifeLog pagou. O arquivo agora tem zero entradas e o CI volta a ser um gate de verdade.
+
+## O que vem a seguir
+
+O proximo passo e manter o zero. Isso significa que qualquer teste novo que falhar vai bloquear o CI — e vai ter que ser corrigido antes de mergear. Sem desculpas, sem entradas no ratchet.
+
+E tambem significa que o workflow de regeneracao de baselines precisa ser usado com cuidado. Se os baselines sao regenerados toda vez que um teste falha, o ratchet perde o sentido. A regeneracao so deve ser feita quando a mudanca e intencional — nao para mascarar um bug.
+
+O ratchet e uma ferramenta. Como toda ferramenta, so funciona quando usada direito.
+
+## Widget de terminal
+
+Abaixo vai um comando de exemplo para verificar o estado do ratchet:
+
+<Terminal
+  commands={[
+    {
+      cmd: 'cat e2e/known-failures.json | jq ".failures | length"',
+      output: '0',
+      description: 'Zero entradas = divida paga'
+    },
+    {
+      cmd: 'git log --oneline --grep="ratchet" | head -5',
+      output: 'ac15b57 test(e2e): paga a divida de a11y — ratchet com zero entradas\n3082f3b test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet (#61)',
+      description: 'Historico do pagamento da divida'
+    }
+  ]}
+/>

@@ -4,7 +4,7 @@ description: "How LifeLog evolved up to Oct 12 2026, with three hidden daily
 date: 2026-10-12 08:00:00 -03:00
 pubDate: 2026-10-12 08:00:00 -03:00
 project: lifelog
-tags: [lifelog, narrative, pipeline, ai-cover, three-posts]
+tags: [lifelog, narrative, pipeline]
 cover: /covers/nova-historia-lifelog-2026-10-12.webp
 featured: false
 hidden: true
@@ -41,14 +41,14 @@ import Terminal from '../../../components/TerminalWidget.astro'
 | Hidden drafts ready | 3 |
 | AI covers generated | 59 |
 | Avg. build time | 10 s |
-| Deploy time after push | < 2 min |
+| Deploy time after push | &lt; 2 min |
 
 ## What's next?
 
 - **Manual release** – Samuel reviews the draft in `/ocultos` and clicks *Release*; the post appears on the site within seconds.
 - **Next selection** – the 12 h slot will pick the next most‑behind project (e.g., *dogwalk*).
-- **Cover iteration** – if the watchdog finds a cover < 150 KB or low quality, it will regenerate it via AI.
+- **Cover iteration** – if the watchdog finds a cover &lt; 150 KB or low quality, it will regenerate it via AI.
 
 <Terminal
-  lines={[{ cmd: "git -C 'C:/Users/samue/projetos/lifelog' log -1 --oneline", output: "fb715ae fix(ci): destrava o gate de tags e o PR do workflow VRT" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
+  lines={[{ cmd: "git -C '~/projetos/lifelog' log -1 --oneline", output: "fb715ae fix(ci): destrava o gate de tags e o PR do workflow VRT" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
 />

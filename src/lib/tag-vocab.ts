@@ -402,6 +402,7 @@ export const TAG_ALIASES: Record<string, string> = {
   'busca': 'search',
   'campo-de-fase': 'wave-field',
   'capa': 'covers',
+  'aprendizagem': 'learning',
   'capas': 'covers',
   'cascata': 'cascade',
   'cobertura': 'coverage',

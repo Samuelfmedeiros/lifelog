@@ -4,12 +4,14 @@ description: "Como o LifeLog evoluiu até 12 de outubro de 2026, com 3 posts di�
 date: 2026-10-12 08:00:00 -03:00
 pubDate: 2026-10-12 08:00:00 -03:00
 project: lifelog
-tags: [lifelog, narrative, pipeline, ai-cover, three-posts]
+tags: [lifelog, narrative, pipeline]
 cover: /covers/nova-historia-lifelog-2026-10-12.webp
 featured: false
 hidden: true
 lang: 'pt'
 ---
+
+import Terminal from '../../components/TerminalWidget.astro'
 
 
 
@@ -41,14 +43,14 @@ O **LifeLog** é o blog pessoal de Samuel Medeiros, construído com **Astro 7*
 | Posts hidden (prontos) | 3 |
 | Capas AI geradas | 59 |
 | Tempo médio de build | 10 s |
-| Tempo de deploy após push | < 2 min |
+| Tempo de deploy após push | &lt; 2 min |
 
 ## O que vem a seguir?
 
 - **Liberação manual** – Samuel revisa o post em `/ocultos` e, ao clicar em *Liberar*, ele aparece no site em poucos segundos.
 - **Nova seleção** – as 12 h escolherão o próximo projeto carente (ex.: *dogwalk*).
-- **Iteração da capa** – caso o watchdog detecte tamanho < 150 KB ou baixa qualidade, ele regenerará a capa via AI.
+- **Iteração da capa** – caso o watchdog detecte tamanho &lt; 150 KB ou baixa qualidade, ele regenerará a capa via AI.
 
 <Terminal
-  lines={[{ cmd: "git -C 'C:/Users/samue/projetos/lifelog' log -1 --oneline", output: "fb715ae fix(ci): destrava o gate de tags e o PR do workflow VRT" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
+  lines={[{ cmd: "git -C '~/projetos/lifelog' log -1 --oneline", output: "fb715ae fix(ci): destrava o gate de tags e o PR do workflow VRT" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
 />

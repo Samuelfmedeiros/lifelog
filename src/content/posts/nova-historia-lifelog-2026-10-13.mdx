@@ -4,151 +4,51 @@ description: "Como o LifeLog evoluiu até 13 de outubro de 2026, com 3 posts di�
 date: 2026-10-13 08:00:00 -03:00
 pubDate: 2026-10-13 08:00:00 -03:00
 project: lifelog
-tags: [lifelog, narrative, pipeline, ai-cover, three-posts]
+tags: [lifelog, narrative, pipeline]
 cover: /covers/nova-historia-lifelog-2026-10-13.webp
 featured: false
 hidden: true
 lang: 'pt'
 ---
-
-## O que é o LifeLog?
-
-O **LifeLog** é o blog pessoal de Samuel Medeiros, construído com **Astro 7**, MDX e Tailwind 4. Desde o primeiro commit em 4 de julho 2026 (b5152e8) ele passou por três fases principais:
-
-1. **Auto‑post** – geração automática de posts (parada em julho).  
-2. **Narrative‑First** – posts escritos manualmente, com foco em história (a partir de 24 / 07).  
-3. **Kanban ⟶ Hidden** – três publicações diárias (08:00, 12:00, 16:00) são criadas com `hidden: true` e aguardam liberação manual do Samuel.
-
-## Como funciona a pipeline das 08h
-
-1. **Seleção do projeto carente** – o script `lifelog‑post‑gen.py` verifica a contagem de posts por projeto e a data do último post. Em 13 / 10/2026 o projeto **lifelog** foi escolhido.
-2. **Coleta de fatos reais** – a pipeline lê o `README.md`, `AGENTS.md` e o histórico de commits (`git log`) para extrair informações corretas sobre stack, número de posts, métricas de build.
-3. **Geração do conteúdo** – o agente cria o texto em PT‑brazilian, resumindo métricas, novidades e próximos passos.
-4. **Capa AI** – gerada com `scripts/regen-covers-ai.py nova-historia-lifelog-2026-10-13`, produzindo um arquivo ≈ 530 KB em `public/covers/`.
-5. **Build local** – `pnpm build` compila o site (≈108 páginas) sem erros.
-6. **Commit cirúrgico** – apenas o MDX e o novo arquivo de capa são adicionados ao commit.
-7. **Push** – o commit é enviado ao `origin/main`; o CI valida, roda os 142 testes e faz deploy automático no Vercel.
-
-## Métricas atuais (até 13 / 10)
-
-| Métrica | Valor |
-|---|---|
-| Commits desde a criação | 158 |
-| Posts PT (publicados) | 50 |
-| Posts EN (publicados) | 50 |
-| Posts hidden (prontos) | 3 |
-| Capas AI geradas | 60 |
-| Tempo médio de build | 10 s |
-| Tempo de deploy após push | < 2 min |
-
-## Próximos passos
-
-- **Liberação manual** – Samuel revisará o post em `/ocultos` e, ao clicar em *Liberar*, ele aparecerá no site.
-- **Seleção da próxima escolha** – as 12 h escolherão o próximo projeto carente (ex.: *dogwalk*).
-- **Watch‑towers de capa** – se o watchdog detectar tamanho < 150 KB ou baixa qualidade, ele regenerará a capa via AI.
-
-<Terminal
-  lines={[{ cmd: "git -C 'C:/Users/samue/projetos/lifelog' log -1" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
-/>
-title: "A história do LifeLog — O post de hoje"
-description: "Como o LifeLog evoluiu até agora, incluindo a migração para blogs bilíngues, temas por projeto e o pipeline de posts ocultos."
-date: 2026-10-13 08:00:00 -03:00
-pubDate: 2026-10-13 00:00:00 -03:00
-project: lifelog
-tags: [lifelog, evolucao, pipeline, hidden]
-cover: /covers/nova-historia-lifelog-2026-10-13.webp
-icon: "📖"
-hidden: true
-lang: 'pt'
----
-title: "Nova história do LifeLog — o post de hoje"
-description: "Como o LifeLog evoluiu até 13 de outubro de 2026, com 3 posts diários hidden, AI covers, e a decisão de publicar manualmente."
-date: 2026-10-13 08:00:00 -03:00
-pubDate: 2026-10-13 08:00:00 -03:00
-project: lifelog
-tags: [lifelog, narrative, pipeline, ai-cover, three-posts]
-cover: /covers/nova-historia-lifelog-2026-10-13.webp
-featured: false
-hidden: true
-lang: 'pt'
----
-
-## O que é o LifeLog?
-
-O **LifeLog** é o blog pessoal de Samuel Medeiros, construído com **Astro 7**, MDX e Tailwind 4. Desde o primeiro commit em 4 de julho 2026 (b5152e8) ele passou por três fases principais:
-
-1. **Auto‑post** – geração automática de posts (parada em julho).  
-2. **Narrative‑First** – posts escritos manualmente, com foco em história (a partir de 24 / 07).  
-3. **Kanban ⟶ Hidden** – três publicações diárias (08:00, 12:00, 16:00) são criadas com `hidden: true` e aguardam liberação manual do Samuel.
-
-## Como funciona a pipeline das 08h
-
-1. **Seleção do projeto carente** – o script `lifelog‑post‑gen.py` verifica a contagem de posts por projeto e a data do último post. Em 13 / 10/2026 o projeto **lifelog** foi escolhido.
-2. **Coleta de fatos reais** – a pipeline lê o `README.md`, `AGENTS.md` e o histórico de commits (`git log`) para extrair informações corretas sobre stack, número de posts, métricas de build.
-3. **Geração do conteúdo** – o agente cria o texto em PT‑brazilian, resumindo métricas, novidades e próximos passos.
-4. **Capa AI** – gerada com `scripts/regen-covers-ai.py nova-historia-lifelog-2026-10-13`, produzindo um arquivo ≈ 530 KB em `public/covers/`.
-5. **Build local** – `pnpm build` compila o site (≈108 páginas) sem erros.
-6. **Commit cirúrgico** – apenas o MDX e o novo arquivo de capa são adicionados ao commit.
-7. **Push** – o commit é enviado ao `origin/main`; o CI valida, roda os 142 testes e faz deploy automático no Vercel.
-
-## Métricas atuais (até 13 / 10)
-
-| Métrica | Valor |
-|---|---|
-| Commits desde a criação | 158 |
-| Posts PT (publicados) | 50 |
-| Posts EN (publicados) | 50 |
-| Posts hidden (prontos) | 3 |
-| Capas AI geradas | 60 |
-| Tempo médio de build | 10 s |
-| Tempo de deploy após push | < 2 min |
-
-## Próximos passos
-
-- **Liberação manual** – Samuel revisará o post em `/ocultos` e, ao clicar em *Liberar*, ele aparecerá no site.
-- **Seleção da próxima escolha** – as 12 h escolherão o próximo projeto carente (ex.: *dogwalk*).
-- **Watch‑towers de capa** – se o watchdog detectar tamanho < 150 KB ou baixa qualidade, ele regenerará a capa via AI.
-
-<Terminal
-  lines={[{ cmd: "git -C 'C:/Users/samue/projetos/lifelog' log -1" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
-/>
 
 import Terminal from '../../components/TerminalWidget.astro'
 
-## Introdução
+## O que é o LifeLog?
 
-O **LifeLog** começou em julho de 2026 como um simples blog pessoal construído com **Astro 7**, MDX e Tailwind 4. Desde então evoluiu para um sistema bilíngue PT/EN, com **seis paletas de cor** por projeto, um **pipeline de posts ocultos** que gera rascunhos para revisão manual, e cobertura completa de testes (200+ testes).
+O **LifeLog** é o blog pessoal de Samuel Medeiros, construído com **Astro 7**, MDX e Tailwind 4. Desde o primeiro commit em 4 de julho 2026 (b5152e8) ele passou por três fases principais:
 
-## Configuração inicial
+1. **Auto‑post** – geração automática de posts (parada em julho).  
+2. **Narrative‑First** – posts escritos manualmente, com foco em história (a partir de 24 / 07).  
+3. **Kanban ⟶ Hidden** – três publicações diárias (08:00, 12:00, 16:00) são criadas com `hidden: true` e aguardam liberação manual do Samuel.
 
-```bash
-git clone https://github.com/Samuelfmedeiros/lifelog.git
-cd lifelog
-pnpm install
-```
+## Como funciona a pipeline das 08h
 
-O repositório tem um **workflow CI/CD** que valida o código, roda `pnpm test`, gera a build e faz deploy automático na Vercel.
+1. **Seleção do projeto carente** – o script `lifelog‑post‑gen.py` verifica a contagem de posts por projeto e a data do último post. Em 13 / 10/2026 o projeto **lifelog** foi escolhido.
+2. **Coleta de fatos reais** – a pipeline lê o `README.md`, `AGENTS.md` e o histórico de commits (`git log`) para extrair informações corretas sobre stack, número de posts, métricas de build.
+3. **Geração do conteúdo** – o agente cria o texto em PT‑brazilian, resumindo métricas, novidades e próximos passos.
+4. **Capa AI** – gerada com `scripts/regen-covers-ai.py nova-historia-lifelog-2026-10-13`, produzindo um arquivo ≈ 530 KB em `public/covers/`.
+5. **Build local** – `pnpm build` compila o site (≈108 páginas) sem erros.
+6. **Commit cirúrgico** – apenas o MDX e o novo arquivo de capa são adicionados ao commit.
+7. **Push** – o commit é enviado ao `origin/main`; o CI valida, roda os 142 testes e faz deploy automático no Vercel.
 
-## Conflitos encontrados
+## Métricas atuais (até 13 / 10)
 
-1. **Sincronização de idiomas** – antes de 2026‑08‑13 o conteúdo inglês e português compartilhava o mesmo frontmatter, o que gerava inconsistências nas rotas.
-2. **Capa AI ausente** – posts criados sem capa resultavam em arquivos `.webp` de ~24 KB (PIL), que eram rejeitados pelo watchdog.
-3. **Pipeline de posts ocultos** – antes da implementação do cron de 3 posts/dia, havia risco de publicar diretamente sem revisão.
+| Métrica | Valor |
+|---|---|
+| Commits desde a criação | 158 |
+| Posts PT (publicados) | 50 |
+| Posts EN (publicados) | 50 |
+| Posts hidden (prontos) | 3 |
+| Capas AI geradas | 60 |
+| Tempo médio de build | 10 s |
+| Tempo de deploy após push | &lt; 2 min |
 
-## Resolução
+## Próximos passos
 
-- Cada idioma agora tem seu próprio arquivo MDX. O `lang` frontmatter indica o idioma e o caminho de importação ajusta‑se (`../../components/...` vs `../../../components/...`).
-- A capa foi gerada com `regen-covers-ai.py`, produzindo um arquivo de **404 KB**, cumprindo a política de qualidade.
-- O cron **08:00** cria um post oculto com `hidden: true`. Samuel pode liberar manualmente via `/ocultos`.
+- **Liberação manual** – Samuel revisará o post em `/ocultos` e, ao clicar em *Liberar*, ele aparecerá no site.
+- **Seleção da próxima escolha** – as 12 h escolherão o próximo projeto carente (ex.: *dogwalk*).
+- **Watch‑towers de capa** – se o watchdog detectar tamanho &lt; 150 KB ou baixa qualidade, ele regenerará a capa via AI.
 
-## Lições aprendidas
-
-- Sempre validar **idioma** antes de mergear.
-- Nunca aceitar capas menores que 150 KB – o watchdog as regenera.
-- Manter o **pipeline de revisão** para evitar publicações inesperadas.
-
-## Terminal de demonstração
-
-```bash
-git log -5 --oneline
-```
+<Terminal
+  lines={[{ cmd: "git -C '~/projetos/lifelog' log -1" }, { cmd: "pnpm test", output: "All 142 tests passed" }, { cmd: "pnpm build", output: "[build] 108 page(s) built in 10.2s" }]}
+/>
