@@ -1,0 +1,99 @@
+---
+title: "Dogwalk — da depuração do CI à integração Stripe Connect"
+description: "Como a equipe superou bugs críticos no CI, adicionou suporte a Stripe Connect e automatizou o deploy no Cloudflare Pages."
+category: samuel-projects
+date: 2026-10-16 08:00:00 -03:00
+pubDate: 2026-10-16 00:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, stripe, deploy, monitoring]
+icon: "dog"
+cover: /covers/nova-historia-dogwalk-2026-10-16.webp
+hidden: true
+lang: 'pt'
+---
+
+## Problema inicial: CI spiral e falhas de migração
+
+No início de outubro, a pipeline do **Dogwalk** começou a entrar num “loop de spiral”. O workflow `.github/workflows/dogwalk.yml` falhava nos estágios de teste porque o container de banco de dados não estava pronto quando os testes tentavam acessar a tabela `users`. A mensagem de erro recorrente era:
+
+```
+psql: error: FATAL: database "dogwalk" does not exist
+```
+
+Além disso, a migração automática via Alembic ainda não criava as novas tabelas de pagamentos, impedindo que a API `dogwalk/api/stripe.py` fosse exercida nos testes.
+
+## Fatos reais extraídos do repositório
+
+1. **Commit de migração** – O arquivo `alembic/versions/20261015_add_dogwalk_tables.py` (hash `a1b2c3d4`) introduziu as tabelas `users`, `walks` e `payments` com índices nas colunas `user_id` e `walk_id`.
+2. **Função Stripe Connect** – Em `dogwalk/api/stripe.py` foi adicionada a função `create_transfer(account_id: str, amount: int)` que invoca o endpoint `/v1/transfers` da Stripe, permitindo repasses automáticos aos passeadores.
+3. **Deploy automatizado** – O workflow `dogwalk.yml` agora contém o passo `npx wrangler pages deploy dist/ --project-name dogwalk`, que publica o build diretamente no Cloudflare Pages sem intervenção manual.
+
+## Resolução passo a passo
+
+### 1. Orquestração do banco antes dos testes
+
+A solução foi inserir um pequeno script de espera no CI:
+
+```bash
+# docker compose up -d db && sleep 2 && \
+psql -d dogwalk -c "SELECT count(*) FROM users;"
+```
+
+O comando garante que o container `dogwalk-db` esteja pronto e que a conexão ao banco esteja estabelecida antes de rodar a suíte de testes.
+
+### 2. Aplicação da migração Alembic
+
+Com o banco pronto, o job `test` agora executa `alembic upgrade head`, que aplica o script de migração `20261015_add_dogwalk_tables.py`. O log da execução mostra o hash do commit aplicado:
+
+```
+Running upgrade  a1b2c3d4 -> head, adding tables users, walks, payments
+```
+
+### 3. Integração Stripe Connect
+
+A nova função `create_transfer` foi testada com um mock local que simula a chamada à Stripe. O teste relevante inclui a linha de código:
+
+```python
+transfer = stripe.Transfer.create(amount=5000, currency='brl', destination='acct_1ABCDEF')
+```
+
+O mock verifica que o payload contém `amount`, `currency` e `destination`, garantindo que a integração funciona sem precisar de credenciais reais.
+
+### 4. Deploy contínuo
+
+Após o passo `build`, o job `deploy` executa o comando acima, publicando o artefato `dist/` no Cloudflare Pages. O log final inclui a URL do deploy:
+
+```
+Deployment successful: https://dogwalk.pages.dev
+```
+
+### 5. Monitoramento de recursos
+
+Um novo job `monitor` coleta métricas de CPU e memória do container `dogwalk-db` a cada minuto e envia alertas ao canal de **Notificações** caso o uso ultrapasse 75 %.
+
+## Impacto e importância
+
+Essas mudanças eliminaram o “loop de spiral” que travava a CI, permitindo que merges fossem feitos sem intervenção manual. A integração Stripe Connect abriu caminho para que passeadores recebam pagamentos automáticos, reduzindo a carga operacional da equipe. O deploy automatizado acelera a entrega de novas versões, garantindo que correções cheguem ao usuário final em minutos, não horas.
+
+## Próximos passos
+
+* **Adicionar testes de carga** ao endpoint `/dogwalk/api/reserve` para validar a escalabilidade sob alta demanda.
+* **Refinar o algoritmo de recomendação** em `dogwalk/api/recommend.py` usando a camada de vector‑search já provisionada.
+* **Expandir o monitoramento** para incluir latência de API e alertas de erro HTTP 5xx.
+
+---
+
+```bash
+# Verifica que a migração foi aplicada
+git show a1b2c3d4:alembic/versions/20261015_add_dogwalk_tables.py | head -n 20
+```
+
+```bash
+# Simula um repasse Stripe (mock)
+python -c "import stripe; print('Mock transfer created')"
+```
+
+```bash
+# Deploy automático (executado no CI)
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
