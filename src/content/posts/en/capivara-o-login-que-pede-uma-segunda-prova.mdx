@@ -1,0 +1,68 @@
+---
+title: "The login that started asking for a second proof — 2FA in Capivara"
+description: "Capivara's login gained TOTP: the second factor is required only for a verified secret, encrypted at rest with AES-256-GCM, with 21 tests covering the flow."
+category: samuel-projects
+date: 2026-10-17 16:00:00 -03:00
+pubDate: 2026-10-17 16:00:00 -03:00
+project: capivara
+tags: [capivara, auth, security, rate-limit, pytest, fastapi]
+cover: /covers/capivara-o-login-que-pede-uma-segunda-prova.webp
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+**Capivara**'s login was always a simple door: email and password, nothing else. The problem is that the panel holds things that do not match a simple door — finances, orders, family data, the history of everything that crosses the hub. One password for an entire hub is not enough.
+
+The second-factor piece had been sitting in the database since October 7th, encrypted, waiting. What was missing was wiring it into the login. That is what commit `af51d4c` did today at 2:32 pm.
+
+### What changed, in numbers
+
+Four files, 89 lines added and 2 removed:
+
+- `backend/routers/auth.py` (**+47**) — the login flow now checks the TOTP code;
+- `backend/schemas.py` (**+2**) — `LoginRequest` gained the optional `totp_code` field;
+- `frontend/src/pages/Login.tsx` (**+36/-2**) — the second screen, which only shows up when the server asks;
+- `frontend/src/lib/i18n.tsx` (**+6**) — the new copy in both languages.
+
+The detail that keeps the flow from breaking anyone who signs in today lives in the API contract: the code is required only when the user has a **verified** TOTP secret. Without the code in that case, the reply is a `401` with `detail: "2fa_required"` — and that detail is what the frontend reads to swap the form. A wrong code gets no special treatment: it lands in the same login rate-limit bucket and goes to the audit log.
+
+### The secret is not stored in the clear
+
+Before the login could demand a second factor, the TOTP secret had to survive a leaked backup. `backend/totp_crypto.py` stores it as:
+
+```
+"v1:" + base64url( nonce(12) || ciphertext || tag(16) )
+```
+
+That is **AES-256-GCM** with a random nonce per write — two identical secrets never become the same blob. Decryption makes two decisions worth telling:
+
+1. a value **without** the `v1:` prefix is treated as legacy cleartext and returned as is, which allowed the migration with no maintenance window and no re-enrolling anyone;
+2. if the blob was tampered with, `AESGCM` raises `InvalidTag` — the failure is loud, not silent. A corrupted secret becomes a visible error, not a second factor that accepts anything.
+
+### What I could measure
+
+The two test files covering that path, run inside the backend's own virtualenv:
+
+<Terminal
+  lines={[
+    ".venv/bin/python -m pytest tests/test_auth.py tests/test_totp_crypto.py -q",
+    "# 21 passed in 3.79s",
+    "",
+    "git show --stat af51d4c | tail -6",
+    "# 4 files changed, 89 insertions(+), 2 deletions(-)",
+  ]}
+/>
+
+Worth noting what is **not** measured: the frontend suite has 11 pre-existing `ThemeToggle` failures, confirmed in a clean worktree of `HEAD` — they are not from this work, and they went into the count so they would not show up later as "new".
+
+### Where the login stands today
+
+The single registered user has a TOTP secret stored with `verified = 0`. In practice: nobody is locked out today, because the requirement only applies to a verified secret. Activation is an explicit step in the admin — scan the QR, confirm a code — and only after that does the login start asking for the second proof. That is on purpose: turning the second factor on by default, unconfirmed, would lock the hub's owner out of their own house.
+
+The next commit, `99a616e`, pointed the service unit at the post-migration paths — the backend now starts from the repository's own virtualenv, with a fixed working directory. A service that starts from the wrong place is the silent version of the same closed-door bug.
+
+### Next step
+
+What is left cannot be solved in code: **enable 2FA in the admin** and generate recovery codes before requiring the second factor anywhere else. Without recovery, a lost phone becomes an unreachable hub — and the second factor turns into the problem instead of the solution.
