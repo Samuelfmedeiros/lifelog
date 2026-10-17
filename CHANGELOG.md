@@ -291,3 +291,7 @@
 - fix (`61fa7c8`): remove o opt-in cross-document de View Transitions na main — primeiro clique abre o post.
 - fix (`b4c66f8`): remove o opt-in cross-document de View Transitions (css).
 - 2 commits de hoje, ambos em branch de feature; `main` segue 8 atras do `origin/main` (push recusado por non-fast-forward) — commit de docs ficou local para nao acionar o deploy da `main`.
+
+## 2026-10-16 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
+
+- 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos

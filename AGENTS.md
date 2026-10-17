@@ -530,3 +530,6 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 - **Cuidado (deploy):** `.github/workflows/deploy.yml` dispara em `push` na `main` — publicar a main vira deploy de producao; por isso nada foi mergeado/pushado aqui.
 - Working tree de outra sessao, nao tocada aqui: 301 arquivos em `src/content/` com ruido de CRLF-vs-LF (o proprio git avisa `CRLF will be replaced by LF`) + `api/ocultos-data.mjs` modificados, mais ~20 untracked (`.loop-*`, prompts do Roger). Nada disso foi addado.
 - Rotina fim-de-dia: entrada no CHANGELOG + esta secao; commit cirurgico so dos 2 docs.
+
+## Sessão 2026-10-16 (fim de dia)
+- 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
