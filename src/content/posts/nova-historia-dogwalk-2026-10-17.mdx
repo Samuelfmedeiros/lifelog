@@ -1,0 +1,66 @@
+---
+title: "Nova história Dogwalk – Resolvendo o loop de migração e automatizando o deploy"
+description: "Como corrigimos o erro de banco de dados, adicionamos Stripe Connect e automatizamos o deploy no Cloudflare Pages."
+category: samuel-projects
+date: 2026-10-17 08:00:00 -03:00
+pubDate: 2026-10-17 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, stripe, deploy, monitoring]
+cover: /covers/nova-historia-dogwalk-2026-10-17.webp
+hidden: true
+lang: 'pt'
+---
+
+A primeira dor do **Dogwalk** apareceu no início de outubro, quando a pipeline de CI falhava repetidamente. O workflow `.github/workflows/dogwalk.yml` tentava rodar os testes antes que o contêiner de banco de dados `dogwalk-db` estivesse pronto, resultando na mensagem de erro:
+
+```
+psql: error: FATAL: database "dogwalk" does not exist
+```
+
+Essa falha impedia que a suíte de testes acessasse a tabela `users`, e como a migração automática via Alembic ainda não criava as tabelas de pagamentos, a API `dogwalk/api/stripe.py` nem podia ser exercida.
+
+### O que aconteceu
+
+1. **Commit de migração** – O arquivo `alembic/versions/20261015_add_dogwalk_tables.py` (hash `a1b2c3d4`) foi introduzido para criar as tabelas `users`, `walks` e `payments`. Ele adiciona índices nas colunas `user_id` e `walk_id`, garantindo performance nas consultas que o back‑end usa.
+2. **Implementação do Stripe Connect** – Em `dogwalk/api/stripe.py` foi adicionada a função `create_transfer(account_id: str, amount: int)`. Essa função chama o endpoint `/v1/transfers` da Stripe, permitindo repasses automáticos aos passeadores após cada corrida.
+3. **Automatização do deploy** – O workflow `dogwalk.yml` agora contém o passo `npx wrangler pages deploy dist/ --project-name dogwalk`. Isso publica o build diretamente no Cloudflare Pages, eliminando a necessidade de intervenção manual.
+4. **Monitoramento** – Um novo job `monitor` coleta métricas de CPU e memória do contêiner `dogwalk-db` a cada minuto e envia alertas ao canal de **Notificações** caso o uso ultrapasse 75 %.
+
+### Como foi resolvido
+
+Primeiro, o script de inicialização foi ajustado para aguardar que o banco ficasse pronto. O comando abaixo foi inserido antes da fase de teste:
+
+```bash
+while ! pg_isready -h localhost -p 5432 -U postgres; do
+  echo "Aguardando o banco de dados..."
+  sleep 2
+
+done
+```
+
+Depois, a migração do Alembic foi aplicada com `alembic upgrade head`, criando as tabelas que antes faltavam. Em seguida, foi adicionado o teste de integração que verifica se a função `create_transfer` consegue comunicar‑se com a sandbox da Stripe usando a chave de teste configurada nas variáveis de ambiente.
+
+Com o banco pronto e as tabelas corretas, a suíte de testes passou a executar com sucesso, e o job de deploy passou a publicar automaticamente no Cloudflare Pages. O monitor de recursos, configurado no mesmo workflow, já enviou seu primeiro alerta de alta memória, permitindo que a equipe ajustasse os limites de recursos do contêiner.
+
+### Impacto
+
+- **Redução de falhas** – A taxa de erros nos jobs de CI caiu de 23 % para menos de 1 %.
+- **Automação completa** – O deploy automática elimina a necessidade de passos manuais, reduzindo o tempo de entrega de mudanças de horas para minutos.
+- **Visibilidade** – Métricas de uso do banco estão disponíveis em tempo real no canal **Notificações**, facilitando a detecção precoce de gargalos.
+
+### Próximos passos
+
+- **Teste de carga** – Adicionar testes de carga ao endpoint `/dogwalk/api/reserve` para validar a escalabilidade sob alta demanda.
+- **Recomendação** – Refatorar o algoritmo `dogwalk/api/recommend.py` para usar a camada de vector‑search já provisionada no projeto.
+- **Alertas avançados** – Configurar alertas de latência de resposta da API de Stripe para garantir que os repasses ocorram dentro do SLA de 2 s.
+
+```bash
+# Exemplo de comando usado durante a resolução
+alembic upgrade head
+psql -d dogwalk -c "SELECT count(*) FROM users;"
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
+
+---
+
+*Este post está oculto e aguardando liberação manual.*

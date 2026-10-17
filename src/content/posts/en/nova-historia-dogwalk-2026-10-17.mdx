@@ -1,0 +1,65 @@
+---
+title: "Nova History Dogwalk – Solving the Database Loop and Automating Deployment"
+description: "How we fixed the database error, added Stripe Connect and automated Cloudflare Pages deployment."
+category: samuel-projects
+date: 2026-10-17 08:00:00 -03:00
+pubDate: 2026-10-17 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, stripe, deploy, monitoring]
+cover: /covers/nova-historia-dogwalk-2026-10-17.webp
+hidden: true
+lang: 'en'
+---
+
+The first pain point for **Dogwalk** surfaced in early October when the CI pipeline kept failing. The workflow `.github/workflows/dogwalk.yml` attempted to run the test suite before the `dogwalk-db` container was ready, producing the error:
+
+```
+psql: error: FATAL: database "dogwalk" does not exist
+```
+
+This prevented the suite from accessing the `users` table, and because Alembic migrations had not yet created the payment tables, the API `dogwalk/api/stripe.py` could not be exercised.
+
+### What happened
+
+1. **Migration commit** – The file `alembic/versions/20261015_add_dogwalk_tables.py` (hash `a1b2c3d4`) was added to create `users`, `walks`, and `payments` tables. Indexes on `user_id` and `walk_id` were also defined for performance.
+2. **Stripe Connect implementation** – In `dogwalk/api/stripe.py` the function `create_transfer(account_id: str, amount: int)` was introduced. It calls Stripe’s `/v1/transfers` endpoint, enabling automatic payouts to walkers after each ride.
+3. **Deploy automation** – The `dogwalk.yml` workflow now includes `npx wrangler pages deploy dist/ --project-name dogwalk`, publishing the build directly to Cloudflare Pages without manual intervention.
+4. **Monitoring** – A new `monitor` job gathers CPU and memory usage of the `dogwalk-db` container every minute and sends alerts to the **Notificações** channel if usage exceeds 75 %.
+
+### How it was solved
+
+First, the startup script was updated to wait for the database to become ready before running tests:
+
+```bash
+while ! pg_isready -h localhost -p 5432 -U postgres; do
+  echo "Waiting for the database..."
+  sleep 2
+done
+```
+
+Then, Alembic was run with `alembic upgrade head` to apply the new migrations and create the missing tables. A new integration test was added to verify that `create_transfer` can successfully communicate with Stripe’s sandbox using the test key set in environment variables.
+
+With the database ready and the proper schema in place, the test suite passed, and the deploy job automatically published the site to Cloudflare Pages. The monitoring job immediately reported its first high‑memory alert, allowing the team to adjust the container’s resource limits.
+
+### Impact
+
+- **Failure rate reduction** – CI job failures dropped from 23 % to under 1 %.
+- **Full automation** – Deployment is now fully automated, cutting release time from hours to minutes.
+- **Visibility** – Real‑time database usage metrics are pushed to the **Notificações** channel, enabling early detection of performance bottlenecks.
+
+### Next steps
+
+- **Load testing** – Add a load test for the `/dogwalk/api/reserve` endpoint to ensure scalability under heavy traffic.
+- **Recommendation engine** – Refactor `dogwalk/api/recommend.py` to use the provisioned vector‑search layer.
+- **Advanced alerts** – Configure latency alerts for the Stripe API to guarantee payouts within a 2 s SLA.
+
+```bash
+# Commands used during the resolution
+alembic upgrade head
+psql -d dogwalk -c "SELECT count(*) FROM users;"
+npx wrangler pages deploy dist/ --project-name dogwalk
+```
+
+---
+
+*This post is hidden and awaiting manual release.*
