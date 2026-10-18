@@ -1,0 +1,70 @@
+---
+title: "Arachne: the deploy that never ran, because the two halves never met"
+description: "The build job only fired on pushes to master and the deploy job only on tags; the two conditions never crossed, so no tag ever built or shipped. Behind that, the deploy still dialed SSH to a legacy host from a machine that was already the runner itself, and CI died on the very first language setup step."
+date: 2026-10-15 21:58:00 -03:00
+pubDate: 2026-10-18 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "ci-cd", "github-actions", "self-hosted", "docker", "deploy"]
+cover: /covers/arachne-o-deploy-que-nunca-rodou.webp
+featured: false
+hidden: true
+lang: "en"
+---
+
+## The workflow that was green because it never ran
+
+Ten commits landed in Arachne on October 15. Five of them, PRs #96 through #100, were spent closing a circuit that had looked finished for weeks: build the project image and ship it to production on a tag. CI was not red. It was empty — and an empty workflow is exactly the color of a workflow that passed.
+
+## Two halves that never met
+
+The `build` job only ran on pushes to `master`. The `deploy` job only ran on pushes of a `v*` tag. Those are disjoint sets: since the two conditions never cross, no tag ever built or deployed. The workflow had a deploy job, had tags, had an image — and none of it touched the rest.
+
+Commit `2da3f49` (PR #100) moves `build` to run on `master` **and** on tags, publishing the image under the `latest` label the deploy consumes. One condition unlocked everything else.
+
+## SSH to a host under its own feet
+
+The deploy job authenticated with `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_SSH_KEY`. That was a path from another era, when production lived on k3s, on a separate host. Since then production became a systemd service running `docker compose` on the very same machine where the self-hosted runner is registered.
+
+So the deploy dialed SSH outward to reach a host that was, in practice, the machine it started from — and that no longer answered that way. Commit `59cd76a` (PR #98) replaces SSH with a local deploy: log in to the registry using the job's own `GITHUB_TOKEN` with the `packages: read` permission, pull the image, `docker tag`, `docker compose up -d`. No remote host, no private key, no network hop.
+
+## The health gate that gave up on the first miss
+
+The old job did pull, `up`, `sleep` and a `curl`. If health did not answer on the first try, it exited with an error and that was that: the bad container stayed up and there was no way back. Commit `12a6840` (PR #96) designed the health gate that exists today — 12 attempts with 5 seconds between them, roughly 60 seconds of patience, because service start-up comfortably exceeds 10 seconds. Before bringing anything up, the job records the image currently running (`docker inspect --format '{{.Image}}'`); if health never comes, it re-tags the previous image and brings that up instead. Automatic rollback instead of manual intervention in the middle of the night.
+
+The same commit fixes a silent lie in the production compose file: it pointed at a locally named image, so "deploy" rebuilt the image on the machine from source code the deploy script never updated. Whatever was running could have nothing to do with the commit the tag represented. The compose file now references the image published by CI.
+
+## The CI that did not know the system
+
+The same night, every job that needed Python died on its first step: `setup-python` does not recognize the runner's distribution — the error is literal, `version 3.12 was not found for cachyos` — and the runner is Arch-based. `test`, `lint`, `pip-audit`, `ruff`, `bandit` and the PyPI publish all died before executing a single line of code. And because build depended on them, the road to deploy died with them.
+
+The cure (PRs #97 and #99) took `setup-python` out of the picture and moved the jobs into containers: `python:3.12-slim` for the heavy lifting and `python:3.11-slim` for publishing. Two side effects surfaced in the same batch and were fixed together:
+
+- the Postgres service started being reached by service name (`postgres:5432`) instead of the port mapping on the runner host (`localhost:5433`) — inside a container, "localhost" is somebody else;
+- the bandit job used `sudo install` on a runner with no sudo; inside the container, which runs as root, the same command no longer needs it.
+
+And a bonus in the same commit: the gitleaks token was escaped in the YAML and became a literal string. The check ran with a fake credential and reported success.
+
+## Two fixes that showed up along the way
+
+The same day brought `612fee0`: the storage health check called a function that only exists on the Postgres-with-vectors path, and on the SQLite store — the one actually in production — that turned into a 500 during ingestion. And the CSRF guard was blocking pure API clients, which authenticate by header and send no cookie: no cookie means no CSRF to protect against, and automation was stuck behind a protection that did not apply to it.
+
+## Why this matters
+
+These are three silent failures of different species. The first is arithmetic: two conditions that never cross do not raise an error, they produce nothing — and nothing is the same color as success. The second is a dead destination: SSH to a legacy host fails while nobody is waiting for that deploy. The third is a credential that became text, with the check report saying it passed.
+
+The only piece of the circuit designed to shout was the health gate — and it gave up on the first attempt, leaving the new container up.
+
+What changes now is what the deploy actually claims: the image going up is the one CI built, health gets time to answer, and there is a rollback when it does not.
+
+```bash
+# the local deploy: the image CI published becomes the one running
+docker pull ghcr.io/<org>/arachne-api:latest
+docker tag ghcr.io/<org>/arachne-api:latest arachne-api:latest
+
+# the health gate: 12 attempts, 5s apart, before deciding on rollback
+for i in $(seq 1 12); do curl -sf http://127.0.0.1:9000/health && break; sleep 5; done
+```
+
+## Next step
+
+The health gate verifies that the service answers, not that the version answering is the one that just shipped. The next step is comparing the identifier of the running image against the one CI just pulled, and failing the deploy when the two do not match — the same class of silent lie this night exposed three times.
