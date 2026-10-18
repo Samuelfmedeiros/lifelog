@@ -56,8 +56,8 @@ PROJECT_STYLES = {
         "colors": ["#7c3aed", "#f59e0b", "#1e1b4b"],
     },
     "portfolio": {
-        "prompt_suffix": "Sci-fi HUD theme, cyan and electric blue, holographic grid overlays, futuristic interface aesthetic, 16:9 wallpaper",
-        "colors": ["#00d4ff", "#22d3ee", "#0c4a6e"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid rocket shape in vivid cyan-blue on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
+        "colors": ["#0ea5e9", "#67e8f9", "#bae6fd"],
     },
     "capivara": {
         "prompt_suffix": "Tropical tech theme, warm amber and orange, sunset gradients with digital accents, Brazilian vibes, 16:9 wallpaper",

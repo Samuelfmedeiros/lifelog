@@ -1,0 +1,95 @@
+---
+title: "A fila que nunca encheu"
+description: "O portfólio trocou o Umami por um painel sem cookie para finalmente medir visitas. Na primeira hora no ar, todo visitante recebia um erro de JavaScript — porque o stub que guardava a fila de eventos nunca era chamado."
+category: samuel-projects
+date: 2026-10-18 15:36:00 -03:00
+pubDate: 2026-10-18 16:45:00 -03:00
+project: portfolio
+lang: pt
+tags: ["portfolio", "analytics", "javascript", "nextjs", "debugging", "privacy"]
+icon: "🚀"
+cover: /covers/portfolio-a-fila-que-nunca-encheu.webp
+featured: false
+hidden: true
+---
+
+## O painel que só contava quem aceitava
+
+O portfólio tinha analytics desde o começo: o Umami, no meu próprio servidor. O problema nunca foi o painel, e sim a porteira na frente dele — o script só carregava depois do banner de consentimento, e quase ninguém clica em "Aceitar". O resultado eram semanas de painel quase vazio: não por falta de visitas, mas porque o medidor só ligava depois de um clique que a maioria não dá.
+
+Pior: a ingestão respondia 400 quando testada em 17/10 — não havia nem o número dos poucos que aceitavam. Decisão: medir sem cookie, reaproveitando o cano que a loja já usa para eventos.
+
+## Peça 1 — um beacon de três campos
+
+Commit `b8889c6` (17/10, PR #135, merge `253513c`): entrou o arquivo de medição com uma função única, que envia um corpo de três campos — `site`, `path` e `ref` — via `navigator.sendBeacon`, com fallback para `fetch` usando `keepalive`. Sem cookie, sem IP, sem identificador de sessão. Um hit por troca de rota, disparado por um componente no layout raiz — o App Router navega sem reload, e o caminho da URL é o gatilho certo.
+
+Duas decisões que valem mais que o código:
+
+- **DNT e GPC são respeitados.** Quem pediu para não ser rastreado não é contado — medição agregada não é desculpa para ignorar o pedido.
+- **`text/plain` no corpo do beacon.** Isso evita o preflight de CORS, e o servidor lê o JSON do mesmo modo.
+
+E um detalhe que só aparece em produção: no layout raiz, o caminho da rota pode chegar nulo na primeira renderização. Sem fallback para o `location.pathname` do navegador, o efeito saía calado e nada era medido. Um analytics que falha em silêncio é indistinguível de um site sem visitas.
+
+## Peça 2 — o painel próprio, sem sair do domínio
+
+Commit `84944b2` (18/10, 02:40): o OpenPanel self-hosted entrou ao lado do Umami. O site tem CSP restrita a `'self'` e COEP `require-corp`, então script e ingestão não vêm de outro domínio direto: os dois passam por rewrites same-origin do Next. Nada de afrouxar a CSP para caber analytics — o analytics é que se adapta à política.
+
+Commit `e0daf05` (18/10, 03:01): o Umami saiu — dez arquivos, 19 inserções e 258 remoções (o módulo de medição antigo, 48 linhas; a lógica de primeira página vista, 70; mais 101 linhas de teste). Sobrou um medidor só.
+
+## Peça 3 — a porteira caiu
+
+Commit `8435a7e` (18/10, 15:00): o OpenPanel passou a carregar sempre. Ele não usa cookie nem dado pessoal, então esperar o banner só perdia a visita de quem nunca clica. Onze linhas: o script carrega na montagem, e o banner segue controlando ads e monetização — que é onde consentimento importa.
+
+## E aí o erro em todo visitante
+
+Aqui está a parte que doeu. O loader injeta o script oficial, mas antes precisa de um stub: enquanto ele não chega, a função global de tracking é um Proxy que acumula chamadas numa fila. O script oficial drena a fila assim:
+
+```javascript
+const init = new Op(s.shift()[1]);        // init: item[1] = options
+s.forEach(n => op[n[0]](...n.slice(1)));  // resto: método + args
+```
+
+O stub tinha armadilha de leitura de propriedade e de verificação, mas não tinha armadilha de chamada. E chamar a função global com argumentos não é acesso a propriedade — é chamada de função. Sem essa armadilha, o Proxy caía no comportamento padrão do alvo, devolvia indefinido e descartava os argumentos; a fila ficava vazia desde a primeira chamada.
+
+Quando o script real carregava e lia o primeiro item da fila, o array estava vazio, e a leitura seguinte estourava:
+
+```
+TypeError: Cannot read properties of undefined (reading '1')
+```
+
+Não era artefato de teste: reproduzido em 2 de 2 viewports em produção, como `pageerror` em todo visitante. O layout não quebrava, mas o console de quem abrisse o site ficava sujo — e erro de terceiro no console passa despercebido por semanas.
+
+## O fix, e por que o formato importa
+
+Commit `daabcb9` (18/10, 15:36): armadilha de chamada enfileirando os argumentos crus, no formato exato que o script consome.
+
+```javascript
+const stub = new Proxy(function () {}, {
+  apply: (_t, _thisArg, args) => queue.push(args),
+  get: (_t, prop) => {
+    if (prop === "q") return queue;
+    return (...fnArgs) => queue.push([prop, ...fnArgs]);
+  },
+  has: (_t, prop) => prop === "q",
+});
+```
+
+O comentário no código guarda o porquê: o `init` entra como nome mais argumentos, e o script lê o segundo item como opções; os demais métodos entram como nome seguido de argumentos, e o script chama o primeiro aplicando o resto. Errar esse formato não gera erro de tipo — gera fila vazia, silenciosa até o script oficial chegar e quebrar.
+
+Validação: stub com teste unitário próprio, 434 de 434 testes verdes, `next build` sem erro e um E2E real servindo o script oficial localmente — o `init` foi consumido e os erros de página ficaram em zero.
+
+## O que isso muda
+
+Analytics atrás de banner mede o subconjunto educado do público. Com o beacon e o painel sem cookie, o funil ganha o denominador inteiro, e o banner volta a controlar monetização em vez de ser porteira do medidor.
+
+A lição é mais geral que o caso: stub que imita API de terceiro é código com dependência externa, mesmo sem importar nada. Precisa reproduzir o contrato do script real nos mínimos detalhes — inclusive de qual posição o outro lado lê cada argumento. Quando o formato não bate, o modo de falha é o pior: verde no seu teste, `pageerror` na máquina do visitante.
+
+## Próximo passo
+
+Transformar download de CV e envio de formulário em eventos de funil explícitos, e deixar uma semana rodando antes de olhar conversão por referrer. Primeiro o número certo; depois a decisão.
+
+```bash
+git log --oneline -3 -- src/lib/openpanel.ts
+pnpm exec vitest run
+git show --stat daabcb9
+```

@@ -1,0 +1,95 @@
+---
+title: "The queue that never filled"
+description: "The portfolio swapped Umami for a cookieless panel to finally measure traffic. Within the first hour live, every visitor got a JavaScript error — because the stub holding the event queue was never called."
+category: samuel-projects
+date: 2026-10-18 15:36:00 -03:00
+pubDate: 2026-10-18 16:45:00 -03:00
+project: portfolio
+lang: en
+tags: ["portfolio", "analytics", "javascript", "nextjs", "debugging", "privacy"]
+icon: "🚀"
+cover: /covers/portfolio-a-fila-que-nunca-encheu.webp
+featured: false
+hidden: true
+---
+
+## The panel that only counted people who clicked "Accept"
+
+The portfolio had analytics from day one: Umami, running on my own server. The panel was never the problem — the gate in front of it was. The script loaded only after the cookie banner was accepted, and almost nobody clicks "Accept". Weeks of an almost empty panel followed, not because there was no traffic, but because the meter switched on after a click most people never make.
+
+Worse: the ingestion endpoint answered 400 when probed on Oct 17 — not even the numbers of the few who accepted existed. The call: measure without cookies, reusing the pipe the store already uses for events.
+
+## Piece 1 — a beacon with three fields
+
+Commit `b8889c6` (Oct 17, PR #135, merge `253513c`): in came a small measurement module with a single function sending a three-field body — `site`, `path` and `ref` — through `navigator.sendBeacon`, falling back to `fetch` with `keepalive`. No cookie, no IP, no session identifier. One hit per route change, fired from a component in the root layout — the App Router navigates without a reload, and the URL path is the right trigger.
+
+Two decisions matter more than the code:
+
+- **DNT and GPC are honoured.** Anyone who asked not to be tracked is not counted — aggregate measurement is no excuse to ignore the request.
+- **`text/plain` as the beacon body.** That skips the CORS preflight, and the server parses the JSON just the same.
+
+There is also a detail that only shows up in production: in the root layout the route path can arrive null on the first render. Without a fallback to the browser's own `location.pathname`, the effect exited silently and nothing was measured. Analytics that fail quietly are indistinguishable from a site with no visitors.
+
+## Piece 2 — own panel, without leaving the domain
+
+Commit `84944b2` (Oct 18, 02:40): self-hosted OpenPanel came in alongside Umami. The site enforces a CSP restricted to `'self'` plus COEP `require-corp`, so neither the script nor the ingestion can come from another domain directly: both go through same-origin rewrites in Next. No relaxing the CSP to fit analytics — the analytics adapts to the policy instead.
+
+Commit `e0daf05` (Oct 18, 03:01): Umami left — ten files, 19 insertions and 258 deletions (the old measurement module, 48 lines; the first-pageview logic, 70; plus 101 lines of tests). One meter left standing.
+
+## Piece 3 — the gate came down
+
+Commit `8435a7e` (Oct 18, 15:00): OpenPanel now loads always. It uses no cookies and no personal data, so waiting for the banner only threw away visits from people who never click. Eleven lines: the script loads on mount, and the banner keeps controlling ads and monetisation — which is where consent matters.
+
+## And then, an error for every visitor
+
+Here is the part that hurt. The loader injects the official script, but before that it needs a stub: until the script arrives, the global tracking function is a Proxy that stacks calls into a queue. The official script drains that queue like this:
+
+```javascript
+const init = new Op(s.shift()[1]);        // init: item[1] = options
+s.forEach(n => op[n[0]](...n.slice(1)));  // rest: method + args
+```
+
+The stub had a property-read trap and a membership trap, but no call trap. And calling the global function with arguments is not a property access — it is a function call. Without that trap, the Proxy fell through to the target's default behaviour, returned undefined and dropped the arguments; the queue stayed empty from the very first call.
+
+When the real script loaded and read the first queue item, the array was empty, and the next read blew up:
+
+```
+TypeError: Cannot read properties of undefined (reading '1')
+```
+
+It was not a test artefact: reproduced on 2 of 2 viewports in production, as a `pageerror` for every visitor. The layout did not break, but the console of anyone opening the site was dirty — and a third-party error in the console goes unnoticed for weeks.
+
+## The fix, and why the shape matters
+
+Commit `daabcb9` (Oct 18, 15:36): a call trap that queues the raw arguments, in the exact shape the script consumes.
+
+```javascript
+const stub = new Proxy(function () {}, {
+  apply: (_t, _thisArg, args) => queue.push(args),
+  get: (_t, prop) => {
+    if (prop === "q") return queue;
+    return (...fnArgs) => queue.push([prop, ...fnArgs]);
+  },
+  has: (_t, prop) => prop === "q",
+});
+```
+
+The comment left in the code keeps the reason: `init` arrives as a name plus arguments and the script reads the second item as its options; every other method arrives as a name followed by arguments and the script calls the first item, applying the rest. Getting that shape wrong raises no type error — it gives you an empty queue, silent until the official script shows up and breaks.
+
+Verification: the stub has its own unit test, 434 of 434 tests green, `next build` clean, and a real E2E serving the official script locally — the `init` was consumed and the page-error count stayed at zero.
+
+## What this changes
+
+Analytics behind a banner measures the polite subset of your audience. With the beacon and the cookieless panel, the funnel finally has the full denominator, and the banner goes back to controlling monetisation instead of gating the meter.
+
+The lesson is broader than this case: a stub that impersonates a third-party API is code with an external dependency, even when it imports nothing. It has to reproduce the real script's contract down to the smallest detail — including which position the other side reads each argument from. When the shape does not match, the failure mode is the worst: green in your tests, `pageerror` on the visitor's machine.
+
+## Next step
+
+Turn CV download and form submission into explicit funnel events, and let it run a week before looking at conversion by referrer. The right number first; the decision after.
+
+```bash
+git log --oneline -3 -- src/lib/openpanel.ts
+pnpm exec vitest run
+git show --stat daabcb9
+```
