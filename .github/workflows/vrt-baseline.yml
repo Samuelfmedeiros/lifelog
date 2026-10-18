@@ -138,22 +138,24 @@ jobs:
 
       # BUG (05/10/2026): o step acima so imprimia o diff e seguia. Os .png
       # regenerados no runner eram descartados no fim do job e o PR nunca saia
-      # (medido: run 37384441746 regenerou tudo e pulou o step de PR). Commit+push
-      # dos baselines aqui, num branch proprio, para o step de PR ter o que abrir.
-      # Nunca merge direto na main.
-      - name: Versionar os baselines regenerados
-        id: versionar
-        if: steps.baselines.outputs.mudou == 'true'
-        run: |
-          set -euo pipefail
-          BR="vrt/baseline-${{ github.run_number }}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$BR"
-          git add -- e2e/vrt.spec.ts-snapshots/
-          git commit -m "test(vrt): baselines regenerados na CI ubuntu (run ${{ github.run_number }})"
-          git push --force origin "$BR"
-          echo "branch=$BR" >> "$GITHUB_OUTPUT"
+      # (medido: run 37384441746 regenerou tudo e pulou o step de PR).
+      #
+      # BUG 2 (18/10/2026) — a "cura" anterior trocou o problema de lugar: ela
+      # commitava os .png num branch proprio ANTES do create-pull-request, mas
+      # essa action RECRIA o branch a partir do base (`main`) e commita apenas o
+      # que estiver no working tree. Medido no run 39094935272: o commit
+      # `1cda2b3` (3 .png regenerados, "3 files changed") foi pushado e ficou
+      # ORFAO — o commit que chegou ao branch tinha parent = main e mudava so o
+      # known-failures.json. A PR #83 foi aberta assim e o baseline de `main`
+      # continuou o de 10/10: a divida era declarada PAGA sem nunca ser paga,
+      # e o VRT seguia vermelho no deploy.
+      #
+      # Cura: NAO commitar antes. Os .png regenerados ficam no working tree e o
+      # proprio create-pull-request versiona tudo (baselines + ratchet) no branch
+      # que ele cria. Nunca merge direto na main.
+      #
+      # Ao mexer aqui, conferir no run que a PR traz `e2e/vrt.spec.ts-snapshots/*.png`
+      # no diff — so `known-failures.json` significa que o bug voltou.
 
       # Remove os VRT da divida SO depois que o baseline novo foi gerado. Remover e
       # sempre livre; adicionar entrada exige aprovacao explicita do Samuel.
@@ -230,7 +232,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GH_PAT || github.token }}
-          branch: ${{ steps.versionar.outputs.branch || format('vrt/baseline-{0}', github.run_number) }}
+          branch: ${{ format('vrt/baseline-{0}', github.run_number) }}
           base: main
           title: 'test(vrt): regenera baselines no runtime da CI e paga a divida do ratchet'
           commit-message: 'test(vrt): baselines regenerados na CI ubuntu + ratchet pago'
