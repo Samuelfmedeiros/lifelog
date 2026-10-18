@@ -1,0 +1,81 @@
+---
+title: "The alarm pointed at the neighbour — when a port label lies about the service"
+description: "The exposure report flagged a service that no longer lived on that port. What answered there was another process entirely, with no authentication at all. The same report claimed 'no real leak in any project' while having read one repository out of six. Two lies of different species: one by label, one by omission."
+date: 2026-10-17 22:40:00 -03:00
+pubDate: 2026-10-18 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "hardening", "ports", "networking", "observability", "reliability", "automation", "security"]
+cover: /covers/seguranca-o-alarme-apontou-para-o-vizinho.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The alarm was right. The address was not.
+
+The exposure report from the small hours of October 17th brought four red lines. One of them named a well-known service, first and last name, listening on every interface of the machine.
+
+I checked before acting. On that port the process answering was **another** one — an internal embeddings service, with no authentication of any kind. The service named in the alarm did exist, but it listened only on loopback, on a different port than the report claimed. A machine migration had swapped the addresses weeks earlier; the label had not moved.
+
+That changes the whole job. An alarm with the wrong address sends you to fix the neighbour's door while yours stays open — and it still hands you the feeling of a job well done the moment red turns green.
+
+## The label that aged
+
+The inventory carries a static map from port to service, hand-written when the topology was different. Every time a piece moves — that day two of them had, during a host migration — the map becomes residue. The number stays exact. The name does not.
+
+The rule that took over afterwards is simple: never trust the label.
+
+- **Identity, not address.** Check who actually answers, comparing the body of the response and not just the HTTP status. A `200` does not tell you which service replied.
+- **Loopback by default.** A service that only serves a local consumer has no business listening on every interface.
+- **Declared exception, with dated proof.** LAN binds by design go into an accepted list, each with a reason and a date. What is accepted stays apart from what is exposed — otherwise the red stops meaning anything.
+
+After the cure the report went from 12 findings down to **6**, all of them real exposure. The 26 unknown-port entries on loopback became informational, and 11 binds moved to accepted-by-design. Today 43 services are mapped.
+
+## The second lie, by omission
+
+In the same small hours, the same report said at the top: *"no real leak detected in the six projects"*.
+
+Five of the six repositories had never been read. The scanner looked for the projects in a directory the migration had left behind and got `Path not found` on five of six — and stamped the summary clean anyway. Worse, the scanning step called a transport from another operating system, a shim that no longer exists on this machine. Its silence was the silence of an error.
+
+Before fixing anything I proved the scanner worked: I planted a known-format secret in a throwaway repository — **1 finding**, classified correctly. Against the real repository, **19 raw findings in about 0.6 second**. The binary was fine; the path and the transport were dead.
+
+The defence that stayed: **an unread project is now a first-class state**. It becomes `NAO VERIFICAVEL` in the summary, with its own severity, and the summary can never again say "clean" while a repository sits outside the read. Absence of proof is never proof of success.
+
+## Noise you learn to ignore is the third lie
+
+All 19 raw findings came from the same file: a local artifact, outside git. Nothing was leaking. Had each one raised an alert, within a week I would have learned to ignore alerts — and ignored noise is a blind gate.
+
+So the classification became explicit:
+
+| Situation | Class | Effect |
+|---|---|---|
+| Secret in a versioned file | critical | alert |
+| Secret in a local artifact, outside git | local | counted, no alert |
+| Project outside the read | not verifiable | alert always |
+| Same port with a new bind | already seen | silence (ledger) |
+
+Came the details that let a cron survive: empty output means silence; exit code always zero, because the scanner returns an error when it *finds* what it was looking for; and the wrapper clears `PYTHONPATH` before starting, so the process does not inherit libraries from another environment. **10 automated controls** prove the behaviour: a clean repo stays quiet, a versioned secret shouts, a missing project warns. An independent review scored it **95 out of 100**.
+
+## Where the real risk was
+
+The most uncomfortable lesson closes the case: what was open was not the famous service from the alarm, it was the plumbing. Two embeddings processes — one of them without authentication — listening to the whole network, serving a search engine and an API. Neither has a dashboard, neither has a login: they are "invisible infrastructure".
+
+I moved both to loopback with a unit override in the service manager. Rollback is deleting the override, reloading and restarting — documented in the same commit. I validated the consumers: memory search returned a result (score 0.855), the API answered healthy and the container log stayed clean.
+
+## What comes next
+
+Four exposures remain and each needs its own decision: the workstation's remote-desktop service, two application containers that publish more than they should, and the peer-to-peer port of the torrent client, open by nature. Each one is a decision with an owner and a date, not an automatic `sed`.
+
+And the pending item this case created: turning `NAO VERIFICAVEL` into an alert that wakes someone up. Today the summary records the project outside the read, but the person reading the summary is me, skimming it in the morning. That is a habit, not a system — and habits do not survive a bad week.
+
+```bash
+# 1. does the scanner find what I planted on purpose?
+gitleaks detect --source /tmp/isca --report-format json
+
+# 2. identity, not label: who answers on that port?
+ss -tlnp | grep '<porta>'
+curl -sS -X POST "http://127.0.0.1:<porta>/embeddings" -o /tmp/resp.json -w '%{http_code}\n'
+
+# 3. after the cure: silence with everything read and clean
+./vigia-de-segurancas.sh --alerta-somente; echo "exit=$?"
+```
