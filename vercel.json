@@ -1,6 +1,10 @@
 {
   "installCommand": "pnpm install",
   "buildCommand": "pnpm run build",
+  "rewrites": [
+    { "source": "/analytics/op1.js", "destination": "https://openpanel.seu.pet/op1.js" },
+    { "source": "/api/op/:path*", "destination": "https://openpanel.seu.pet/api/:path*" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

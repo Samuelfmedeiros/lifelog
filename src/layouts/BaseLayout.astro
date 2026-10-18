@@ -243,6 +243,12 @@ const footerText = dataLocale === 'en'
         })
       }
     </script>
+    <!-- OpenPanel (self-host, cookieless) — script+ingestao via proxy same-origin (CSP 'self' + COEP) -->
+    <script is:inline>
+      window.op=window.op||function(){var n=[];return new Proxy(function(){arguments.length&&n.push([].slice.call(arguments))},{get:function(t,r){return"q"===r?n:function(){n.push([r].concat([].slice.call(arguments)))}},has:function(t,r){return"q"===r}})}();
+      window.op('init',{apiUrl:'/api/op',clientId:'a3c3b6a8-a751-461a-88f9-8317f6760360',trackScreenViews:true,trackOutgoingLinks:true,trackAttributes:true});
+    </script>
+    <script is:inline src="/analytics/op1.js" defer async></script>
   </head>
   <body>
     <header class="navbar">
