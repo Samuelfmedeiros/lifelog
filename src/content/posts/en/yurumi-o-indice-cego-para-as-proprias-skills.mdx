@@ -1,0 +1,73 @@
+---
+title: "Yurumi: the index that was blind to its own skills"
+description: "Yurumi's skill search hit concrete queries and missed vague ones, because the index read a Windows-only directory, had no dedup and returned the file path where the description should be. The index went from 197 to 733 skills."
+date: 2026-10-18 08:00:00 -03:00
+pubDate: 2026-10-18 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "skills", "rag", "memory", "qdrant", "debugging"]
+cover: /covers/yurumi-o-indice-cego-para-as-proprias-skills.webp
+featured: false
+hidden: true
+lang: "en"
+---
+
+## The vague request that returned the wrong skill
+
+Yurumi is the memory layer of the ecosystem: it keeps what the agents learn and hands it back at the right moment. One of the things it hands back is a skill, the procedure file that enters the model context before each task. When that search misses, the agent works holding the wrong manual.
+
+The first symptom showed up on a vague request: "create a new skill" returned an Astro skill. Concrete requests, like "how do I publish a post on the blog", hit. Generic ones missed. The second symptom was worse and quieter: the index had no skills from the main agent at all — the heaviest consumer of skills was exactly the one the index could not see.
+
+## The directory that only existed on Windows
+
+`default_skill_dirs()` built the agent-home path as if every machine were the same one: the Windows `AppData/Local/hermes` folder. On Linux that folder does not exist. The panel reported two ghost directories counted as scan errors and zero skills ingested from the real home.
+
+Commit `9455ee9` resolves the path by operating system. `_hermes_home()` returns the AppData root on Windows and the equivalent POSIX folder otherwise, with `HERMES_HOME` taking precedence when set; `_hermes_skill_dirs()` includes the base directory plus every profile. The index went from 197 to 728 skills. Measured in the repository today: 733 — the difference is skills created after that commit.
+
+One detail explained the remaining ghosts: when `HERMES_HOME` already pointed at a profile, the code appended the suffix again and invented a path that does not exist. Now only directories that exist on disk are accepted.
+
+## Three file-arithmetic bugs
+
+Without dedup, the same name entered the index several times. The agent repeats the same ~600 skills in the base directory and across a dozen profiles: more than 4,600 files for roughly 850 unique hashes. `scan_skills` now deduplicates by name, precedence defined by directory order, and `os.walk` is sorted — the index became deterministic.
+
+The `description` field in the search result returned `skill_path`. The context injected into the model showed a file path where the description should be, so the model decided based on a string that says nothing about the skill.
+
+And the frontmatter parser failed on three fronts: 26 skills kept only the folder name, because their frontmatter was opened without the closing fence; about 75 kept the literal `>` as description, because block scalars using `>` and `|` were not unfolded; and block tags were never parsed. A badly indexed skill is a skill that is never found.
+
+The hash target also changed: it now covers the indexed text, not the file — a parser fix reindexes only what changed.
+
+## Lexical boost: when vector search is not enough
+
+Vector search hits concrete requests and misses vague ones — the Astro example lives in the `_lex_score` docstring itself. The fix keeps the vector search and adds a deterministic tiebreaker: `query()` over-fetches 3x with a pool of up to 60 candidates, reorders by combining the backend score with token overlap, and returns the fields separately — `base_score`, `lex`, the real description, path and tags.
+
+The formula is explicit: 0.6 for name tokens, 0.4 for description plus tag tokens, and a 0.3 bonus when the whole query appears in the name. No model in the loop. `context_for` gained a relative-relevance cutoff controlled by `YURUMI_SKILLS_MIN_REL`, defaulting to 0.5.
+
+The CLI gained `skills status`, read-only, reporting directories, scan result, state, ghosts and backend orphans; and `skills prune`, dry-run by default, which removes orphan points while preserving anything whose path still exists on the machine. First pass: 135 orphans from the Windows era gone, backend from 864 down to 729 points.
+
+```bash
+# how many skills the index sees right now
+python3 -c "from core.skills import scan_skills; print(len(scan_skills()))"
+
+# index diagnostics (read only) and orphan cleanup (dry-run by default)
+yurumi skills status
+yurumi skills prune
+```
+
+## The same bug class in the Arachne cutover
+
+A day earlier the pattern came back on the other side of the wire. Arachne started using Yurumi as its vector store and three drop-in shims broke in sequence.
+
+`9029b98` produced the loudest error: `AttributeError: KBInfo object has no attribute chunk_size`, on the cutover write path. Yurumi's KBInfo did not expose `chunk_size`, `chunk_overlap` or `model`. It now exposes the same defaults Arachne used: 512 chunk size, 64 overlap and the same embedding model.
+
+`c0694d6` fixed DocInfo, which was missing `content`, `json_metadata`, `fit_markdown` and `file_hash` — attributes Arachne reads in production.
+
+And `2e53439` is the worst of the three, because it never shouted: the metagraph's `extract_kb_entities` imported a name that does not exist. The import fell back to the memory store, and the function returned zero entities. No exception, no log, no entity. The fix instantiates the canonical store factory. To stop trusting eyes, `parity_sqlite_vs_qdrant.py` arrived: the same seven queries run against both stores and the ranking is compared at top-10, measured as overlap@10.
+
+## Why it matters
+
+An incomplete index does not raise: it returns less. An import that does not exist does not explode: it falls back and returns zero. And zero looks like a legitimate answer. That is how the metagraph stopped extracting from the knowledge base unnoticed, and how a memory index spent months without seeing the main agent skills.
+
+The asymmetry is the lesson: the three drop-in shims shouted and were fixed the same day; the metagraph one whispered and only surfaced because someone read the return value; the Windows path stayed silent for months and was the cheapest of the three to fix.
+
+## Next step
+
+Now that the index sees every profile and the boost handles vague requests, the next step is not growing the index: it is measuring the search. Record, on every skill query, whether the result was actually used, and turn that into a hit rate per request type. A large index without a relevance metric is the next silent zero waiting its turn.

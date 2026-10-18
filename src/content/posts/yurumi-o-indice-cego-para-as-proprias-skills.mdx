@@ -1,0 +1,73 @@
+---
+title: "Yurumi: o índice cego para as próprias skills"
+description: "A busca de skills do Yurumi acertava pedido concreto e errava pedido vago, porque o índice lia um diretório de Windows que não existe no Linux, sem dedup e com a descrição substituída pelo caminho do arquivo. O índice saiu de 197 para 733 skills."
+date: 2026-10-18 08:00:00 -03:00
+pubDate: 2026-10-18 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "skills", "rag", "memory", "qdrant", "debugging"]
+cover: /covers/yurumi-o-indice-cego-para-as-proprias-skills.webp
+featured: false
+hidden: true
+lang: "pt"
+---
+
+## O pedido vago que trouxe a skill errada
+
+O Yurumi é a memória do ecossistema: guarda o que os agentes aprendem e devolve no momento certo. Uma das coisas que devolve é skill, o arquivo de procedimento que entra no contexto do modelo antes de cada tarefa. Quando a busca erra, o agente trabalha com o manual errado na mão.
+
+O primeiro sintoma apareceu num pedido vago: "criar skill nova" trouxe uma skill de Astro. Pedido concreto, do tipo "como publicar post no blog", acertava; genérico, errava. O segundo sintoma era pior e mais silencioso: o índice não tinha nenhuma skill do Hermes — o agente que mais consome skill era o que o índice não enxergava.
+
+## O diretório que só existia no Windows
+
+O `default_skill_dirs()` montava o caminho do Hermes como se o sistema fosse sempre o mesmo: a pasta `AppData/Local/hermes` do Windows. No Linux ela não existe. O painel mostrava dois diretórios fantasma contados como erro de scan e zero skills do Hermes real ingeridas.
+
+O commit `9455ee9` resolve isso pelo sistema operacional. O `_hermes_home()` devolve a raiz do AppData no Windows e a pasta equivalente no POSIX, com `HERMES_HOME` tendo precedência quando está definida; o `_hermes_skill_dirs()` inclui a base mais os diretórios de todos os perfis. O índice saiu de 197 para 728 skills. Medido no repositório hoje: 733 — a diferença são skills criadas depois do commit.
+
+Um detalhe explicava o resto dos fantasmas: com `HERMES_HOME` apontando para um perfil, o código concatenava o sufixo de novo e inventava um caminho inexistente.
+
+## Três bugs de aritmética de arquivo
+
+Sem dedup, o mesmo nome entrava várias vezes. O Hermes repete as mesmas cerca de 600 skills na base e em uma dúzia de perfis: mais de 4.600 arquivos para cerca de 850 hashes únicos. O `scan_skills` passou a deduplicar por nome, com precedência definida pela ordem dos diretórios, e o `os.walk` ficou ordenado — o índice virou determinístico.
+
+A `description` no resultado da busca devolvia o `skill_path`. O contexto injetado no modelo mostrava o caminho do arquivo no lugar da descrição: o modelo decidia com base numa string que não diz nada sobre a skill.
+
+E o parser de frontmatter errava em três frentes: 26 skills ficaram só com o nome da pasta (frontmatter aberto sem o fechamento), cerca de 75 ficaram com a descrição literal `>` (bloco escalar `>` e `|` não era desdobrado) e tags em bloco não eram lidas. Skill mal indexada é skill que não é encontrada.
+
+O hash também mudou de alvo: agora é o do texto indexado, não o do arquivo — ajuste no parser reindexa só o que mudou.
+
+## Boost lexical: quando o vetorial não basta
+
+A busca vetorial acerta pedido concreto e erra pedido vago — o exemplo do Astro está no docstring do `_lex_score`. A correção mantém o vetorial e acrescenta desempate determinístico: o `query()` faz over-fetch de 3x (pool de até 60), reordena combinando o score do backend com sobreposição de tokens e devolve `base_score`, `lex`, descrição real, caminho e tags.
+
+A conta é explícita: 0,6 para tokens do nome, 0,4 para tokens da descrição mais tags, e bônus de 0,3 quando a consulta inteira aparece no nome. Nada de LLM no meio. O `context_for` ganhou corte por relevância relativa, controlado por `YURUMI_SKILLS_MIN_REL`, com padrão 0,5.
+
+O CLI ganhou `skills status`, só leitura, que reporta diretórios, scan, estado, fantasmas e órfãos no backend; e `skills prune`, dry-run por padrão, que remove ponto órfão e preserva o que ainda tem caminho válido. Primeira passada: 135 órfãos da era Windows fora, backend de 864 para 729 pontos.
+
+```bash
+# quantas skills o indice enxerga agora
+python3 -c "from core.skills import scan_skills; print(len(scan_skills()))"
+
+# diagnostico do indice (so leitura) e limpeza de orfaos (dry-run por padrao)
+yurumi skills status
+yurumi skills prune
+```
+
+## A mesma classe de bug no cutover do Arachne
+
+Um dia antes, o padrão reincidiu do outro lado do fio. O Arachne passou a usar o Yurumi como store vetorial e três drop-ins quebraram em sequência.
+
+O `9029b98` trouxe o erro mais direto: `AttributeError: KBInfo object has no attribute chunk_size`, no caminho de escrita. A KBInfo do Yurumi não expunha `chunk_size`, `chunk_overlap` nem `model`; passou a expor os mesmos padrões do Arachne — 512 de chunk, 64 de overlap, mesmo modelo de embedding.
+
+O `c0694d6` corrigiu o DocInfo, que não tinha `content`, `json_metadata`, `fit_markdown` nem `file_hash`, atributos que o Arachne lê em produção.
+
+E o `2e53439` é o pior dos três, porque não gritou: o `extract_kb_entities` do metagraph importava um nome que não existe. O import caía num fallback para o store de memória e a função devolvia zero entidades. Sem exceção, sem log, sem entidade. O fix passou a instanciar a fábrica canônica do store do Yurumi. Para não depender de olho, entrou o `parity_sqlite_vs_qdrant.py`: as mesmas sete consultas rodam nos dois stores e o ranking é comparado no top-10, medido como overlap@10.
+
+## Por que isso importa
+
+Índice incompleto não dá erro: devolve menos. Import que não existe não explode: cai no fallback e devolve zero. E zero parece resposta legítima — foi assim que o metagraph deixou de extrair do KB sem ninguém notar, e que um índice de memória ficou meses sem ver as skills do agente principal.
+
+A assimetria é o aprendizado: os três drop-ins gritaram e foram corrigidos no mesmo dia; o do metagraph sussurrou e só apareceu porque alguém olhou o retorno; o do caminho de Windows ficou calado por meses.
+
+## Próximo passo
+
+Com o índice enxergando todos os perfis e o boost resolvendo pedido vago, o próximo passo não é aumentar o índice: é medir a busca. Registrar, a cada consulta de skill, se o resultado foi usado, e transformar isso numa taxa de acerto por tipo de pedido.
