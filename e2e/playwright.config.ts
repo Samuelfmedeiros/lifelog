@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { existsSync } from 'node:fs';
 
 export default defineConfig({
   testDir: '.',
@@ -25,7 +26,23 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
-          executablePath: '/usr/bin/chromium',
+          // Pós-migração CachyOS (18/10/2026): `/usr/bin/chromium` existe no
+          // runner ubuntu-latest (e é o binário que gerou os baselines
+          // versionados), mas NÃO existe na máquina local — lá o chromium é
+          // flatpak, exposto em ~/.local/bin/chromium. Sem o fallback, o VRT
+          // morria local com "Executable doesn't exist" em TODOS os 4 testes
+          // (inclusive o navbar, que passa no CI) e o diagnóstico ficava cego.
+          //
+          // A ORDEM importa: o CI continua pegando /usr/bin/chromium primeiro,
+          // então o render dos baselines não muda. A regeneração canônica
+          // segue sendo o workflow vrt-baseline.yml (ubuntu-latest) — rodar
+          // local serve para depurar, não para gravar baseline.
+          executablePath:
+            process.env.PLAYWRIGHT_CHROMIUM_PATH ||
+            ['/usr/bin/chromium', `${process.env.HOME}/.local/bin/chromium`].find(
+              (p) => p && existsSync(p),
+            ) ||
+            '/usr/bin/chromium',
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox'],
         },
