@@ -1,0 +1,83 @@
+---
+title: "The story of Arachne — the journey from scraper to knowledge platform"
+description: "From the first iMasters scraper to a Knowledge OS with hybrid RAG, a 42-tool ReAct Agent and an MCP server — how Arachne evolved."
+date: 2026-10-13 16:00:00 -03:00
+pubDate: 2026-10-13 16:00:00 -03:00
+project: arachne
+tags: [arachne, rag, mcp, agents, knowledge]
+cover: /covers/nova-historia-arachne-2026-10-13.webp
+hidden: false
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The scraper that became a knowledge platform
+
+It all started with a simple need: **extracting content from sites that block scraping**. Arachne was born as a specialized scraper for iMasters, with four levels of evasion (Basic → Stealth → Headless → Camoufox).
+
+But today it is a platform with hybrid RAG, a 42-tool ReAct Agent chatbot, an MCP server, a visual pipeline with 38 handlers, computer vision, audio, and monetization — **2,818 tests** making sure none of it breaks.
+
+## Context — from crawler to platform
+
+The initial commit was on June 9, 2026:
+
+```
+2542caf chore: checkpoint before adding RAG + chatbot
+```
+
+That commit shows Arachne was born **already knowing it went beyond scraping**. The same day brought the RAG module with semantic search and a vector store, and the chatbot engine with an API and a widget.
+
+The product turn came with the **Knowledge OS**: knowledge bases with a 3-step wizard, ingestion by URL or text, and hybrid search (FTS5 + vector + RRF) with a cross-encoder reranker.
+
+## The fight — 4 evasion layers and the search that found nothing
+
+The first battle was against Cloudflare. Each site had a different level of protection — and the pipeline needed to escalate:
+
+```python
+# Arachne's progressive pipeline
+progressive_fetch = Trafilatura → Stealth → Dynamic → Camoufox
+# If everything fails: Browser Agent with 4 evasion layers
+```
+
+The Browser Agent became a war machine: stealth JS, fingerprint rotation, automatic consent dismissal (15+ frameworks), ad blocking with EasyList (104 thousand rules), and block detection via multilingual regex.
+
+Then came **hybrid search**. FTS5 alone found too little; embeddings alone found imprecisely. The answer was to combine both with **RRF (Reciprocal Rank Fusion)** plus a reranker:
+
+```python
+# Hybrid search: FTS5 + vector + RRF + cross-encoder
+results = rrf_fusion(fts_results, vector_results)
+results = cross_encoder_rerank(query, results, top_k=5)
+```
+
+## Resolution — the ReAct Agent and the MCP server
+
+The high point was when Arachne stopped being an API and became an **agent**. The ReAct Agent grew from 36 to 42 tools with a router planner + fallback + cache. And the MCP server (stdio + SSE) exposed everything to external agents — Cursor, Claude, Hermes.
+
+The cherry on top: the **Python SDK published on PyPI** (`pip install arachne-sdk`), and the **vision-to-text v2** pipeline — 5 extractors (PySceneDetect, OpenCV K-Means, EasyOCR, Florence-2, Whisper) that turn video into structured text for an LLM.
+
+## Metrics
+
+| Metric | 06/09 (birth) | 07/31 (today) |
+|--------|---------------|---------------|
+| Commits | 1 | 777 |
+| Tests | 0 | 2818+ |
+| ReAct tools | 0 | 42 |
+| Pipeline handlers | 0 | 38 |
+| Connectors | 0 | 18 |
+| Crawlers | 1 (iMasters) | 13 specialized |
+
+## Lessons learned
+
+Arachne proved that **scaling is not adding features — it is adding architecture**. Every evasion level, every search layer, every agent tool was an answer to a real problem, not speculation.
+
+And the most important lesson: once the tool becomes good enough, **external agents come to it** — that is how the MCP server and the SDK were born.
+
+<Terminal
+  lines={[
+    { cmd: 'git rev-list --count HEAD', output: '777 commits since the beginning' },
+    { cmd: 'pytest --collect-only -q | tail -1', output: '2818+ tests collected' },
+    { cmd: 'curl -s http://localhost:9000/api/health | python3 -m json.tool', output: '{\"status\": \"ok\", \"server\": \"arachne\"}' },
+    { cmd: 'pip install arachne-sdk', output: 'v0.2.3 — SDK on PyPI' },
+  ]}
+/>
