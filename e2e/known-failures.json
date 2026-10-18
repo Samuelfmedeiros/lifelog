@@ -1,5 +1,5 @@
 {
   "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
   "failures": [],
-  "$ultimaRevisao": "2026-10-16: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: VRT home-dark 13%% diff apos mudancas de render; baselines desatualizados (auditoria CI/CD 15/10)"
+  "$ultimaRevisao": "2026-10-18: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: home mudou por dado vivo: 17 posts publicados desde o baseline de 10/10 (d41ce13). Layout intacto — index.astro sem nenhum commit no periodo; conferido visualmente (mesma grade 2 colunas, so a data e os 2 cards do topo mudaram)."
 }
