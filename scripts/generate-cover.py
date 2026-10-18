@@ -68,8 +68,8 @@ PROJECT_STYLES = {
         "colors": ["#14b8a6", "#2dd4bf", "#0f766e"],
     },
     "seguranca": {
-        "prompt_suffix": "Security theme, deep red and crimson, shield patterns, matrix digital rain aesthetic, dark cybersecurity vibe, 16:9 wallpaper",
-        "colors": ["#ef4444", "#dc2626", "#450a0a"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper",
+        "colors": ["#ef4444", "#fca5a5", "#fde68a"],
     },
     "lifelog": {
         "prompt_suffix": "Journal theme, purple and magenta, abstract writing patterns, notebook aesthetic, creative tech vibe, 16:9 wallpaper",
