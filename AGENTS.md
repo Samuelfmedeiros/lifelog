@@ -536,3 +536,37 @@ e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 
 ## Sessão 2026-10-16 (fim de dia)
 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
+
+## Sessão 2026-10-18 (madrugada) — pipeline entregava 1-2 de 3 slots/dia: causa raiz + fix
+
+Contexto: a sessão de 17/10 fechou aguardando o CI do main após o merge da PR #84
+(baseline de VRT) — **verde** (`54e2e567b`: LifeLog CI/CD + Security + IndexNow
+success, 18/10 04:24-04:38Z).
+
+Achado medido (posts PT por `date:`): 13/10=1, 15/10=2, 16/10=1, 17/10=2 — o
+pipeline de 3 posts/dia entregava menos e nada alertava.
+
+Causa 1 (artefato): os jobs A/B/C/Refazer rodavam `9router-rotation` +
+`custom:9router`; nos logs o padrão é loop de tool byte-idêntico
+("kept running terminal 5 times without making progress"), `RuntimeError: Model
+generated invalid tool call: process_manage`, path inventado
+(`/home/samuel/scripts/lifelog-post-gen.py`) e `git log` fora do repo.
+Fix: `--model deepseek-v4.1-flash --provider opencode-go` nos 4 jobs + bloco
+ANTI-LOOP no prompt (não repetir comando, `git -C <repo>`, paths dos scripts,
+proibição de `process_manage`).
+
+Causa 2 (watchdog com falso verde): `~/.hermes/scripts/lifelog-verify-post-dia.py`
+aceitava `>=1` post/dia e contava qualquer `.mdx` commitado — incluindo as
+liberações (`release(post): …`), que sempre existem.
+Fix: exige 3 slots, conta só arquivos **adicionados** (`--diff-filter=A`) no
+intervalo fechado (`--since` + `--until`) e informa quantos saíram + status de
+cada slot. Backup `.bak-20261018`.
+
+Validação real (test-loop): `hermes cron run 306d9f687e49` gerou
+`seguranca-o-alarme-apontou-para-o-vizinho` — commit `ef4f79b` (4 arquivos: PT+EN
+81 linhas cada + capa AI 21924 B + ocultos-data), push `54e2e56..ef4f79b`, post
+404 no ar (hidden, esperado), capa 200, 0 refs na home/RSS, CI verde.
+Guard rodado no dia: "PARCIAL 1/3" (o slot C foi rodado manualmente) — alerta
+honesto em vez de silêncio.
+
+Plano: `~/.hermes/plans/2026-10-18-lifelog-pipeline-slots-falhando.md`.
