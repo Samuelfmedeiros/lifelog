@@ -60,8 +60,8 @@ PROJECT_STYLES = {
         "colors": ["#0ea5e9", "#67e8f9", "#bae6fd"],
     },
     "capivara": {
-        "prompt_suffix": "Tropical tech theme, warm amber and orange, sunset gradients with digital accents, Brazilian vibes, 16:9 wallpaper",
-        "colors": ["#f59e0b", "#fbbf24", "#78350f"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid rounded monitoring-panel shape in vivid amber-orange with a bold darker accent bar across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
+        "colors": ["#f59e0b", "#fb923c", "#fde68a"],
     },
     "tatuengine": {
         "prompt_suffix": "Wave physics theme, teal and turquoise, sine wave interference patterns, fluid dynamics visualization, abstract neural wavefields, 16:9 wallpaper",
