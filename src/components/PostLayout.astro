@@ -31,9 +31,18 @@ const { Content } = await render(post);
 // (data, autor, imagem) e para entender a pagina como artigo.
 const _pub = post.data.pubDate || post.data.date;
 const SITE = (Astro.site?.toString() || 'https://lifelog.seu.pet').replace(/\/$/, '');
+
+// Amarração entre ativos (REGRA-AMARRACAO): todo link cruzado sai com UTM.
+// Link sem UTM não é medível — medido em 18/10, o LifeLog linkava 12 páginas sem UTM nenhum.
+const _slug = post.id.replace(/^en\//, '');
+const _utm = (url: string, medium: string) =>
+  `${url}?utm_source=lifelog.seu.pet&utm_medium=${medium}&utm_campaign=post&utm_content=${_slug}`;
+const storeHref = _utm('https://skills.seu.pet', 'proximo-passo');
+const portfolioHref = _utm('https://portifolio.seu.pet', 'proximo-passo');
 const _canonPath = noindex
   ? Astro.url.pathname
   : (locale === 'en' ? `/en/post/${post.id.replace(/^en\//, '')}/` : `/post/${post.id}/`);
+const _voltaUrl = `${SITE}${_canonPath}`;
 const _img = post.data.cover
   ? (post.data.cover.startsWith('http') ? post.data.cover : SITE + post.data.cover)
   : SITE + '/og-default.png';
@@ -127,6 +136,59 @@ const breadcrumbSchema = {
       <div class="prose prose-lg max-w-none" style="color: var(--color-text);">
         <Content />
       </div>
+
+      <!-- Próximo passo — amarração entre ativos (REGRA-AMARRACAO) -->
+      <section class="mt-16 pt-8 border-t border-solid" style="border-color: var(--color-border);" id="assinar">
+        <h2 class="text-2xl font-bold mb-3" style="color: var(--color-text);">
+          {locale === 'en' ? 'Next step' : 'Próximo passo'}
+        </h2>
+        <p class="mb-5 text-sm" style="color: var(--color-text-muted);">
+          {locale === 'en'
+            ? 'If this was useful, there is more: I write about the same ground in the other projects, and the store holds the tools I use here.'
+            : 'Se isto te serviu, tem mais: escrevo sobre o mesmo assunto nos outros projetos, e a loja tem as ferramentas que eu uso aqui.'}
+        </p>
+
+        <form id="assinar-form" method="post"
+              action={locale === 'en' ? 'https://skills.seu.pet/en/assinar' : 'https://skills.seu.pet/assinar'}
+              class="flex flex-wrap gap-3 items-end mb-3">
+          <input type="hidden" name="origem" value="lifelog" />
+          <input type="hidden" name="volta" value={_voltaUrl} />
+          <label class="sr-only" for="assinar-email">E-mail</label>
+          <input id="assinar-email" type="email" name="email" required maxlength="254" autocomplete="email"
+                 placeholder={locale === 'en' ? 'you@example.com' : 'voce@exemplo.com'}
+                 class="px-3 py-2 rounded-lg border border-solid text-sm grow min-w-[220px]"
+                 style="background: var(--color-bg); border-color: var(--color-border); color: var(--color-text);" />
+          <input type="text" name="site" tabindex="-1" autocomplete="off" aria-hidden="true" class="hidden" />
+          <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer border-0"
+                  style="background: var(--color-accent); color: var(--color-bg);">
+            {locale === 'en' ? 'Send me the articles' : 'Receber os artigos'}
+          </button>
+        </form>
+
+        <p id="assinar-ok" class="hidden text-sm font-medium mb-3" style="color: var(--color-accent);">
+          {locale === 'en'
+            ? 'Done — I will send the next article when it is out.'
+            : 'Anotado — aviso quando sair artigo novo.'}
+        </p>
+
+        <p class="text-sm" style="color: var(--color-text-muted);">
+          {locale === 'en' ? 'No spam, one-click unsubscribe. I am also here:' : 'Sem spam, descadastro de um clique. Também estou aqui:'}
+          {' '}
+          <a href={storeHref} style="color: var(--color-accent);">{locale === 'en' ? 'Skills store' : 'Loja de skills'}</a>
+          {' · '}
+          <a href={portfolioHref} style="color: var(--color-accent);">{locale === 'en' ? 'Portfolio' : 'Portfólio'}</a>
+        </p>
+      </section>
+
+      <script>
+        // Volta da captura (a loja redireciona pra cá com ?ok=1): troca o formulário
+        // pela confirmação — sem isso a pessoa volta, vê o mesmo formulário e acha que falhou.
+        const q = new URLSearchParams(location.search);
+        if (q.get('ok') === '1') {
+          document.getElementById('assinar-form')?.classList.add('hidden');
+          document.getElementById('assinar-ok')?.classList.remove('hidden');
+        }
+      </script>
 
       <!-- Navigation: Prev / Next -->
       <nav class="mt-16 pt-8 border-t" style="border-color: var(--color-border);">
@@ -264,5 +326,12 @@ const breadcrumbSchema = {
     article[data-project] .prose h3 { font-size: 1.1rem !important; }
     article[data-project] .prose p, article[data-project] .prose li { font-size: 0.9375rem; }
     article[data-project] .prose pre { padding: 0.875rem !important; font-size: 0.8125rem; }
+  }
+
+  /* Amarração — alvo de toque de 44px (regra do dono).
+     Medido em 18/10 antes do fix: botão 36px e input 38px no mobile — abaixo do mínimo. */
+  #assinar input[type='email'],
+  #assinar button {
+    min-height: 44px;
   }
 </style>

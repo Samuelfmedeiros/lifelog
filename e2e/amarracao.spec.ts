@@ -1,0 +1,98 @@
+import { test, expect } from '@playwright/test';
+
+// Amarração entre ativos (REGRA-AMARRACAO, 18/10/2026).
+// Medido em 18/10: o LifeLog linkava o portfólio em 12 páginas SEM UTM nenhum e não
+// capturava e-mail em lugar nenhum. Este spec é o gate:
+//   1. o bloco "Próximo passo" existe no fim do post (PT e EN);
+//   2. TODO link cruzado (portfólio, loja) sai com utm_source=lifelog.seu.pet;
+//   3. a captura posta pra loja (skills.seu.pet) com origem + volta pro próprio post;
+//   4. a volta da captura (?ok=1) troca o formulário pela confirmação.
+
+const PT_POST = '2026-07-20-lifelog-refactor-arquitetura-componentes';
+const EN_POST = PT_POST; // o EN mantém o mesmo nome de arquivo do PT (convenção do projeto)
+const PT_URL = `/post/${PT_POST}/`;
+const EN_URL = `/en/post/${EN_POST}/`;
+
+const ATIVOS = ['portifolio.seu.pet', 'skills.seu.pet', 'focinho.seu.pet'];
+
+function linksCruzadosSemUtm(html: string): string[] {
+  const fora: string[] = [];
+  for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/g)) {
+    const href = m[1].replace(/&amp;/g, '&');
+    if (!ATIVOS.some((a) => href.includes(a))) continue;
+    if (!href.includes('utm_source=lifelog.seu.pet')) fora.push(href);
+  }
+  return fora;
+}
+
+test.describe('Amarração — bloco de próximo passo no post', () => {
+  test('PT: bloco existe, captura pra loja e volta pro próprio post', async ({ request }) => {
+    const res = await request.get(PT_URL);
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain('id="assinar"');
+    expect(html).toContain('Próximo passo');
+    expect(html).toContain('action="https://skills.seu.pet/assinar"');
+    expect(html).toContain('name="origem" value="lifelog"');
+    expect(html).toContain(`name="volta" value="https://lifelog.seu.pet${PT_URL}"`);
+    expect(html).toContain('name="email"');
+  });
+
+  test('EN: bloco em inglês e captura na rota EN', async ({ request }) => {
+    const res = await request.get(EN_URL);
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+
+    // Escopo no bloco: o corpo do artigo pode conter a frase em PT sem que o bloco vaze.
+    const i = html.indexOf('id="assinar"');
+    const bloco = html.slice(i, i + 4000);
+    expect(bloco).toContain('Next step');
+    expect(bloco).not.toContain('Próximo passo');
+    expect(html).toContain('action="https://skills.seu.pet/en/assinar"');
+    expect(html).toContain(`name="volta" value="https://lifelog.seu.pet${EN_URL}"`);
+  });
+
+  test('nenhum link cruzado sem UTM (PT)', async ({ request }) => {
+    const html = await (await request.get(PT_URL)).text();
+    expect(linksCruzadosSemUtm(html)).toEqual([]);
+  });
+
+  test('nenhum link cruzado sem UTM (EN)', async ({ request }) => {
+    const html = await (await request.get(EN_URL)).text();
+    expect(linksCruzadosSemUtm(html)).toEqual([]);
+  });
+
+  test('navbar e bloco levam UTM com medium distinto', async ({ request }) => {
+    const html = await (await request.get(PT_URL)).text();
+    expect(html).toContain('utm_medium=navbar');
+    expect(html).toContain('utm_medium=proximo-passo');
+    expect(html).toContain('utm_campaign=post');
+  });
+
+  test('volta da captura (?ok=1) troca formulário por confirmação', async ({ page }) => {
+    await page.goto(`${PT_URL}?ok=1`);
+    await expect(page.locator('#assinar-ok')).toBeVisible();
+    await expect(page.locator('#assinar-form')).toBeHidden();
+  });
+
+  test('sem ?ok=1 o formulário aparece e a confirmação fica escondida', async ({ page }) => {
+    await page.goto(PT_URL);
+    await expect(page.locator('#assinar-form')).toBeVisible();
+    await expect(page.locator('#assinar-ok')).toBeHidden();
+  });
+
+  test('alvo de toque de 44px no mobile (regra do dono)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(PT_URL);
+    const botao = await page.locator('#assinar button').boundingBox();
+    const campo = await page.locator('#assinar input[type=email]').boundingBox();
+    expect(botao!.height).toBeGreaterThanOrEqual(44);
+    expect(campo!.height).toBeGreaterThanOrEqual(44);
+    // e nada de scroll horizontal no celular
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
+    expect(overflow).toBe(false);
+  });
+});
