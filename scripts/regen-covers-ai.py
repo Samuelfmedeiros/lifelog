@@ -80,7 +80,7 @@ def read_meta(slug):
 
 PROJECT_STYLES = {
     "arachne": {"prompt_suffix": "Cyberpunk theme, deep purple and violet neon, digital spiderweb patterns, dark moody atmosphere, 16:9 wallpaper", "colors": ["#7c3aed", "#a78bfa", "#2d1b69"]},
-    "dogwalk": {"prompt_suffix": "Modern SaaS dashboard theme, deep indigo and violet with warm amber accents, clean geometric shapes, connected network nodes suggesting a service platform, premium tech aesthetic, 16:9 wallpaper", "colors": ["#7c3aed", "#f59e0b", "#1e1b4b"]},
+    "dogwalk": {"prompt_suffix": "Minimal flat illustration, one single large solid rounded app-tile shape in strong violet with a bold warm amber accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#f59e0b", "#fde68a"]},
     "portfolio": {"prompt_suffix": "Minimal flat illustration, one single large solid rocket shape in vivid cyan-blue on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#0ea5e9", "#67e8f9", "#bae6fd"]},
     "capivara": {"prompt_suffix": "Tropical tech theme, warm amber and orange, sunset gradients with digital accents, Brazilian vibes, 16:9 wallpaper", "colors": ["#f59e0b", "#fbbf24", "#78350f"]},
     "tatuengine": {"prompt_suffix": "Wave physics theme, teal and turquoise, sine wave interference patterns, fluid dynamics visualization, abstract neural wavefields, 16:9 wallpaper", "colors": ["#14b8a6", "#2dd4bf", "#0f766e"]},
