@@ -334,4 +334,20 @@ const breadcrumbSchema = {
   #assinar button {
     min-height: 44px;
   }
+
+  /* Amarração — contraste no tema claro.
+     O axe pegou 3.53:1 no botão (19/10, CI): eu usei `color: var(--color-bg)` e no tema
+     claro esse valor é quase branco (#f5f2eb) sobre o accent (#a855f7). Accent como FUNDO
+     precisa escurecer; accent como TEXTO pequeno precisa do mix documentado na skill
+     (60% accent + #1a1a2e). Vale para qualquer das 6 paletas. */
+  [data-theme='light'] #assinar button {
+    /* !important é necessário: o botão carrega style inline (que ganha de qualquer regra).
+       A skill já registra esse caso nas páginas de post. */
+    background: color-mix(in srgb, var(--color-accent) 55%, #1a1a2e) !important;
+    color: #ffffff !important;
+  }
+  [data-theme='light'] #assinar-ok,
+  [data-theme='light'] #assinar a {
+    color: color-mix(in srgb, var(--color-accent) 60%, #1a1a2e) !important;
+  }
 </style>
