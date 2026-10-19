@@ -1,0 +1,87 @@
+---
+title: "The secret that left the index and stayed in the history"
+description: "One commit pulled five environment files out of version control in Dogwalk and left the history untouched. The 569-byte blob is still reachable — and the lesson is that untracking is not deleting."
+date: 2026-10-18 11:45:00 -03:00
+pubDate: 2026-10-19 08:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "security", "git", "secrets", "secret-scanning"]
+cover: /covers/dogwalk-o-segredo-que-continuou-no-historico.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The file that left the index
+
+On October 18, at 11:45, Dogwalk received a commit that did not change a single line of the application. Commit `16406aa` — `chore(security): remove .env com segredos do indice do git` — touched 6 files: 84 insertions, 39 deletions. No components, no routes, no tests.
+
+What it pulled out of version control were five environment files: development, local, production, test, and a fifth one holding the configuration for the authentication service. That last one carried a token with an administrative service role — the kind that ignores row-level access rules. The project behind that token had been shut down months earlier, but the value was still sitting in the repository, waiting for the next clone.
+
+The problem is what the commit did not do. And that is not a flaw in the commit: it is how Git works.
+
+## What left, and what stayed
+
+The removal happened in the index, not on disk. All five files are still where they were, with the permissions they had — and the permissions tell a story: all five were stored in the repository with the executable bit set, mode `100755`. Nobody marks an environment file as executable on purpose. That is the residue of a recursive `chmod` in some forgotten directory.
+
+The `.gitignore` grew for real in that commit. Two of the new rules only make sense together:
+
+```gitignore
+.env*
+!.env.example
+```
+
+The first one covers everything starting with `.env`. The second is the exception that saves the project: without the negation, the template file would be ignored too, and the next developer would lose the map of which variables exist. `.env.example` is still tracked, with 3.6 KB of names and comments and no values inside.
+
+## Why the local hook never saw it
+
+The repository has a pre-commit hook that runs a quick type check and lints the changed files. It does not run a secret detector — so an environment file could enter the index without anyone asking a question.
+
+The detector existed, with a sensible allowlist: it exempted the template file and the generated build and test paths, where fake tokens circulate in fixtures. The allowlist was right. What was missing was the detector running at the moment the file entered — not in a later sweep of the repository.
+
+The finding came from a later sweep: by the time it surfaced, the file was already tracked, already copied into every clone, and already present in three commits. A gate that runs after the commit is a report, not a gate.
+
+## Untracking is not deleting
+
+After the commit, I asked the repository how many environment-file objects were still reachable:
+
+```
+18
+```
+
+Eighteen blobs. Five files, but eighteen historical versions of them. The specific blob for the file with the administrative token is still in the object database, intact, at 569 bytes, and it appears in three commits: the October 18 removal and the two earlier entries, from May 21 and June 11.
+
+In other words: `git rm --cached` fixes the future and does not touch the past. The value is still extractable by anyone with access to the repository.
+
+From there the decision splits into two independent questions, and the order between them is not negotiable:
+
+1. **Is the secret still valid?** If it is, the answer is immediate credential rotation. Rotating the key removes today's risk and depends on no rewrite at all.
+2. **Is rewriting the history worth it?** That is cleanup, not containment. A rewrite changes every commit identifier, forces every clone to be recreated and breaks references in issues and pull requests. It makes sense when the value is sensitive and still valid — never as a substitute for rotation.
+
+In this project's case, the credential belonged to a deactivated service. There was nothing to rotate. The history stayed as it was: rewriting the whole timeline cost more than the risk of a dead token.
+
+## What this changes
+
+Two things, neither of them specific to Dogwalk.
+
+The first is that "I removed the secret from the repository" needs to be a longer sentence. Did I remove it from the index, or from the history? Those are different operations with different costs, and the second one does not replace rotation.
+
+The second is that the detector belongs in the hook. A later scan finds what has already leaked; the hook stops it from entering.
+
+And the template file has to survive the block: `.env*` without the matching negation fixes the leak and erases the documentation of the variables, turning every new environment into trial and error.
+
+## Next step
+
+The missing step is measuring what is still reachable in every repository, not just this one, and sorting each finding into two columns: live credential and dead credential. Live rotates first. Dead goes into the cleanup queue, with the cost of a rewrite on the scale.
+
+```bash
+# the commit that pulled the files out of the index (and what it changed)
+git log -1 --stat 16406aa
+
+# the blob is still in the object database, at 569 bytes
+git cat-file -s 8a86f50
+
+# how many environment-file objects are still reachable
+git rev-list --all --objects | grep -E '\.env\.' | wc -l
+```
+
+Three commands, none of them destructive, and all answering the same question: what can someone still read if they clone this repository today.
