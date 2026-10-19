@@ -18,6 +18,8 @@ com brightness ~28 (parecem "sem imagem"); capas AI do Worker ficam ~130+.
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -136,6 +138,34 @@ def build_prompt(slug, project, title):
     )
 
 
+def normalize_to_webp(path):
+    """Garante WEBP real no path: o Worker as vezes devolve JPEG cru.
+
+    JPEG salvo com extensao .webp passa no browser (sniffing), mas confunde
+    o watchdog de capas, que trata 'nao e webp real' como suspeita.
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+    except OSError:
+        return False
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return True
+    if not shutil.which("ffmpeg"):
+        print("  AVISO: arquivo nao e WEBP real e ffmpeg esta ausente")
+        return False
+    tmp = path + ".tmp.webp"
+    rc = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-c:v", "libwebp", "-q:v", "90", tmp]
+    ).returncode
+    if rc != 0 or not os.path.exists(tmp):
+        print("  AVISO: reencode WEBP falhou, mantendo o original")
+        return False
+    os.replace(tmp, path)
+    print(f"  reencode WEBP real: {os.path.getsize(path)} bytes")
+    return True
+
+
 def generate(slug, force=True):
     project, title = read_meta(slug)
     api_key = load_api_key()
@@ -163,6 +193,7 @@ def generate(slug, force=True):
                 img = resp.read()
                 with open(output_path, "wb") as f:
                     f.write(img)
+                normalize_to_webp(output_path)
                 print(f"OK {slug} ({len(img)} bytes)")
                 return True
         except urllib.error.HTTPError as e:
