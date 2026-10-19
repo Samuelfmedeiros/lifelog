@@ -1,0 +1,80 @@
+---
+title: "O painel que monitorava uma máquina que não existia"
+description: "Depois da mudança de host, o hub do Capivara continuava medindo 43 unidades da máquina antiga — 26 delas não existiam mais. O veredito ficou vermelho sem parar até o mapa ser remedido no host novo: 35 itens, 5 grupos e 73 testes."
+category: samuel-projects
+date: 2026-10-18 22:29:00 -03:00
+pubDate: 2026-10-19 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "systemd", "docker", "observability"]
+cover: /covers/capivara-o-painel-que-monitorava-fantasmas.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O vermelho que nunca desligava
+
+O hub do Capivara tinha um problema estranho: ele acertava. O veredito no topo da página de serviços era `crit`, e era `crit` sempre — de manhã, de madrugada, depois de reiniciar tudo. Um painel que nunca fica verde não é um painel rigoroso. É um painel quebrado que ainda não avisou.
+
+A causa apareceu quando parei para ler a lista de itens em vez do número no topo. Eram 43 unidades de systemd herdadas de uma medição feita meses antes, em outro host. Depois da migração, 26 daquelas 43 não existiam na máquina nova. O `systemctl show` respondia `LoadState=not-found`, o classificador devolvia `unknown`, e o total de "sem prova" chegou a 32 itens. Junto vinha um `k3s.service` marcado como crítico, morto porque o cluster inteiro foi aposentado na migração — e um único crítico derrubado é suficiente para pintar o veredito do hub inteiro.
+
+Monitoramento não falha quando mede errado uma vez; falha quando mede errado para sempre. Cada `unknown` naquela tela era um item que eu tinha que abrir na mão para saber se era queda ou fantasma.
+
+## O mapa remedido
+
+A primeira correção foi de conteúdo, não de código: reescrever o inventário a partir de uma medição real no host novo. O comentário no topo de `src/lib/svc.js` virou a regra — item só entra depois de medido, com `load=loaded`; container Docker entra pelo nome exato; unidade de systemd entra por `<nome>.service`.
+
+O inventário saiu de 43 para 35 itens, em cinco grupos: **Plataforma** (backend, hub, gateway, túneis, serviços de memória, API dos pets, roteador de modelos), **Dados e acesso** (Postgres, os cinco PostgREST, Qdrant, embedders), **Bancos (docker)**, **Infra** (Docker, fail2ban, auditd, sshd, cron) e **Vizinhos** (containers de mídia e observabilidade que o hub acompanha sem ser dono).
+
+O grupo "DB Tools" deixou de existir com esse nome: descrevia uma bancada de ferramentas de banco que não atravessou a migração.
+
+## A porta que trocou de dono
+
+O registro de superfícies (o `registry.js`, que prova a porta por HTTP) tinha um erro pior que uma unidade ausente: um endereço vivo apontando para o serviço errado. O backend do Capivara era sondado em `:8001`, mas essa porta hoje pertence ao embedder. O backend subiu para `:8022`.
+
+Um probe nessa condição não fica vermelho — ele fica **verde**, e mente. O `2xx` vinha de outro processo, respondendo outra coisa. É o falso negativo que passa semanas sem ser notado, porque a tela está bonita.
+
+Junto foram embora quatro fachadas de banco que não existem mais neste host, além de um Redis e de uma instância de analytics sem listener: 12 linhas adicionadas, 22 removidas.
+
+## O motivo em português
+
+A auditoria visual achou outra camada de ruído. O `SubState` do systemd aparecia cru na tabela: `dead`, `failed`, `exited`. Para quem opera, "6 degradados com WARN dead" não distingue um serviço que caiu de um wrapper `oneshot` que terminou o trabalho e saiu — comportamento correto, não queda.
+
+Entrou uma tabela de tradução: `dead` vira "parado", `failed` vira "falhou", `exited` e `completed` viram "concluído (wrapper/oneshot)". O nome técnico continua na API; a tela fala a língua de quem lê.
+
+## O KPI que escolhe o pior caso
+
+No mesmo bloco entrou um indicador na home: backup lógico do **pior banco**. Uma linha parece descuido e é a decisão inteira:
+
+```js
+const datas = inventario.map((i) => i.backup_mais_novo).filter(Boolean).sort();
+return datas.length ? datas[0] : null;
+```
+
+`sort()` no array de datas em texto ordena do mais antigo para o mais novo, e `[0]` é o pior caso. A tentação era pegar o mais recente — o painel ficaria verde quase sempre. Mas um KPI que mostra o melhor banco esconde exatamente o banco que parou de ser despejado, o único que dá prejuízo.
+
+## 390 pixels
+
+Em 390px a tabela de serviços tinha cinco colunas e a coluna ESTADO quebrava palavra no meio (`runnin g`, `rodand o`); nome grande de unidade empurrava 130px de rolagem horizontal.
+
+A correção foi escolher o que cai: a coluna de RAM — quase sempre vazia — sai do mobile, o estado ganha `white-space: nowrap`, o nome da unidade ganha `overflow-wrap: anywhere`. O gate passou a exigir zero pixel de overflow nas duas larguras.
+
+O mesmo trabalho organizou os testes. O `vitest.config.js` nasceu com 16 linhas e uma exclusão que resolveu duplicação real: os diretórios de backup do loop (`.bak-*`, `.loop-archive`) guardavam cópias antigas dos testes e o Vitest as coletava — rodavam duas vezes, a segunda com o mapa de portas velho. As fixtures também foram regravadas com os containers que existem hoje.
+
+```bash
+systemctl --user list-units --type=service --all --no-pager | wc -l
+docker ps --format '{{.Names}}|{{.State}}|{{.Status}}'
+./node_modules/.bin/vitest --run
+```
+
+A suíte fechou em 73 testes, 5 arquivos, todos passando — 37 deles só na camada de serviços.
+
+## O que isso muda
+
+O ganho não foi ter menos itens na tela. Foi o `unknown` voltar a significar **falta de prova** em vez de "provavelmente um fantasma do host antigo". A regra escrita no topo do arquivo — "uma medição só nunca vira `crit`" — só funciona se o alvo da medição existir.
+
+Um painel que fica vermelho 100% do tempo tem o mesmo valor informativo de um painel apagado, com o custo extra de ensinar a ignorá-lo. Depois dessa rodada, `crit` significa queda de verdade outra vez.
+
+## Próximo passo
+
+O alvo seguinte é o que ainda depende de tradução manual: transformar as unidades e containers medidos em configuração versionada, para que a próxima migração produza um diff explícito do inventário — e não 26 itens invisíveis esperando alguém abrir a lista.

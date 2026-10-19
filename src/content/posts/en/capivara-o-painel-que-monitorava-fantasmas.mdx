@@ -1,0 +1,80 @@
+---
+title: "The dashboard that monitored a machine that no longer existed"
+description: "After the host move, the Capivara hub kept measuring 43 systemd units from the old machine — 26 of them were gone. The verdict stayed red until the map was re-measured on the new host: 35 items, 5 groups and 73 tests."
+category: samuel-projects
+date: 2026-10-18 22:29:00 -03:00
+pubDate: 2026-10-19 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "systemd", "docker", "observability"]
+cover: /covers/capivara-o-painel-que-monitorava-fantasmas.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The red that never turned off
+
+The Capivara hub had a strange problem: it was right. The verdict at the top of the services page was `crit`, and it was `crit` every single time — morning, late night, right after restarting everything. A dashboard that never goes green is not a strict dashboard. It is a broken dashboard that has not told you yet.
+
+The cause showed up when I read the item list instead of the number at the top. There were 43 systemd units inherited from a measurement taken months earlier, on a different host. After the migration, 26 of those 43 did not exist on the new machine. `systemctl show` answered `LoadState=not-found`, the classifier returned `unknown`, and the "no proof" count reached 32 items. Along with them came a `k3s.service` flagged as critical, dead because the whole cluster was retired during the migration — and one downed critical item is enough to paint the entire verdict red.
+
+Monitoring does not fail when it measures wrong once; it fails when it measures wrong forever. Every `unknown` on that screen was an item I had to open by hand to find out whether it was an outage or a ghost.
+
+## The re-measured map
+
+The first fix was about content, not code: rewrite the inventory from a real measurement on the new host. The comment now sitting at the top of `src/lib/svc.js` is the rule — an item only gets in after being measured, with `load=loaded`; a Docker container gets in by its exact name; a systemd unit gets in as `<name>.service`.
+
+The inventory went from 43 to 35 items across five groups: **Platform** (backend, hub, gateway, tunnels, memory services, pet API, model router), **Data and access** (Postgres, the five PostgREST instances, Qdrant, embedders), **Databases (docker)**, **Infra** (Docker, fail2ban, auditd, sshd, cron) and **Neighbours** (media and observability containers the hub watches without owning).
+
+The "DB Tools" group no longer exists under that name: it described a bench of database tools that did not survive the migration.
+
+## The port that changed owners
+
+The surface registry (`registry.js`, which proves a port over HTTP) carried a worse error than a missing unit: a live address pointing at the wrong service. The Capivara backend was probed on `:8001`, but that port belongs to the embedder today. The backend moved to `:8022`.
+
+A probe in that state does not turn red — it turns **green**, and lies. The `2xx` came from a different process answering a different question. That is the false negative that survives for weeks because the screen looks healthy.
+
+Four database facades that no longer exist on this host left as well, plus a Redis and an analytics instance with no listener: 12 lines added, 22 removed.
+
+## The reason, in plain language
+
+The visual audit found another layer of noise. systemd's `SubState` appeared raw in the table: `dead`, `failed`, `exited`. To whoever operates the thing, "6 degraded with WARN dead" does not separate a service that crashed from a `oneshot` wrapper that finished its job and left — correct behaviour, not an outage.
+
+A translation table went in: `dead` becomes "stopped", `failed` becomes "failed to start", `exited` and `completed` become "finished (wrapper/oneshot)". The technical name still lives in the API; the screen now speaks the language of the person reading it.
+
+## The KPI that picks the worst case
+
+In the same block, a new indicator landed on the home page: logical backup of the **worst database**. The implementation has one line that looks like carelessness and is the whole decision:
+
+```js
+const dates = inventory.map((i) => i.latest_backup).filter(Boolean).sort();
+return dates.length ? dates[0] : null;
+```
+
+`sort()` on an array of text dates orders oldest to newest, and `[0]` is the worst case. The temptation was to take the most recent one — the panel would be green almost always. But a KPI that shows the best database hides exactly the one that stopped being dumped, the only one that costs money.
+
+## 390 pixels
+
+At 390px wide the services table had five columns, and the STATE column broke words in half: `runnin g`, `rodand o`. A long systemd unit name pushed 130px of horizontal scroll into the page.
+
+The fix was choosing what falls: the RAM column — almost always empty — leaves mobile, the state column gets `white-space: nowrap`, the unit name gets `overflow-wrap: anywhere`. The gate now demands zero pixels of overflow at both widths.
+
+The same pass tidied the tests. `vitest.config.js` was born with 16 lines and an exclusion that solved real duplication: the loop's backup directories (`.bak-*`, `.loop-archive`) held old copies of the tests and Vitest collected them — they ran twice, the second time against the stale port map. The fixtures were rewritten around the containers that exist today.
+
+```bash
+systemctl --user list-units --type=service --all --no-pager | wc -l
+docker ps --format '{{.Names}}|{{.State}}|{{.Status}}'
+./node_modules/.bin/vitest --run
+```
+
+The suite closed at 73 tests, 5 files, all passing — 37 of them in the services layer alone.
+
+## What this changes
+
+The win was not fewer items on the screen. It was `unknown` meaning **no proof** again instead of "probably a ghost from the old host". The rule written at the top of the file — "a single measurement never becomes `crit`" — only works if the target of that measurement exists.
+
+A dashboard that stays red 100% of the time carries the same information value as a dashboard that is switched off, plus the extra cost of teaching everyone to ignore it. After this round, `crit` means a real outage again.
+
+## Next step
+
+The remaining piece is the one still done by hand: turn the measured units and containers into versioned configuration, so the next host migration produces an explicit inventory diff — instead of 26 invisible items waiting for someone to open the list.
