@@ -1,0 +1,64 @@
+---
+title: "A régua de dezesseis linhas"
+description: "O run 2 provou que o TatuEngine aprendeu português e esqueceu inglês. Os dois runs seguintes provaram outra coisa: eu media esse esquecimento numa amostra cujo erro era maior que o efeito que queria enxergar — 16 linhas de 166."
+category: samuel-projects
+date: 2026-10-19 15:23:00 -03:00
+pubDate: 2026-10-19 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "training", "llm", "testing"]
+icon: "🌀"
+cover: /covers/tatuengine-a-regua-de-dezesseis-linhas.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O preço de aprender a conversar
+
+O run 2 fechou com o `sftHeld` em 9,0692 contra 9,1979 da semente — 1,4% melhor na perplexidade do corpus de instruções em português. Ganhou. No fim do mesmo run, a régua de inglês estava 28% pior.
+
+O modelo não ficou melhor: ficou melhor numa língua e pior na outra. Esquecimento catastrófico é previsível em fine-tuning; a surpresa era não conseguir dizer se uma receita nova segurava o esquecimento ou se eu olhava ruído.
+
+## Três runs, três respostas incompletas
+
+O run 3 cruzou o canal SFT com 25% a 50% de inglês por passo. O `sftHeld` piorou desde o step 40 e a régua subiu cerca de 3,9 pontos percentuais a cada 32 steps. Receita falsificada: o inglês no meio atrapalhou o português e não reancorou nada.
+
+O run 4 desligou o canal SFT e treinou só em inglês, 100% dos tokens. Se a hipótese "inglês reancora sozinho" estivesse certa, a régua voltaria. Andou 0,10% em 48 steps — plana — e o `sftHeld` piorou 0,64%. Run nulo. Sem o canal SFT nada melhora, e inglês puro não devolve o que foi esquecido.
+
+Duas receitas mortas, e a conclusão era sobre o desenho do experimento, não sobre o modelo: quem move o `sftHeld` é o canal SFT ligado; inglês sozinho não reancora. Faltava o cruzamento — SFT ligado com uma fatia de inglês por passo.
+
+## A régua media 10% do corpo
+
+Antes do run 5, refiz a conta do avaliador em vez de confiar na memória: a régua de inglês tem 166 linhas e a avaliação rodava 8 batches de batch size 2 — 16 linhas, 9,6% do conjunto.
+
+Com 16 linhas, o erro-padrão da perplexidade fica em torno de 3%. O efeito que eu queria medir — reancoragem de poucos por cento — é menor que isso. Durante três runs eu comparei diferenças dentro da margem de erro e chamei aquilo de veredito. O "plano em +0,10%" do run 4 era o limite de resolução daquela amostra, não prova de que a receita falhava.
+
+A cura foi curta: `EVAL_EN_ALL=1` passou a avaliar as 166 linhas, e o commit `a4c1696` deixou o motivo escrito ao lado — amostra de 16 tem erro-padrão maior que o efeito medido. O custo é mensurável: cada avaliação leva cerca de 70 segundos (390 linhas de validação em português, 166 da régua, 100 do held). Com eval a cada 8 steps, são uns 25 minutos de medição num run de 200 steps.
+
+## O limite que matava o run no primeiro eval
+
+Outro erro da mesma família estava no critério de aborto. O `FORGET_LIMIT` era um 0,10 cravado no código. Qualquer run que herdasse semente esquecida abortava antes de aprender qualquer coisa, porque o limite comparava com o tronco — e a semente do run 2 já entra 14,7% pior que ele.
+
+Duas colunas de nomes parecidos e significados opostos: `drift` é relativo ao baseline do próprio processo, começa em 0% e mede o que este run fez; `drift_tronco` é absoluto contra o tronco original e carrega a herança da semente. Ler a coluna errada mata o run no primeiro eval, com um número grande que faz parecer que o treino explodiu.
+
+O `FORGET_LIMIT` virou `MIX_FORGET_LIMIT`, com default 0,10 e valor por run — o run 5 usa 0,08. O treino aborta — não só avisa — quando a régua piora mais que isso desde o início do run. Abortar não é pessimismo: em 13/09 um run continuou com drift de +88% e degradou a base. Um número ruim no meio é barato; uma base degradada no fim custa o run inteiro.
+
+## O que o run 5 testa
+
+O run 5 subiu com `SFT_GE=8` e `REPLAY_N=6` em 14 micro-batches — 43% dos tokens em inglês por passo, 200 steps, semente no `sft_best.pt` do run 2 e best escolhido pelo `sftHeld`, não pela régua.
+
+Um smoke de 2 steps, com saída separada: `sftHeld` 9,0694 para 9,0702, `drift +0,0%`, `trunk_ok=True`. O run 3, no mesmo ponto, já subia a régua a 3,9 pontos percentuais por 32 steps. Cinco minutos de smoke separam "a receita falhou" de "a variável não chegou no processo".
+
+Uma lição de infraestrutura atravessou o caminho: o run 4 morreu quatro vezes, e não por bug de treino — o oomd do systemd matou o cgroup porque o swap do host vive ocupado e o critério dele ignora o `OOMScoreAdjust`. A cura foi somar `ManagedOOMPreference=avoid` na unit, mantendo o score em -600.
+
+```bash
+MIX_STEPS_LIMIT=2 REPLAY_N=6 EVAL_EN_ALL=1 python scripts/va_sft_pairs.py
+grep -E 'EVAL [0-9]+: sftHeld' run.log | tail -3
+systemctl --user show tatu-sft-run5 -p ManagedOOMPreference
+```
+
+## Onde isso para
+
+A pergunta do run 5 é única e o critério foi escrito antes do resultado. Se o `sftHeld` cair e o drift ficar abaixo de 8% nos 200 steps, a receita vale e escala. Se abortar em 8% antes do step 100, 43% de inglês não segura o esquecimento e o próximo teste é 50% a 60% ou learning rate menor — repetir a mesma receita está fora de questão. Se os dois ficarem planos, a cabeça saturou com essa semente e a saída é descongelar camadas do tronco ou ir de LoRA, não insistir em mistura de tokens.
+
+Os três runs anteriores não me deram uma receita. Deram algo mais útil: hoje, quando olho um número do treino, consigo dizer se ele significa alguma coisa.
