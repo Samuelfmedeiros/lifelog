@@ -14,7 +14,19 @@ import { test, expect } from './fixtures';
 const FREEZE_ANIM = `
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .particles, [class*="particle"], [class*="aura"] { opacity: 0 !important; }
+  /* A lista da home (.timeline) e DADO VIVO: todo post publicado troca cards, datas e
+     desloca tudo abaixo. Sem congelar, o snapshot fica velho a cada publicacao — a
+     baseline foi regerada 2x em 48h por isso (17 posts e depois 4). Altura FIXA (nao
+     auto) garante que a caixa da mascara nao cresca junto com o conteudo, senao a
+     proxima publicacao muda o tamanho da area mascarada e o diff volta. */
+  .timeline { height: 600px !important; overflow: hidden !important; }
 `;
+
+/** A lista da home muda a cada publicacao — mascarar tira o dado vivo da comparacao.
+ *  O layout da lista continua coberto por lifelog.spec.ts (contagem de cards,
+ *  filtros por projeto/ano) e tags.spec.ts. Aqui o VRT mede o que e estavel:
+ *  header, hero, busca, chips, navbar e a posicao do rodape. */
+const maskVivo = (page: any) => [page.locator('.timeline')];
 
 async function setupVRT(page: any, theme: 'dark' | 'light') {
   await page.addInitScript((t) => localStorage.setItem('lifelog-theme', t), theme);
@@ -55,6 +67,7 @@ test.describe('VRT — Regressão Visual', () => {
     await waitForRender(page);
     await expect(page).toHaveScreenshot('home-dark.png', {
       maxDiffPixelRatio: 0.005, // 0.5% — animações congeladas
+      mask: maskVivo(page),
     });
   });
 
@@ -64,6 +77,7 @@ test.describe('VRT — Regressão Visual', () => {
     await waitForRender(page);
     await expect(page).toHaveScreenshot('home-light.png', {
       maxDiffPixelRatio: 0.005,
+      mask: maskVivo(page),
     });
   });
 
@@ -84,6 +98,7 @@ test.describe('VRT — Regressão Visual', () => {
     await waitForRender(page);
     await expect(page).toHaveScreenshot('home-mobile-dark.png', {
       maxDiffPixelRatio: 0.005,
+      mask: maskVivo(page),
     });
   });
 });
