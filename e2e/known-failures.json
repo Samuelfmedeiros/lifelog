@@ -1,5 +1,5 @@
 {
   "$comment": "Ratchet de dívida de E2E (PR #51). Testes listados ficam fora do gate por título; 'audit' trava o CI quando qualquer 'expiry' passa. Adicionar entrada exige aprovação explícita do Samuel; remover é sempre livre.",
   "failures": [],
-  "$ultimaRevisao": "2026-10-18: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: home mudou por dado vivo: 17 posts publicados desde o baseline de 10/10 (d41ce13); layout intacto (index.astro sem commit no periodo). Re-run apos a cura do bug que descartava os .png regenerados (03b11c2)."
+  "$ultimaRevisao": "2026-10-19: baselines de VRT regenerados no runtime da CI (ubuntu-latest) e entradas VRT removidas — divida PAGA. Motivo: congelar a lista da home (dado vivo) no VRT: 4 posts publicados desde a baseline de 18/10 trocaram cards/datas e deslocaram o resto. Agora a lista tem altura fixa + mascara, entao publicacao nao muda mais o snapshot."
 }
