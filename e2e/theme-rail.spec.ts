@@ -85,7 +85,11 @@ test.describe('Theme Rail', () => {
 
     const cta = links.nth(0);
     await expect(cta).toHaveClass(/cta/);
-    await expect(cta).toHaveAttribute('href', 'https://portifolio.seu.pet');
+    // O CTA carrega UTM por design (REGRA-AMARRACAO, 19/10): link cruzado sem UTM não é
+    // medível. Antes o teste exigia o href exato sem query e reprovava a mudança correta.
+    await expect(cta).toHaveAttribute('href', /^https:\/\/portifolio\.seu\.pet\?/);
+    await expect(cta).toHaveAttribute('href', /utm_source=lifelog\.seu\.pet/);
+    await expect(cta).toHaveAttribute('href', /utm_medium=navbar/);
 
     await expect(links.nth(1)).toHaveAttribute('href', '/');
     await expect(links.nth(2)).toHaveAttribute('href', '/arquivo');
