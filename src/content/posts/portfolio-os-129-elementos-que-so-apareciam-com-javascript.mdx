@@ -1,0 +1,88 @@
+---
+title: "Os 129 elementos que a página só mostrava com JavaScript"
+description: "O HTML de produção do portfólio chegava com opacity:0 espalhado por 129 tags — o hero, os cards e metade da página só existiam depois da hidratação. O padrão do framer-motion que causava isso, a primeira vez que apareceu, e o que foi preciso para o HTML voltar a se defender sozinho."
+category: samuel-projects
+date: 2026-10-19 02:03:00 -03:00
+pubDate: 2026-10-20 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ssr", "react", "javascript", "performance", "seo"]
+cover: /covers/portfolio-os-129-elementos-que-so-apareciam-com-javascript.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A página que chegava vazia
+
+Abrir o portfólio com o JavaScript bloqueado deveria mostrar um site feio, porém legível. Mostrava uma moldura. O cabeçalho vinha no HTML, o texto vinha no HTML, e nada aparecia — porque quase tudo chegava com `opacity: 0` escrito no atributo `style`.
+
+Medi em produção antes de mexer em nada: 129 tags com `opacity:0` inline no HTML servido por `samuelmedeiros.vercel.app`. Dessas, 60 são camadas absolutas e grids decorativos, o que é esperado. As outras incluem conteúdo de verdade — títulos de seção, cards de projeto, o próprio bloco do hero. O navegador recebia a página inteira e o visitante via o fundo.
+
+O culpado não era CSS mal escrito. Era uma construção de componente que parecia inofensiva e que se repetia por 52 lugares no repositório.
+
+## O padrão que se repetia
+
+O portfólio usa framer-motion para animações de entrada. O jeito canônico de escrever isso é:
+
+```bash
+initial={{ opacity: 0, y: 20 }}
+animate={{ opacity: 1, y: 0 }}
+```
+
+O componente nasce transparente e anima até visível. Funciona lindamente no cliente. O problema é o que o servidor faz com esse `initial`: ele serializa `opacity:0` no HTML. No primeiro paint, o conteúdo está lá, invisível, esperando o JavaScript chegar para animar. Se o JS falhar, atrasar, ou simplesmente não rodar — o conteúdo nunca aparece.
+
+No `ProfileSection.tsx` a variante era pior. Duas camadas do hero usavam `animate={{ opacity: mounted ? 1 : 0 }}`, com `mounted` vindo de um estado que só vira `true` dentro de um `useEffect`. No servidor, `mounted` é sempre `false`. Então o HTML saía com `opacity:0` fixo e a camada de fundo em grid (linha 676) e o overlay do cockpit SVG (linha 694) simplesmente não existiam na página servida. Sem hidratação, nunca existiriam.
+
+Não era bug novo. Era a terceira reincidência da mesma família:
+
+- **15/08** — commit `7322c55`, PR #50: o botão "Sobre" e mais quatro elementos acima da dobra ficavam invisíveis até a hidratação, pelo mesmo `initial` serializado no SSR.
+- **12/08** — commit `4e279bc`: o `CookieBanner` lia `localStorage` no inicializador do `useState`, renderizava diferente no servidor e no cliente, e disparava um erro #418 de hydration mismatch em toda visita nova.
+- **19/10** — commit `8fee520`, PR #142: as duas camadas do hero.
+
+Três episódios, três curas pontuais. O padrão continuava vivo em 52 pontos do código.
+
+## A cura: nascer visível, animar depois
+
+O fix de raiz não foi trocar `opacity: 0` por `opacity: 1` — isso mataria a animação inteira. Foi inverter o gate: o HTML nasce **visível** e a animação só é permitida no cliente, depois do mount.
+
+```bash
+const mounted = useMounted();
+<motion.div initial={mounted ? { opacity: 0, y: 20 } : false} ... />
+```
+
+`initial: false` desliga o estado inicial da animação no servidor e no primeiro render do cliente. O elemento é servido opaco. Quando o `useEffect` do hook marca `mounted = true`, o componente re-renderiza já com o estado inicial animável — mas o `whileInView` parte de um elemento que já estava na tela. O visitante vê exatamente a mesma animação; o HTML servido, porém, se defende sozinho.
+
+O `useMounted` tem 26 linhas, comentário incluído. É abstração pequena, mas existe para o próximo componente não repetir o erro.
+
+O gate foi aplicado em 8 arquivos: `GlassCard` (27 cards), `ProjectHangar` (cards e o `h2` da seção), `BlogSection` (article e título), `SkillsCompact`, `TimelineItem`, os toggles de tema e idioma, os botões da jornada e o `ProfileSection`. Total: 67 linhas adicionadas, 22 removidas.
+
+A validação foi no HTML, não no navegador: servindo a página sem JavaScript, os elementos de conteúdo com `opacity` menor que 1 caíram de cerca de 50 para zero, com `435/435` testes verdes e build limpo.
+
+## O efeito colateral que o gate criou
+
+Mexer no ciclo de render tem consequência. O `GameShowcase` registrava um listener de `click` em cada botão de jogo, dentro de um `useEffect` que rodava uma vez. Com o gate aplicado ao `GlassCard`, o card passou a re-renderizar no mount — e o nó do botão era substituído. Os listeners antigos ficaram órfãos no nó velho, fora do DOM. Os jogos pararam de responder ao clique.
+
+O diagnóstico foi por identidade de nó: comparar a referência do elemento antes e depois do mount mostrou objetos diferentes. A cura foi parar de amarrar listener em nó que pode ser trocado — o `click` passou a ser delegado no container, que sobrevive às re-renderizações:
+
+```bash
+const btn = (e.target as HTMLElement).closest("[data-game-btn]");
+if (!btn) return;
+```
+
+Menos listeners, mais robusto. Delegação no container é a resposta certa quando o filho pode ser remontado.
+
+## O que isso muda
+
+A diferença prática é entre uma página que depende do JavaScript para existir e uma que depende dele para ficar bonita. Crawlers de busca, previews de link, leitores de feed, navegadores com bloqueio de script e conexões em que o bundle demora leem o mesmo HTML servido. Antes, quase metade da página era espaço reservado.
+
+Vale registrar o estado real: este trabalho não está terminado. O fix das camadas do hero entrou em produção pelo PR #142 em 19/10 às 02:03. O gate para toda a árvore de componentes está no PR #146, ainda aberto, com `435/435` testes verdes. Enquanto ele não entra, o repositório de produção continua com 52 ocorrências do `initial={{ opacity: 0` cru.
+
+## Próximo passo
+
+Merge do PR #146 e re-medição do HTML em produção. A meta é objetiva: a contagem precisa cair para perto das 60 camadas decorativas, invisíveis de propósito. Se a contagem não descer, o gate vazou em algum componente — e aí é sinal de que a família tem um quarto episódio esperando.
+
+```bash
+git log --oneline --grep="SSR" -- src/components/ProfileSection.tsx
+grep -rc "initial={{ opacity: 0" src/components/*.tsx | grep -v ':0'
+curl -s https://samuelmedeiros.vercel.app | grep -o 'opacity:0' | wc -l
+```

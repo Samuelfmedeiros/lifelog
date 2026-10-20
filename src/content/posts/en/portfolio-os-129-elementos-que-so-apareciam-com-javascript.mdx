@@ -1,0 +1,88 @@
+---
+title: "The 129 elements that only existed once JavaScript loaded"
+description: "The portfolio's production HTML shipped with opacity:0 across 129 tags — the hero, the cards and half the page came to life only after hydration. The framer-motion pattern behind it, the first time it surfaced, and what it took to make the HTML defend itself again."
+category: samuel-projects
+date: 2026-10-19 02:03:00 -03:00
+pubDate: 2026-10-20 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ssr", "react", "javascript", "performance", "seo"]
+cover: /covers/portfolio-os-129-elementos-que-so-apareciam-com-javascript.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The page that arrived empty
+
+Opening the portfolio with JavaScript blocked should show an ugly but readable site. It showed a frame. The header was in the HTML, the text was in the HTML, and nothing rendered — because almost everything arrived with `opacity: 0` baked into the `style` attribute.
+
+I measured production before touching a single line: 129 tags with inline `opacity:0` in the HTML served by `samuelmedeiros.vercel.app`. Sixty of those are absolute layers and decorative grids, which is expected. The rest include real content — section headings, project cards, the hero block itself. The browser received the whole page and the visitor saw the background.
+
+The culprit was not badly written CSS. It was a component pattern that looked harmless and appeared in 52 places across the repository.
+
+## The pattern that kept repeating
+
+The portfolio uses framer-motion for entrance animations. The canonical way to write one is:
+
+```bash
+initial={{ opacity: 0, y: 20 }}
+animate={{ opacity: 1, y: 0 }}
+```
+
+The component starts transparent and animates into view. On the client that works beautifully. The problem is what the server does with that `initial`: it serialises `opacity:0` into the HTML. On the first paint the content is there, invisible, waiting for JavaScript to arrive and animate it. If the JS fails, lags, or simply never runs, the content never shows up.
+
+Inside `ProfileSection.tsx` the variant was worse. Two hero layers used `animate={{ opacity: 0, ... }}` gated by `mounted ? 1 : 0`, where `mounted` comes from state that only flips to `true` inside a `useEffect`. On the server `mounted` is always `false`. So the HTML shipped with `opacity:0` fixed and the grid background layer (line 676) and the cockpit SVG overlay (line 694) simply did not exist in the served page. Without hydration, they never would.
+
+This was not a new bug. It was the third recurrence of the same family:
+
+- **08/15** — commit `7322c55`, PR #50: the "About" button and four other above-the-fold elements were invisible until hydration, from the same serialised `initial`.
+- **08/12** — commit `4e279bc`: `CookieBanner` read `localStorage` in the `useState` initialiser, rendered differently on server and client, and threw a React #418 hydration mismatch on every fresh visit.
+- **10/19** — commit `8fee520`, PR #142: the two hero layers.
+
+Three episodes, three point fixes. The pattern stayed alive in 52 spots.
+
+## The cure: born visible, animated later
+
+The root fix was not swapping `opacity: 0` for `opacity: 1` — that would kill the animation. It was inverting the gate: the HTML is born **visible**, and animation is only allowed on the client, after mount.
+
+```bash
+const mounted = useMounted();
+<motion.div initial={mounted ? { opacity: 0, y: 20 } : false} ... />
+```
+
+`initial: false` disables the animation's starting state on the server and on the client's first render. The element is served opaque. Once the hook's `useEffect` marks `mounted = true`, the component re-renders with an animatable initial state — but `whileInView` starts from an element that was already on screen. The visitor sees exactly the same animation; the served HTML, however, defends itself.
+
+`useMounted` runs 26 lines, comments included. Small abstraction, and it exists so the next component does not repeat the mistake.
+
+The gate landed in 8 files: `GlassCard` (27 cards), `ProjectHangar` (cards and the section `h2`), `BlogSection` (article and title), `SkillsCompact`, `TimelineItem`, the theme and language toggles, the journey buttons and `ProfileSection`. Total: 67 lines added, 22 removed.
+
+Validation happened on the HTML, not in the browser: serving the page without JavaScript, content elements with `opacity` below 1 dropped from roughly 50 to zero, with `435/435` tests green and a clean build.
+
+## The side effect the gate created
+
+Changing the render cycle has consequences. `GameShowcase` registered a `click` listener on every game button inside a `useEffect` that ran once. With the gate applied to `GlassCard`, the card started re-rendering on mount — and the button node was replaced. The old listeners stayed orphaned on the old node, outside the DOM. The games stopped responding to clicks.
+
+The diagnosis came from node identity: comparing the element reference before and after mount showed two different objects. The cure was to stop binding listeners to nodes that can be swapped — the `click` moved to delegation on the container, which survives re-renders:
+
+```bash
+const btn = (e.target as HTMLElement).closest("[data-game-btn]");
+if (!btn) return;
+```
+
+Fewer listeners, more robust. Container delegation is the right answer whenever a child can be remounted.
+
+## Why it matters
+
+The practical difference is between a page that needs JavaScript to exist and one that needs it to look good. Search crawlers, link previews, feed readers, browsers with script blocking and connections where the bundle takes its time all read the same served HTML. Before this, nearly half the page was a placeholder.
+
+Worth recording the real state: this work is not finished. The hero layer fix shipped through PR #142 on 10/19 at 02:03. The gate across the whole component tree lives in PR #146, still open, with `435/435` tests green. Until it lands, the production repository still carries 52 raw `initial={{ opacity: 0` occurrences.
+
+## Next step
+
+Merge PR #146 and re-measure the HTML in production. The target is objective: the count needs to drop close to the 60 decorative layers, which are invisible on purpose. If it does not drop, the gate leaked in some component — and that means the family has a fourth episode waiting.
+
+```bash
+git log --oneline --grep="SSR" -- src/components/ProfileSection.tsx
+grep -rc "initial={{ opacity: 0" src/components/*.tsx | grep -v ':0'
+curl -s https://samuelmedeiros.vercel.app | grep -o 'opacity:0' | wc -l
+```
