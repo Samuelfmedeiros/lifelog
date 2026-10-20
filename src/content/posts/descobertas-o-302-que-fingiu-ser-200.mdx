@@ -1,0 +1,78 @@
+---
+title: "O 302 que fingiu ser 200"
+description: "Todo envio do formulário em produção devolvia erro, e o código do formulário estava certo. Eram duas armadilhas empilhadas no mesmo caminho — um CORS que mentia e uma configuração de acesso que cobria o domínio inteiro. E a sonda que deveria provar saúde lia a tela de login e dizia 200."
+category: samuel-projects
+date: 2026-10-19 21:40:00 -03:00
+pubDate: 2026-10-20 08:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "http", "debugging", "cloudflare", "security"]
+cover: /covers/descobertas-o-302-que-fingiu-ser-200.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O erro que não estava no formulário
+
+Em produção, todo envio do formulário de contato devolvia a mensagem de erro padrão. O console do navegador não ajudava: o `fetch` morria com um tipo genérico, sem corpo e sem status útil. O reflexo é abrir o código do formulário — e não havia nada errado ali. O backend respondia. O banco respondia. A tabela de mensagens existia.
+
+Levei mais tempo do que gostaria para aceitar a parte incômoda: o problema não estava em nenhuma das duas pontas que eu conseguia ler no editor. Estava no caminho do meio — o proxy do próprio site e a camada de acesso na frente do domínio.
+
+Separei o caminho em três camadas e testei uma por vez: o formulário no navegador, o proxy same-origin do site, e a API do painel que guarda as mensagens.
+
+## Duas armadilhas empilhadas
+
+A primeira já tinha aparecido dias antes e estava documentada num comentário de código. Chamar a API do painel direto do navegador, de outra origem, devolvia erro com corpo vazio e nenhum cabeçalho de origem permitida. O `fetch` traduzia aquilo como "falha de rede", que é a mensagem mais mentirosa da lista — falha de rede sugere cabo, não política de origem.
+
+A cura foi um proxy same-origin: uma rota no próprio Next que recebe o pedido do navegador e repassa do lado do servidor, com uma lista fechada de prefixos permitidos e limite de segmentos. Sem lista fechada, um proxy desses vira porta aberta para o outro serviço.
+
+Com o proxy no ar, fazendo o mesmo POST pelo site, o erro continuou. E aí a origem mudou de lugar: uma configuração de acesso criada de madrugada, pensada para proteger o painel administrativo, cobria o domínio inteiro. Toda requisição — inclusive a do prefixo público que o proxy precisa alcançar — recebia redirecionamento para a tela de login. O navegador seguia, era bloqueado por política de origem, e o `fetch` morria. O backend nunca viu o pedido.
+
+Proteger o domínio inteiro é o default confortável de qualquer serviço de acesso, e é exatamente o que quebra todo endpoint que o site precisa chamar sozinho.
+
+## Por que o diagnóstico demorou
+
+Um detalhe de ferramenta custou mais tempo que o bug: a biblioteca HTTP do Python segue redirecionamento por padrão. A sonda que eu usava dizia "200, saudável" — porque estava lendo a página de login, não a API. Status 200 numa tela de login é um 200 legítimo e uma resposta completamente errada.
+
+O jeito certo de sondar é olhar o código real, sem seguir o redirect:
+
+```bash
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" \
+  -X POST "https://<painel>/api/<prefixo-publico>" \
+  -H "Content-Type: application/json" -d '{}'
+# 302 https://<conta>.cloudflareaccess.com/cdn-cgi/access/login/...   <- acesso na frente
+```
+
+E a validação que prova que o servidor está de pé sem gravar nada no banco, porque a validação de payload roda antes do handler:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://<painel>/api/<prefixo-publico>" \
+  -H "Content-Type: application/json" -d '{}'
+# 422 = chegou no handler de validação (aberto, servidor vivo)
+# 302 = login na frente (fechado demais)
+# 500 = servidor quebrado de verdade
+```
+
+Três códigos, três significados que não se confundem — antes eu só tinha o binário "funcionou / não funcionou".
+
+## A cura foi infraestrutura, não código
+
+Nenhuma linha do site mudou. O conserto foi criar um app de acesso por caminho: cobertura no prefixo público, com política de bypass, e o prefixo administrativo continuando atrás do login. O app anterior, que cobria tudo, virou o exemplo do que não fazer num domínio que serve API e painel ao mesmo tempo.
+
+Depois disso, quatro provas em sequência: POST direto no backend devolveu 201; POST pelo proxy do site devolveu 201; teste de ponta a ponta num navegador real em produção mostrou a mensagem de sucesso com zero erros de página; e uma linha nova apareceu na tabela de mensagens. Não adianta a API responder se o caminho que o usuário percorre continua quebrado — por isso a prova final foi no navegador, não no `curl`.
+
+Medi de novo agora: o prefixo público devolve 422 (aberto, validação funcionando) e o administrativo devolve 302 para a tela de login (fechado, como deve ser).
+
+## O que fica
+
+Três lições, todas sobre medir:
+
+1. Acesso é por caminho, não por domínio. Domínio que serve site, API e painel precisa de política por rota, senão o login come o endpoint público e o sintoma aparece longe, no CORS.
+2. `200` sem conferir a URL final e o corpo não prova nada. Sonda que segue redirecionamento responde outra pergunta que não a feita.
+3. Erro de CORS é sintoma, quase nunca causa. O `fetch` só sabe dizer "não deu"; o motivo estava três camadas acima, numa configuração que não passa pelo editor.
+
+A sonda deixou de ser um comando que eu lembrava de rodar e virou rotina periódica: bate no prefixo público esperando a resposta de validação e confirma que o administrativo continua fechado. Silenciosa quando está tudo no lugar — alerta que grita toda hora ninguém lê.
+
+## Próximo passo
+
+Rodar a mesma checagem do outro lado: varrer os outros subdomínios que ganharam app de acesso nas últimas semanas e descobrir quais endpoints públicos estão atrás de um login que ninguém vê. O formulário foi o primeiro lugar onde a falha doeu — improvável que seja o único.

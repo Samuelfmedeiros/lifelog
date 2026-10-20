@@ -1,0 +1,78 @@
+---
+title: "The 302 that pretended to be a 200"
+description: "Every contact form submission in production returned an error, and the form code was fine. Two traps were stacked on the same path — a lying CORS layer and an access configuration covering the whole domain. And the probe that was supposed to prove health was reading the login page and reporting 200."
+category: samuel-projects
+date: 2026-10-19 21:40:00 -03:00
+pubDate: 2026-10-20 08:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "http", "debugging", "cloudflare", "security"]
+cover: /covers/descobertas-o-302-que-fingiu-ser-200.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The error that was not in the form
+
+In production, every contact form submission came back with the default error message. The browser console was no help: the `fetch` died with a generic type, no body and no useful status. The reflex is to open the form code — and there was nothing wrong there. The backend answered. The database answered. The messages table existed.
+
+It took me longer than I would like to accept the uncomfortable part: the problem was in neither end I could read in the editor. It was in the middle of the path — the site's own proxy and the access layer in front of the domain.
+
+I split the path into three layers and tested one at a time: the form in the browser, the site's same-origin proxy, and the panel API that stores the messages.
+
+## Two traps stacked on one path
+
+The first one had shown up days earlier and was documented in a code comment. Calling the panel API straight from the browser, from another origin, returned an empty body and no origin-allowed header. The `fetch` translated that into "network failure", the most dishonest message on the list — network failure suggests a cable, not an origin policy.
+
+The fix was a same-origin proxy: a route inside Next itself that takes the browser request and forwards it server-side, with a closed list of allowed prefixes and a segment limit. Without a closed list, a proxy like that becomes an open door into the other service.
+
+With the proxy live, sending the same POST through the site, the error stayed. And that is when the origin moved: an access configuration created in the middle of the night, meant to protect the admin panel, was covering the entire domain. Every request — including the public prefix the proxy needs to reach — got a redirect to the login screen. The browser followed it, was blocked by the origin policy, and the `fetch` died. The backend never saw the request.
+
+Protecting the whole domain is the comfortable default of every access service, and it is exactly what breaks every endpoint the site has to call on its own.
+
+## Why the diagnosis took so long
+
+One tooling detail cost more time than the bug: Python's HTTP library follows redirects by default. The probe I had been using said "200, healthy" — because it was reading the login page, not the API. A 200 on a login screen is a legitimate 200 and a completely wrong answer.
+
+The right way to probe is to look at the real status code without following the redirect:
+
+```bash
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" \
+  -X POST "https://<panel>/api/<public-prefix>" \
+  -H "Content-Type: application/json" -d '{}'
+# 302 https://<account>.cloudflareaccess.com/cdn-cgi/access/login/...   <- access in front
+```
+
+And the check that proves the server is up without writing anything to the database, because payload validation runs before the handler:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "https://<panel>/api/<public-prefix>" \
+  -H "Content-Type: application/json" -d '{}'
+# 422 = reached the validation handler (open, server alive)
+# 302 = login in front (closed too tight)
+# 500 = server actually broken
+```
+
+Three codes, three meanings that cannot be confused — before that I only had the binary "worked / did not work".
+
+## The cure was infrastructure, not code
+
+Not a single line of the site changed. The fix was creating an access app per path: coverage on the public prefix with a bypass policy, while the admin prefix stayed behind the login. The previous app, which covered everything, became the example of what not to do on a domain serving both the API and the panel.
+
+Then four proofs in a row: a direct POST to the backend returned 201; a POST through the site proxy returned 201; an end-to-end test in a real production browser showed the success message with zero page errors; and a new row appeared in the messages table. It is no good for the API to answer if the path the user actually walks is still broken — which is why the final proof was in the browser, not in `curl`.
+
+I measured it again just now: the public prefix returns 422 (open, validation working) and the admin prefix returns 302 to the login screen (closed, as it should be).
+
+## What stays
+
+Three lessons, all about measuring — none about typing code:
+
+1. Access is per path, not per domain. A domain serving site, API and panel needs per-route policy, otherwise the login eats the public endpoint and the symptom shows up far away, inside CORS.
+2. `200` without checking the final URL and the body proves nothing. A probe that follows redirects answers a different question than the one you asked.
+3. A CORS error is a symptom, almost never the cause. The `fetch` only knows how to say "it failed"; the reason was three layers up, in a configuration that never passes through the editor.
+
+The probe stopped being a command I remembered to run and became a periodic routine: it hits the public prefix expecting the validation response and confirms the admin side is still closed. Silent when everything is in place — an alert that screams all the time goes unread.
+
+## Next step
+
+Run the same check on the other side: sweep the other subdomains that gained an access app in the last few weeks and find out which public endpoints are sitting behind a login nobody sees. The form was the first place where the failure hurt, and it is unlikely to be the only one.
