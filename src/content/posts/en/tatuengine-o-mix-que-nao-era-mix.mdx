@@ -1,0 +1,71 @@
+---
+title: "The teacher mix that was not a mix"
+description: "The C arm sat at 0% of the dataset because its corpus lived on a path the migration had erased. When the campaign ran again, the manifest reported 766 pairs — and the per-teacher count reported something else: 96.9% of a single lane."
+category: samuel-projects
+date: 2026-10-20 16:00:00 -03:00
+pubDate: 2026-10-20 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "data", "pipeline", "llm", "observability"]
+icon: "🌀"
+cover: /covers/tatuengine-o-mix-que-nao-era-mix.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The arm that read what nobody else read
+
+The distillation dataset has four arms. Three build pairs out of everyday conversation. The C arm reads papers and code: long documents, vocabulary that never shows up in dialogue — the material that teaches a model to reason about technical matter instead of answering a loose question.
+
+On October 18, an audit of the 18,739-pair dataset found the C arm at 0%. Not a thin slice: zero. The teacher was not failing, the queue was not stuck, the script ran to the end writing pairs for the other arms. The C arm did not exist because the corpus it reads lived on a path the machine migration had erased.
+
+## The corpus was one path away
+
+The loader had a list of candidate paths and stopped at the first one that existed, starting with `/mnt/d/...` from the old machine. After the migration that disk is gone — and since a missing corpus was treated as a normal case, it moved on without a corpus, fell back to the alternate arm mix, and the campaign kept looking "healthy" while producing pairs for A, B and D.
+
+The fix is in commit `3a36396`: two new paths went ahead of the old one, pointing at the current data disk. The same commit added `D2_BRACOS`, which restricts a campaign to a single arm, and a guard that explicitly refuses the C arm without a corpus — with a stderr message, instead of silently dropping the arm from the mix.
+
+With the corpus found, the numbers showed up: 141 documents, 111 of them code and 30 papers. The splitter discards anything under 800 characters — 140 survive — and cuts 600-character windows with a 1,400 stride. Result: 3,667 technical slices that have to become question, reasoning and answer pairs.
+
+## 766 pairs, 19 thousand attempts
+
+The campaign targeted 6,200 pairs with 16 threads. The manifest reads: 766 new pairs, 997 burned indices, 19,352 attempts that produced no pair, 12,841 seconds — 3h34. Together with what was already on disk from earlier runs, the file closed at 6,272 lines from distinct indices.
+
+The number that matters is not 766, it is the ratio: 12,841 seconds for 766 pairs is 16.8 seconds per pair. And the 12,400 indices walked — twice the target, the queue's work ceiling — produced 6,272 pairs: half was discarded.
+
+The engine tries four times per index and switches teacher on every attempt, advancing seven positions in the queue: `pick_teacher(i + attempt * 7)`. That rotation exists because the teacher used to be fixed per index, and a lane with no quota would burn that index forever — four attempts on the same model, zero conversion. After the fourth failure the index is abandoned and counted under `fail`.
+
+## The declared mix and the mix that shipped
+
+The teacher mix is written as `2:2:1` — two shares for the main lane of a free aggregator, two for a small Cohere model, one for a Laguna. If the proportion held, the file would be 40%, 40% and 20%.
+
+The real count across the 6,272 pairs:
+
+- 6,078 pairs (96.9%) from the aggregator's main lane;
+- 164 pairs (2.6%) from Cohere;
+- 30 pairs (0.5%) from Laguna.
+
+That is not a mix: it is one lane with two guests that showed up in 3% of the lines. Rotation guarantees every index passes through different teachers, not that all of them deliver — whoever answers, answers; whoever returns a quota error, leaves fast. The weight declared in the code has no mechanism forcing it: it is intent, not control.
+
+Diversity was being treated as a property of the file, when it is a consequence of how the lanes behaved that day: if the main lane goes down tomorrow, the file changes shape without a single configuration line being touched.
+
+## The manifest measures success, not yield
+
+The manifest counts `ok`, `fail`, `retry`. It does not count distribution per teacher, it does not count yield per index, it does not say which arm produced what. A manifest with 766 pairs and no error looks healthy, and it is — for what it measures. The 997 burned indices and the 19,352 attempts sit there as three loose numbers, with no rate and no owner.
+
+The same blindness showed up in the quality filter. The validator requires `self_score` of at least 8, prompt from 25 to 350 characters, reasoning from 60 to 480, answer from 40 to 360. On September 16, 352 measured pairs showed teachers returning a score on the 0-to-100 scale instead of 0 to 10. Without normalization, a pair scored 85 would be read as 85 and the filter would become decoration, approving everything. The fix divides by ten above 10; the lesson stays: a metric crossing a system boundary needs a scale test, not trust.
+
+```bash
+python3 - <<'PY'
+import json, collections
+c = collections.Counter(json.loads(l)["teacher"] for l in open("sft_v2.jsonl"))
+print(c.most_common(), sum(c.values()))
+PY
+python3 -c "import json; m=json.load(open('manifest.json')); print(m['ok']/m['wall_s'], 'pairs/s')"
+```
+
+## What stays
+
+The C arm went from 0% to 6,272 pairs, the corpus sits on the right disk and the guard keeps it from vanishing again without notice. What is not resolved is the question the count raised: 96.9% of the pairs come from a single teacher. That may not matter — maybe quality comes from the corpus, not from whoever turns it into a pair — or it may be the difference between diversity and a monoculture with three names in the header.
+
+The next step is not generating more pairs: it is measuring whether the distribution changes what the model learns — train two samples, one as-is and one balanced per teacher, and compare on the holdout. Without that, "teacher mix" stays a sentence in the code, not a property of the dataset.

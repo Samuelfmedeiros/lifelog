@@ -1,0 +1,71 @@
+---
+title: "O mix de professores que não era mix"
+description: "O braço C estava em 0% do dataset porque o corpus vivia num caminho que a migração apagou. Quando a campanha voltou a rodar, o manifest dizia 766 pares — e a contagem por professor dizia outra coisa: 96,9% de uma única lane."
+category: samuel-projects
+date: 2026-10-20 16:00:00 -03:00
+pubDate: 2026-10-20 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "data", "pipeline", "llm", "observability"]
+icon: "🌀"
+cover: /covers/tatuengine-o-mix-que-nao-era-mix.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O braço que lia o que ninguém lia
+
+O dataset de destilação tem quatro braços. Três geram pares de conversa comum. O braço C é o que lê papers e código: documentos longos, com vocabulário que não aparece em diálogo — o material que ensina a raciocinar sobre coisa técnica, não a responder pergunta solta.
+
+Em 18 de outubro, a auditoria do dataset de 18.739 pares mostrou o braço C em 0%. Não uma fatia pequena: zero. O professor não falhava, a fila não travava, o script rodava até o fim gravando pares dos outros braços. O braço C não existia porque o corpus que ele lê morava num caminho que a migração apagou.
+
+## O corpus estava a um caminho de distância
+
+O carregador tinha uma lista de candidatos e parava no primeiro que existisse, começando pelo `/mnt/d/...` da máquina antiga. Depois da migração esse disco não existe mais — e como corpus ausente era caso normal, ele seguia sem corpus, caía nos braços alternativos e a campanha continuava "saudável" produzindo pares para A, B e D.
+
+A cura está no commit `3a36396`: dois caminhos novos entraram na frente do antigo, apontando para o disco atual. O mesmo commit criou `D2_BRACOS`, que restringe a campanha a um braço só, e um guard que recusa o braço C sem corpus — com aviso no stderr, em vez de removê-lo do mix em silêncio.
+
+Com o corpus encontrado, os números apareceram: 141 documentos, 111 de código e 30 de papers. O fatiador descarta o que tem menos de 800 caracteres — sobra 140 — e corta janelas de 600 caracteres com passo de 1.400. Resultado: 3.667 trechos técnicos que precisam virar pares de pergunta, raciocínio e resposta.
+
+## 766 pares, 19 mil tentativas
+
+A campanha mirou 6.200 pares com 16 threads. O manifest diz: 766 pares novos, 997 índices queimados, 19.352 tentativas que não viraram par, 12.841 segundos — 3h34. Com o que já estava no disco de execuções anteriores, o arquivo fechou em 6.272 linhas de índices distintos.
+
+O número que interessa não é o 766, é a razão: 12.841 segundos para 766 pares dá 16,8 segundos por par. E os 12.400 índices percorridos — o dobro do alvo, teto da fila — produziram 6.272 pares: metade foi descartada.
+
+O motor tenta quatro vezes por índice e troca de professor a cada tentativa, sete posições à frente na fila: `pick_teacher(i + attempt * 7)`. A rotação existe porque antes o professor era fixo por índice e uma lane sem quota queimava aquele índice para sempre — quatro tentativas no mesmo modelo, zero conversão. Depois da quarta falha, o índice é abandonado e contado em `fail`.
+
+## O mix declarado e o mix que saiu
+
+O mix de professores está escrito como `2:2:1` — duas partes para a lane principal de um agregador gratuito, duas para um modelo Cohere pequeno, uma para um Laguna. Se a proporção fosse respeitada, o arquivo teria 40%, 40% e 20%.
+
+A contagem real dos 6.272 pares:
+
+- 6.078 pares (96,9%) da lane principal do agregador;
+- 164 pares (2,6%) do Cohere;
+- 30 pares (0,5%) do Laguna.
+
+Não é um mix: é uma lane com dois convidados em 3% das linhas. A rotação garante que todo índice passe por professores diferentes, não que todos produzam — quem responde, responde; quem devolve erro de cota, sai rápido. O peso declarado no código não tem mecanismo que o force: é intenção, não controle.
+
+A diversidade era tratada como propriedade do arquivo, quando é consequência do comportamento das lanes naquele dia: se a lane principal cair amanhã, o arquivo muda de cara sem uma linha de configuração tocada.
+
+## O manifest mede sucesso, não rendimento
+
+O manifest conta `ok`, `fail`, `retry`. Não conta distribuição por professor, não conta rendimento por índice, não diz qual braço produziu o quê. Um manifest com 766 pares e nenhum erro parece saudável, e é — para o que ele mede. Os 997 índices queimados e as 19.352 tentativas ficam como três números soltos, sem taxa e sem dono.
+
+A mesma cegueira apareceu no filtro de qualidade. O validador exige `self_score` maior ou igual a 8, prompt de 25 a 350 caracteres, raciocínio de 60 a 480, resposta de 40 a 360. Em 16 de setembro, 352 pares medidos mostraram professores devolvendo nota na escala 0 a 100 em vez de 0 a 10. Sem normalizar, um par nota 85 seria lido como 85 e o filtro viraria decoração, aprovando tudo. A correção divide por dez acima de 10; o aprendizado fica: métrica que cruza fronteira de sistema precisa de teste de escala, não de confiança.
+
+```bash
+python3 - <<'PY'
+import json, collections
+c = collections.Counter(json.loads(l)["teacher"] for l in open("sft_v2.jsonl"))
+print(c.most_common(), sum(c.values()))
+PY
+python3 -c "import json; m=json.load(open('manifest.json')); print(m['ok']/m['wall_s'], 'pares/s')"
+```
+
+## O que fica
+
+O braço C saiu de 0% para 6.272 pares, o corpus está no disco certo e o guard impede que ele suma de novo sem aviso. O que não está resolvido é a pergunta que a contagem levantou: 96,9% dos pares vêm de um professor só. Pode ser irrelevante — talvez a qualidade venha do corpus, não de quem o transforma em par — ou a diferença entre diversidade e monocultura com três nomes no cabeçalho.
+
+O próximo passo não é gerar mais pares: é medir se a distribuição muda o que o modelo aprende — treinar duas amostras, uma como está e outra balanceada por professor, e comparar no holdout. Sem isso, "mix de professores" continua frase no código, não propriedade do dataset.
