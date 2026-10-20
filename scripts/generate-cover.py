@@ -64,8 +64,8 @@ PROJECT_STYLES = {
         "colors": ["#f59e0b", "#fb923c", "#fde68a"],
     },
     "tatuengine": {
-        "prompt_suffix": "Wave physics theme, teal and turquoise, sine wave interference patterns, fluid dynamics visualization, abstract neural wavefields, 16:9 wallpaper",
-        "colors": ["#14b8a6", "#2dd4bf", "#0f766e"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid breaking-wave shape in deep teal with a bold lighter teal accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, solid flat fill, no interior detail, no small marks, no text, 16:9 wallpaper",
+        "colors": ["#0f766e", "#2dd4bf", "#fde68a"],
     },
     "seguranca": {
         "prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper",
@@ -184,7 +184,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "dogwalk": "clean, modern, premium SaaS platform, no animals, no pets, abstract service-network aesthetic",
         "portfolio": "futuristic, polished, luminous interface",
         "capivara": "warm, tropical, sunset over digital landscape",
-        "tatuengine": "flowing, mathematical, hypnotic wave patterns",
+        "tatuengine": "flowing, mathematical, clean, high key",
         "seguranca": "vigilant, armored, red-alert intensity",
         "lifelog": "reflective, layered, ink bleeding into circuits",
         "estudos": "structured, precise, blueprint aesthetic",
