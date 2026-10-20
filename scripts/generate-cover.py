@@ -84,8 +84,8 @@ PROJECT_STYLES = {
         "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
-        "prompt_suffix": "Ethereal discovery theme, soft blue and violet, dreamy atmosphere with light particles, sense of wonder, 16:9 wallpaper",
-        "colors": ["#38bdf8", "#818cf8", "#1e1b4b"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
+        "colors": ["#1d4ed8", "#38bdf8", "#fde68a"],
     },
 }
 
@@ -189,7 +189,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "lifelog": "reflective, layered, ink bleeding into circuits",
         "estudos": "structured, precise, blueprint aesthetic",
         "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
-        "descobertas": "curious, expansive, light breaking through darkness",
+        "descobertas": "curious, bright, clear discovery, high key",
     }
     mood = project_moods.get(project, "atmospheric, immersive, cinematic")
 

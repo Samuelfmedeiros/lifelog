@@ -90,7 +90,7 @@ PROJECT_STYLES = {
     "lifelog": {"prompt_suffix": "Journal theme, purple and magenta, abstract writing patterns, notebook aesthetic, creative tech vibe, 16:9 wallpaper", "colors": ["#a855f7", "#c084fc", "#3b0764"]},
     "estudos": {"prompt_suffix": "Academic blueprint theme, deep blue and cyan, technical drawing aesthetic, clean scholarly atmosphere, 16:9 wallpaper", "colors": ["#3b82f6", "#60a5fa", "#1e3a5f"]},
     "yurumi": {"prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
-    "descobertas": {"prompt_suffix": "Ethereal discovery theme, soft blue and violet, dreamy atmosphere with light particles, sense of wonder, 16:9 wallpaper", "colors": ["#38bdf8", "#818cf8", "#1e1b4b"]},
+    "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
 }
 
 PROJECT_MOODS = {
@@ -103,7 +103,7 @@ PROJECT_MOODS = {
     "lifelog": "reflective, layered, ink bleeding into circuits",
     "estudos": "structured, precise, blueprint aesthetic",
     "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
-    "descobertas": "curious, expansive, light breaking through darkness",
+    "descobertas": "curious, bright, clear discovery, high key",
 }
 
 COMPOSITIONS = [
