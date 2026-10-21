@@ -88,7 +88,7 @@ PROJECT_STYLES = {
     "tatuengine": {"prompt_suffix": "Minimal flat illustration, one single large solid breaking-wave shape in deep teal with a bold lighter teal accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, solid flat fill, no interior detail, no small marks, no text, 16:9 wallpaper", "colors": ["#0f766e", "#2dd4bf", "#fde68a"]},
     "seguranca": {"prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper", "colors": ["#ef4444", "#fca5a5", "#fde68a"]},
     "lifelog": {"prompt_suffix": "Journal theme, purple and magenta, abstract writing patterns, notebook aesthetic, creative tech vibe, 16:9 wallpaper", "colors": ["#a855f7", "#c084fc", "#3b0764"]},
-    "estudos": {"prompt_suffix": "Academic blueprint theme, deep blue and cyan, technical drawing aesthetic, clean scholarly atmosphere, 16:9 wallpaper", "colors": ["#3b82f6", "#60a5fa", "#1e3a5f"]},
+    "estudos": {"prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
     "yurumi": {"prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
     "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
 }
@@ -101,7 +101,7 @@ PROJECT_MOODS = {
     "tatuengine": "flowing, mathematical, clean, high key",
     "seguranca": "vigilant, armored, red-alert intensity",
     "lifelog": "reflective, layered, ink bleeding into circuits",
-    "estudos": "structured, precise, blueprint aesthetic",
+    "estudos": "clear, scholarly, bright, high key",
     "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
     "descobertas": "curious, bright, clear discovery, high key",
 }
