@@ -1,0 +1,54 @@
+---
+// RelatedPosts — 3 posts do mesmo projeto (fallback: mais recentes do mesmo locale).
+// Plano de autoridade F1.1 (21/10): linkagem interna era o gargalo medido no GSC.
+import type { CollectionEntry } from 'astro:content';
+import ProjectIcon from './ProjectIcon.astro';
+
+interface Props {
+  post: CollectionEntry<'posts'>;
+  locale: string;
+  relatedPosts: CollectionEntry<'posts'>[];
+  projectLabels: Record<string, string>;
+}
+
+const { locale, relatedPosts, projectLabels } = Astro.props;
+const isEn = locale === 'en';
+const title = isEn ? 'Related entries' : 'Leia também';
+const subtitle = isEn
+  ? 'Same project, same ground — the stories connect.'
+  : 'Mesmo projeto, mesma trilha — as histórias se conectam.';
+// EN page links EN posts at /en/post/<bare>/; PT page links at /post/<id>/.
+---
+
+{relatedPosts.length > 0 && (
+  <section class="mt-16 pt-8 border-t border-solid" style="border-color: var(--color-border);" aria-label={title}>
+    <h2 class="text-2xl font-bold mb-1" style="color: var(--color-text);">{title}</h2>
+    <p class="mb-6 text-sm" style="color: var(--color-text-muted);">{subtitle}</p>
+    <ul class="list-none p-0 m-0 grid gap-4 md:grid-cols-3">
+      {relatedPosts.map((rel) => (
+        <li>
+          <a
+            href={`${isEn ? '/en' : ''}/post/${rel.id.replace('en/', '')}/`}
+            class="group block p-4 rounded-xl border border-solid no-underline! h-full transition-colors hover:border-current"
+            style="border-color: var(--color-border); background: var(--color-bg-card, transparent);"
+          >
+            <span class="flex items-center gap-1.5 text-xs font-medium tracking-wider uppercase mb-2"
+                  style="color: var(--color-text-muted);">
+              <ProjectIcon project={rel.data.project} />
+              {projectLabels[rel.data.project] ?? rel.data.project}
+            </span>
+            <span class="block text-sm font-medium leading-snug group-hover:underline"
+                  style="color: var(--color-text);">
+              {rel.data.title}
+            </span>
+            <span class="block mt-2 text-xs" style="color: var(--color-text-muted);">
+              {rel.data.pubDate?.toLocaleDateString(isEn ? 'en-US' : 'pt-BR', {
+                year: 'numeric', month: 'short', day: 'numeric',
+              })}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}

@@ -3,6 +3,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { tagLabel } from '../lib/tag-vocab';
 import ProjectIcon from './ProjectIcon.astro';
+import RelatedPosts from './RelatedPosts.astro';
 import { render } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 
@@ -11,6 +12,7 @@ export interface Props {
   locale: string;
   prevPost: CollectionEntry<'posts'> | null;
   nextPost: CollectionEntry<'posts'> | null;
+  relatedPosts?: CollectionEntry<'posts'>[];
   projectLabels: Record<string, string>;
   readLabel: string;
   backText: string;
@@ -23,7 +25,7 @@ export interface Props {
   alternatePath?: string | null;
 }
 
-const { post, locale, prevPost, nextPost, projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref, noindex, alternatePath } = Astro.props;
+const { post, locale, prevPost, nextPost, relatedPosts = [], projectLabels, readLabel, backText, prevLabel, nextLabel, dateLocale, backHref, postHref, noindex, alternatePath } = Astro.props;
 const coverImage = post.data.cover;
 const { Content } = await render(post);
 
@@ -136,6 +138,8 @@ const breadcrumbSchema = {
       <div class="prose prose-lg max-w-none" style="color: var(--color-text);">
         <Content />
       </div>
+
+      <RelatedPosts {post} {locale} {relatedPosts} {projectLabels} />
 
       <!-- Próximo passo — amarração entre ativos (REGRA-AMARRACAO) -->
       <section class="mt-16 pt-8 border-t border-solid" style="border-color: var(--color-border);" id="assinar">

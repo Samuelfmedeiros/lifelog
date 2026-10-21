@@ -45,6 +45,18 @@ const sameMeta = enPosts.filter((p) =>
 const enPartner = sameName ?? (sameMeta.length === 1 ? sameMeta[0] : null);
 const alternatePath = enPartner ? `/en/post/${enPartner.id.replace(/^en\//, '')}/` : null;
 
+// Posts relacionados (F1.1, plano de autoridade 21/10): 3 do mesmo project
+// (mesmo locale), fallback 3 mais recentes do locale. Exclui o próprio post.
+// Filtro por prefixo do id (fonte da verdade, skill lifelog-tres-concertos):
+// posts EN não carregam lang:'en' no frontmatter — lang não é confiável.
+const localeRelated = allPosts.filter(p => !p.data.hidden && !p.id.startsWith('en/'));
+const others = localeRelated.filter(p => p.id !== post.id);
+const sameProject = others.filter(p => p.data.project === post.data.project);
+const relatedPosts = (sameProject.length >= 3 ? sameProject : [
+  ...sameProject,
+  ...others.filter(p => !sameProject.includes(p)),
+]).slice(0, 3);
+
 ---
 
 <PostLayout
@@ -52,6 +64,7 @@ const alternatePath = enPartner ? `/en/post/${enPartner.id.replace(/^en\//, '')}
   {locale}
   {prevPost}
   {nextPost}
+  {relatedPosts}
   {projectLabels}
   readLabel={`${readingTime} min de leitura`}
   backText="← Voltar para timeline"

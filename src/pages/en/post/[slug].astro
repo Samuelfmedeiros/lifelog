@@ -43,6 +43,17 @@ const sameMeta = ptPosts.filter((p) =>
 const ptPartner = sameName ?? (sameMeta.length === 1 ? sameMeta[0] : null);
 const alternatePath = ptPartner ? `/post/${ptPartner.id}/` : null;
 
+// Related posts (F1.1): 3 from the same project (same locale), fallback recent.
+// Filter by id prefix (source of truth): EN posts don't carry lang:'en' in
+// frontmatter — the lang field is not reliable (see PT page comment).
+const localeRelated = allPosts.filter(p => !p.data.hidden && p.id.startsWith('en/'));
+const others = localeRelated.filter(p => p.id !== post.id);
+const sameProject = others.filter(p => p.data.project === post.data.project);
+const relatedPosts = (sameProject.length >= 3 ? sameProject : [
+  ...sameProject,
+  ...others.filter(p => !sameProject.includes(p)),
+]).slice(0, 3);
+
 ---
 
 <PostLayout
@@ -50,6 +61,7 @@ const alternatePath = ptPartner ? `/post/${ptPartner.id}/` : null;
   {locale}
   {prevPost}
   {nextPost}
+  {relatedPosts}
   {projectLabels}
   readLabel={`${readingTime} min read`}
   backText="← Back to timeline"
