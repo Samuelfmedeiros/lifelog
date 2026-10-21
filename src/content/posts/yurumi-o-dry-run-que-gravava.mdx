@@ -1,0 +1,74 @@
+---
+title: "Yurumi: o dry-run que gravava e o erro que escondia o próprio nome"
+description: "Um sincronizador de crons reportava sucesso a cada quinze minutos enquanto indexava só metade dos jobs, gravava em modo de simulação e escondia a causa real do próprio erro. Três defeitos silenciosos, um número que denunciou tudo."
+date: 2026-10-21 12:00:00 -03:00
+pubDate: 2026-10-21 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "cron", "memory", "qdrant", "debugging", "reliability"]
+cover: /covers/yurumi-o-dry-run-que-gravava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A ferramenta que sempre dizia "ok"
+
+A cada quinze minutos, um script pequeno lia a lista de tarefas agendadas do sistema e gravava um ponto por tarefa na memória vetorial do Yurumi. Quando eu perguntasse ao agente "o backup das 3h rodou?", ele não precisava adivinhar — o snapshot estava indexado.
+
+A saída era sempre uma linha verde. `crons ok`, nada para re-embeddar, total conhecido. Verde há semanas. E era mentira em três frentes.
+
+A primeira era invisível por construção: ele lia **um** arquivo de jobs, o da raiz. Só que a maior parte das minhas tarefas mora nos stores de perfil, separados justamente para não misturar escopos. Centenas de jobs não existiam no índice — e busca vazia num sistema de memória é indistinguível de "isso nunca existiu".
+
+A segunda era pior: o script tinha `--dry-run`, documentado como "só lista o que mudaria (sem gravar)". E ele gravava. O `set_payload` era chamado sem condição de guarda, então um comando de inspeção alterava o índice.
+
+A terceira é a que me impedia de ver as outras duas.
+
+## O erro que mentia o próprio nome
+
+Quando falhava, o relatório saía assim:
+
+```
+(yurumi-cron-sync indisponível: ModuleNotFoundError: )
+```
+
+A mensagem era montada com `type(e).__name__` e nada mais — o nome da classe, sem o texto da exceção. Por meses eu li "ModuleNotFoundError" e fui atrás de import quebrado.
+
+A causa real era outra: um caminho absoluto de outro sistema operacional cravado no código, herdado de antes da migração da máquina. O primeiro arquivo que ele tentava abrir não existia, e o `FileNotFoundError` era capturado — mas o que chegava na tela era o nome de uma exceção posterior. Alarme com a etiqueta trocada é pior que alarme mudo.
+
+## O número que apareceu quando o dry-run ficou honesto
+
+O conserto veio em três camadas.
+
+Primeiro o caminho: o diretório base passou a vir de variável de ambiente com fallback para o home, e a raiz do repo a ser derivada de `__file__`.
+
+Depois a leitura: `load_jobs()` passou a abrir **todos** os stores, com deduplicação por id — o mesmo job pode aparecer em mais de um arquivo e não pode virar dois pontos no índice. Aí apareceu uma armadilha que eu não tinha previsto: a poda de órfãos. Calculada contra um store só, ela apagaria crons vivos em outro perfil. Poda não é sobre "o que não está no arquivo", é sobre "o que não está em nenhum arquivo". É o tipo de erro que não dá erro — só some com dado.
+
+Com leitura completa e poda corrigida, o índice contou a verdade: **762 pontos** de crons, dos quais **440 apontavam para jobs que não existiam mais**. Depois da poda: 326, com quatro jobs novos na mesma rodada. Medido agora, numa execução de verificação: 326 pontos de cron numa coleção de 13.675.
+
+Meses de jobs apagados, com o índice guardando o fantasma de todos: numa busca híbrida, ponto órfão rouba posição de resultado legítimo.
+
+Terceiro, o `--dry-run` ganhou a guarda que faltava, e a mensagem passou a carregar `str(e)[:160]` — suficiente para ler "arquivo tal não existe", insuficiente para despejar um stack trace no log.
+
+```bash
+python3 scripts/yurumi_cron_sync.py --dry-run
+python3 scripts/yurumi_cron_sync.py --prune
+python3 -m pytest tests/test_portability.py -q
+```
+
+## O verde que era de outro commit
+
+Fechei a correção, documentei os dois pitfalls no `AGENTS.md` do repositório e pushei. O run de CI do commit `c6afd00` foi criado com uns sete minutos de atraso e então **cancelado pela concorrência** — outro run na mesma branch tomou a vaga. Nenhum teste rodou naquele commit, nenhuma falha apareceu.
+
+O verde que eu vi depois veio de um commit vazio, `a47468d`, com a mesma árvore de arquivos, criado só para redisparar a suíte. Esse rodou inteiro: Ruff, pytest na 3.12, instalação limpa e scanner de segredos. O código era o mesmo — mas o commit que carrega a correção nunca foi testado, e eu só percebi porque fui ler o log em vez de olhar o ícone.
+
+O mesmo dia rendeu outro exemplo: um vigia de ponte inexistente rendia **49 alertas em seis horas**.
+
+## O que isso muda
+
+Os três defeitos tinham a mesma assinatura: **uma ferramenta que reportava sucesso sem ter medido nada**. O código dizia ok porque a exceção era capturada, porque store vazio não é erro, porque gravar em modo de simulação não deixa rastro diferente.
+
+Saldo: "esse cron existe?" passou a ter resposta verdadeira, o índice encolheu 57% sem perder um job vivo, e o modo que promete não escrever agora não escreve. Entrou também um teste que reprova caminho absoluto de outro sistema (`7 passed`) e a regra de que commit verde é o que rodou, não o vizinho.
+
+## Próximo passo
+
+Rodar a poda validando também o nome do job, não só o id: id estável evita duplicata, mas um job renomeado continua no índice com o nome velho, e hoje isso passa como atualização normal.

@@ -1,0 +1,76 @@
+---
+title: "Yurumi: the dry run that wrote and the error that hid its own name"
+description: "A cron synchroniser kept reporting success every fifteen minutes while indexing only half the jobs, writing in simulation mode, and hiding the real cause of its own failure. Three silent defects, and one number that exposed all of them."
+date: 2026-10-21 12:00:00 -03:00
+pubDate: 2026-10-21 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "cron", "memory", "qdrant", "debugging", "reliability"]
+cover: /covers/yurumi-o-dry-run-que-gravava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The tool that always said "ok"
+
+Every fifteen minutes, a small script read the system's scheduled task list and wrote one point per task into Yurumi's vector memory. That way, when I asked the agent "did the 3am backup run?", it did not have to guess — the snapshot was indexed.
+
+The output was always one green line. `crons ok`, nothing to re-embed, known total. Green for weeks. And it was a lie on three fronts at once.
+
+The first was invisible by construction: it read **one** jobs file, the root one. Except most of my tasks live in per-profile stores, separated precisely so scopes never mix. Hundreds of jobs did not exist in the index — and an empty result in a memory system is indistinguishable from "this never existed".
+
+The second was worse: the script had `--dry-run`, documented as "lists what would change only (writes nothing)". And it wrote. `set_payload` was called with no guard condition at all, so a command I used to inspect things safely was mutating the index.
+
+The third is the one that kept me from seeing the other two.
+
+## The error that lied about its own name
+
+When it failed, the report looked like this:
+
+```
+(yurumi-cron-sync indisponível: ModuleNotFoundError: )
+```
+
+Note the void after the colon. The message was assembled from `type(e).__name__` and nothing else — the class name, without the exception text. For months I read "ModuleNotFoundError" and went hunting for a broken import.
+
+The real cause was different: an absolute path from another operating system hardcoded in the file, inherited from before the machine migration. The first file it tried to open did not exist, and the `FileNotFoundError` was caught — but what reached the screen was the name of a later exception. A mislabelled alarm is worse than a silent one.
+
+## The number that surfaced once the dry run was honest
+
+The fix came in three layers.
+
+First the path: the base directory now comes from an environment variable with a home fallback, and the repository root is derived from `__file__`.
+
+Then the read: `load_jobs()` now opens **every** store, deduplicating by id — the same job can appear in more than one file and must not become two index points. That is where a trap I had not predicted showed up: orphan pruning. Computed against a single store, it would delete from the index crons that are alive in another profile. Pruning is not about "what is not in the file", it is about "what is in no file at all". It is the kind of bug that throws nothing — it just removes data.
+
+With the full read and the fixed pruning, the index told the truth: **762 cron points**, of which **440 pointed at jobs that no longer existed anywhere**. After pruning: 326, with four new jobs in the same run. Measured just now, in a verification run: 326 cron points inside a collection of 13,675.
+
+Months of deleted jobs, with the index keeping a ghost of every one. In a hybrid search, an orphan point competes with a live one: it steals rank from a legitimate result.
+
+Third, `--dry-run` got the guard it was missing, and the error message started carrying `str(e)[:160]` — enough to read "file X does not exist", not enough to dump a stack trace into the log.
+
+```bash
+python3 scripts/yurumi_cron_sync.py --dry-run
+python3 scripts/yurumi_cron_sync.py --prune
+python3 -m pytest tests/test_portability.py -q
+```
+
+## The green that belonged to another commit
+
+Here is the part that bothered me most, because it is not about code.
+
+I finished the fix, documented both pitfalls in the repository's `AGENTS.md`, and pushed. The CI run for commit `c6afd00` was created about seven minutes late and then **cancelled by concurrency** — another run on the same branch took the slot. No test ran on that commit, and no failure appeared.
+
+The green I saw afterwards came from an empty commit, `a47468d`, with the same file tree, created only to re-trigger the suite. That one ran end to end: Ruff, pytest on 3.12, a clean install, and the secret scanner. The code was the same — but the commit carrying the fix was never tested, and I only noticed because I read the log instead of looking at the icon.
+
+The same day offered another cheap example: a watchdog for a bridge that no longer exists since the migration was producing **49 alerts in six hours**.
+
+## What changes
+
+All three defects shared one signature: **a tool reporting success without having measured anything**. The code said ok because the exception was caught, because an empty store is not an error, because writing in simulation mode leaves no different trace.
+
+The balance: "does this cron exist?" now has a truthful answer, the index shrank 57% without losing a single live job, and the mode that promises not to write finally does not. A test that rejects absolute paths from another system also landed (`7 passed`), along with the rule that a green commit is the one that ran, not its neighbour.
+
+## Next step
+
+Validate the job name during pruning, not just the id: a stable id prevents duplicates, but a renamed job stays in the index under the old name, and today that passes as a normal update.
