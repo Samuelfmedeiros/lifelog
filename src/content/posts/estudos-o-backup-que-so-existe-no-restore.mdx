@@ -1,0 +1,73 @@
+---
+title: "O backup que só existe no dia do restore"
+description: "Três bases de 20 MB, 16 segmentos de WAL e dois ensaios que compararam inventário de tabelas entre produção e cópia restaurada. O que aprendi medindo a recuperação em vez de confiar no arquivo salvo."
+date: 2026-10-19 01:46:00 -03:00
+pubDate: 2026-10-21 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "postgres", "backup", "docker", "testing"]
+icon: "📚"
+cover: /covers/estudos-o-backup-que-so-existe-no-restore.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O arquivo que ninguém nunca abriu
+
+Eu tinha backup: um dump lógico por dia, gerado por um script que nunca falhou, num disco secundário. "Você tem backup?" — sim, e era verdade.
+
+Só que dump lógico responde uma pergunta só: "perdi a tabela, me devolve ela". Ele não responde "o deploy das 22h apagou uma linha que existia às 21h58, volta pro instante anterior". Essa pergunta exige base física mais o WAL arquivado depois dela: recuperação ponto no tempo. Backup não ensaiado é hipótese.
+
+## Montar a cadeia e provar que anda
+
+A configuração é curta. `archive_mode = on` só vale no start do servidor — esquecer o restart deixa `setting could not be applied` no `pg_file_settings`. O `archive_command` é dinâmico e precisa de guarda própria:
+
+```bash
+ALTER SYSTEM SET archive_command = 'test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f';
+```
+
+O `test ! -f ... && cp ...` não é estilo. Um `cp` que falha em silêncio faz o Postgres achar que o segmento foi arquivado, reciclar o WAL e quebrar a cadeia no meio — e o erro só aparece no dia do restore. Com o `test`, a falha é visível no `pg_stat_archiver` no mesmo dia.
+
+Prova medida agora: `select archived_count, failed_count, last_archived_wal from pg_stat_archiver` devolve `1 | 0 | 000000010000000000000020`, às 03:02 UTC. Zero falhas, e o último segmento identificado por nome.
+
+## O ensaio é o produto
+
+O ensaio de restore é onde tudo quebra. Um container efêmero extrai `base.tar.gz` e `pg_wal.tar.gz` num volume Docker, escreve `restore_command` e `recovery.signal`, sobe um Postgres descartável sem publicar porta e compara o inventário de tabelas por banco entre os dois lados.
+
+Resultado de 19/10, literal:
+
+```
+producao: {"dogwalk": 31, "leve_lavanda": 16, "portifolio": 3, "yurumi": 1}
+restore : {"dogwalk": 31, "leve_lavanda": 16, "portifolio": 3, "yurumi": 1}
+WAL aplicado: sim
+```
+
+Rodei duas vezes na mesma madrugada (01:46 e 02:52): ensaio que passa uma vez pode ter passado por acidente.
+
+## As quatro falhas que o verde escondia
+
+**`-X none`.** Sem stream, a base depende de o segmento do checkpoint já estar arquivado. Se ele ainda não fechou, o restore morre com `FATAL: could not locate required checkpoint record` — medi em quatro tentativas. Com `-X stream` a base leva o próprio `pg_wal.tar.gz` e fica autossuficiente.
+
+**Permissão de leitura.** O tar extraía no host como uid 1000 e deixava os WAL em `600`. O Postgres do container roda como uid 999 e não lia: mesmo FATAL, com o arquivo presente no disco. O `chmod -R a+rX` no destino virou parte do envio, não detalhe opcional.
+
+**Bind mount do home.** O restore escreve como uid 999 e na rodada seguinte o host não conseguia nem apagar o diretório: `tar: Função open falhou: Permissão negada`. Tudo passou a rodar em volume Docker.
+
+**Número inventado.** O relatório dizia que a base tinha 1.400.204 MB. Vinha de `shutil.disk_usage(destino).used`, que devolve o uso do disco, não do diretório. A base real tinha 20 MB — erro de seis dígitos que faz planejar retenção e capacidade em cima de ficção.
+
+Teve também um bug de desempacotamento: uma função devolvia `(lista, erro)` e o retorno inteiro foi atribuído à lista. A contagem deu zero com doze segmentos no destino, e o script reprovou o próprio trabalho. Verificação que lê o objeto errado é pior que não verificar — produz falha convincente.
+
+## O que sobra fora da máquina
+
+Base e WAL no mesmo disco respondem "corrompeu o arquivo"; não respondem "roubaram o computador". O espelho subiu para um Drive, diário, com conferência por hash arquivo a arquivo — `cp` que "deu certo" não prova nada. Medido hoje: **3 bases, 16 segmentos, 96 GiB livres**, último envio às 05:33. E o ensaio semanal baixa do Drive para restaurar: testar o disco local prova o disco, não o offsite.
+
+Dois tropeços nessa camada. O cliente do Drive escreve `NOTICE:` no stderr em toda chamada, e concatenar stdout+stderr quebrava o `json.loads` — a falha aparecia como "Drive inacessível" com o Drive saudável. E o lock por idade deixou o envio travado seis horas depois de um processo morto; agora grava PID e trata `/proc/<pid>` inexistente como lock falso.
+
+## O que isso muda
+
+Estado medido: três bases de 20 MB, 21 arquivos no WAL local (16 segmentos mais marcas `.backup`), 256 MB no total, e a retenção preserva as marcas — são o início da cadeia de cada base. Cadência: WAL a cada 30 minutos, base aos domingos, ensaio local semanal, espelho diário.
+
+O que mudou não foi a infraestrutura, foi o critério: antes um backup, agora um restore que vi rodar duas vezes com inventário comparado nos dois lados.
+
+## Próximo passo
+
+Falta a metade incômoda: **testar a checagem, não o verde**. Vou apontar o coletor para um destino inexistente e para uma pasta datada antiga, e confirmar que ele grita `sem-base-backup` e `base-velha`. Monitor que nunca acusou nada pode estar simplesmente cego.

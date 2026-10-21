@@ -1,0 +1,73 @@
+---
+title: "The backup that only exists on restore day"
+description: "Three 20 MB bases, 16 WAL segments and two drills that compared table inventory between production and the restored copy. What I learned by measuring recovery instead of trusting the saved file."
+date: 2026-10-19 01:46:00 -03:00
+pubDate: 2026-10-21 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "postgres", "backup", "docker", "testing"]
+icon: "📚"
+cover: /covers/estudos-o-backup-que-so-existe-no-restore.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The file nobody ever opened
+
+I had backups: one logical dump a day, produced by a script that never failed, sitting on a secondary disk. "Do you have backups?" — yes, and it was true.
+
+The catch is that a logical dump answers exactly one question: "I dropped the table, give it back". It does not answer "the 22:00 deploy deleted a row that existed at 21:58, take me to the moment before that". That question needs a physical base plus every WAL segment archived after it: point-in-time recovery. An untested backup is a hypothesis.
+
+## Build the chain, then prove it moves
+
+Setup is short. `archive_mode = on` only takes effect on server start — skip the restart and `pg_file_settings` reports `setting could not be applied`. `archive_command` is dynamic and needs its own guard:
+
+```bash
+ALTER SYSTEM SET archive_command = 'test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f';
+```
+
+The `test ! -f ... && cp ...` is not style. A `cp` that fails silently makes Postgres believe the segment was archived, recycle the WAL and break the chain halfway — with the error surfacing only on restore day. With the `test`, the failure shows up in `pg_stat_archiver` the same day.
+
+Measured proof right now: `select archived_count, failed_count, last_archived_wal from pg_stat_archiver` returns `1 | 0 | 000000010000000000000020`, at 03:02 UTC. Zero failures, and the last segment identified by name.
+
+## The drill is the product
+
+The restore drill is where everything breaks. An ephemeral container extracts `base.tar.gz` and `pg_wal.tar.gz` into a Docker volume, writes `restore_command` and `recovery.signal`, starts a throwaway Postgres without publishing a port, and compares table inventory per database on both sides.
+
+The 19/10 result, verbatim:
+
+```
+producao: {"dogwalk": 31, "leve_lavanda": 16, "portifolio": 3, "yurumi": 1}
+restore : {"dogwalk": 31, "leve_lavanda": 16, "portifolio": 3, "yurumi": 1}
+WAL aplicado: sim
+```
+
+I ran it twice in the same night (01:46 and 02:52): a drill that passes once may have passed by accident.
+
+## The four failures the green hid
+
+**`-X none`.** Without streaming, the base depends on the checkpoint segment already being archived. If it has not closed yet, the restore dies with `FATAL: could not locate required checkpoint record` — I measured that across four attempts. With `-X stream` the base carries its own `pg_wal.tar.gz` and becomes self-sufficient.
+
+**Read permissions.** The tar extracted on the host as uid 1000 and left the WAL files at `600`. The container Postgres runs as uid 999 and could not read them: the same FATAL, with the files right there. `chmod -R a+rX` on the destination became part of the transfer, not an optional detail.
+
+**Bind mount from home.** The restore writes as uid 999 and on the next round the host could not even delete the directory: `tar: Função open falhou: Permissão negada`. Everything moved into a Docker volume.
+
+**An invented number.** The report claimed the base was 1,400,204 MB. It came from `shutil.disk_usage(destino).used`, which returns disk usage, not directory usage. The real base was 20 MB — a six-digit error that makes you plan retention and capacity on fiction.
+
+There was also an unpacking bug: a helper returned `(list, error)` and the whole tuple was assigned to the list. The count came back zero with twelve segments at the destination, and the script failed its own work. Verification that reads the wrong object is worse than no verification — it produces a convincing failure message.
+
+## What survives off the machine
+
+Base and WAL on the same disk answer "the file got corrupted"; they do not answer "the computer was stolen". The mirror went to a Drive, daily, checked hash by hash — a `cp` that "returned 0" proves nothing. Measured today: **3 bases, 16 segments, 96 GiB free**, last upload at 05:33. And the weekly drill downloads from the Drive to restore: testing the local disk proves the disk, not the offsite.
+
+Two stumbles in that layer. The Drive client writes `NOTICE:` to stderr on every call, and merging stdout with stderr broke the `json.loads` — the failure read as "Drive unreachable" while the Drive was healthy. And an age-based lock left the upload stuck for six hours after a process was killed by a shell timeout; the lock now stores a PID and treats a missing `/proc/<pid>` as a false lock.
+
+## What this changes
+
+Measured state: three 20 MB bases, 21 files in the local WAL directory (16 segments plus `.backup` markers), 256 MB total, and retention keeps the markers on purpose — they are the start of each base's chain. Cadence: WAL every 30 minutes, base on Sundays, weekly local drill, daily mirror.
+
+What changed was not the infrastructure, it was the criterion: before, a backup; now, a restore I watched run twice with inventory compared on both sides.
+
+## Next step
+
+The uncomfortable half remains: **test the checker, not the green**. I will point the collector at a nonexistent destination and at an old dated folder, and confirm it shouts `sem-base-backup` and `base-velha`. A monitor that never raised anything may simply be blind.
