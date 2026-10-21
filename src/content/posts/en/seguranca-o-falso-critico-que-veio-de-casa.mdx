@@ -1,0 +1,69 @@
+---
+title: "The false critical that came from inside the house — when my own inventory tripped the canary"
+description: "A dozen critical alerts in the same second claimed a login attempt against the fake service. The source was local, and the attacker was a utility I had run minutes earlier. Three cuts later, the sensor stopped measuring its own instrument."
+date: 2026-10-20 17:07:00 -03:00
+pubDate: 2026-10-21 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "honeypot", "false-positive", "detection", "observability", "security"]
+cover: /covers/seguranca-o-falso-critico-que-veio-de-casa.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## Twelve criticals in one second
+
+On the afternoon of October 20, the alert channel produced twelve critical-severity messages inside the same second. All of them said the same thing: credentials tested against the fake service. All of them from the same origin — loopback.
+
+That is not an alert you read twice. The fake service exists precisely for this: nobody has a legitimate reason to talk to it, so any contact is signal. A hit with username and password filled in is the complete scenario — someone outside found what looked like a forgotten service and is trying to get in. Twelve in one second looks like coordinated brute force, and that is how I read it the first time.
+
+Except the origin was 127.0.0.1, and each of the twelve came from a different outbound port. That is not an attack: it is a local process opening several connections in a row, the way a loop does. I closed the window, checked the timestamp and recognised the pattern. It had been me, fifteen minutes earlier.
+
+## The instrument inside the sensor
+
+I had run the utility that lists local services and the ports they listen on. It does what any honest inventory does: it walks everything in LISTEN, fires a short HTTP request at each port and shows what answered. It is the fastest way to find out that a service moved to another address, or that a process nobody remembers starting has come up.
+
+Ports that do not speak HTTP receive that request as garbage — raw bytes. And the fake service has a module that simulates an old terminal protocol, whose whole behaviour is to record literally what arrived: the first token becomes the username, the second becomes the password. The request line got stored as a username. The following header got stored as a password.
+
+The canary watcher then applied the heuristic that had always worked: if the event has username and password fields filled in, it is a credential attempt. Raise it to critical. Twelve ports probed, twelve events, twelve criticals — and the worst detail of all: the agent making the request identified itself in the user-agent string, spelling out exactly what it was.
+
+Nothing in that chain is an isolated bug. The utility is right to probe ports. The canary is right to record what it receives. The watcher is right to be suspicious of a filled-in username and password. The bug is the composition — and nobody tests composition while every piece passes on its own.
+
+## Three cuts, not one
+
+The obvious fix would be to make the watcher ignore anything coming from loopback. That is wrong, and dangerous. A compromised local process trips the canary from the inside; that is precisely one of the things a decoy catches. Silencing the origin would throw away the signal that matters together with the noise.
+
+So the cut happened in three places:
+
+**At the source.** The inventory utility now carries the decoy ports in an explicit exclusion list, on top of the ports it already skipped because they do not speak HTTP. It keeps measuring the rest of the host; it just stops interrogating what exists to be interrogated by strangers.
+
+**On the format.** Classification stopped accepting any text as a credential. Before raising severity, the watcher checks whether the value looks like an HTTP request line or a header — if it does, it is a port probe, not a login attempt. The decision now depends on the content, not on the mere presence of the field:
+
+```text
+empty value                    -> ignore
+value shaped like a request    -> port probe (noise)
+value shaped like a header     -> port probe (noise)
+anything else                  -> credential attempt (critical)
+```
+
+**On the count.** Probes of the same kind are now accumulated per read and delivered as a single informational record, with the number of hits and the origin. One record, not twelve. And informational, not critical — it does not wake anyone at five in the morning because of a homemade scanner.
+
+## What this changes
+
+A critical alert is only worth something while it is rare. Twelve false ones in a single second do not cost twelve readings; they cost the next true critical, which arrives in the same shape and gets the same suspicion. The damage of a false positive is not triage time — it is the operator's calibration, who learns to look sideways at the channel that should be the most trustworthy thing in the system.
+
+There is a second lesson, harder to swallow: the security sensor was measuring its own diagnostic instrument. Every self-observing stack has this contact point — the utility that sweeps, the health check that knocks on the port, the probe that asks whether something is alive. If that path is not out of the sensors' reach, the system will accuse itself with total conviction, and it will be technically correct: the event really did happen.
+
+The right order is to question the origin first, then the format, and only then decide severity. I had all three steps in reverse — severity came first, so "who touched it?" was never asked.
+
+## What comes next
+
+The incident log now holds one line per burst, with a count and an origin, instead of one line per hit. That is the format that lets you measure frequency later: if probes grow, it became signal; if they stay at zero, the exclusion is working.
+
+One gap remains. There is no test that injects an event shaped like a probe and asserts it lands as noise, and none that injects a plausible username and password and asserts it escalates to critical. Without that pair, the next change to the heuristic can flip the classification and nobody will notice.
+
+```bash
+ss -tlnp | tail -n +2 | wc -l                            # how many ports are listening
+ss -tnp | grep -c 127.0.0.1                              # local connections open right now
+journalctl --user -u <decoy-unit> -n 20 --no-pager        # recent events from the canary
+```

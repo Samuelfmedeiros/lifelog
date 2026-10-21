@@ -1,0 +1,69 @@
+---
+title: "O falso crítico que veio de dentro de casa — quando o meu próprio inventário tocou o canário"
+description: "Doze alertas de severidade crítica no mesmo segundo acusavam tentativa de login no serviço falso. A origem era local, e o atacante era o utilitário que eu tinha rodado minutos antes. Três cortes depois, o sensor parou de medir o próprio instrumento."
+date: 2026-10-20 17:07:00 -03:00
+pubDate: 2026-10-21 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "honeypot", "false-positive", "detection", "observability", "security"]
+cover: /covers/seguranca-o-falso-critico-que-veio-de-casa.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Doze críticos no mesmo segundo
+
+Na tarde de 20 de outubro, o canal de alertas cuspiu doze mensagens de severidade crítica dentro do mesmo segundo. Todas diziam a mesma frase: credenciais testadas no serviço falso. Todas com a mesma origem — loopback.
+
+Esse é o tipo de alerta que não se lê duas vezes. O serviço falso existe exatamente para isso: ninguém tem motivo legítimo para falar com ele, então qualquer contato é sinal. Um toque com usuário e senha preenchidos é o cenário completo: alguém de fora achou o que parecia um serviço esquecido e está tentando entrar. Doze em um segundo eu li como força bruta coordenada.
+
+Só que a origem era 127.0.0.1, e cada um dos doze vinha de uma porta de saída diferente. Isso não é ataque: é um processo local abrindo várias conexões em sequência. Fechei a janela, olhei o horário e reconheci o padrão. Tinha sido eu, quinze minutos antes.
+
+## O instrumento dentro do sensor
+
+Eu tinha rodado o utilitário que lista os serviços locais e as portas em que eles escutam. Ele percorre tudo que está em LISTEN, dispara uma requisição HTTP curta em cada porta e mostra o que respondeu.
+
+Portas que não falam HTTP recebem essa requisição como lixo — bytes crus. E o serviço falso tem um módulo que simula um protocolo antigo de terminal, que registra literalmente o que chega: o primeiro token vira usuário, o segundo vira senha. A linha de requisição foi gravada como nome de usuário. O cabeçalho seguinte foi gravado como senha.
+
+O vigia do canário aplicou então a heurística que sempre funcionou: se o evento tem os campos de usuário e senha preenchidos, é tentativa de credencial. Vira crítico. Doze portas sondadas, doze eventos, doze críticos — e o pior detalhe: o próprio agente que fazia a requisição se identificava na string de agente, dizendo o que era.
+
+Nada nessa cadeia é um bug isolado. O utilitário está certo em sondar portas, o canário está certo em gravar o que recebe, o vigia está certo em desconfiar de usuário e senha preenchidos. O erro é a composição — e composição ninguém testa enquanto cada peça, sozinha, passa no teste.
+
+## Três cortes, não um
+
+A correção óbvia seria fazer o vigia ignorar tudo que vem de loopback. Isso está errado, e é perigoso. Um processo local comprometido toca o canário de dentro; essa é justamente uma das coisas que uma isca pega. Silenciar a origem jogaria fora o sinal que interessa junto com o ruído.
+
+O corte foi em três lugares:
+
+**Na origem.** O utilitário de inventário passou a carregar as portas da isca numa lista de exclusão explícita, somada às que ele já ignorava por não falarem HTTP. Ele continua medindo o resto do host; só não interroga o que existe para ser interrogado.
+
+**No formato.** A classificação deixou de aceitar qualquer texto como credencial. Antes de elevar a severidade, o vigia confere se o valor parece uma linha de requisição ou um cabeçalho HTTP — se parecer, é sonda de porta. A decisão passou a depender do conteúdo, não da existência do campo:
+
+```text
+valor vazio                     -> ignora
+valor com cara de requisição    -> sonda de porta (ruído)
+valor com cara de header        -> sonda de porta (ruído)
+qualquer outro texto            -> credencial testada (crítico)
+```
+
+**Na contagem.** Sondas do mesmo tipo passaram a ser acumuladas por leitura e entregues como um único registro informativo, com o número de toques e a origem. Um registro, não doze. E informativo, não crítico — não acorda ninguém de madrugada por causa de um scanner caseiro.
+
+## O que isso muda
+
+Alerta crítico só vale enquanto for raro. Doze falsos em um segundo não custam doze leituras; custam o próximo crítico verdadeiro, que chega com o mesmo formato e recebe a mesma desconfiança. O dano de um falso positivo não é o tempo de triagem — é a calibragem do operador, que aprende a olhar de lado para o canal mais confiável.
+
+Tem outra lição, mais chata de aceitar: o sensor de segurança estava medindo o próprio instrumento de diagnóstico. Toda stack que se observa tem esse ponto de contato — o utilitário que varre, a checagem de saúde que bate na porta, a sonda que pergunta se está vivo. Se esse caminho não estiver fora do alcance dos sensores, o sistema acusa a si mesmo com convicção.
+
+A ordem certa é primeiro desconfiar da origem, depois do formato, e só então decidir a severidade. Eu tinha os três passos na ordem inversa — a severidade vinha primeiro, e por isso "quem tocou?" nunca chegava a ser perguntado.
+
+## O que vem depois
+
+O registro de incidentes agora tem uma linha por rajada, com contagem e origem, em vez de uma linha por toque. Esse é o formato que permite medir frequência depois: se as sondas crescerem, virou sinal; se ficarem em zero, é porque a exclusão está funcionando.
+
+Falta um teste que injeta um evento com cara de sonda e verifica que ele cai como ruído, e outro que injeta usuário e senha plausíveis e verifica que sobe como crítico. Sem esse par, a próxima mudança na heurística pode inverter a classificação sem ninguém notar.
+
+```bash
+ss -tlnp | tail -n +2 | wc -l                            # quantas portas estão em escuta
+ss -tnp | grep -c 127.0.0.1                              # conexões locais abertas agora
+journalctl --user -u <unidade-da-isca> -n 20 --no-pager   # eventos recentes do canário
+```
