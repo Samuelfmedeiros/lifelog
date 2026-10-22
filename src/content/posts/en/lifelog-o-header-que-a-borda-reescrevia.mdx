@@ -1,0 +1,77 @@
+---
+title: "The header the edge kept rewriting"
+description: "A normalization rule at the edge layer was replacing the whole site's security policy with a two-line version, and only a test that hit real production noticed."
+category: samuel-projects
+date: 2026-10-19 01:23:00 -03:00
+pubDate: 2026-10-22 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "security", "http", "cloudflare", "ci-cd"]
+icon: "📖"
+cover: /covers/lifelog-o-header-que-a-borda-reescrevia.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+On October 18th the blog's CI went red on a test nobody had touched. The file was identical for weeks, the site answered 200, the build passed, and the job that validates security headers in production started failing. Green until 11:08 that day, red after.
+
+That test does not run against the dev server. It sends real HTTP requests to the production URL on purpose: security headers are applied at delivery, not in `astro dev`. Six assertions, all of them simple. Two stopped passing:
+
+```bash
+expect(csp).toContain("default-src 'self'")
+expect(csp).toContain("script-src")
+```
+
+The header reaching the client was this, in full:
+
+```text
+content-security-policy: frame-ancestors 'self'; base-uri 'self'
+```
+
+Two directives. The repository's `vercel.json` declares eleven, including `default-src`, `script-src`, `style-src`, `font-src`, `img-src` and `connect-src`. Eleven became two somewhere along the way, and none of the missing ones were cosmetic: without `default-src` and `script-src` the policy constrains no script origin at all. The site kept working, the browser raised nothing, and the XSS protection was simply gone.
+
+## The cause was not in the repository
+
+The culprit was me, a few hours earlier. That same October 18th I had standardized security headers across every host in the zone by creating a response transform rule at the edge. Reasonable on paper: one place, one policy, everyone protected without repeating configuration in each project.
+
+What I had failed to work through is execution order. The edge rule runs **after** the origin. It does not merge into the header the application sent, it replaces it. When `vercel.json` answers with the full policy and the edge answers with the generic one, the browser receives the last one. The weaker policy wins on position, not on merit.
+
+This is not a configuration bug, it is a scope difference. The edge sees hosts; the application sees its own site. A policy written to apply across every host has to be generic enough not to break any of them, which means generic enough not to really protect any of them. The one host with a better policy had no way to say so.
+
+## The fix, one line wide
+
+Commit `dddb1a0`, from October 19th at 01:23, touches a single file with one insertion and one deletion. Two things at once, and the second one nearly slipped through.
+
+The first: the zone rule now excludes the blog's host. Where the origin has its own policy, the origin wins, and the edge steps aside.
+
+The second: `form-action` gained one more host. Without it, fixing the CSP would have opened a fresh hole, because in the same small hours commit `0c96ecc` (00:17, three files, 168 lines) had added the "next step" block at the end of every post, with an email capture that submits to another application on another domain.
+
+`form-action 'self'` blocks form submissions that leave the origin. The browser tells the visitor nothing, shows no error on screen, leaves no trace on the server: the POST simply never leaves. Anyone who filled in the email would watch the page reload with nothing happening. A form failing in silence is worse than a form that does not exist, because nobody will report it.
+
+## Why the test caught it and the build did not
+
+Worth noticing who found the problem. Not `astro check`, not the build, not any unit test. A DAST test that sends a real request to production and reads the header that came back.
+
+`astro dev` never crosses the edge. A static build knows nothing about headers. Neither does the Vercel preview, when the rule lives at the zone. The entire local verification chain would have stayed green forever with the security policy reduced to two thirds of nothing, because no step in it passes through the path where the mutation happened.
+
+The assertion that broke was loose on purpose, `toContain("script-src")`. It does not validate the whole policy, it validates that one exists. That was enough. A test that only checks presence would have caught this even if the edge had swapped eleven directives for ten.
+
+Measured, and checkable today:
+
+```bash
+BLOG=https://lifelog-sepia.vercel.app
+curl -sI "$BLOG/" | grep -i content-security-policy
+# default-src 'self'; script-src ... ; form-action 'self' <store-host>
+git -C ~/projetos/lifelog show dddb1a0 --stat
+# vercel.json | 2 +-    (1 insertion, 1 deletion)
+```
+
+## What the night leaves behind
+
+A security header at the edge is global policy, and global policy is lowest-common-denominator policy. If one host needs more, it needs an explicit exception, not confidence that someone will remember.
+
+The second lesson is about where you test. The same commit that fixed the CSP had just introduced a new cross-origin dependency (`form-action`). The two changes intersect: one opens the form outward, the other constrains what may leave. Neither shows up in a test that does not cross production end to end.
+
+Four more commits landed that night for the same underlying reason: button contrast in the light theme failing axe, UTMs on cross links, and two rounds of visual baselines because a snapshot generated on one machine did not match the one from CI. Six commits between 00:17 and 02:01, all with the same origin, all things that only surface when the code meets real delivery.
+
+Next up is `85f1508`, from October 21st: related posts at the end of each article, the first slice of the authority plan. Same logic, different scope. The internal link now exists where the reader used to finish the page and leave.
