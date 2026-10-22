@@ -48,8 +48,8 @@ if not API_KEY:
 # Project styles for prompts
 PROJECT_STYLES = {
     "arachne": {
-        "prompt_suffix": "Cyberpunk theme, deep purple and violet neon, digital spiderweb patterns, dark moody atmosphere, 16:9 wallpaper",
-        "colors": ["#7c3aed", "#a78bfa", "#2d1b69"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid circular web emblem in deep violet with thick bold radial spokes and a solid spider silhouette at the center, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no thin hairline strokes, no small marks, no text, 16:9 wallpaper",
+        "colors": ["#6d28d9", "#a78bfa", "#fde68a"],
     },
     "dogwalk": {
         "prompt_suffix": "Minimal flat illustration, one single large solid rounded app-tile shape in strong violet with a bold warm amber accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",

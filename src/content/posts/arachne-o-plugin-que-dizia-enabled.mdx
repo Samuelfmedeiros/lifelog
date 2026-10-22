@@ -1,0 +1,89 @@
+---
+title: "O plugin que dizia estar ativo — dois dias de uma ferramenta que nunca existiu"
+description: "O plugin estava instalado, o manifesto correto e a lista de plugins dizia enabled. Mesmo assim, nenhuma das duas ferramentas aparecia em sessão alguma. O erro não era de instalação: era o nome de um parâmetro."
+date: 2026-10-20 21:10:00 -03:00
+pubDate: 2026-10-22 08:00:00 -03:00
+project: arachne
+tags: ["arachne", "tools", "hermes", "python", "debugging"]
+cover: /covers/arachne-o-plugin-que-dizia-enabled.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O verde que ninguém testou
+
+Eu tinha um plugin do Arachne instalado no agente. O objetivo era simples: duas operações de browser disponíveis em qualquer sessão, sem passar pelo servidor MCP, que expira sessão e cobra descoberta de schema toda vez.
+
+A instalação seguiu o caminho documentado. O diretório do plugin no lugar certo, o manifesto descrevendo nome e versão, o nome na lista de plugins habilitados. Rodei a listagem para confirmar: `enabled`.
+
+Só que em sessão nenhuma as duas ferramentas existiam. Não apareciam na lista de tools, não apareciam na descoberta automática. E o mais desconfortável: nada falhava. O plugin estava habilitado e o produto do plugin simplesmente não existia.
+
+Isso durou dois dias.
+
+## O primeiro erro: o nome do parâmetro
+
+O manifesto certo garante uma coisa só: o loader encontra o diretório e aceita que aquele plugin deve ser carregado. Depois disso ele chama a `register` do módulo, entregando o contexto onde as ferramentas são registradas. Se essa função explode, o carregamento já passou do ponto que a listagem mostra.
+
+E explodia, com um nome de parâmetro que não existe na assinatura real:
+
+```text
+Failed to load plugin 'arachne-browser':
+PluginContext.register_tool() got an unexpected keyword argument
+```
+
+A assinatura correta é `register_tool(name, toolset, schema, handler, ...)`. Não existe `func`. Eu tinha escrito `func=arachne_camoufox_fetch`, o nome que a memória traz de outras APIs de registro de ferramenta. Python recusou o argumento, a exceção subiu dentro do `register()`, e o runtime tratou aquilo como um plugin que não carregou.
+
+O erro não ia para a saída do comando de listagem. Ia para o arquivo de erros do runtime, que eu não estava lendo porque a listagem dizia `enabled`. A ferramenta de diagnóstico respondia outra pergunta: ela dizia "está na lista de habilitados", e eu lia "funciona". Entre as duas frases há um `register()` inteiro.
+
+A correção foi de nove linhas: `toolset` explícito com o nome do conjunto e `handler` apontando para a função.
+
+## O segundo erro, que só existia depois do primeiro
+
+Corrigir o nome do parâmetro destravou o próximo problema — e é assim que esse tipo de defeito aparece: um por vez, cada correção revelando a camada de baixo.
+
+O registro passou a aceitar a chamada e as ferramentas apareceram na descoberta. Na primeira invocação real, a assinatura da função não batia com o que o registry entrega: ele chama o handler com um dicionário de argumentos, do mesmo jeito que o schema JSON declara. As minhas funções tinham parâmetros posicionais — `url`, `wait_ms`, `width`, `height`.
+
+Um dicionário chegando num primeiro parâmetro chamado `url` não vira URL. Vira o dicionário inteiro, ou um erro de tipo. Em nenhum dos casos a ferramenta faz o que promete.
+
+A solução foi separar as duas responsabilidades. A função continua com assinatura legível, porque é ela que eu leio e testo. O registro aponta para um adaptador de três linhas que traduz o dicionário:
+
+```python
+def _h_camoufox(args: dict, **kw) -> str:
+    return arachne_camoufox_fetch(
+        args.get("url", ""),
+        args.get("wait_ms", 2000),
+        args.get("width", 1440),
+        args.get("height", 900),
+    )
+```
+
+Três commits separaram essas fases, todos em 20 de outubro: a extensão de captura e o endpoint às 16:59, o registro às 17:49 e a convenção dos handlers às 20:45. Quatro horas entre a primeira versão e a última correção, para um plugin que passou dois dias antes sem registrar nada.
+
+## A prova que valia
+
+O que mudou o diagnóstico não foi ler o código de novo. Foi parar de aceitar a listagem como prova e ir buscar o estado do registry.
+
+Forçar a descoberta com recarga e imprimir o resultado devolveu a linha que eu precisava:
+
+```text
+discover_plugins(force=True)
+-> arachne_camoufox_fetch REGISTRADO | toolset: arachne_browser
+resolve_toolset("arachne_browser") -> 2 tools
+```
+
+Isso é a diferença entre três estados que eu vinha tratando como um: plugin **instalado**, plugin **carregado** e ferramenta **invocável**. A listagem cobre o primeiro. O `register()` sem exceção cobre o segundo. Só uma chamada real cobre o terceiro. Uma sequência de verificação que para no primeiro estado aprova o próprio erro.
+
+## O que essas duas ferramentas compram
+
+A primeira é o fetch por um Firefox anti-detect. Contra um marketplace grande, devolveu 40 KB de HTML real, contra 110 a 269 caracteres de casca que Chrome e Chromium headless entregam na mesma página. Um extrator rodando em cima de 200 caracteres de nada não tem o que extrair.
+
+A segunda recebe HTML já renderizado — o mesmo contrato da extensão em MV3 que subiu no mesmo dia, oito arquivos e 255 linhas, com quatro testes do endpoint. A extensão pega o HTML da aba ativa no Chrome do usuário, com login feito e JavaScript executado. No teste ponta a ponta, 10,9 KB voltaram extraídos em 0,45 segundo; a tool do plugin respondeu em 0,59.
+
+E teve um terceiro defeito: a documentação descrevia um contrato que o servidor nunca aceitou. Ela pedia `selector` e `format`; o endpoint lia `html`, `url`, `title` e, depois da correção, um campo de dica do alvo. Quem escrevesse o cliente seguindo o README receberia resposta vazia e culparia a extração.
+
+## O que ficou
+
+`enabled` é o começo da verificação, nunca o fim. A pergunta certa não é "está habilitado", é "qual ferramenta o registry devolve quando eu peço o toolset pelo nome". E o caminho de falha do carregamento de plugin é silencioso por decisão, para um plugin quebrado não derrubar a sessão inteira — razoável como projeto, péssimo como diagnóstico: o erro existe, está escrito, e não está onde você está olhando.
+
+O próximo passo é o que faltou no primeiro dia: um teste que falhe quando o número de ferramentas resolvidas pelo nome do toolset for zero. Duas linhas no CI cobrem exatamente a classe de erro que a listagem não cobre.

@@ -1,0 +1,89 @@
+---
+title: "The plugin that said it was enabled — two days of a tool that never existed"
+description: "The plugin was installed, the manifest was correct, and the plugin list said enabled. Yet none of its two tools showed up in any session. The bug was not in the install: it was the name of a parameter."
+date: 2026-10-20 21:10:00 -03:00
+pubDate: 2026-10-22 08:00:00 -03:00
+project: arachne
+tags: ["arachne", "tools", "hermes", "python", "debugging"]
+cover: /covers/arachne-o-plugin-que-dizia-enabled.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The green light nobody tested
+
+I had an Arachne plugin installed in the agent. The goal was simple: two browser operations available in any session without going through the MCP server, which expires sessions and charges schema discovery every time.
+
+The install followed the documented path. The plugin directory in the right place, the manifest describing name and version, the name in the list of enabled plugins. I ran the listing to confirm: `enabled`.
+
+Except that in no session did the two tools exist. They did not show up in the tool list, they did not show up in automatic discovery. And the most uncomfortable part: nothing failed. No warning, no visible error. The plugin was enabled and the plugin's product simply did not exist.
+
+That lasted two days.
+
+## The first error: the parameter name
+
+A correct manifest guarantees exactly one thing: the loader finds the directory and accepts that this plugin should be loaded. After that it calls the module's `register` function, handing over the context where tools get registered. If that function blows up, loading has already moved past the point the listing reports.
+
+And it blew up, on a parameter name that does not exist in the real signature:
+
+```text
+Failed to load plugin 'arachne-browser':
+PluginContext.register_tool() got an unexpected keyword argument
+```
+
+The correct signature is `register_tool(name, toolset, schema, handler, ...)`. There is no `func`. I had written `func=arachne_camoufox_fetch`, the name my memory carries from other tool-registration APIs. Python rejected the argument, the exception rose inside `register()`, and the runtime treated it as a plugin that failed to load.
+
+The error never reached the listing command's output. It went to the runtime error file, which I was not reading because the listing said `enabled`. The diagnostic tool was answering a different question: it said "this is on the enabled list", and I read "this works". Between those two sentences sits an entire `register()` call.
+
+The fix was nine lines: an explicit `toolset` with the set name and a `handler` pointing at the function.
+
+## The second error, which only existed after the first
+
+Fixing the parameter name unlocked the next problem — and that is how this class of defect behaves: one at a time, each fix revealing the layer underneath.
+
+Registration started accepting the call and the tools appeared in discovery. On the first real invocation, the function signature did not match what the registry delivers: it calls the handler with a dictionary of arguments, the same way the JSON schema declares them. My functions had positional parameters — `url`, `wait_ms`, `width`, `height`.
+
+A dictionary arriving in a first parameter named `url` does not become a URL. It becomes the whole dictionary, or a type error. In neither case does the tool do what it promises.
+
+The solution was to split the two responsibilities. The function keeps a readable signature, because that is what I read and test. Registration points at a three-line adapter that translates the dictionary:
+
+```python
+def _h_camoufox(args: dict, **kw) -> str:
+    return arachne_camoufox_fetch(
+        args.get("url", ""),
+        args.get("wait_ms", 2000),
+        args.get("width", 1440),
+        args.get("height", 900),
+    )
+```
+
+Three commits separate these phases, all on October 20: the capture extension and endpoint at 16:59, registration at 17:49, and the handler convention at 20:45. Four hours between the first version and the last fix, for a plugin that had spent two days before that registering nothing.
+
+## The proof that mattered
+
+What changed the diagnosis was not rereading the code. It was to stop accepting the listing as proof and go read the registry state instead.
+
+Forcing discovery with a reload and printing the result returned the line I needed:
+
+```text
+discover_plugins(force=True)
+-> arachne_camoufox_fetch REGISTERED | toolset: arachne_browser
+resolve_toolset("arachne_browser") -> 2 tools
+```
+
+That is the difference between three states I had been treating as one: plugin **installed**, plugin **loaded**, tool **callable**. The listing covers the first. A `register()` that does not raise covers the second. Only a real invocation covers the third. A verification sequence that stops at the first state is a sequence that approves its own mistake.
+
+## What those two tools buy
+
+The first is a fetch through an anti-detect Firefox. Against a large marketplace it returned 40 KB of real HTML, against the 110 to 269 characters of shell that Chrome and Chromium headless deliver on the same page. An extractor running over 200 characters of nothing has nothing to extract.
+
+The second takes already-rendered HTML — the same contract as the MV3 browser extension that shipped the same day, eight files and 255 lines, with four endpoint tests. The extension grabs the active tab's HTML from the user's own Chrome, login already done and JavaScript already executed. In the end-to-end test, 10.9 KB came back extracted in 0.45 seconds; the plugin's tool answered in 0.59.
+
+And there was a third defect: the documentation described a contract the server never accepted. It asked for `selector` and `format`; the endpoint read `html`, `url`, `title`, and after the fix a hint field for the extraction target. Anyone writing a client from the README would get an empty response and blame the extraction.
+
+## What stayed
+
+`enabled` is the start of verification, never the end. The right question is not "is it enabled", it is "which tools does the registry return when I ask for the toolset by name". And the plugin loading failure path is silent by design, so a broken plugin does not take down the whole session — reasonable engineering, terrible diagnostics: the error exists, it is written down, and it is not where you are looking.
+
+The next step is what was missing on day one: a test that fails when the number of tools resolved by the toolset name is zero. Two lines in CI cover exactly the class of error the listing does not.
