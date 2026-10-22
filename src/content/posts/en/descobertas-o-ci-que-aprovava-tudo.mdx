@@ -1,0 +1,80 @@
+---
+title: "The CI that approved everything — 132 days of green that meant nothing"
+description: "A commit at 2:37 on a June morning made lint and tests non-blocking in the Portfolio CI, with a reasonable justification. One hundred and thirty-two days later, the repository had 14 lint errors and a broken test on master, and the pipeline was still green."
+date: 2026-10-21 01:49:00 -03:00
+pubDate: 2026-10-22 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "ci-cd", "quality", "gate", "testing"]
+cover: /covers/descobertas-o-ci-que-aprovava-tudo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The commit from half past two in the morning
+
+June 11, 2:37 am. The commit message is short and honest: "make lint non-blocking in CI (pre-existing errors)". The reasoning behind it is defensible, and I recognise it because it would probably have been mine: the repository already had old lint errors, nobody was going to fix them at that hour, and the deploy needed to go out. So lint stepped aside.
+
+Fourteen hours later, another commit did the same to the tests: "tests continue-on-error". From that point on, the Portfolio pipeline could report success while lint and tests disagreed.
+
+It was not bad faith. It was the most comfortable decision available at 2:37 am, taken four months before anyone looked at its result.
+
+## What green started to mean
+
+`continue-on-error: true` does not disable a step. The step runs, writes its output, and its result is ignored when the job status is computed. The job goes green with a red step inside.
+
+The consequence is semantic, not technical: "CI green" stopped being a statement about the code and became a statement about the YAML file. Nothing in the GitHub panel distinguishes the two cases.
+
+Across the 132 days between June 11 and October 21, the deploy kept promoting. In that window, `HitBeacon.test.tsx` sat broken on master — the assertion expected a route the beacon no longer called, and the fix only arrived on October 20, in a commit whose title literally says "fix for #149". Lint, meanwhile, accumulated 14 errors. Neither showed up anywhere, because the only place that displayed them was a green job.
+
+Worth pinning the number down: 14 lint errors and one broken test coexisted with automatic deploys for over four months. Not because the system failed to detect them, but because detection had no consequence.
+
+## Zero it before you lock it
+
+Order matters, and getting it wrong explains why so many pipelines stay stuck in that state. If the flag comes out first, master turns red and the deploy stops — and the immediate pressure is to put the flag back. The path that works is the reverse: clear the debt, then close the gate.
+
+At 1:37 am on October 21, commit `514cb74` brought master back to zero eslint errors. The 14 were not cosmetic, and two examples show the kind of thing that had been hidden:
+
+- The `useMounted` hook did `useState` plus `setState` inside an effect. Replaced with `useSyncExternalStore`, which answers the same question — has the component mounted yet? — without a render cascade. The irony is sharp: that is precisely the hydration gate built earlier to fix cards that were born invisible.
+- The `TypeWriter` component reset state through an effect when phrases changed. It became an adjustment during render, which is where that kind of correction belongs.
+
+Twelve minutes later, `bf1f717` closed the gate: 4 lines added, 2 removed in `.github/workflows/deploy.yml`. The 2 removed were exactly `continue-on-error: true` on the "Run lint" and "Run tests" steps. The comment left in the file records the reason, the PR number that cleared the debt, and the test count at the moment of closing: 441.
+
+## Prove the gate closes
+
+Trusting that it now blocks is the same faith that created the problem. Trust is not evidence. So the removal came with deliberate probes, one of each kind.
+
+The first, `3023303`, was a TypeScript file with an unused variable. It was useless: in the project config that rule is not an error, so the probe never exercised the gate. A probe that passes proves nothing — it only shows the probe is weak.
+
+The second, `276f6a8`, was a React component calling `useState` inside an `if`, a violation of `react-hooks/rules-of-hooks`. That one is a real error. Red lint, red job, blocked deploy. Both probes were deleted right after, and the proof they did not survive in the repository is a command: `git ls-tree -r --name-only master | grep -i prova` returns nothing.
+
+It cost two minutes. Finding out three months later that the gate never closed would have cost a full investigation.
+
+## The continue-on-error that stayed on purpose
+
+Today's workflow still has one `continue-on-error`, and it should stay. It is the post-deploy gate that checks whether the card covers responded on the published site. The comment in the file states the reason: the deploy has already happened.
+
+A step that runs after an irreversible effect cannot block anything. If it fails, "blocking" would only mean not warning — worse than the warning. For that case the right model is a signal in the log plus a watchdog with an alert.
+
+The difference is one of position, not severity. Before the build, red blocks. After the deploy, red informs.
+
+```bash
+# where green is negotiated
+grep -rn "continue-on-error" .github/workflows/
+
+# what the gate had been hiding (full lint)
+pnpm lint
+
+# and what it actually blocks now
+pnpm vitest run
+```
+
+## What this changes
+
+Green became a statement again. "Deploy passed" now means lint passed, the 441 tests passed, the project built and published. Before, it only meant the pipeline reached the end.
+
+The cost of keeping it was invisible: each new error entered without friction, and the exit signal faded until none was left. The cost of fixing it was one night — thirty minutes between the first commit and the proof that the gate closed.
+
+## Next step
+
+Run the same test across the other pipelines: look for `continue-on-error` and `|| true`, and classify each occurrence by position — before or after the irreversible effect. Anything sitting before the effect without intent gets closed. For the ones that stay as they are, leave the reason written in the file, the way the covers gate did, so the next reader does not have to repeat the whole investigation.

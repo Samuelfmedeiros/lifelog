@@ -1,0 +1,80 @@
+---
+title: "O CI que aprovava tudo — 132 dias de verde que não significavam nada"
+description: "Um commit às 2h37 de uma manhã de junho tornou o lint e os testes não-bloqueantes no CI do Portfólio, com uma justificativa razoável. Cento e trinta e dois dias depois, o repositório tinha 14 erros de lint e um teste quebrado no master, e o pipeline continuava verde."
+date: 2026-10-21 01:49:00 -03:00
+pubDate: 2026-10-22 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "ci-cd", "quality", "gate", "testing"]
+cover: /covers/descobertas-o-ci-que-aprovava-tudo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O commit das duas e meia da manhã
+
+11 de junho, 02:37. A mensagem do commit é curta e honesta: "make lint non-blocking in CI (pre-existing errors)". O raciocínio por trás dela é defensável e eu o reconheço porque provavelmente seria o meu: o repositório já tinha erros de lint antigos, ninguém ia consertá-los naquela madrugada, e o deploy precisava sair. Então o lint saiu do caminho.
+
+Quatorze horas depois, outro commit fez o mesmo com os testes: "tests continue-on-error". A partir dali, o pipeline do Portfólio podia reportar sucesso sem que lint e testes concordassem.
+
+Não foi má-fé. Foi a decisão mais confortável disponível às 2h37, tomada quatro meses antes de alguém olhar o resultado dela.
+
+## O que o verde passou a significar
+
+`continue-on-error: true` não desliga um step. O step executa, escreve a saída, e o resultado dele é ignorado no cálculo do status do job. O job fica verde com o step vermelho.
+
+A consequência é semântica, não técnica: "CI verde" deixou de ser uma afirmação sobre o código e passou a ser uma afirmação sobre o arquivo YAML. Nada no painel do GitHub distingue os dois casos.
+
+Nos 132 dias entre 11 de junho e 21 de outubro, o deploy promoveu normalmente. Nesse intervalo, `HitBeacon.test.tsx` ficou quebrado no master — a asserção esperava uma rota que o beacon já não chamava, e o conserto só veio em 20 de outubro, num commit cujo título diz literalmente "fix do #149". O lint, por sua vez, acumulou 14 erros. Nenhum dos dois apareceu em lugar nenhum, porque o único lugar que os mostrava era um job verde.
+
+Vale fixar o número: 14 erros de lint e um teste quebrado conviveram com deploy automático por mais de quatro meses. Não porque o sistema não os detectava, mas porque a detecção não tinha consequência.
+
+## Zerar antes de endurecer
+
+A ordem importa, e errá-la explica por que tantas pipelines ficam presas nesse estado. Se a flag sai primeiro, o master fica vermelho e o deploy para — e a pressão imediata é para devolver a flag. O caminho que funciona é o inverso: zerar a dívida, depois fechar o portão.
+
+Às 01:37 de 21 de outubro, o commit `514cb74` devolveu o master a zero erros de eslint. Os 14 não eram cosméticos, e dois exemplos mostram o tipo de coisa que ficou escondida:
+
+- O hook `useMounted` fazia `useState` mais `setState` dentro de um efeito. Trocado por `useSyncExternalStore`, que responde à mesma pergunta — o componente já montou? — sem cascata de render. A ironia é fina: esse é justamente o gate de hidratação criado antes para consertar cards que nasciam invisíveis.
+- O componente `TypeWriter` reiniciava o estado por efeito na troca de frases. Virou ajuste durante o render, que é onde esse tipo de correção pertence.
+
+Doze minutos depois, `bf1f717` fechou o portão: 4 linhas adicionadas, 2 removidas em `.github/workflows/deploy.yml`. As 2 removidas eram exatamente `continue-on-error: true` nos steps "Run lint" e "Run tests". O comentário deixado no arquivo registra o motivo, com o número do PR que zerou a dívida e a contagem de testes no momento do fechamento: 441.
+
+## Provar que o portão fecha
+
+Confiar que agora barra é a mesma fé que produziu o problema. Confiar não é evidência. Então a remoção veio com sondas deliberadas, uma de cada tipo.
+
+A primeira, `3023303`, foi um arquivo TypeScript com uma variável não utilizada. Não serviu: no config do projeto essa regra não é erro, então a sonda não exercitou o gate. Um probe que passa não prova nada — mostra só que o probe é fraco.
+
+A segunda, `276f6a8`, foi um componente React chamando `useState` dentro de um `if`, violação de `react-hooks/rules-of-hooks`. Essa é erro de verdade. Lint vermelho, job vermelho, deploy barrado. As duas sondas foram apagadas em seguida, e a prova de que não sobraram no repositório é um comando: `git ls-tree -r --name-only master | grep -i prova` volta vazio.
+
+Isso custou dois minutos. Descobrir três meses depois que o gate não fechava custaria uma investigação inteira.
+
+## O continue-on-error que ficou de propósito
+
+O workflow de hoje ainda tem um `continue-on-error`, e ele deve continuar lá. É o gate pós-deploy que confere se as capas dos cards responderam no site publicado. O comentário no próprio arquivo diz o motivo: o deploy já aconteceu.
+
+Um step que roda depois do efeito irreversível não pode barrar nada. Se ele falhar, "barrar" só significaria não avisar — pior que o aviso. Para esse caso o modelo correto é sinal no log mais um watchdog com alerta.
+
+A diferença é de posição, não de severidade. Antes do build, vermelho barra. Depois do deploy, vermelho informa.
+
+```bash
+# onde o verde é negociado
+grep -rn "continue-on-error" .github/workflows/
+
+# o que o gate passou a esconder (lint completo)
+pnpm lint
+
+# e o que ele barra de fato agora
+pnpm vitest run
+```
+
+## O que isso muda
+
+Verde voltou a ser uma afirmação. "Deploy passou" agora quer dizer que o lint passou, que os 441 testes passaram, que o projeto construiu e publicou. Antes quer dizer apenas que o pipeline chegou ao fim.
+
+O custo de manter era invisível: cada erro novo entrava sem atrito, e o sinal de saída ia desaparecendo aos poucos até não sobrar nenhum. O custo de consertar foi uma madrugada — trinta minutos entre o primeiro commit e a prova de que o portão fechava.
+
+## Próximo passo
+
+Passar o mesmo teste nas outras pipelines: procurar `continue-on-error` e `|| true`, e classificar cada ocorrência por posição — antes ou depois do efeito irreversível. Quem estiver antes e não for intencional, fecha. Para os que ficarem do jeito que estão, deixar o motivo escrito no arquivo, como ficou o das capas, para que o próximo leitor não precise repetir a investigação inteira.
