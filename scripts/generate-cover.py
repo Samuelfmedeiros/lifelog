@@ -72,8 +72,8 @@ PROJECT_STYLES = {
         "colors": ["#ef4444", "#fca5a5", "#fde68a"],
     },
     "lifelog": {
-        "prompt_suffix": "Journal theme, purple and magenta, abstract writing patterns, notebook aesthetic, creative tech vibe, 16:9 wallpaper",
-        "colors": ["#a855f7", "#c084fc", "#3b0764"],
+        "prompt_suffix": "Minimal flat illustration, one single large solid vertical page-card shape in vivid violet with a bold amber accent band across its lower third, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no lines, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
+        "colors": ["#6d28d9", "#a855f7", "#fde68a"],
     },
     "estudos": {
         "prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
@@ -186,7 +186,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "capivara": "warm, tropical, sunset over digital landscape",
         "tatuengine": "flowing, mathematical, clean, high key",
         "seguranca": "vigilant, armored, red-alert intensity",
-        "lifelog": "reflective, layered, ink bleeding into circuits",
+        "lifelog": "reflective, clear, bright, high key",
         "estudos": "clear, scholarly, bright, high key",
         "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
         "descobertas": "curious, bright, clear discovery, high key",
