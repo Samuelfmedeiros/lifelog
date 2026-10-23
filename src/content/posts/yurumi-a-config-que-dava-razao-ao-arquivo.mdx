@@ -48,7 +48,7 @@ O achado veio de um teste de delegação. `test_extract_delega_ao_loader_central
 
 Enquanto o arquivo tivesse o mesmo valor do ambiente, a igualdade passava e o teste parecia proteger o contrato. No dia em que a linha do arquivo ficou velha e os valores divergiram, a asserção quebrou e mostrou que a precedência era ficção.
 
-Tem um detalhe que vale mais que a correção: as duas asserções continuam cercadas por `if os.environ.get("NINEROUTER_API_KEY"):`. Quando a variável não existe, o teste não falha — ele simplesmente não testa nada e fica verde por ausência de condição. A prova da precedência existe só nas máquinas onde a variável já está exportada, isto é, exatamente onde ela é desnecessária.
+As duas asserções, porém, continuam cercadas por `if os.environ.get("NINEROUTER_API_KEY"):`. Quando a variável não existe, o teste não falha — ele simplesmente não testa nada e fica verde por ausência de condição. A prova da precedência existe só nas máquinas onde a variável já está exportada, isto é, exatamente onde ela é desnecessária.
 
 ## A mesma doença na suíte inteira
 
