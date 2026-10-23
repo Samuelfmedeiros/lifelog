@@ -85,7 +85,7 @@ test.describe('Amarração — bloco de próximo passo no post', () => {
   test('alvo de toque de 44px no mobile (regra do dono)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(PT_URL);
-    const botao = await page.locator('#assinar button').boundingBox();
+    const botao = await page.locator('#assinar button[type="submit"]').boundingBox();
     const campo = await page.locator('#assinar input[type=email]').boundingBox();
     expect(botao!.height).toBeGreaterThanOrEqual(44);
     expect(campo!.height).toBeGreaterThanOrEqual(44);
