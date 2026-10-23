@@ -1,0 +1,82 @@
+---
+title: "Yurumi: the config that sided with the file"
+description: "The key loader documented that the process environment beats .env files. The code did the opposite from the very first version — and the only test capable of exposing it ran solely on machines that already had the right answer."
+date: 2026-10-23 08:00:00 -03:00
+pubDate: 2026-10-23 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "configuration", "secrets", "python", "testing"]
+cover: /covers/yurumi-a-config-que-dava-razao-ao-arquivo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The right key, the wrong value
+
+I exported the key in the shell, started the service, and the call went out signed with a different credential. No authentication error came back: the old token still worked, it just was not the one I had configured. That is the worst shape a configuration bug can take — nothing breaks, the configuration simply lies to you.
+
+Yurumi reads API keys from two places: environment variables inherited from whoever started the process, and three `.env` files in cascade, from legacy to most specific, each replacing the previous one. The `load_secrets()` docstring is short and unambiguous: "Process keys win; files merge".
+
+That contract has a date and a reason. It was born on 28 August, when the central loader was written to end a full stop: the local model router had its credential only in the process environment, the old loader read a single file, and it silently skipped the primary provider, degrading extraction. The precedence rule existed so that episode would never repeat.
+
+It existed in the comment. In the code, the order was reversed.
+
+## The rule in prose, the order upside down
+
+The environment loop ran before the file loop, and every later `keys[k] = v` erased what the earlier pass had written. Environment first, files on top:
+
+```python
+keys = {}
+# 1. process env (commented as "already loaded by Hermes")
+for k, v in os.environ.items():
+    if k.endswith("_API_KEY") or k.endswith("_TOKEN"):
+        keys[k] = v
+# 2-4. .env files in order — and here the file value won
+for path in _SECRET_ENV_PATHS:
+    ...
+    keys[k] = v
+return keys
+```
+
+An asymmetry helped hide it: only names ending in `_API_KEY` or `_TOKEN` come from the environment, while any name comes from a file. So a file could inject names the environment would never provide and, on top of that, overwrite exactly the filtered keys. In practice the process had the final word only when the file said nothing about the subject — which is the opposite of having priority.
+
+Commit `07c20b8`, from 23 October, settles it with six lines in and four out of `core/config.py`. No refactor: the environment loop moves to the end of the function, with a comment that explains the ordering instead of leaving it implicit. Precedence stated in prose became precedence stated in code.
+
+## The test that only proved itself on the right machine
+
+The finding came from a delegation test. `test_extract_delega_ao_loader_central` and `test_graph_delega_ao_loader_central` assert that the extractor and the graph both see, through the central loader, the same key the environment holds — a direct equality between what the loader returned and what is exported.
+
+As long as the file carried the same value as the environment, the equality held and the test looked like it was guarding the contract. The day the file line went stale and the two values disagreed, the assertion broke and revealed the precedence for what it was: fiction.
+
+There is a detail here worth more than the fix itself. Both assertions are still wrapped in `if os.environ.get("NINEROUTER_API_KEY"):`. When the variable is missing the test does not fail — it simply asserts nothing and stays green by absence of condition. Proof of precedence exists only on machines where the variable is already exported, which is precisely where it is unnecessary.
+
+## The same disease across the suite
+
+The pattern repeated in the configuration tests. `test_defaults_quando_sem_env_sem_yaml` cleared four variables before checking defaults — vector store address, backend, user identifier and the config file path — while `get_config()` reads roughly fifteen, the embedder URL among them. In CI, where nothing is exported, the test passes. In a shell that loads the service variables, the default comes out polluted and the test fails outside CI. Green on the runner, red on the machine, and neither state saying anything about the code.
+
+The cure landed the same day, in commit `14c9f58`: a `_limpa_env_yurumi()` helper that walks `os.environ` and drops every variable carrying the `YURUMI_` prefix. Not a list of four names that ages with each new feature — the whole prefix. With that the suite meant something again: 3717 tests, zero failures, measured on the working machine rather than only in CI.
+
+The same commit had to clean up the trail. The new consumption panel for the local router, 564 fresh lines in `core/usage.py`, added its own HTTP read surface; the test counting `urlopen` calls needed a new baseline, and `bandit` flagged B310 until the exception was justified with the real reason — the read targets a localhost service. An exception accepted without a written reason is an exception that does not exist.
+
+Along the way version 0.2.0 also fixed the credential name: the `key_env` field stopped expecting `9ROUTER_API_KEY` and started requiring `NINEROUTER_API_KEY`, the canonical name the modules querying that same service already used. One key, one name, six places.
+
+## What changes
+
+Two fixes, one root: implicit ambient state deciding the outcome. The loader obeyed the nearest file; the tests obeyed the shell of whoever ran them. In both cases the software worked and the explanation was false. Stale key in the file, clean environment: passes. Correct key in the environment, stale file: fails — and whoever investigates tends to blame the service that received the credential, not the loader that chose on its own.
+
+From here on, precedence is a line of code with a comment explaining why it sits where it sits, and the suite is hermetic by construction: any `YURUMI_*` exported by the operator is gone before the first assert. If green depends on the environment, it is not green — it is coincidence.
+
+## Next step
+
+One door is still open: the two delegation assertions need to lose their conditional guard and become a real hermetic test — a fake file with an old value, the environment with a new one, and an explicit assertion that the environment wins. While the proof depends on a variable that may or may not be exported, the contract is being verified by accident.
+
+```bash
+# does the environment key get in, or does the file take over?
+NINEROUTER_API_KEY=from-the-environment pytest tests/test_secrets_loader.py -q
+
+# which names does the loader see (keys only, never values)
+python3 -c "from core.config import load_secrets; print(sorted(load_secrets()))"
+
+# hermeticity: the suite must not react to the operator's environment
+YURUMI_EMBED_URL=http://example pytest tests/test_config.py -q
+```
