@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## 2026-10-22 - 7 commits: 3 posts ocultos + 3 releases + fix de capa (flat art claro)
+- **feat(posts)**: `e1db520` (arachne — o plugin que dizia enabled), `efeb449` (descobertas — o CI que aprovava tudo), `798099b` (lifelog — o header que a borda reescrevia) — PT+EN hidden + capa IA.
+- **fix(covers)** (`2250027`): estilo lifelog vira flat art claro — 9a reincidencia da classe escura.
+- **release(post)**: `094efe2` (arachne), `23581e1` (descobertas), `b2ad687` (seguranca — o falso critico que veio de casa) — PT+EN + ocultos-data, liberacao manual.
+- 7 commits no dia · push origin OK (fast-forward via `HEAD:main`) · HEAD: `798099b`.
+
 ## 2026-10-05 - 19 commits no dia (release de 12 posts + refazer #67 + VRT/e2e) e main DIVERGIDA
 - **release(posts)**: 12 commits `release(post)` liberando pares PT+EN com `ocultos-data` (Dogwalk x3, Capivara, Arachne, Portifolio x2, Yurumi x2, TatuEngine, seguranca, portfolio) + os `feat(lifelog)` dos ocultos.
 - **refazer** (`5681ee2`, `ba60378`, `139d4e3`, `ed1d84e`): recusas dos posts rejeitados - #67 (a campanha que degradou em silencio) e dos duplicados de portfolio/seguranca.
