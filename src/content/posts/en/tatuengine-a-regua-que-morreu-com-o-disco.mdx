@@ -1,0 +1,68 @@
+---
+title: "The ruler that died with the disk"
+description: "The two meters that evaluated format and internal dynamics in TatuEngine lived on a disk that stopped existing during the migration. Training kept running on perplexity alone — until the ruler was rebuilt and returned an uncomfortable number: format hit 100%, accuracy never left the noise."
+date: 2026-10-23 16:00:00 -03:00
+pubDate: 2026-10-23 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "validation", "training", "gpu", "checkpoint"]
+cover: /covers/tatuengine-a-regua-que-morreu-com-o-disco.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The number nobody was measuring
+
+The dose campaign had been running for days with a single judge: `sftHeld`, perplexity on the held-out set. The number went down, the run went green, the next one was launched. Perplexity, however, says nothing about whether the model emits the format it was trained to emit.
+
+The two meters that answered that question lived on a disk the migration unmounted. One measured the output band; the other computed the Hamiltonian radar over the response region. Neither was versioned alongside the training code. When the disk left, the scripts left with it, and the evaluation came down to a single line.
+
+It stayed like that for weeks, and quietly: the meter that survived kept pointing the right way. A number that falls bothers nobody. What was missing was exactly the thing that would say whether the fall meant anything.
+
+## The mix hypothesis fell first
+
+Run 5 bet the problem was token mixing. English replay at 43% of the micro-batches, head on, two hundred steps. The result falsified the bet: the English slice diluted the signal instead of re-anchoring it, with the head already saturated. Token mixing was not the bottleneck.
+
+That left the trunk. Run 6 made the last N layers trainable in fp32 and kept the rest frozen in bf16. The limit was not a matter of taste, it was the GPU: at N=8 CUDA returned `out of memory`, asking for 10.12 GB against 11.67 GB free; at N=4 the same path fit in 7.36 GB measured. The recipe was written into the checkpoint together with the layer count, and resuming started requiring an identical recipe.
+
+The same run 6 showed the price of unfreezing: with the trunk at 1.5e-5, held dropped 0.46% and English drift rose 8.5% at the same time. The two signals move in step. Moving the trunk is not free gain, it is a trade.
+
+One detail burned a night before that: the best checkpoint mirror was written synchronously. It stalled for fourteen minutes on a slow disk and the stall guard killed the run, convinced the process had died. The mirror write moved to a daemon thread.
+
+## Rebuilding the ruler on live code
+
+The new ruler was written on October 23rd over the code that actually runs, not over the memory of how it used to look. It measures three things with the same protocol for every checkpoint: `pct_thought`, the share of pairs whose decoded top-1 inside the first 24 positions of the response contains the reasoning marker; `acc24`, the share of lexical top-1 matches against the real token in those same 24 positions; and the Hamiltonian radar, computed on the last layer's hidden state normalized per step, with T measuring quadratic variation and V the anti-correlation.
+
+Every measurement runs alongside a random control in the same pass. Without it, 100% format means nothing: the format may already have been there before training.
+
+## What the ruler returned
+
+Eighty held-out pairs, two seeds, bf16 to fit a shared GPU.
+
+- The format is there: 100% of pairs carry the marker inside the window, against 0% for the random control. The model obeys.
+- The format does not open the answer: `pct_thought_first` came back 0.0 on every checkpoint, control included. The marker shows up inside the window, not in the first position — anyone reading only the first one concludes the opposite.
+- Accuracy did not move: `acc24` of 0.2688 for the campaign's best against 0.2682 for its own seed on seed 42. On seed 123, 0.2667 against 0.2672 — the sign flips. That is noise, not gain.
+- The basin did not deepen: H of -0.2219 trained against -0.1108 random, which looks huge until you compare it with its own seed, -0.2161. The difference is 0.0058, inside the ±0.0093 band the reading treats as noise.
+
+The conclusion is uncomfortable and useful: the campaign taught the model to speak in the format, not to answer better. Format at 100% is a gate, not a trophy.
+
+## The disk took more than two scripts
+
+The migration also took the official JAX base. The SFT trunk was left without a declared origin: the previous phase's checkpoint had to be converted, from 291 keys to the 292 of the current trunk, and JAX plus flax had to become optional — without that, the torch path required roughly 1 GB of packages just to open the file.
+
+It is the same ruler problem in different clothes: whatever exists in a single place is not infrastructure, it is memory — and memory is not versioned, does not run on another machine, and raises no alarm when it disappears.
+
+## What changes
+
+A measurement that depends on one disk has to live in the same repository as the code and run in the same place as the code, or it is not part of training — it is part of luck. And every format metric needs a random control in the same pass: without it, "learned it" and "already knew it" are indistinguishable.
+
+Next step: with the ruler alive and two levers measured, the question is no longer whether the format appears but whether accuracy can leave the seed's noise without dragging English drift along — because both levers measured so far move the drift before they move the hit rate.
+
+```bash
+# one ruler, one checkpoint at a time: the GPU is shared
+python tatu_valida_geracao.py --ckpt out/sft_best.pt --tag trained --out out/valida.jsonl
+python tatu_valida_geracao.py --random --tag control --out out/valida.jsonl
+
+# the delta that matters: trained against its own control
+python -c "import json;[print(d['tag'],d['pct_thought_band'],d['acc24'],d['H']) for d in map(json.loads,open('out/valida.jsonl'))]"
+```

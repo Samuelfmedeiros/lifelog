@@ -1,0 +1,68 @@
+---
+title: "A régua que morreu com o disco"
+description: "Os dois medidores que avaliavam formato e dinâmica interna do TatuEngine viviam num disco que deixou de existir na migração. O treino seguiu rodando medindo só perplexidade — até a régua ser reconstruída e devolver um número incômodo: o formato chegou a 100%, a precisão não saiu do ruído."
+date: 2026-10-23 16:00:00 -03:00
+pubDate: 2026-10-23 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "validation", "training", "gpu", "checkpoint"]
+cover: /covers/tatuengine-a-regua-que-morreu-com-o-disco.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O número que ninguém estava medindo
+
+A campanha de dose rodava havia dias com um único juiz: `sftHeld`, a perplexidade no conjunto separado. O número caía, o run ficava verde, o próximo era lançado. Perplexidade, porém, não diz se o modelo emite o formato que foi treinado para emitir.
+
+Os dois medidores que respondiam isso viviam num disco que a migração desmontou. Um media a banda de saída; o outro calculava o radar hamiltoniano da região de resposta. Nenhum dos dois estava versionado junto do código de treino. Quando o disco saiu, os scripts saíram com ele, e a avaliação virou uma linha só.
+
+Ficou assim por semanas, em silêncio: o medidor que sobrou continuava apontando na direção certa. Um número que cai não incomoda ninguém. O que faltava era justamente o que diria se a queda significava alguma coisa.
+
+## A hipótese da mistura caiu primeiro
+
+O run 5 apostava que o problema era a mistura de tokens. Replay de inglês a 43% dos micro-lotes, cabeça ligada, duzentos passos. O resultado falsificou a aposta: a fatia de inglês diluiu o sinal em vez de reancorar, com a cabeça já saturada. Mistura de tokens não era o gargalo.
+
+Sobrou a hipótese do tronco. O run 6 deixou as últimas N camadas treináveis em fp32 e manteve o resto congelado em bf16. O limite não foi escolha de gosto, foi a GPU: com N=8 o CUDA devolveu `out of memory` pedindo 10,12 GB contra 11,67 GB livres; com N=4 o mesmo caminho coube em 7,36 GB medidos. A receita ficou gravada no checkpoint com o número de camadas, e retomar passou a exigir receita igual.
+
+O mesmo run 6 mostrou o preço de descongelar: com o tronco a 1,5e-5, o held caiu 0,46% e o drift de inglês subiu 8,5% juntos. Os dois sinais se movem no mesmo passo. Mover o tronco não é ganho de graça, é troca.
+
+Um detalhe queimou uma noite antes disso: a cópia do melhor checkpoint era síncrona, travou quatorze minutos num disco lento e o guarda de estagnação matou o run por achar que o processo tinha morrido. A escrita do espelho foi para uma thread daemon.
+
+## Reconstruir a régua sobre o código vivo
+
+A régua nova foi escrita em 23 de outubro sobre o código que realmente roda, não sobre a lembrança de como era. Ela mede três coisas com o mesmo protocolo para todos os checkpoints: `pct_thought`, a fração de pares em que o top-1 decodificado dentro das 24 primeiras posições da resposta contém a marca de raciocínio; `acc24`, a fração de top-1 lexicalmente igual ao token real nessas mesmas 24 posições; e o radar hamiltoniano, calculado sobre o estado oculto da última camada normalizado por passo, com T medindo a variação quadrática e V a anti-correlação.
+
+Cada medição roda junto com um controle aleatório na mesma rodada. Sem ele, 100% de formato não significa nada: o formato pode já estar ali antes do treino.
+
+## O que a régua devolveu
+
+Oitenta pares do conjunto separado, duas sementes, bf16 para caber na GPU compartilhada.
+
+- O formato está lá: 100% dos pares com a marca dentro da janela, contra 0% do controle aleatório. O modelo obedece.
+- O formato não abre a resposta: `pct_thought_first` deu 0,0 em todos os checkpoints, inclusive no controle. A marca aparece dentro da janela, não na primeira posição — quem lê só a primeira conclui o oposto.
+- A precisão não mudou: `acc24` de 0,2688 no melhor da campanha contra 0,2682 da própria semente na semente 42. Na semente 123, 0,2667 contra 0,2672 — o sinal inverte. É ruído, não ganho.
+- A bacia não aprofundou: H de -0,2219 no treinado contra -0,1108 no controle, o que parece enorme até comparar com a própria semente, -0,2161. A diferença é 0,0058, dentro da banda de ±0,0093 que a leitura considera ruído.
+
+A conclusão é desconfortável e útil: a campanha ensinou o modelo a falar no formato, não a responder melhor. Formato a 100% é porteira, não troféu.
+
+## O disco levou mais que dois scripts
+
+A migração também levou a base oficial em JAX. O tronco do SFT ficou sem origem declarada: foi preciso converter o checkpoint da fase anterior, de 291 chaves, para as 292 do tronco atual, e tornar JAX e flax opcionais — sem isso, o caminho em torch exigia cerca de 1 GB de pacotes só para abrir o arquivo.
+
+É o mesmo problema da régua com outra roupa: o que existe em um só lugar não é infraestrutura, é lembrança — e lembrança não versiona, não roda em outra máquina e não dá alarme quando desaparece.
+
+## O que muda
+
+Medição que depende de um disco só precisa morar no mesmo repositório do código e rodar no mesmo lugar que ele, senão não faz parte do treino — faz parte da sorte. E toda métrica de formato precisa de controle aleatório na mesma rodada: sem ele, "aprendeu" e "já sabia" são indistinguíveis.
+
+Próximo passo: com a régua viva e duas alavancas medidas, a pergunta deixa de ser se o formato aparece e passa a ser se a precisão consegue sair do ruído da semente sem arrastar o drift de inglês junto — porque as duas alavancas medidas mexem no drift antes de mexer no acerto.
+
+```bash
+# uma régua, um checkpoint por vez: a GPU é compartilhada
+python tatu_valida_geracao.py --ckpt out/sft_best.pt --tag treinado --out out/valida.jsonl
+python tatu_valida_geracao.py --random --tag controle --out out/valida.jsonl
+
+# o delta que interessa: treinado contra o próprio controle
+python -c "import json;[print(d['tag'],d['pct_thought_band'],d['acc24'],d['H']) for d in map(json.loads,open('out/valida.jsonl'))]"
+```
