@@ -3,6 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import PostCard from '../components/PostCard.astro';
 import DateSeparator from '../components/DateSeparator.astro';
 import FilterBar from '../components/FilterBar.astro';
+import StoreExitBlock from '../components/StoreExitBlock.astro';
 import { getCollection } from 'astro:content';
 
 const locale = 'pt';
@@ -81,4 +82,6 @@ const subtitleHtml = 'A jornada de aprendizado de <strong style="color: var(--co
       </>
     ))}
   </div>
+
+  <StoreExitBlock locale="pt" />
 </BaseLayout>

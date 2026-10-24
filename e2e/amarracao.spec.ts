@@ -82,6 +82,18 @@ test.describe('Amarração — bloco de próximo passo no post', () => {
     await expect(page.locator('#assinar-ok')).toBeHidden();
   });
 
+  // Buraco medido em 24/10: a home (91k px de timeline) e o /arquivo não tinham
+  // NENHUM link para a loja — só as páginas de post tinham. Este teste fecha o gate.
+  test('home e índice têm saída para a loja, com UTM', async ({ request }) => {
+    for (const url of ['/', '/en/', '/arquivo', '/en/archive']) {
+      const res = await request.get(url);
+      expect(res.status(), url).toBe(200);
+      const html = await res.text();
+      expect(html, `${url} sem link para a loja`).toContain('skills.seu.pet');
+      expect(linksCruzadosSemUtm(html), `${url} tem link cruzado sem UTM`).toEqual([]);
+    }
+  });
+
   test('alvo de toque de 44px no mobile (regra do dono)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(PT_URL);

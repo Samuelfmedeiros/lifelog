@@ -3,6 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import PostCard from '../../components/PostCard.astro';
 import DateSeparator from '../../components/DateSeparator.astro';
 import FilterBar from '../../components/FilterBar.astro';
+import StoreExitBlock from '../../components/StoreExitBlock.astro';
 import { getCollection } from 'astro:content';
 
 const locale = 'en';
@@ -83,4 +84,6 @@ const emptyHint = locale === 'en' ? 'Try changing the filters' : 'Tenta mudar os
       </>
     ))}
   </div>
+
+  <StoreExitBlock locale="en" />
 </BaseLayout>

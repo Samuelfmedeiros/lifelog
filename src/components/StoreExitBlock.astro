@@ -1,0 +1,148 @@
+---
+// Bloco de saída do LifeLog: amarra de volta para a loja (skills.seu.pet) e o portfólio.
+// Antes disto a home e o /arquivo tinham ZERO links para a loja — só as páginas de post
+// tinham (PostLayout). Ver plano 2026-10-24-amarracao-lifelog-loja.
+// REGRA-AMARRACAO: todo link cruzado sai com UTM, senão não é medível.
+// Sem JS, sem dependência nova — só CSS vars do tema.
+interface Props {
+  locale?: string;
+}
+const { locale = 'pt' } = Astro.props;
+const en = locale === 'en';
+const UTM = 'utm_source=lifelog.seu.pet&utm_medium=home-exit&utm_campaign=amarracao';
+const storeHref = `https://skills.seu.pet?${UTM}&utm_content=loja-skills`;
+const portfolioHref = `https://portifolio.seu.pet?${UTM}&utm_content=portfolio`;
+
+const copy = en
+  ? {
+      title: 'Skills for coding agents',
+      text: 'Small, tested tools so the agent stops shipping garbage. The first one is free.',
+      store: 'Open the store',
+      portfolio: 'See the portfolio',
+      label: 'Store and portfolio',
+    }
+  : {
+      title: 'Skills para agentes de código',
+      text: 'Ferramentas pequenas e testadas para o agente não entregar besteira. A primeira é grátis.',
+      store: 'Ver a loja',
+      portfolio: 'Ver o portfólio',
+      label: 'Loja e portfólio',
+    };
+---
+
+<aside class="store-exit" aria-label={copy.label} data-testid="store-exit">
+  <div class="store-exit-text">
+    <p class="store-exit-title">{copy.title}</p>
+    <p class="store-exit-copy">{copy.text}</p>
+  </div>
+  <div class="store-exit-actions">
+    <a class="store-exit-primary" href={storeHref} target="_blank" rel="noopener" data-testid="store-exit-store">
+      {copy.store}
+    </a>
+    <a class="store-exit-secondary" href={portfolioHref} target="_blank" rel="noopener" data-testid="store-exit-portfolio">
+      {copy.portfolio}
+    </a>
+  </div>
+</aside>
+
+<style>
+  .store-exit {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin: 2.5rem auto 0.5rem;
+    padding: 1.25rem 1.5rem;
+    max-width: 46rem;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--color-accent) 5%, var(--color-bg));
+  }
+
+  .store-exit-text {
+    min-width: 15rem;
+    flex: 1 1 20rem;
+  }
+
+  .store-exit-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .store-exit-copy {
+    margin: 0.35rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+  }
+
+  .store-exit-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .store-exit-primary,
+  .store-exit-secondary {
+    display: inline-block;
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .store-exit-primary {
+    background: var(--color-accent);
+    color: var(--color-bg);
+    border: 1px solid var(--color-accent);
+  }
+
+  .store-exit-primary:hover,
+  .store-exit-primary:focus-visible {
+    background: color-mix(in srgb, var(--color-accent) 85%, var(--color-text));
+    border-color: color-mix(in srgb, var(--color-accent) 85%, var(--color-text));
+  }
+
+  .store-exit-secondary {
+    color: var(--color-accent);
+    border: 1px solid var(--color-border);
+    background: transparent;
+  }
+
+  .store-exit-secondary:hover,
+  .store-exit-secondary:focus-visible {
+    border-color: var(--color-accent);
+  }
+
+  .store-exit-primary:focus-visible,
+  .store-exit-secondary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 640px) {
+    .store-exit {
+      padding: 1rem;
+      gap: 0.9rem;
+    }
+    .store-exit-text {
+      min-width: 0;
+      flex-basis: 100%;
+    }
+    .store-exit-actions {
+      width: 100%;
+    }
+    .store-exit-primary,
+    .store-exit-secondary {
+      flex: 1 1 auto;
+      text-align: center;
+      padding: 0.6rem 0.9rem;
+    }
+  }
+</style>
