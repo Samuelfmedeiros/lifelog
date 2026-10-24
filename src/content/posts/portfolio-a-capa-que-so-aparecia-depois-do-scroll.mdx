@@ -1,0 +1,67 @@
+---
+title: "A capa que só aparecia depois do scroll"
+description: "Três cards novos entraram no portfólio com as imagens certas e o atributo errado: as primeiras capas da página estavam marcadas para carregar só quando aparecessem na tela."
+category: samuel-projects
+date: 2026-10-23 19:59:00 -03:00
+pubDate: 2026-10-24 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "performance", "frontend", "nextjs", "optimization"]
+cover: /covers/portfolio-a-capa-que-so-aparecia-depois-do-scroll.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+Três cards novos entraram no portfólio numa sexta à noite. Cada um com capa própria em 1280x720, descrição nos dois idiomas e teste de contrato garantindo que o botão aponta para o lugar certo — e, no JSX, um `loading="lazy"` herdado do componente. O incômodo é que esses três cards são as três primeiras imagens da página. O atributo mandava o browser adiar exatamente aquilo que o visitante vê primeiro.
+
+O primeiro commit foi o `7f09616`, de 23/10 às 19:13: seis arquivos, 114 linhas adicionadas. Três capas geradas com Pillow e salvas como WebP em `public/projects` — 32.416, 34.666 e 31.320 bytes, 98.402 no total. Como os repositórios de origem são privados, os cards não têm link de GitHub: `html_url` vazio e o botão apontando só para o site, padrão que já tinha funcionado no DogWalk. As descrições entraram no dicionário de i18n, e o teste `staticProjects.i18n.test.ts` nasceu junto, com três casos — o card existe na lista, aponta só para o site, e tem descrição em português e inglês com mais de 30 caracteres.
+
+## O que o componente fazia
+
+Quarenta e seis minutos depois veio o segundo commit, `2f131a7`, com 15 linhas adicionadas e 2 removidas. O `ProjectHangar` renderiza a capa em duas variantes — a imagem de projeto e a imagem de game — em dois blocos separados do mesmo componente. Os dois tinham `loading="lazy"` fixo. Medido no commit anterior:
+
+```bash
+git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="lazy"'   # 2
+git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="eager"'  # 0
+```
+
+Nenhuma das doze capas da home pedia prioridade. Nenhuma. O visitante caía na página, o HTML chegava em 328.340 bytes, e a primeira capa — que hoje começa no byte 560, sem nenhum `<img>` antes dela — entrava na fila como se estivesse a três telas de distância.
+
+Vale registrar o que o `loading="lazy"` faz de fato, porque a intuição engana: ele não comprime nem otimiza nada. É um adiamento condicional por interseção — o browser segura o download até estimar que o elemento está chegando perto da viewport. Aplicado a um elemento que já está na viewport, o efeito é esperar pela imagem que o usuário está olhando. Some a isso o custo de fila: em vez de disputar as primeiras conexões com JavaScript e CSS, a capa principal vira a última da lista.
+
+## A saída não foi tirar o lazy de todo mundo
+
+As nove capas abaixo da dobra continuam lazy, e devem continuar — é justamente o caso em que o atributo trabalha a favor. O que entrou foi um campo opcional no tipo:
+
+```tsx
+/** eager + fetchPriority=high: capa não depende de scroll pra aparecer */
+coverPriority?: boolean;
+```
+
+E, nas duas variantes do card, o atributo passou a ser condicional:
+
+```tsx
+loading={repo.coverPriority ? "eager" : "lazy"}
+fetchPriority={repo.coverPriority ? "high" : undefined}
+```
+
+Os três cards novos receberam `coverPriority: true`. E o teste de contrato ganhou um quarto caso, que é o mais importante dos quatro: um card novo, com capa e sem `coverPriority`, reprova a suíte. A regra deixou de morar no comentário do commit e virou asserção — `pnpm exec vitest run src/lib/staticProjects.i18n.test.ts` devolve 4 de 4 em 1,48 s.
+
+A verificação que fecha o caso é no HTML servido, não no código-fonte: três `loading="eager"` com `fetchPriority="high"` nas três capas da primeira dobra, nove `loading="lazy"` nos demais cards da lista de quinze projetos. Antes do fix, zero eager.
+
+## Por que isso importa
+
+React não conserta esse tipo de erro por conta própria. O atributo está no JSX, o JSX virou HTML, e o HTML é o que o CDN entrega — nenhuma camada intermediária vai adivinhar a intenção de quem escreveu. Um `lazy` no lugar errado sobrevive a build, a deploy e a revisão de código, porque o sintoma não é um erro: é uma capa que pisca meio segundo depois do resto da página, e que em conexão ruim pode simplesmente não chegar.
+
+Também é o tipo de bug que teste de unidade normalmente não pega, e aqui está o ponto do segundo caso de teste. Um flag sem contrato é um campo que o próximo card esquece de preencher — foi exatamente assim que os três primeiros nasceram sem prioridade nenhuma. O teste não mede latência, mas mede a única coisa que o desenvolvedor controla no código: que a intenção declarada de prioridade exista em quem está acima da dobra.
+
+A regra que ficou escrita no componente é curta e vale para qualquer lista longa: o que está na primeira dobra carrega cedo, com prioridade explícita; lazy é para o que ainda não foi visto. E a prioridade precisa ser declarada por item, não herdada do componente — porque a posição na lista muda, e a herança não.
+
+## Próximo passo
+
+Medir o LCP da home antes e depois em conexão limitada e revisar a marcação sempre que a ordem dos cards mudar. A ordem já mudou: os três cards novos entraram no topo, empurrando o resto para baixo.
+
+```bash
+# distribuição de prioridade das capas no HTML servido
+curl -s https://exemplo.com | grep -o 'loading="[a-z]*"' | sort | uniq -c   # 3 eager, 9 lazy
+```
