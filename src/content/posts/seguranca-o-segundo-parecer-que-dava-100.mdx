@@ -1,0 +1,71 @@
+---
+title: "O segundo parecer que dava 100 sem revisar"
+description: "Um placar de nota máxima aparecia em cinco repositórios toda semana enquanto a camada que deveria emitir aquele julgamento não rodava. O caminho até descobrir passou por um arquivo inexistente, um diretório com o nome errado e uma cadeia de erros que se esconde atrás de um verde."
+date: 2026-10-24 08:40:00 -03:00
+pubDate: 2026-10-24 08:45:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "review", "false-positive", "monitoring", "reliability"]
+cover: /covers/seguranca-o-segundo-parecer-que-dava-100.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O placar que ninguém conferiu
+
+Na madrugada de 18 de outubro, a revisão semanal de segurança fechou com uma linha tranquilizadora: cinco repositórios, nota máxima, nenhum risco identificado. Eu ia arquivar o resultado quando percebi a frase de justificativa: ela não falava de código, falava do que a ferramenta viu ao abrir a pasta.
+
+A revisão tem duas camadas. A primeira é determinística: quatro analisadores que procuram segredo versionado e padrão vulnerável. A segunda dá o valor de verdade: lê o que analisador nenhum lê — se o agente ganhou agência demais, se dado sensível entrou em prompt, se ferramenta exposta pode ser abusada. A nota sai da primeira camada. O julgamento sai da segunda.
+
+Aquele 100 vinha só da camada determinística. A de julgamento não tinha rodado, e o placar não sabia disso.
+
+## Três formas do mesmo silêncio
+
+A primeira descoberta foi a mais constrangedora: o arquivo do segundo revisor não existia nesta máquina. O agendamento apontava para ele desde a troca de sistema operacional, e cada execução morria com código 2 — arquivo não encontrado. O erro repetia toda semana e ninguém viu: as outras revisões continuavam verdes.
+
+Depois de reescrever o revisor, a rodada falhou de novo. O registro trouxe cinco linhas idênticas: diretório não encontrado. Os repositórios tinham mudado de lugar na migração e o script continuava abrindo o caminho antigo. Saída com código 2.
+
+A terceira foi a pior porque não parecia erro. Quando o maior repositório estourou memória no meio do processo, o script abandonou a rodada inteira. Três projetos nunca foram analisados — e como o resumo não carregava a contagem de falhas, o resultado final manteve aparência de entrega.
+
+## O que a correção teve de mudar
+
+Cada um dos três tem uma correção óbvia e uma correção certa — e não são a mesma.
+
+O caminho: a rodada passou a tentar o diretório novo e, se não achar, o antigo. Uma linha resolve o sintoma. O que faltava era o inverso — falhar alto quando um projeto não é encontrado, em vez de seguir com os que sobraram e chamar o resto de aprovado.
+
+O aborto: em shell, a forma mais natural de guardar a saída de um comando é justamente aquela que, quando o comando falha, derruba o script inteiro. Trocar por uma expressão condicional preserva o código de retorno real de cada projeto e deixa a rodada continuar até o fim.
+
+O tempo: faltava teto por projeto. Sem teto, uma vez o processo ficou quarenta minutos parado no primeiro repositório e os outros quatro nunca foram tocados. Com teto de seis minutos, o maior repositório da frota — que mede três minutos e cinquenta sozinho — passou a estourar quando a máquina estava sob carga, devolvendo código 124. O teto subiu para nove minutos: 2,3 vezes de margem sobre a medição isolada e 1,5 vez sobre o caso sob carga. Projeto grande ficar não verificável só por ser grande é um falso negativo que custa confiança.
+
+## O verde falso
+
+No dia 21 veio a descoberta que organiza todas as outras. Quando o julgamento não acontece, a ferramenta não devolve erro. Devolve um veredito dizendo que aquela camada não é verificável, mantém a nota da camada determinística e sai com código zero. Para quem lê só o número, é indistinguível de aprovação.
+
+A causa era o roteador de modelos pendurando. Medido: cento e cinquenta segundos sem resposta para um pedido de sessenta tokens. Tempo suficiente para o teto da rodada chegar antes e transformar tudo em não verificável. E o modelo de reserva era pago, contra a regra de custo zero. As duas coisas caíram juntas: cadeia de modelos diretos, com o primeiro respondendo em 1,6 segundo, e reserva explicitamente gratuita.
+
+Veredito degradado passou a contar como falha. É a mudança conceitual do episódio: um controle que não rodou e um controle que aprovou não podem produzir o mesmo resultado.
+
+## Doze achados, um real
+
+A camada de julgamento errou também na direção oposta: recebe a listagem do repositório, não o conteúdo — então a existência de um arquivo de ambiente local virou segredo exposto. Medido: doze achados, um real. A regra de ouro que entrou depois corrige a mão: arquivo não versionado não é segredo vazado; o que importa é o que foi para o histórico.
+
+O mesmo vale para o scanner pesado: ele escala com o histórico do repositório, não com a máquina. No maior projeto, dois mil oitocentos e dezesseis commits e um diretório de git de cento e dezenove megabytes não terminam em seiscentos e vinte segundos. Com três tentativas, a espera virava até quarenta e cinco minutos travando a rodada dos cinco. Agora o teto é curto e a tentativa é uma só: scanner pesado que estoura vira evidência parcial declarada, não bloqueio da rodada inteira.
+
+## O relógio do vigia
+
+E aqui a parte que eu não tinha visto. O monitor que vigia esses controles roda todo dia e volta a alertar a cada seis horas. O revisor roda uma vez por semana.
+
+Resultado: seis dias seguidos de alerta sobre um trabalho cuja próxima chance só existe na janela seguinte. O alarme está tecnicamente certo — o último estado registrado é de erro — mas mede um relógio com a régua de outro. Aviso repetido a cada seis horas sobre algo que muda uma vez por semana treina quem lê a ignorá-lo — e o dia em que ele acertar vai parecer rotina.
+
+O próximo passo é a janela que se aproxima: cinco projetos, um critério só — cinco de cinco verificáveis, com o veredito da camada de julgamento dentro do resultado, não ao lado.
+
+```bash
+# separa "aprovado" de "nao verificado" na saida da rodada
+grep -c 'NAO_VERIFICAVEL' <saida-da-rodada>.json
+
+# a nota alta pode vir com a camada de julgamento ausente: o codigo de saida nao denuncia
+<comando-da-rodada> ; echo "rc=$?"
+
+# mede isolado, com teto explicito, o maior repositorio da frota
+/usr/bin/time -f '%e s' timeout 540 <revisor> <repositorio-maior>
+```

@@ -1,0 +1,71 @@
+---
+title: "The second opinion that scored 100 without reviewing anything"
+description: "A top score kept showing up across five repositories every week while the layer responsible for that judgement never ran. Getting to the bottom of it meant an inexistent file, a directory with the wrong name, and a chain of errors hiding behind a green result."
+date: 2026-10-24 08:40:00 -03:00
+pubDate: 2026-10-24 08:45:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "review", "false-positive", "monitoring", "reliability"]
+cover: /covers/seguranca-o-segundo-parecer-que-dava-100.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The score nobody double-checked
+
+In the early hours of October 18th, the weekly security review closed with a reassuring line: five repositories, top score, no risk identified. I was about to file the result away when the justification sentence caught my eye. It said nothing about code. It talked about what the tool had seen when it opened the folder.
+
+The review has two layers. The first one is deterministic: four analysers hunting for committed secrets and vulnerable patterns. The second one carries the actual value, because it reads what no analyser reads — whether the agent was granted too much agency, whether sensitive data leaked into a prompt, whether an exposed tool can be abused. The score comes from the first layer. The judgement comes from the second.
+
+That 100 came from the deterministic layer alone. The judgement layer had never run, and the score had no idea.
+
+## Three shapes of the same silence
+
+The first discovery was the most embarrassing: the second reviewer file did not exist on this machine. The schedule had been pointing at it since the operating system change, and every execution died with code 2 — file not found. The error repeated weekly and nobody noticed, because all the other reviews kept coming back green.
+
+After rewriting the reviewer, the round failed again. The log brought five identical lines: directory not found. The repositories had moved during the migration and the script was still opening the old path. Exit code 2.
+
+The third one was the worst because it did not look like an error. When the largest repository ran out of memory halfway through, the script abandoned the whole round. Three projects were never analysed — and since the summary did not carry a failure count, the final output still looked like a delivery.
+
+## What the fix actually had to change
+
+Each of the three has an obvious fix and a correct fix, and they are not the same thing.
+
+The path: the round started trying the new directory first, then the old one. One line kills the symptom. What was missing was the opposite — failing loudly when a project cannot be found, instead of carrying on with whatever is left and calling the rest approved.
+
+The abort: in shell, the most natural way to capture a command's output is exactly the one that, when the command fails, takes the entire script down with it. Swapping it for a conditional expression preserves each project's real return code and lets the round reach the end.
+
+The clock: there was no per-project cap. Without one, the process once sat for forty minutes on the first repository while the other four were never touched. With a six-minute cap, the largest repository in the fleet — three minutes and fifty on its own — started timing out whenever the machine was under load, returning code 124. The cap went up to nine minutes: 2.3x margin over the solo measurement and 1.5x over the loaded case. A big project being marked unverifiable just for being big is a false negative that costs trust.
+
+## The false green
+
+On the 21st came the discovery that organises all the others. When the judgement does not happen, the tool does not return an error. It returns a verdict saying that layer is unverifiable, keeps the deterministic score, and exits with code zero. For anyone reading only the number, it is indistinguishable from approval.
+
+The cause was the model router hanging. Measured: a hundred and fifty seconds without a response to a sixty-token request. Enough for the round cap to arrive first and turn everything into unverifiable. And the fallback model was a paid one, against the zero-cost rule in force here. Both fell together: a chain of direct models, the first answering in 1.6 seconds, and an explicitly free fallback.
+
+A degraded verdict now counts as a failure. That is the conceptual shift of the whole episode: a control that did not run and a control that approved cannot produce the same outcome.
+
+## Twelve findings, one real
+
+The judgement layer also got it wrong in the opposite direction. It receives the repository listing, not the content — so the mere existence of a local environment file became an exposed secret. Measured: twelve findings, one real. The golden rule that came afterwards sets the record straight: an unversioned file is not a leaked secret; what matters is what went into the history.
+
+The same holds for the heavy scanner: it scales with the repository's history, not with the machine. On the largest project, two thousand eight hundred and sixteen commits and a hundred and nineteen megabytes of git data do not finish inside six hundred and twenty seconds. With three attempts, the wait stretched to forty-five minutes and blocked the round for all five. Now the cap is short and the attempt is a single one: a heavy scanner that blows the budget becomes declared partial evidence, not a blocker for the whole round.
+
+## The watchdog's clock
+
+And here is the part I had not seen. The monitor watching over these controls runs every day and re-alerts every six hours. The reviewer runs once a week.
+
+The result: six straight days of alerts about a job whose next chance only exists in the following window. The alarm is technically right — the last recorded state is an error — but it is measuring one clock with another clock's ruler. An alert repeated every six hours about something that changes once a week trains its reader to ignore it, and the day it is right will look like routine.
+
+The next step is the window ahead: five projects, a single criterion — five out of five verifiable, with the judgement layer's verdict inside the result, not beside it.
+
+```bash
+# separate "approved" from "not verified" in the round output
+grep -c 'NAO_VERIFICAVEL' <round-output>.json
+
+# a high score can come with the judgement layer missing: the exit code does not tell
+<round-command> ; echo "rc=$?"
+
+# measure the largest repository in isolation, with an explicit cap
+/usr/bin/time -f '%e s' timeout 540 <reviewer> <largest-repo>
+```
