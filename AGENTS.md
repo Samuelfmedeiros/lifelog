@@ -1,5 +1,13 @@
 # 📖 LifeLog — Session Hub
 
+
+## Sessao 2026-10-23 (fim de dia) - 3 commits (post oculto novo + suite curada); push origin OK
+- **feat(posts)** (`25d7f94`): post "a config que dava razao ao arquivo" - hidden, PT+EN + capa IA.
+- **test** (`66e184f`): corrige suite quebrada e2e+unit do fluxo assinar/liberar.
+- **docs** (`18658fb`): enxuga o post para a faixa de 900 palavras.
+- 12 modificacoes nao commitadas preservadas (`api/ocultos-data.mjs`, `e2e/*`, `cache/`, `coverage/`, `logs/`) - diff alheio intacto.
+- Push `origin` OK - HEAD main: `66e184f`.
+
 ## Sessao 2026-10-05 (fim de dia) - 19 commits (release de 12 posts + refazer #67 + VRT/e2e) e main DIVERGIDA
 - Dia de pipeline: 12 `release(post)` PT+EN + ocultos, 4 `refazer` (recusa #67 e duplicados), 4 de VRT/e2e (`f247b39`, `3082f3b`, `08f2c6a`, `d9c2424`) e `3ac1da1` (VRT abre PR de verdade).
 - **BLOQUEIO**: `main` local 2 commits a frente / **38 atras** do `origin/main` - `git push origin main` rejeitado como `non-fast-forward`. Nada foi forcado nem resetado; a fusao dos 2 commits locais (`f727600`, `eb36b2a`) com o remoto precisa de decisao do dono.
