@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-23] - 3 commits: post oculto novo + suite assinar/liberar curada; push origin OK
+- **feat(posts)** (`25d7f94`): post hidden PT+EN + capa IA.
+- **test** (`66e184f`): corrige suite quebrada e2e+unit do fluxo assinar/liberar.
+- **docs** (`18658fb`): post na faixa de 900 palavras.
+- 3 commits no dia - push origin OK - HEAD main: `66e184f`.
+
 ## 2026-10-22 - 7 commits: 3 posts ocultos + 3 releases + fix de capa (flat art claro)
 - **feat(posts)**: `e1db520` (arachne — o plugin que dizia enabled), `efeb449` (descobertas — o CI que aprovava tudo), `798099b` (lifelog — o header que a borda reescrevia) — PT+EN hidden + capa IA.
 - **fix(covers)** (`2250027`): estilo lifelog vira flat art claro — 9a reincidencia da classe escura.
