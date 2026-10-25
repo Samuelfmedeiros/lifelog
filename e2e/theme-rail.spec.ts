@@ -71,31 +71,38 @@ test.describe('Theme Rail', () => {
     await expect(enLang).toHaveText('PT');
   });
 
-  test('navbar order: CTA Portfólio primeiro, depois links, rail e lang', async ({ page }) => {
+  test('navbar order: CTAs (portfólio, loja) primeiro, depois links, rail e lang', async ({ page }) => {
     // .navbar-links > * incluiria o <script> inline que o PalettePicker injeta
-    // como filho direto — :not(script) mantém os índices 0-5 abaixo
+    // como filho direto — :not(script) mantém os índices abaixo
     const links = page.locator('.navbar-links > :not(script)');
     const count = await links.count();
 
-    // Ordem dentro de navbar-links (navbar sem logo — 15/08/2026):
-    // [0] 🚀 Portfólio CTA (primeiro),
-    // [1] Início, [2] Arquivo, [3] Sobre,
-    // [4] #theme-rail (controls), [5] lang
-    expect(count).toBeGreaterThanOrEqual(6);
+    // Ordem dentro de navbar-links (navbar sem logo — 15/08/2026).
+    // 24/10/2026: a loja entrou como segundo CTA (o LifeLog levava 423 páginas para a
+    // loja e a navbar não tinha NENHUM link para ela), então os índices andaram um:
+    // [0] CTA Portfólio, [1] CTA Loja, [2] Início, [3] Arquivo, [4] Sobre,
+    // [5] #theme-rail (controls), [6] lang
+    expect(count).toBeGreaterThanOrEqual(7);
 
     const cta = links.nth(0);
     await expect(cta).toHaveClass(/cta/);
     // O CTA carrega UTM por design (REGRA-AMARRACAO, 19/10): link cruzado sem UTM não é
     // medível. Antes o teste exigia o href exato sem query e reprovava a mudança correta.
     await expect(cta).toHaveAttribute('href', /^https:\/\/portifolio\.seu\.pet\?/);
-    await expect(cta).toHaveAttribute('href', /utm_source=lifelog\.seu\.pet/);
+    await expect(cta).toHaveAttribute('href', /utm_source=lifelog(&|$)/);
     await expect(cta).toHaveAttribute('href', /utm_medium=navbar/);
 
-    await expect(links.nth(1)).toHaveAttribute('href', '/');
-    await expect(links.nth(2)).toHaveAttribute('href', '/arquivo');
-    await expect(links.nth(3)).toHaveAttribute('href', '/sobre');
-    await expect(links.nth(4)).toHaveId('theme-rail');
-    await expect(links.nth(5)).toHaveClass(/navbar-lang/);
+    const loja = links.nth(1);
+    await expect(loja).toHaveAttribute('href', /^https:\/\/skills\.seu\.pet\?/);
+    await expect(loja).toHaveAttribute('href', /utm_source=lifelog(&|$)/);
+    await expect(loja).toHaveAttribute('href', /utm_medium=navbar/);
+    await expect(loja).toHaveAttribute('href', /utm_campaign=amarracao/);
+
+    await expect(links.nth(2)).toHaveAttribute('href', '/');
+    await expect(links.nth(3)).toHaveAttribute('href', '/arquivo');
+    await expect(links.nth(4)).toHaveAttribute('href', '/sobre');
+    await expect(links.nth(5)).toHaveId('theme-rail');
+    await expect(links.nth(6)).toHaveClass(/navbar-lang/);
   });
 
   test('localStorage persists palette after reload', async ({ page }) => {

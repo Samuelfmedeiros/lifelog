@@ -977,3 +977,20 @@ html.dark .astro-code .line span[style*="--shiki-dark:#6a737d"] {
   --shiki-dark: #8b949e !important;
   color: #8b949e !important;
 }
+
+/* Saída no CORPO do post (REGRA-AMARRACAO, 24/10/2026).
+   Medido em 24/10: o LifeLog levava 423 páginas para a loja e o único link de saída
+   vivia no bloco do rodapé. Este parágrafo discreto (gerado no build, sem JS) põe a
+   saída no meio do texto — com utm_content=corpo dá pra comparar com o rodapé. */
+.amarracao-corpo {
+  margin: 1.75rem 0;
+  padding: 0.5rem 0 0.5rem 0.9rem;
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-text-muted);
+  font-size: 0.95em;
+}
+.amarracao-corpo a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
