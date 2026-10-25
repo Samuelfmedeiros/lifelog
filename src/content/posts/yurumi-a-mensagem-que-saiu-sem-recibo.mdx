@@ -1,0 +1,52 @@
+---
+title: "Yurumi: a mensagem que saiu sem recibo"
+description: "O roteador devolvia sucesso, o mailbox gravava, e a mensagem podia terminar em uma caixa que nenhum processo lia. Três defeitos de endereçamento e um aviso sem confirmação — a história de como o agent-to-agent do Yurumi ganhou um recibo."
+date: 2026-10-25 08:00:00 -03:00
+pubDate: 2026-10-25 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "identity", "reliability", "python", "testing"]
+cover: /covers/yurumi-a-mensagem-que-saiu-sem-recibo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Sucesso não é entrega
+
+O roteador respondeu que a mensagem tinha sido entregue. O mailbox gravou. O processo que enviou seguiu em frente e marcou a tarefa como roteada. Quatro dias depois eu descobri que a outra ponta nunca tinha lido nada — e que o registro de envio, tecnicamente, estava correto.
+
+Esse é o defeito mais chato de sistemas que conversam entre si: o remetente não tem como distinguir "entreguei" de "entreguei para um lugar onde ninguém mora". Um agente que só enfileira mensagens e considera o trabalho feito não é autônomo, é um gerador de pendências silenciosas. E como ele nunca reenvia, o erro não aparece em log de falha: aparece como tarefa que ninguém executou e que todos achavam que já estava em andamento.
+
+## Três formas de perder uma mensagem
+
+A primeira era de nomenclatura. O registro de destinos é indexado por slug (`capivara`, `dogwalk`), mas no Telegram o identificador natural é o `chat_id`. Endereçar `group:<chat_id>` não casava com chave nenhuma, então o roteador criava uma identidade que ele mesmo inventou — `group:-100...` — e entregava ali. A mensagem era gravada com sucesso em uma caixa postal que não pertence a agente algum. Nenhum erro, nenhum aviso: só um destino fantasma. A correção foi resolver o destinatário pelo *valor* do campo `chat_id`, não pela chave, e aceitar a forma nua também.
+
+A segunda era herança de cliente antigo. Uma versão anterior registrava a identidade a partir do chat do Telegram e, às vezes, gravava o número **sem** o sinal negativo — `hermes__1004...` em vez de `hermes__-1004...`. Os dois nomes parecem o mesmo destino e são caixas diferentes. Quando fui procurar, havia quatro mensagens órfãs no `mailbox.jsonl`: enviadas, aceitas, nunca lidas. A cura foi resolver o alias para o bot do grupo nas duas formas, e fazer o alias **vencer** o `agent_id` registrado — a caixa fantasma, por definição, não tem leitor.
+
+A terceira não era bug, era desenho. Mesmo com o endereço certo, o aviso ficava parado até o destinatário abrir o turno dele. Se ele estivesse dormindo entre execuções, a mensagem esperava — e quem espera não sabe que está esperando.
+
+## O aviso, e depois o recibo
+
+O primeiro passo foi empurrar um aviso curto no grupo do destinatário a cada mensagem A2A. O módulo que faz isso tem quatro regras que parecem chatas e são o motivo de ele não derrubar nada: resolve agente para chat pelo registro de grupos, deduplica por `msg_id` em um JSON de estado ao lado do mailbox, usa timeout de cinco segundos, e nunca levanta exceção. Broadcast não é empurrado, porque viraria treze mensagens de uma vez.
+
+Mas aviso também pode passar batido. Foi então que o ack virou obrigatório, na madrugada seguinte: mensagem empurrada e não confirmada em vinte minutos recebe um reforço; sem confirmação depois de dois reforços, escala uma única vez para o grupo de notificações. O módulo novo tem 175 linhas e seis testes — pendente, com ack, dentro da janela, teto com escalada, falha de envio e mensagem expirada. Ele também nunca levanta: reforço é higiene, não pode quebrar o chamador.
+
+O detalhe que mais me fez repensar o desenho está no cruzamento de dados. A lista de pendências não é uma fila própria: ela cruza o que foi empurrado com os acks que existem hoje no mailbox. Mensagem que expirou (TTL de 24 horas) simplesmente deixa de ser cobrada, em vez de virar dívida eterna de um registro morto.
+
+Dois efeitos colaterais apareceram no mesmo dia. O primeiro foi o gate de segurança: `urllib.request.urlopen` chamado direto dispara B310 no bandit, e o repositório tem um teste que exige zero achados acionáveis. A saída não foi silenciar o achado, foi criar um invólucro que valida em runtime que o destino começa com a API do Telegram — o `nosec` só vale porque existe a guarda na linha de cima. O segundo foi mais embaraçoso: a suíte de testes estava mandando mensagem **de verdade** nos grupos, porque o `mailbox.enviar()` dispara o push por padrão. Duas mensagens reais durante uma rodada, medidas nos identificadores 32017 e 32018. Agora o ambiente de teste desliga o push por padrão e quem quiser exercitá-lo liga explicitamente.
+
+## Por que isso muda o dia a dia
+
+Antes, "roteei" era uma afirmação que eu não conseguia verificar. Agora existem três estados observáveis — pendente, reforçado, escalado — e um comando que devolve os três contadores. Pendência com mais de vinte minutos deixou de ser invisível: ela apareceu no grupo errado até alguém confirmar, e depois disso apareceu no lugar onde ela não pode ser ignorada.
+
+A lição que fica vale para qualquer sistema de mensageria entre processos: entrega e recebimento são eventos diferentes, e o único jeito de saber que o segundo aconteceu é pedir confirmação explícita. Silêncio depois de um envio bem-sucedido é o estado mais enganoso que existe.
+
+## Próximo passo
+
+O reforço hoje é disparado por um job periódico. O passo seguinte é medir a taxa de ack por destino ao longo de uma semana — se um grupo concentra pendências recorrentes, o problema não é o lembrete, é o contrato com aquele agente.
+
+```bash
+git log --oneline --since="2026-10-24 20:00" -- core/identity.py core/a2a_push.py core/a2a_ack.py
+python -m pytest tests/test_a2a_ack.py tests/test_identity.py -q
+python -c "from core import a2a_ack; print(a2a_ack.status())"
+```

@@ -1,0 +1,52 @@
+---
+title: "Yurumi: the message that left without a receipt"
+description: "The router returned success, the mailbox wrote the record, and the message could still end up in a box no process ever read. Three addressing defects and one unconfirmed notice — how Yurumi's agent-to-agent path earned a receipt."
+date: 2026-10-25 08:00:00 -03:00
+pubDate: 2026-10-25 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "identity", "reliability", "python", "testing"]
+cover: /covers/yurumi-a-mensagem-que-saiu-sem-recibo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## Success is not delivery
+
+The router answered that the message had been delivered. The mailbox wrote it down. The sending process moved on and marked the task as routed. Four days later I found out the other end had never read anything — and that the delivery record was, technically, accurate.
+
+This is the nastiest class of defect in systems that talk to each other: the sender cannot tell "delivered" from "delivered somewhere nobody lives". An agent that only enqueues messages and calls the job done is not autonomous, it is a generator of silent pending items. And because it never retries, the failure does not show up in an error log: it shows up as a task nobody executed and everybody believed was already in flight.
+
+## Three ways to lose a message
+
+The first was naming. The destination registry is keyed by slug (`capivara`, `dogwalk`), but in Telegram the natural identifier is the `chat_id`. Addressing `group:<chat_id>` matched no key at all, so the router invented an identity on its own — `group:-100...` — and delivered there. The message was written successfully into a mailbox that belongs to no agent. No error, no warning: just a phantom destination. The fix was to resolve the recipient by the *value* of the `chat_id` field instead of the key, and to accept the bare form too.
+
+The second was legacy client behaviour. An earlier version registered identity from the Telegram chat and sometimes stored the number **without** the minus sign — `hermes__1004...` instead of `hermes__-1004...`. The two names look like the same destination and are different boxes. When I went looking, there were four orphan messages in `mailbox.jsonl`: sent, accepted, never read. The cure was resolving the alias to the group bot in both forms, and letting the alias **win** over the registered `agent_id` — the phantom box, by definition, has no reader.
+
+The third was not a bug, it was design. Even with the right address, the notice sat still until the recipient opened its turn. If it was asleep between runs, the message waited — and whoever waits does not know they are waiting.
+
+## The notice, then the receipt
+
+The first step was pushing a short notice into the recipient's group for every A2A message. The module that does it has four rules that look boring and are the reason it never takes anything down: it resolves agent to chat through the group registry, dedupes by `msg_id` in a JSON state file next to the mailbox, uses a five second timeout, and never raises. Broadcast is not pushed, because it would become thirteen messages at once.
+
+But a notice can also be missed. That is when acknowledgement became mandatory, in the small hours of the next day: a message pushed and not confirmed within twenty minutes gets a nudge; without confirmation after two nudges, it escalates exactly once to the notifications group. The new module is 175 lines with six tests — pending, acknowledged, inside the window, ceiling with escalation, send failure, and expired message. It also never raises: nudging is hygiene, it cannot break the caller.
+
+The detail that made me rethink the design the most is in the data crossing. The pending list is not a queue of its own: it crosses what was pushed against the acknowledgements that exist in the mailbox today. A message that expired (24 hour TTL) simply stops being chased, instead of becoming an eternal debt on a dead record.
+
+Two side effects showed up the same day. The first was the security gate: calling `urllib.request.urlopen` directly trips B310 in bandit, and the repository has a test demanding zero actionable findings. The way out was not silencing the finding, it was creating a wrapper that validates at runtime that the destination starts with the Telegram API — the `nosec` only holds because the guard sits on the line above. The second was more embarrassing: the test suite was sending **real** messages into the groups, because `mailbox.enviar()` fires the push by default. Two real messages during one run, measured on identifiers 32017 and 32018. The test environment now disables the push by default and whoever wants to exercise it turns it on explicitly.
+
+## Why this changes the day to day
+
+Before, "I routed it" was a claim I could not verify. Now there are three observable states — pending, nudged, escalated — and one command that returns all three counters. Anything pending for more than twenty minutes stopped being invisible: it showed up in the wrong group until someone confirmed, and after that it showed up where it cannot be ignored.
+
+The lesson holds for any messaging system between processes: sending and receiving are different events, and the only way to know the second happened is to ask for explicit confirmation. Silence after a successful send is the most misleading state there is.
+
+## Next step
+
+Nudging is currently fired by a periodic job. The next step is measuring the acknowledgement rate per destination over a week — if one group concentrates pending items, the problem is not the reminder, it is the contract with that agent.
+
+```bash
+git log --oneline --since="2026-10-24 20:00" -- core/identity.py core/a2a_push.py core/a2a_ack.py
+python -m pytest tests/test_a2a_ack.py tests/test_identity.py -q
+python -c "from core import a2a_ack; print(a2a_ack.status())"
+```
