@@ -1,5 +1,10 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-24] - 1 commit: amarracao home/navbar -> loja com UTM; baselines VRT regeradas
+- **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar + e2e `amarracao` (home, `/en/`, `/arquivo`, `/en/archive`).
+- Medido antes: `lifelog.seu.pet` e `/arquivo` com 0 links para `skills.seu.pet`.
+- 1 commit no dia na branch `roger/lifelog-20261024-164219` - push `origin` OK - HEAD `60eb803` + doc.
+
 ## [2026-10-23] - 3 commits: post oculto novo + suite assinar/liberar curada; push origin OK
 - **feat(posts)** (`25d7f94`): post hidden PT+EN + capa IA.
 - **test** (`66e184f`): corrige suite quebrada e2e+unit do fluxo assinar/liberar.

@@ -1,6 +1,11 @@
 # 📖 LifeLog — Session Hub
 
 
+## Sessao 2026-10-24 (fim de dia) - 1 commit (amarracao home/navbar -> loja com UTM) na branch do Roger; push origin OK
+- **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar (antes: **zero** link para `skills.seu.pet` fora dos posts); novo e2e `e2e/amarracao` cobrindo home, `/en/`, `/arquivo` e `/en/archive`; baselines VRT regeradas de proposito.
+- 13 modificacoes nao commitadas preservadas (`api/ocultos-data.mjs`, `e2e/*`, `cache/`, `coverage/`, `logs/`, `.loop-*.json`) - diff alheio intacto.
+- HEAD no fechamento: branch `roger/lifelog-20261024-164219` (`60eb803`) + o commit de doc desta rodada. `main` local segue ahead 3 / behind 14 do `origin/main` (nao tocado).
+
 ## Sessao 2026-10-23 (fim de dia) - 3 commits (post oculto novo + suite curada); push origin OK
 - **feat(posts)** (`25d7f94`): post "a config que dava razao ao arquivo" - hidden, PT+EN + capa IA.
 - **test** (`66e184f`): corrige suite quebrada e2e+unit do fluxo assinar/liberar.
