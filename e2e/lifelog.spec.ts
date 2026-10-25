@@ -134,7 +134,10 @@ test.describe('Homepage', () => {
     for (const label of NAV_LINKS) {
       await expect(nav.locator('a', { hasText: label })).toBeVisible();
     }
-    await expect(nav.locator('a[target="_blank"]')).toContainText('Portfólio');
+    // 25/10: a navbar ganhou um 2º link externo (loja, target=_blank). O locator
+    // precisa ser específico, senão o strict mode estoura com 2 elementos — foi
+    // exatamente o que reprovou o CI (lifelog.spec:131 e :417).
+    await expect(nav.locator('a[target="_blank"]', { hasText: 'Portfólio' })).toBeVisible();
   });
 });
 
@@ -416,7 +419,7 @@ test.describe('Navegação', () => {
 
   test('link do Portfolio abre em nova aba', async ({ page, goto }) => {
     await goto('/');
-    const portfolio = page.locator('nav a[target="_blank"]');
+    const portfolio = page.locator('nav a[target="_blank"]', { hasText: 'Portfólio' });
     await expect(portfolio).toBeVisible();
     await expect(portfolio).toHaveAttribute('href', /portifolio/);
   });
@@ -466,6 +469,11 @@ test.describe('Responsivo (Mobile)', () => {
    ============================================= */
 
 test.describe('Temas por Projeto', () => {
+  // Campanha 23/10/2026: ~350 testes só navegam + leem atributo — seguros em
+  // paralelo. Em série custavam ~5min (suite 7.4m no total), colando no teto
+  // do runner externo, que matava o processo e reportava falha sem detalhe.
+  // O restante da suite segue serial (fullyParallel: false na config).
+  test.describe.configure({ mode: 'parallel' });
   for (const post of POSTS) {
     test(`"${post.slug}" tem data-project="${post.project}"`, async ({ page }) => {
       const response = await page.goto(`/post/${post.slug}/`);

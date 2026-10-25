@@ -994,3 +994,13 @@ html.dark .astro-code .line span[style*="--shiki-dark:#6a737d"] {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* 25/10/2026: com a loja como 2º CTA da navbar, 320/360px passaram a ter scroll
+   horizontal (gate `navbar-theme-fix` reprovava com hasScroll=true). Abaixo de 400px
+   a loja sai da navbar: o post já tem a saída no corpo e a home tem o bloco de saída.
+   Requisito do dono continua: navbar SEM scroll em 320/360/390. */
+@media (max-width: 400px) {
+  .navbar-link[data-i18n='nav.store'] {
+    display: none;
+  }
+}
