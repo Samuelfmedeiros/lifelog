@@ -1,0 +1,82 @@
+---
+title: "O guard que lia a flag como diretório"
+description: "423 páginas mandavam visitas para a loja e o banco registrava 136 sessões com 1 visita atribuída. A correção foi no build — e no caminho apareceram dois falsos positivos que quase ensinaram a equipe a ignorar o gate."
+date: 2026-10-24 22:00:00 -03:00
+pubDate: 2026-10-25 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "build", "analytics", "e2e", "navbar"]
+cover: /covers/lifelog-o-guard-que-lia-a-flag-como-diretorio.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A visita que chegou sem nome
+
+O número estava na tela e não fazia sentido: 136 sessões vindas do blog, uma única visita registrada no destino. O link funcionava. A pessoa clicava, a página abria, o produto carregava. O que faltava era o nome de quem mandou — a URL de saída não levava `utm_source`, então o destino via mais um acesso anônimo e o funil ficava com um buraco do tamanho do blog inteiro.
+
+Não era um bug de código no sentido tradicional. Nada quebrado, nada vermelho. O link estava lá, correto, apontando para o lugar certo. Só não dizia de onde vinha.
+
+## O que estava acontecendo
+
+Duas medições separadas contaram a mesma história em momentos diferentes. Em 18 de outubro, uma varredura achou 12 páginas linkando o portfólio sem nenhuma tag e nenhum lugar do site capturando e-mail. Em 24 de outubro a medição foi mais dura: 423 páginas mandavam visitas para a loja, e o único link de saída vivia no rodapé, dentro do bloco "Próximo passo". Quem lê o meio do texto nunca chega lá.
+
+E havia um caso mais fino. O formulário de captura era o único link que escapava de tudo — porque `action` de formulário não parece link para ninguém que revisa HTML no olho. Sobraram duas linhas humanas no banco vindas do blog sem tag: uma de 19 de outubro, outra de 21. Duas pessoas reais que entraram no funil sem endereço de retorno.
+
+## A correção no build, não na mão
+
+Consertar 423 páginas à mão não é conserto, é tarefa. A decisão foi mover a regra para o build: um plugin rehype que roda em todo post, nos dois idiomas, e faz duas coisas.
+
+A primeira é normalizar qualquer link de saída para os ativos do projeto. Todo `href` que aponta para fora recebe `utm_source=lifelog`, `utm_medium=post`, `utm_campaign=<slug do post>` e `utm_content=corpo`. O campaign é o mesmo slug que o rodapé usa, então os dois links caem na mesma linha do funil em vez de virar duas campanhas diferentes.
+
+A segunda é o caso em que o texto não tem saída nenhuma. Nesse cenário o plugin insere um parágrafo curto depois do segundo parágrafo do artigo, já com a URL taggeada. Se o texto não tiver dois parágrafos, cai para o fim do conteúdo — a regra é nunca deixar post sem saída, e não "tentar inserir bonito".
+
+```javascript
+function comUtm(href, { slug, content }) {
+  let alvo;
+  try {
+    alvo = new URL(href);
+  } catch {
+    return null; // relativo ou mailto: não é saída
+  }
+  if (!HOSTS.has(alvo.hostname)) return null;
+  alvo.searchParams.set('utm_source', 'lifelog');
+  alvo.searchParams.set('utm_medium', 'post');
+  alvo.searchParams.set('utm_campaign', slug);
+  alvo.searchParams.set('utm_content', content);
+  return alvo.toString();
+}
+```
+
+Para as páginas institucionais, que não passam pelo pipeline de posts, a mesma lógica foi isolada em `src/lib/saida.ts` — `/sobre` e a versão em inglês linkavam o portfólio cru e foram as duas primeiras a reprovar no gate novo.
+
+## O guard
+
+Plugin que corrige não impede recaída: alguém escreve um link novo à mão na semana seguinte e o buraco volta. Então o build ganhou um passo final que varre `dist/` inteiro e falha se qualquer `href` ou `action` para um ativo sair sem `utm_source`.
+
+Duas decisões dentro dele merecem nota. A primeira é casar por **host exato**, nunca por substring — o domínio raiz do projeto aparece como sufixo do próprio domínio do blog, e uma comparação frouxa faria o guard enxergar o blog como se fosse saída externa, reprovando tudo. A segunda é falhar quando encontra **zero** saídas:
+
+```bash
+if (total === 0) {
+  console.error(`[saidas-utm] FALHA: nenhuma saída encontrada em ${DIST}`);
+  process.exit(1);
+}
+```
+
+Guard que passa sem ter olhado nada é pior que guard nenhum, porque produz a sensação de cobertura sem a cobertura. Zero links encontrados não significa site limpo: significa que o seletor quebrou ou que o diretório está vazio.
+
+## Dois falsos que o guard criou
+
+O primeiro apareceu na primeira vez que precisei rodar o build num diretório alternativo. `npm run build -- --outDir dist-verify` passava a flag como argumento, e o guard leu `--outDir` como se fosse o nome da pasta. Resultado: `ENOENT` e build reprovado com todas as saídas corretamente taggeadas. O conserto foi aceitar as três formas reais de invocação — posicional, `--outDir <dir>` e `--outDir=<dir>` — em vez de assumir que o primeiro argumento é sempre o diretório.
+
+O segundo foi de layout. A loja virou o segundo call-to-action da navbar, e a partir daí o gate de navbar passou a reprovar em 320 e 360 pixels com `hasScroll=true`: a linha estourava e aparecia barra horizontal. Junto com isso, um locator de teste que buscava `nav a[target=_blank]` passou a casar dois elementos e o Playwright estourou em strict mode. A saída foi esconder o link da loja abaixo de 400px — o post já tem a saída no corpo e a home tem o bloco próprio — e filtrar os locators por texto.
+
+## O que isso muda
+
+Atribuição não é relatório de marketing: é a diferença entre saber que o texto funciona e achar que sabe. E um gate tem dois modos de errar. Deixar passar é o modo caro, silencioso, que dura meses. Reprovar sem motivo é o modo barato de consertar e caro de manter, porque ensina quem trabalha no projeto a tratar vermelho como ruído — e no dia em que o vermelho for real, ninguém olha.
+
+Depois dos dois consertos, o build fechou com 6.496 saídas e todas taggeadas, em 1.551 páginas.
+
+## Próximo passo
+
+O gate hoje garante o lado de cá: nenhuma saída sai sem assinatura. O lado de lá ainda é manual — conferir no banco se as linhas novas chegam com `utm_campaign` preenchido, e não só com `utm_source`. Se chegar sem campanha, o plugin rodou mas o slug se perdeu no caminho, e isso o build não tem como ver.

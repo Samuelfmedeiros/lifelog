@@ -1,0 +1,82 @@
+---
+title: "The guard that read a flag as a directory"
+description: "423 pages were sending visitors to the store while the database recorded 136 sessions and a single attributed visit. The fix landed in the build — and along the way two false positives almost taught the team to ignore the gate."
+date: 2026-10-24 22:00:00 -03:00
+pubDate: 2026-10-25 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "build", "analytics", "e2e", "navbar"]
+cover: /covers/lifelog-o-guard-que-lia-a-flag-como-diretorio.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The visitor who arrived unnamed
+
+The number was on screen and it made no sense: 136 sessions coming from the blog, one single visit recorded at the destination. The link worked. Someone clicked, the page opened, the product loaded. What was missing was the name of whoever sent them — the outbound URL carried no `utm_source`, so the destination saw one more anonymous hit and the funnel kept a hole the size of the whole blog.
+
+This was not a bug in the usual sense. Nothing broken, nothing red. The link was there, correct, pointing at the right place. It just did not say where it came from.
+
+## What was actually happening
+
+Two separate measurements told the same story at different moments. On October 18th, a scan found 12 pages linking to the portfolio with no tag at all, and no place on the site capturing an email address. On October 24th the measurement got harsher: 423 pages were sending visitors to the store, and the only outbound link lived in the footer, inside the "Next step" block. Someone reading the middle of the article never gets there.
+
+And there was a subtler case. The capture form was the one link that escaped everything — because a form `action` does not look like a link to anyone reviewing HTML by eye. Two human rows survived in the database coming from the blog with no tag: one from October 19th, one from the 21st. Two real people who entered the funnel without a return address.
+
+## The fix belongs in the build, not in the files
+
+Hand-patching 423 pages is not a fix, it is a chore. The decision was to move the rule into the build: a rehype plugin that runs on every post, in both languages, and does two things.
+
+The first is normalizing every outbound link to the project's assets. Any `href` pointing away gets `utm_source=lifelog`, `utm_medium=post`, `utm_campaign=<post slug>` and `utm_content=corpo`. The campaign value is the same slug the footer uses, so both links land on the same funnel row instead of splitting into two different campaigns.
+
+The second is the case where the text has no outbound link at all. In that scenario the plugin inserts a short paragraph after the second paragraph of the article, already carrying the tagged URL. If the text has fewer than two paragraphs, it falls back to the end of the content — the rule is never ship a post without an exit, not "try to insert it nicely".
+
+```javascript
+function comUtm(href, { slug, content }) {
+  let alvo;
+  try {
+    alvo = new URL(href);
+  } catch {
+    return null; // relative or mailto: not an exit
+  }
+  if (!HOSTS.has(alvo.hostname)) return null;
+  alvo.searchParams.set('utm_source', 'lifelog');
+  alvo.searchParams.set('utm_medium', 'post');
+  alvo.searchParams.set('utm_campaign', slug);
+  alvo.searchParams.set('utm_content', content);
+  return alvo.toString();
+}
+```
+
+For the institutional pages, which do not go through the post pipeline, the same logic was isolated in `src/lib/saida.ts` — `/sobre` and its English version were linking the portfolio raw, and they were the first two to fail the new gate.
+
+## The guard
+
+A plugin that fixes things does not prevent regression: someone hand-writes a new link the following week and the hole is back. So the build gained a final step that walks the whole `dist/` tree and fails if any `href` or `action` pointing at an asset leaves without `utm_source`.
+
+Two decisions inside it are worth noting. The first is matching by **exact host**, never by substring — the project's root domain appears as a suffix of the blog's own domain, and a loose comparison would make the guard read the blog as an external exit, failing everything. The second is failing when it finds **zero** exits:
+
+```bash
+if (total === 0) {
+  console.error(`[saidas-utm] FALHA: nenhuma saída encontrada em ${DIST}`);
+  process.exit(1);
+}
+```
+
+A guard that passes without having looked at anything is worse than no guard, because it produces the feeling of coverage without the coverage. Zero links found does not mean a clean site: it means the selector broke or the directory is empty.
+
+## Two false positives the guard created
+
+The first showed up the first time I needed a build in an alternate directory. `npm run build -- --outDir dist-verify` passed the flag as an argument, and the guard read `--outDir` as if it were the folder name. Result: `ENOENT` and a failed build with every exit correctly tagged. The fix was accepting the three real invocation shapes — positional, `--outDir <dir>` and `--outDir=<dir>` — instead of assuming the first argument is always the directory.
+
+The second was layout. The store became the navbar's second call-to-action, and from then on the navbar gate started failing at 320 and 360 pixels with `hasScroll=true`: the row overflowed and a horizontal scrollbar appeared. Alongside it, a test locator looking for `nav a[target=_blank]` began matching two elements and Playwright blew up in strict mode. The way out was hiding the store link below 400px — the post already carries the exit in its body and the home page has its own block — and filtering the locators by text.
+
+## What this changes
+
+Attribution is not a marketing report: it is the difference between knowing the writing works and believing you know. And a gate has two ways to be wrong. Letting things through is the expensive, silent mode, the one that lasts for months. Failing for no reason is cheap to fix and expensive to live with, because it teaches everyone on the project to treat red as noise — and on the day red is real, nobody looks.
+
+After both fixes the build closed with 6,496 exits, all tagged, across 1,551 pages.
+
+## Next step
+
+The gate now guarantees this side: no exit leaves without a signature. The other side is still manual — checking in the database whether the new rows arrive with `utm_campaign` filled in, not just `utm_source`. If the campaign is missing, the plugin ran but the slug got lost along the way, and the build has no way to see that.
