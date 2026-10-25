@@ -18,8 +18,17 @@ export default defineConfig({
     // VRT — snapshot por componente, tolerância pequena pra animações/antialiasing
     screenshot: { mode: 'only-on-failure', fullPage: false },
   },
-  // Servidor gerenciado pelo CI/CD workflow (ou local via pnpm dev)
-  // webServer não configurado para evitar conflito com preview server
+  // Servidor: o CI/CD workflow já sobe o preview antes dos testes, e com
+  // reuseExistingServer o Playwright reaproveita esse server quando ele já
+  // está no ar. Sem NENHUM server ativo (rodada 3 da campanha 23/10: TODOS os
+  // e2e morreram com net::ERR_CONNECTION_REFUSED e o critic só viu
+  // "e2e playwright falhou:" vazio), o Playwright sobe o próprio preview.
+  webServer: {
+    command: 'pnpm preview',
+    url: 'http://localhost:4321/',
+    reuseExistingServer: true,
+    timeout: 60_000,
+  },
   projects: [
     {
       name: 'chromium',

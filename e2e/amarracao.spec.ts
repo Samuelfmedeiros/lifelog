@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // Medido em 18/10: o LifeLog linkava o portfólio em 12 páginas SEM UTM nenhum e não
 // capturava e-mail em lugar nenhum. Este spec é o gate:
 //   1. o bloco "Próximo passo" existe no fim do post (PT e EN);
-//   2. TODO link cruzado (portfólio, loja) sai com utm_source=lifelog.seu.pet;
+//   2. TODO link cruzado (portfólio, loja) sai com utm_source=lifelog;
 //   3. a captura posta pra loja (skills.seu.pet) com origem + volta pro próprio post;
 //   4. a volta da captura (?ok=1) troca o formulário pela confirmação.
 
@@ -20,7 +20,7 @@ function linksCruzadosSemUtm(html: string): string[] {
   for (const m of html.matchAll(/href="(https?:\/\/[^"]+)"/g)) {
     const href = m[1].replace(/&amp;/g, '&');
     if (!ATIVOS.some((a) => href.includes(a))) continue;
-    if (!href.includes('utm_source=lifelog.seu.pet')) fora.push(href);
+    if (!href.includes('utm_source=lifelog&')) fora.push(href);
   }
   return fora;
 }
@@ -33,7 +33,9 @@ test.describe('Amarração — bloco de próximo passo no post', () => {
 
     expect(html).toContain('id="assinar"');
     expect(html).toContain('Próximo passo');
-    expect(html).toContain('action="https://skills.seu.pet/assinar"');
+    // 24/10: o form de captura também é link de saída — vai com UTM (medium=assinar).
+    expect(html).toContain('action="https://skills.seu.pet/assinar?utm_source=lifelog');
+    expect(html).toContain('utm_medium=assinar');
     expect(html).toContain('name="origem" value="lifelog"');
     expect(html).toContain(`name="volta" value="https://lifelog.seu.pet${PT_URL}"`);
     expect(html).toContain('name="email"');
@@ -49,7 +51,7 @@ test.describe('Amarração — bloco de próximo passo no post', () => {
     const bloco = html.slice(i, i + 4000);
     expect(bloco).toContain('Next step');
     expect(bloco).not.toContain('Próximo passo');
-    expect(html).toContain('action="https://skills.seu.pet/en/assinar"');
+    expect(html).toContain('action="https://skills.seu.pet/en/assinar?utm_source=lifelog');
     expect(html).toContain(`name="volta" value="https://lifelog.seu.pet${EN_URL}"`);
   });
 
@@ -63,11 +65,27 @@ test.describe('Amarração — bloco de próximo passo no post', () => {
     expect(linksCruzadosSemUtm(html)).toEqual([]);
   });
 
-  test('navbar e bloco levam UTM com medium distinto', async ({ request }) => {
+  test('navbar e bloco levam UTM com medium distinto e campanha = slug', async ({ request }) => {
     const html = await (await request.get(PT_URL)).text();
     expect(html).toContain('utm_medium=navbar');
     expect(html).toContain('utm_medium=proximo-passo');
-    expect(html).toContain('utm_campaign=post');
+    // 24/10: a campanha é o slug do post (sem a data), não mais o literal "post"
+    expect(html).toContain('utm_campaign=lifelog-refactor-arquitetura-componentes');
+  });
+
+  test('link de saída no CORPO do texto (não só no rodapé), com UTM canônico', async ({ request }) => {
+    const html = await (await request.get(PT_URL)).text();
+    // o parágrafo inserido no meio do artigo pelo rehype-saida-utm
+    expect(html).toContain('amarracao-corpo');
+    const corpo = html.slice(html.indexOf('amarracao-corpo'));
+    const href = (corpo.match(/href="(https:\/\/skills\.seu\.pet[^"]+)"/) || [])[1] || '';
+    const q = new URL(href.replace(/&amp;/g, '&')).searchParams;
+    expect(q.get('utm_source')).toBe('lifelog');
+    expect(q.get('utm_medium')).toBe('post');
+    expect(q.get('utm_campaign')).toBe('lifelog-refactor-arquitetura-componentes');
+    expect(q.get('utm_content')).toBe('corpo');
+    // e o CTA de rodapé continua existindo, marcado como rodapé
+    expect(html).toContain('utm_content=rodape');
   });
 
   test('volta da captura (?ok=1) troca formulário por confirmação', async ({ page }) => {

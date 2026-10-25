@@ -37,8 +37,13 @@ const SITE = (Astro.site?.toString() || 'https://lifelog.seu.pet').replace(/\/$/
 // Amarração entre ativos (REGRA-AMARRACAO): todo link cruzado sai com UTM.
 // Link sem UTM não é medível — medido em 18/10, o LifeLog linkava 12 páginas sem UTM nenhum.
 const _slug = post.id.replace(/^en\//, '');
+// Padrão pedido em 24/10 (funil medido pela loja): source=lifelog, medium=post e
+// campaign=<slug do post>. Antes era campaign=post fixo + source=lifelog.seu.pet, o que
+// impedia cruzar "qual artigo trouxe a visita".
 const _utm = (url: string, medium: string) =>
-  `${url}?utm_source=lifelog.seu.pet&utm_medium=${medium}&utm_campaign=post&utm_content=${_slug}`;
+  `${url}?utm_source=lifelog&utm_medium=${medium}&utm_campaign=${encodeURIComponent(
+    _slug.replace(/^\d{4}-\d{2}-\d{2}-/, ''),
+  )}&utm_content=rodape`;
 const storeHref = _utm('https://skills.seu.pet', 'proximo-passo');
 const portfolioHref = _utm('https://portifolio.seu.pet', 'proximo-passo');
 const _canonPath = noindex
@@ -153,27 +158,42 @@ const breadcrumbSchema = {
         </p>
 
         <form id="assinar-form" method="post"
-              action={locale === 'en' ? 'https://skills.seu.pet/en/assinar' : 'https://skills.seu.pet/assinar'}
+              action={_utm(
+                locale === 'en' ? 'https://skills.seu.pet/en/assinar' : 'https://skills.seu.pet/assinar',
+                'assinar',
+              )}
               class="flex flex-wrap gap-3 items-end mb-3">
           <input type="hidden" name="origem" value="lifelog" />
           <input type="hidden" name="volta" value={_voltaUrl} />
           <label class="sr-only" for="assinar-email">E-mail</label>
           <input id="assinar-email" type="email" name="email" required maxlength="254" autocomplete="email"
-                 placeholder={locale === 'en' ? 'you@example.com' : 'voce@exemplo.com'}
+                 placeholder={locale === 'en' ? 'you@example.com' : 'você@exemplo.com'}
                  class="px-3 py-2 rounded-lg border border-solid text-sm grow min-w-[220px]"
                  style="background: var(--color-bg); border-color: var(--color-border); color: var(--color-text);" />
           <input type="text" name="site" tabindex="-1" autocomplete="off" aria-hidden="true" class="hidden" />
-          <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer border-0"
+          <button id="assinar-btn" type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer border-0"
                   style="background: var(--color-accent); color: var(--color-bg);">
             {locale === 'en' ? 'Send me the articles' : 'Receber os artigos'}
           </button>
         </form>
 
-        <p id="assinar-ok" class="hidden text-sm font-medium mb-3" style="color: var(--color-accent);">
-          {locale === 'en'
-            ? 'Done — I will send the next article when it is out.'
-            : 'Anotado — aviso quando sair artigo novo.'}
-        </p>
+        <p id="assinar-status" class="hidden text-sm font-medium mb-3" role="status" aria-live="polite"
+           style="color: var(--color-text-muted);"
+           data-sending={locale === 'en' ? 'Sending…' : 'Enviando…'}
+           data-fail={locale === 'en' ? 'Could not confirm the subscription right now — please try again.' : 'Não consegui confirmar agora — tenta de novo, por favor.'}></p>
+
+        <div id="assinar-ok" class="hidden mb-3" role="status">
+          <p id="assinar-ok-msg" class="text-sm font-medium"
+             style="color: var(--color-accent);"
+             data-ok-suffix={locale === 'en' ? ' will get a note when the next article is out.' : ' vai receber o aviso quando sair artigo novo.'}>
+            {locale === 'en' ? 'Done — I will send the next article when it is out.' : 'Anotado — aviso quando sair artigo novo.'}
+          </p>
+          <button id="assinar-ok-edit" type="button"
+                  class="text-sm font-medium mt-2 cursor-pointer border-0 bg-transparent px-1 py-1.5 underline"
+                  style="color: var(--color-accent);">
+            {locale === 'en' ? 'Wrong address? Change it' : 'Errou o endereço? Trocar'}
+          </button>
+        </div>
 
         <p class="text-sm" style="color: var(--color-text-muted);">
           {locale === 'en' ? 'No spam, one-click unsubscribe. I am also here:' : 'Sem spam, descadastro de um clique. Também estou aqui:'}
@@ -185,13 +205,96 @@ const breadcrumbSchema = {
       </section>
 
       <script>
-        // Volta da captura (a loja redireciona pra cá com ?ok=1): troca o formulário
-        // pela confirmação — sem isso a pessoa volta, vê o mesmo formulário e acha que falhou.
-        const q = new URLSearchParams(location.search);
-        if (q.get('ok') === '1') {
-          document.getElementById('assinar-form')?.classList.add('hidden');
-          document.getElementById('assinar-ok')?.classList.remove('hidden');
+        // Form de inscrição — feedback de estado (progressive enhancement).
+        // O POST nativo (skills.seu.pet) continua igual; o JS só mostra o que
+        // está acontecendo: enviando / confirmado (com o e-mail da pessoa) / falhou.
+        const KEY_EMAIL = 'll:assinar:email';
+        const KEY_SENT = 'll:assinar:enviado';
+        const FRESH_MS = 5 * 60 * 1000;
+        const form = document.getElementById('assinar-form');
+        const btn = document.getElementById('assinar-btn');
+        const input = document.getElementById('assinar-email');
+        const status = document.getElementById('assinar-status');
+        const okBox = document.getElementById('assinar-ok');
+        const okMsg = document.getElementById('assinar-ok-msg');
+        const okEdit = document.getElementById('assinar-ok-edit');
+
+        // sessionStorage pode estar bloqueada (modo restritivo) — falha silenciosa.
+        const store = {
+          get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+          set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+          del(k) { try { sessionStorage.removeItem(k); } catch {} },
+        };
+
+        function resetForm() {
+          if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || btn.textContent; }
+          if (input) input.readOnly = false;
         }
+
+        function showOk() {
+          form?.classList.add('hidden');
+          status?.classList.add('hidden');
+          const email = (store.get(KEY_EMAIL) || '').trim();
+          if (email && okMsg) {
+            const strong = document.createElement('strong');
+            strong.textContent = email; // textContent, nunca innerHTML
+            okMsg.replaceChildren(strong, document.createTextNode(okMsg.dataset.okSuffix || ''));
+          }
+          okBox?.classList.remove('hidden');
+          // role="status" já anuncia pra leitores de tela; focar aqui desenhava
+          // o anel de foco do navegador em volta da mensagem inteira (visto 22/10).
+          store.del(KEY_EMAIL);
+          store.del(KEY_SENT);
+          // ?ok=1 fora da URL: bookmark e analytics limpos.
+          const u = new URL(location.href);
+          if (u.searchParams.has('ok')) {
+            u.searchParams.delete('ok');
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
+          }
+        }
+
+        function showFail() {
+          if (status) {
+            status.textContent = status.dataset.fail || '';
+            status.classList.remove('hidden');
+          }
+          resetForm();
+        }
+
+        // Volta da captura: ok=1 = confirmado; flag de envio recente sem ok = falhou.
+        const q = new URLSearchParams(location.search);
+        const sentAt = Number(store.get(KEY_SENT) || 0);
+        if (q.get('ok') === '1') {
+          showOk();
+        } else if (sentAt && Date.now() - sentAt < FRESH_MS) {
+          store.del(KEY_SENT);
+          showFail();
+        }
+
+        // Envio: guarda o e-mail, trava o botão, anuncia "Enviando…".
+        form?.addEventListener('submit', () => {
+          if (btn) btn.dataset.label = btn.textContent;
+          const email = (input?.value || '').trim();
+          if (email) store.set(KEY_EMAIL, email);
+          store.set(KEY_SENT, String(Date.now()));
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = status?.dataset.sending || '…';
+          }
+          if (input) input.readOnly = true;
+          if (status) {
+            status.textContent = status.dataset.sending || '';
+            status.classList.remove('hidden');
+          }
+          // Se a navegação não ocorrer (rede morta), destrava o form.
+          setTimeout(resetForm, 20000);
+        });
+
+        okEdit?.addEventListener('click', () => {
+          okBox?.classList.add('hidden');
+          form?.classList.remove('hidden');
+          input?.focus();
+        });
       </script>
 
       <!-- Navigation: Prev / Next -->
@@ -335,8 +438,15 @@ const breadcrumbSchema = {
   /* Amarração — alvo de toque de 44px (regra do dono).
      Medido em 18/10 antes do fix: botão 36px e input 38px no mobile — abaixo do mínimo. */
   #assinar input[type='email'],
-  #assinar button {
+  #assinar button[type='submit'] {
     min-height: 44px;
+  }
+
+  /* Botão "trocar e-mail" — alvo confortável em touch, sem bloco fantasma no desktop */
+  @media (pointer: coarse) {
+    #assinar-ok-edit {
+      min-height: 44px;
+    }
   }
 
   /* Amarração — contraste no tema claro.
