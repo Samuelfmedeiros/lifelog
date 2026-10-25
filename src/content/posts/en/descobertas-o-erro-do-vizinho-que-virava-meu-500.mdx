@@ -1,0 +1,50 @@
+---
+title: "The neighbour's error that turned into my 500"
+description: "87 responses with status 500 in three hours that were not failures of the service at all. The status code was describing the wrong machine — and the dashboard went red over a problem that was never mine."
+date: 2026-10-25 01:37:00 -03:00
+pubDate: 2026-10-25 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "http", "api", "observability", "debugging"]
+cover: /covers/descobertas-o-erro-do-vizinho-que-virava-meu-500.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The scoreboard blaming the wrong service
+
+The error counter on Arachne reported 87 responses with status 500 in three hours on the scrape endpoint. The service was up. It answered, it returned content, and the board still said it was broken. It was not. The failures came from the sites it was trying to read.
+
+A good share of the web answers an automated reader with a JavaScript challenge: the page arrives, the body is a script that has to be solved, and anyone who does not solve it gets a wall. From the inside, that was just another failure. And every failure in that branch fell into the same `else`: status 500.
+
+Simple, and wrong. A 500 means "I broke". What actually happened most of the time was "the neighbour would not let me in" — different information, about a different machine, with a different possible action.
+
+## What the number was hiding
+
+The first fix (commit `f33168e`, 01:27) split the branch into three semantic buckets in `api/app/api/search_routes.py`: anti-bot blocking, `challenge` or `cloudflare` in the message became 502 `upstream_blocked`; a timeout became 504 `upstream_timeout`; everything else stayed 500 `internal_error`. The response also started carrying `error_type`, so the caller no longer has to guess by reading the text.
+
+The same commit surfaced a second problem, this one genuinely local. `progressive_fetch` walks a registry of fetching strategies and, for each one, reads `result.was_blocked`. But `fetch_camoufox` passes along whatever the fetch manager returns, and that return can be `None`. When it was, the line blew up with `'NoneType' object has no attribute 'was_blocked'` and killed the entire job — job #1, 24/10 at 20:46. No network, no site involved: an attribute read from a value that did not exist. The guard normalises `None` into an explicit blocked result, with `status=0`, the level that was used and the reason recorded, instead of letting the `AttributeError` become an outage.
+
+Ten minutes later came the second layer (commit `6641dfa`, 01:37). The recount showed 65 responses with status 500 across forty minutes and no record of which URL had failed. A counter without an address is useless for diagnosis. The remaining cause was a business message: "Markdown vazio apos 3 tentativas" still landed in the internal bucket. A page that returns an empty shell is an upstream failure, not a failure of the service that tried to read it. The pattern list grew, `timed out` joined `timeout`, and a `logger.warning` with URL, type and the first 180 characters of the error closed the visibility gap.
+
+The proof came from the same endpoint after a restart: 85 responses with status 200, two with 202, zero with 500. The load had not changed. The vocabulary had.
+
+## Why this matters more than the fix
+
+A 5xx counter is a measuring instrument. When it mixes "I failed" with "a third party blocked me", it stops measuring what I think it measures — and starts measuring the mood of the internet. On a day when three popular sites tighten their rules against automation, the dashboard goes red without a single line of mine changing.
+
+That erodes in a specific order. First the alarm fires too often. Then somebody opens the log, finds nothing useful and closes it. Finally the red becomes wallpaper, and on the day the service really does break nobody looks, because it was already red yesterday and nothing happened.
+
+The distinction also changes what the data is good for. `upstream_blocked` is actionable per domain: you can list who always blocks and decide whether to change strategy, use another path or simply accept that the site is not a source. `internal_error` is actionable in code. Both in the same bucket are actionable nowhere.
+
+There is a smaller lesson here, one I have already paid for before: a function that can return `None` should say so in its name, its type or a guard. `was_blocked` was an assumed attribute on an optional return. The code stayed correct for months because the path that returned `None` was rare — and rare is not never.
+
+## Next step
+
+The log now carries a URL per failure. The next step is aggregation by domain: count blocks per host over a week and turn that into a list of known-hostile sources, so the scraper stops spending four attempts on a site that will never deliver. A classified error is raw material; a classified and grouped error is a decision.
+
+```bash
+git log --oneline -3 -- api/app/api/search_routes.py
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ARACHNE/api/search/scrape" -d '{"url":"https://example.com"}'
+docker logs arachne-api 2>&1 | grep "\[scrape\] falha" | tail -5
+```

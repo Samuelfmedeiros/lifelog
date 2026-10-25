@@ -1,0 +1,50 @@
+---
+title: "O erro do vizinho que virava meu 500"
+description: "87 respostas 500 em três horas que não eram falhas do Arachne. O status estava dizendo a coisa errada sobre a máquina errada — e o painel ficou vermelho por um problema que não era meu."
+date: 2026-10-25 01:37:00 -03:00
+pubDate: 2026-10-25 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "http", "api", "observability", "debugging"]
+cover: /covers/descobertas-o-erro-do-vizinho-que-virava-meu-500.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O placar que acusava o serviço errado
+
+O contador de erros do Arachne marcou 87 respostas 500 em três horas no endpoint de scrape. O serviço estava de pé: respondia, devolvia conteúdo, e ainda assim o placar dizia que ele estava quebrado. A causa não estava no Arachne. Estava nos sites que ele tentava ler.
+
+Boa parte da web hoje responde a um leitor automatizado com um desafio de JavaScript: a página chega, o corpo é um script que precisa ser resolvido, e quem não resolve recebe uma parede. Do lado de dentro, aquilo era só mais uma falha. E toda falha, naquele trecho, caía no mesmo `else`: status 500.
+
+Era simples e era errado. 500 significa "eu quebrei". O que acontecia na maioria dos casos era "o vizinho não me deixou entrar" — informação diferente, sobre outra máquina, com outra ação possível.
+
+## O que o número escondia
+
+A primeira correção (commit `f33168e`, 01:27) separou três baldes semânticos em `api/app/api/search_routes.py`: bloqueio anti-bot, `challenge` ou `cloudflare` na mensagem viravam 502 `upstream_blocked`; timeout virava 504 `upstream_timeout`; o resto continuava 500 `internal_error`. A resposta passou a carregar `error_type`, para o cliente saber o que fazer sem adivinhar pelo texto.
+
+No mesmo commit apareceu um segundo problema, esse sim dentro de casa. O `progressive_fetch` percorre um registro de estratégias de busca e, para cada uma, lê `result.was_blocked`. Só que `fetch_camoufox` repassa o retorno do gerenciador de fetch, e esse retorno pode ser `None`. Quando era, a linha estourava com `'NoneType' object has no attribute 'was_blocked'` e derrubava o job inteiro — job #1, 24/10 às 20:46. Nada de rede, nada de site: um atributo lido em um retorno que não existia. A defesa foi normalizar `None` em um resultado explícito de bloqueio, com `status=0`, nível usado e motivo registrado, em vez de deixar o `AttributeError` virar queda.
+
+Dez minutos depois veio a segunda camada (commit `6641dfa`, 01:37). A recontagem mostrou 65 respostas 500 em quarenta minutos e nenhum registro de qual URL havia falhado. Contador sem endereço não serve para diagnóstico. A causa do resto era uma mensagem de negócio: "Markdown vazio apos 3 tentativas" continuava caindo no balde de erro interno. Página que devolve casca vazia é falha do upstream, não do serviço que tentou ler. A lista de padrões cresceu, `timed out` passou a ser aceito além de `timeout`, e um `logger.warning` com URL, tipo e os primeiros 180 caracteres do erro fechou o buraco.
+
+A prova veio do mesmo endpoint, depois do restart: 85 respostas 200, duas 202 e zero 500. A carga não mudou. O que mudou foi o vocabulário.
+
+## Por que isso vale mais que o fix
+
+Um contador de 5xx é um instrumento de medição. Quando ele mistura "falhei" com "o site de terceiro me barrou", ele para de medir o que eu penso que mede — e passa a medir o humor da internet. Num dia em que três sites populares apertam o cerco contra automação, o painel fica vermelho sem que uma linha minha tenha mudado.
+
+Isso corrói de um jeito específico. Primeiro o alarme toca demais. Depois alguém abre o log, não acha nada útil e fecha. Por último o vermelho vira paisagem, e no dia em que o serviço quebrar de verdade ninguém vai olhar, porque já estava vermelho ontem e nada aconteceu.
+
+A distinção também muda o que dá para fazer com o dado. `upstream_blocked` é acionável por domínio: dá para listar quem bloqueia sempre e decidir se vale trocar de estratégia, usar outra saída ou aceitar que aquele site não é fonte. `internal_error` é acionável no código. Os dois no mesmo balde não são acionáveis em lugar nenhum.
+
+Tem uma lição menor, e que eu já paguei caro antes: função que pode devolver `None` precisa dizer isso no nome, no tipo ou na guarda. `was_blocked` era um atributo assumido em um retorno opcional. O código passou meses certo porque o caminho que devolvia `None` era raro — e raro não é nunca.
+
+## Próximo passo
+
+O log agora tem URL por falha. O passo seguinte é agregar por domínio: contar bloqueios por host na semana e transformar isso em uma lista de fontes sabidamente hostis, para o scraper não gastar quatro tentativas em um site que nunca vai entregar. Erro classificado é matéria-prima; erro classificado e agrupado é decisão.
+
+```bash
+git log --oneline -3 -- api/app/api/search_routes.py
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ARACHNE/api/search/scrape" -d '{"url":"https://exemplo.com"}'
+docker logs arachne-api 2>&1 | grep "\[scrape\] falha" | tail -5
+```
