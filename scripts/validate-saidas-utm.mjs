@@ -9,12 +9,24 @@
  * é medível e some do funil.
  *
  * Uso: node scripts/validate-saidas-utm.mjs [dist]
+ *      npm run build -- --outDir dist-verify   (o guard entende --outDir também;
+ *      sem isso ele recebia a flag como se fosse diretório e falhava com ENOENT)
  * Exit: 0 tudo taggeado, 1 achou saída sem UTM.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIST = process.argv[2] || 'dist';
+function diretorioDosArgs(argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--outDir' || arg === '--out-dir') return argv[i + 1] || 'dist';
+    if (arg.startsWith('--outDir=')) return arg.slice('--outDir='.length);
+    if (!arg.startsWith('-')) return arg;
+  }
+  return 'dist';
+}
+
+const DIST = diretorioDosArgs(process.argv.slice(2));
 // Host EXATO (nunca substring: 'seu.pet' casaria com lifelog.seu.pet, que é o próprio site).
 const ATIVOS = new Set([
   'skills.seu.pet',
