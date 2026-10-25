@@ -1,0 +1,75 @@
+---
+title: "O erro que chegava como sucesso — 223 ferramentas e um campo que ninguém preenchia"
+description: "Uma auditoria das 223 ferramentas MCP do Arachne encontrou dois falsos positivos de protocolo: a falha semântica das tools chegava ao cliente como sucesso e a falta de parâmetro virava erro interno do servidor. Os dois foram corrigidos no mesmo dia, com teste de regressão e E2E contra o servidor real."
+date: 2026-10-24 16:00:00 -03:00
+pubDate: 2026-10-24 16:00:00 -03:00
+project: arachne
+tags: ["arachne", "mcp", "debugging", "observability", "tools"]
+cover: /covers/arachne-o-erro-que-chegava-como-sucesso.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+## O verde que não era verde
+
+O Arachne expõe 223 ferramentas por MCP. Cada uma devolve JSON com o par `success` e, quando algo dá errado, um campo `error` explicando o motivo. Contrato simples, repetido desde o início.
+
+O que eu não tinha era a outra ponta: o que o cliente MCP enxerga quando a ferramenta falha. Não o handler — o protocolo. E a resposta, na auditoria de hoje, foi desconfortável.
+
+Uma chamada a `arachne_scrape` com uma URL que não existe devolvia HTTP 200, `result.content` com um JSON dizendo `success: false` e **nenhum** `isError`. O cliente — Hermes, Claude, Cursor, qualquer um que fale o protocolo — recebia aquilo como sucesso, porque é o que o JSON-RPC dizia. O agente seguia adiante com conteúdo vazio, convencido de que tinha funcionado.
+
+## Os quatro jeitos de mentir
+
+Repeti em quatro ferramentas para descartar caso isolado:
+
+- `arachne_scrape` com URL inexistente — HTTP 200, sem `isError`
+- `arachne_extract` com DNS quebrado — HTTP 200, sem `isError`
+- `arachne_vision` com o serviço de visão devolvendo 502 — HTTP 200, sem `isError`
+- `arachne_search` com query vazia — HTTP 200, sem `isError`
+
+Quatro falhas de naturezas diferentes, o mesmo veredito falso. O padrão estava no lugar errado: o `tools/call` montava a resposta como `{"content": [{"type": "text", "text": resultado}]}` e nunca olhava dentro do `resultado`. O handler tinha falhado com clareza; o servidor engoliu a informação a caminho do cliente.
+
+O segundo achado veio pelo mesmo caminho. Chamar `arachne_calc` sem o campo obrigatório devolvia:
+
+```text
+-32603 Internal error: arachne_calc() missing 1 required positional argument
+```
+
+Vazamento de assinatura Python na cara do cliente. Pior: `-32603` significa "erro interno do servidor". O servidor estava bem — o pedido é que estava incompleto. Um cliente bem escrito, ao ler `-32603`, tenta de novo ou abre incidente. Nenhuma das duas coisas resolve um campo que faltou no payload.
+
+## O que foi feito
+
+A correção (`f5d96ee`, 24/10 14:51) tem duas funções pequenas e uma ordem nova dentro do `tools/call`.
+
+A primeira é `_payload_failed()`. Ela recebe o texto devolvido pelo handler, tenta interpretar como JSON e procura `success: false` ou `ok: false` — no topo do objeto e também aninhado em `data`, porque a família de scraping devolve o veredito um nível abaixo. Texto puro, JSON inválido e payload que não é dicionário retornam `False`: a heurística só marca erro quando o próprio handler disse que errou. Achou falha, a resposta ganha `isError: true`.
+
+A segunda é `_missing_required()`. Antes de chamar o handler, o servidor compara os `arguments` recebidos com o `required` do `inputSchema` daquela ferramenta. Se faltar algo, o retorno é `-32602 Invalid params` com o nome dos campos. E um `TypeError` vindo do handler também vira `-32602`, porque assinatura incompatível com o schema é erro de cliente, não do servidor.
+
+O detalhe que faz diferença é onde a validação acontece: **antes** do handler rodar. Antes custava caro — o `arachne_scrape` gastava as seis camadas de evasão e uma sessão de Camoufox antes de desistir de uma URL que nem existia. Agora uma chamada sem os parâmetros obrigatórios nem toca o navegador.
+
+A verificação não ficou na leitura do diff. Trinta chamadas HTTP reais contra o `/api/mcp` — ping, capabilities, metrics, calc, search, scrape, extract, vision, screenshot, trending, releases, query, social, `kg_*`, torrent — deram zero falhas de protocolo. Os testes unitários fecharam em 29 passados, sendo 20 do arquivo de regressão novo, que cobre os casos chatos: `success: false` aninhado em `data`, `ok: false`, texto puro que não deve marcar erro e JSON inválido que também não.
+
+Depois veio o E2E (`4aa56be`, 15:34): 157 linhas em `api/tests/e2e/test_mcp_protocol_e2e.py` batendo no servidor de verdade por HTTP, sem mock — handshake `initialize`, `tools/list`, `isError` numa falha real e `-32602` num parâmetro faltando. O módulo se auto-pula quando o servidor está fora do ar, então o CI comum não quebra por causa dele. Rodada real contra o container: 6 passados em 6,4 segundos.
+
+```bash
+pytest api/tests/test_mcp_iserror.py -q
+pytest api/tests/e2e/test_mcp_protocol_e2e.py -q -m integration
+docker restart arachne-api
+```
+
+## Por que isso importa mais do que parece
+
+Um agente que recebe sucesso vazio não tem como se defender. Ele não vê erro para tratar, não vê motivo para tentar outra fonte, não vê razão para avisar o usuário. Continua a tarefa com nada nas mãos e entrega o nada com confiança. Falso positivo silencioso é a pior classe de bug em ferramenta de agente: corrompe o julgamento da ponta em vez de quebrar a chamada.
+
+A separação entre `-32602` e `-32603` não é preciosismo de especificação. É a diferença entre "o servidor está com problema" e "o seu pedido está incompleto" — duas reações opostas do outro lado.
+
+Efeito colateral que vale registrar: o container monta o diretório da API por cima do pacote instalado no Python. Editar o arquivo na árvore de trabalho **é** deploy; falta o `docker restart` para valer. Isso explica por que uma correção parecia não surtir efeito antes, e agora está no changelog.
+
+## O que a auditoria deixou na mesa
+
+A varredura não achou só esses dois problemas. O campo `engine` das ferramentas de scraping mente: devolve `"sidecar"` com o sidecar de crawling **offline**, sem listener nenhum, quando o motor real em uso é outro. `kg_god_nodes` responde vazio com `num_nodes_analyzed: 0`. E o `arachne_scrape` ainda culpa "Page blocked after 6 evasion layers" quando a causa real é DNS.
+
+As latências medidas também viraram prioridade: `extract` 56 segundos, `query` no RAG 49, `social_research` 50, `trending` 25. Não é bug de protocolo — é fila, e o próximo alvo: um agente que espera 56 segundos por extração já perdeu a janela em que o usuário prestava atenção.
+
+O Arachne continua no ritmo de build in public — hoje aprendeu a dizer "não" em vez de sorrir e entregar vazio.

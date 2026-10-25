@@ -1,0 +1,67 @@
+---
+title: "The cover that only showed up after the scroll"
+description: "Three new cards landed on the portfolio with the right images and the wrong attribute: the first covers on the page were marked to load only once they appeared on screen."
+category: samuel-projects
+date: 2026-10-23 19:59:00 -03:00
+pubDate: 2026-10-24 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "performance", "frontend", "nextjs", "optimization"]
+cover: /covers/portfolio-a-capa-que-so-aparecia-depois-do-scroll.webp
+featured: false
+hidden: false
+lang: en
+---
+
+Three new cards went live on the portfolio on a Friday night. Each one had its own 1280x720 cover, a description in both languages and a contract test making sure the button pointed to the right place — and, in the JSX, a `loading="lazy"` inherited from the component. The catch: those three cards are the first three images on the page. The attribute was telling the browser to defer exactly what the visitor sees first.
+
+The first commit was `7f09616`, on 10/23 at 19:13: six files, 114 lines added. Three Pillow-generated covers saved as WebP under `public/projects` — 32,416, 34,666 and 31,320 bytes, 98,402 in total. Because the source repositories are private, the cards carry no GitHub link: `html_url` empty and the button pointing at the site only, a pattern that had already worked for DogWalk. The descriptions went into the i18n dictionary, and `staticProjects.i18n.test.ts` was born in the same commit with three cases — the card exists in the list, it points at the site only, and it has a description in Portuguese and English longer than 30 characters.
+
+## What the component was doing
+
+Forty-six minutes later came the second commit, `2f131a7`, adding 15 lines and removing 2. `ProjectHangar` renders the cover in two variants — the project image and the game image — in two separate blocks of the same component. Both had a hardcoded `loading="lazy"`. Measured on the previous commit:
+
+```bash
+git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="lazy"'   # 2
+git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="eager"'  # 0
+```
+
+Not one of the twelve covers on the home page asked for priority. None. The visitor landed, the HTML arrived at 328,340 bytes, and the first cover — which today starts at byte 560 with zero `<img>` tags before it — joined the queue as if it were three screens away.
+
+It is worth spelling out what `loading="lazy"` actually does, because intuition gets this wrong: it does not compress or optimise anything. It is conditional deferral by intersection — the browser holds the download until it estimates the element is approaching the viewport. Applied to an element already inside the viewport, the effect is waiting on the image the user is staring at. Add queue cost on top: instead of competing for the first connections against JavaScript and CSS, the main cover becomes the last item in line.
+
+## The fix was not removing lazy from everyone
+
+The nine covers below the fold are still lazy, and should be — that is exactly where the attribute works in your favour. What came in was an optional field on the type:
+
+```tsx
+/** eager + fetchPriority=high: capa não depende de scroll pra aparecer */
+coverPriority?: boolean;
+```
+
+And on both variants of the card, the attribute became conditional:
+
+```tsx
+loading={repo.coverPriority ? "eager" : "lazy"}
+fetchPriority={repo.coverPriority ? "high" : undefined}
+```
+
+The three new cards got `coverPriority: true`. And the contract test gained a fourth case, the most important of the four: a new card with a cover and without `coverPriority` fails the suite. The rule stopped living in the commit message and became an assertion — `pnpm exec vitest run src/lib/staticProjects.i18n.test.ts` returns 4 of 4 in 1.48 s.
+
+The check that closes the case runs against the served HTML, not the source: three `loading="eager"` with `fetchPriority="high"` on the three covers above the fold, nine `loading="lazy"` across the rest of the fifteen-project list. Before the fix, zero eager.
+
+## Why this matters
+
+React will not fix this class of mistake on its own. The attribute sits in the JSX, the JSX compiles into HTML, and that HTML is what the CDN hands out — no layer in between is going to guess the author's intent. A `lazy` in the wrong place survives the build, the deploy and the code review, because the symptom is not an error: it is a cover that blinks in half a second after the rest of the page, and on a poor connection may simply never arrive.
+
+It is also the kind of bug a unit test normally misses, which is the point of that second test case. A flag without a contract is a field the next card forgets to fill — that is precisely how the first three were born with no priority at all. The test does not measure latency, but it does measure the only thing a developer controls in code: that the declared intent of priority exists on whatever sits above the fold.
+
+The rule left behind in the component is short and applies to any long list: what is in the first viewport loads early, with explicit priority; lazy is for what has not been seen yet. And priority has to be declared per item, not inherited from the component — because position in the list changes, and inheritance does not.
+
+## Next step
+
+Measure the home page LCP before and after on a throttled connection, and revisit the markup whenever the card order changes. The order already changed: the three new cards went in at the top, pushing everything else down.
+
+```bash
+# priority distribution of the covers in the served HTML
+curl -s https://example.com | grep -o 'loading="[a-z]*"' | sort | uniq -c   # 3 eager, 9 lazy
+```

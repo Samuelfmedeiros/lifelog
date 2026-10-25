@@ -1,0 +1,62 @@
+---
+title: "A credencial que ninguém tinha testado"
+description: "O Dogwalk passou nove horas com login e cadastro em 403 por causa de uma linha de ambiente com valor de exemplo. O que veio depois foi pior: o segredo que o CI carregava não existia mais, e só um par falso provou isso."
+date: 2026-10-22 14:14:00 -03:00
+pubDate: 2026-10-23 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "security", "secrets", "cloudflare", "validation", "ci"]
+cover: /covers/dogwalk-a-credencial-que-ninguem-tinha-testado.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+## A linha que estava ativa
+
+Todo projeto com captcha carrega duas metades da mesma fechadura. A primeira é pública, vai no HTML e qualquer visitante vê. A segunda fica no servidor e confirma que o desafio foi resolvido de verdade. Quem publica o front precisa da primeira; quem valida o token no backend precisa da segunda.
+
+No Dogwalk essas metades moraram em arquivos diferentes desde o começo: a chave pública no ambiente do front, o segredo no arquivo que o serviço de API lê no boot. E aí estava a armadilha, porque o serviço foi escrito para falhar fechado. Sem a variável, ele recusa toda submissão de captcha. Com a variável errada, também. Do ponto de vista do código, "mal configurado" e "sem configurar" são o mesmo estado — e o usuário vê a mesma tela.
+
+Em 15 de setembro, às 15h08, uma linha do arquivo de ambiente ficou ativa com o valor de exemplo. Não era um segredo: era o lembrete de onde o segredo deveria ir. Trinta e três minutos depois o serviço reiniciou e o login e o cadastro começaram a devolver 403. Não porque a senha estivesse errada, mas porque o captcha nunca era aprovado. Nove horas de produção com a porta trancada e a chave do lado de dentro.
+
+## O que a varredura encontrou
+
+Comentamos a linha, reiniciamos, a produção voltou. Mas ainda não dava para dormir: o segredo verdadeiro não estava em lugar nenhum que a gente soubesse apontar. O que existia era um valor guardado no cofre do repositório em 15 de junho, que nunca tinha passado por um teste — só por uma cópia e cola.
+
+Varremos doze fontes: o disco dos dois sistemas, o histórico do shell, o histórico do git com busca por conteúdo, o diretório de diagnóstico do runner, os backups, as variáveis exportadas, doze tokens do provedor de borda da máquina — chave global, service tokens, tokens de conta — e os metadados dos secrets do repositório. A conclusão foi desconfortável: o segredo válido não existia em nenhum lugar acessível.
+
+Aí veio a pergunta certa. Se não existe, o que é aquele valor de junho guardado há quatro meses? Ele parece uma credencial. Tem o formato de uma. Ninguém nunca perguntou se ainda servia para alguma coisa.
+
+## O par falso que prova a verdade
+
+A validação de captcha tem uma propriedade útil: ela separa os motivos de recusa. Se o segredo não existe do outro lado, a resposta é `invalid-input-secret`. Se o segredo existe e o token apresentado é lixo, a resposta é `invalid-input-response`. Dá para perguntar "este segredo é real?" mandando um token falso e lendo qual dos dois erros voltou.
+
+O truque é bobo e é exatamente o que precisávamos: prova a existência de uma credencial sem conhecê-la e sem usá-la para nada. Nenhum registro de uso, nenhum acesso a dado de ninguém. Só um par falso devolvendo a diferença entre "não existe" e "existe, mas você mandou lixo".
+
+O primeiro fato medido foi de tamanho. O valor de junho tem 34 caracteres; o formato oficial dessas secrets tem 40. Trinta e quatro não é uma credencial mais curta, é outra coisa — e nenhum código nunca reclamou disso, porque ninguém comparava. O segundo fato fechou o caso: o serviço de verificação respondeu `invalid-input-secret`. Aquela credencial estava morta, e o CI a carregava havia quatro meses achando que estava viva.
+
+## O achado pior
+
+Com o método na mão, olhamos a outra metade. O repositório guardava uma chave pública, o front publicado usava outra, e o hash do valor do CI batia com a chave de teste — aquela que a documentação oferece para desenvolvimento e aprova qualquer desafio sem olhar. Pior: a flag que a suíte end-to-end usa para pular o captcha estava ligada no ambiente de produção.
+
+Isso muda a leitura do incidente. A produção não estava protegida e quebrada ao mesmo tempo: estava desprotegida e passando nos testes justamente por isso. Qualquer relatório de "captcha ativo" era verdadeiro só no nome.
+
+## O que ficou
+
+Duas ferramentas pequenas e uma regra. A primeira é um job de CI que faz a mesma pergunta do par falso e imprime apenas o código de erro e o hash do que testou, nunca o valor. A segunda é um script de diagnóstico que localiza o widget na API do provedor, confere o formato antes de qualquer coisa, repete o teste e só então escreve o arquivo de ambiente. Se o teste não confirmar o par, ele aborta sem gravar. Se o arquivo tiver mais de uma linha para a mesma variável, aborta também.
+
+A regra é a que fecha o ciclo: credencial só entra no ambiente depois de o efeito dela ser medido. Existir num cofre não é evidência de nada. Ter o formato certo também não. A única evidência é a resposta do serviço que vai usá-la.
+
+Ficou um problema em aberto: nenhum token da máquina tem permissão de leitura ou escrita no produto de captcha — todos devolvem os mesmos códigos de permissão negada. Criar o widget definitivo e rotacionar o segredo exige um clique no painel, com um token novo. Enquanto isso não acontece, o caminho está mapeado e as ferramentas estão plantadas. O que é bem melhor que a situação de ontem: um segredo no cofre, um valor de exemplo no ambiente e ninguém sabendo qual dos dois estava mentindo.
+
+```bash
+# o par falso: prova que o segredo existe sem usá-lo
+curl -s https://challenges.cloudflare.com/turnstile/v0/siteverify \
+  -d "secret=$SECRET" -d "response=probe-par-falso" | head -c 200
+
+# formato antes de qualquer coisa: 40 é o oficial
+printf %s "$SECRET" | wc -c
+
+# e o estado real do serviço que depende dele
+curl -s -o /dev/null -w "%{http_code}\n" "$API/health"
+```
