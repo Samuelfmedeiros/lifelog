@@ -1,4 +1,5 @@
 ---
+import { comUtm } from '../lib/saida';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import TerminalWidget from '../components/TerminalWidget.astro';
 import { getCollection } from 'astro:content';
@@ -48,7 +49,7 @@ const linksTitle = locale === 'en' ? 'Links' : 'Links';
       <h2 class="text-xl font-bold" style="color: var(--color-heading)">{linksTitle}</h2>
       <ul style="list-style: none; padding: 0;">
         <li class="mb-2">
-          <a href={t.about.portfolioUrl} target="_blank" rel="noopener" style="color: var(--color-accent)">
+          <a href={comUtm(t.about.portfolioUrl, 'sobre')} target="_blank" rel="noopener" style="color: var(--color-accent)">
             {t.about.portfolio}
           </a>
         </li>
