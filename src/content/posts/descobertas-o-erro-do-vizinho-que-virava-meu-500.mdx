@@ -13,7 +13,7 @@ lang: 'pt'
 
 ## O placar que acusava o serviço errado
 
-O contador de erros do Arachne marcou 87 respostas 500 em três horas no endpoint de scrape. O serviço estava de pé: respondia, devolvia conteúdo, e ainda assim o placar dizia que ele estava quebrado. A causa não estava no Arachne. Estava nos sites que ele tentava ler.
+O contador de erros do [Arachne](/post/a-historia-do-arachne/) marcou 87 respostas 500 em três horas no endpoint de scrape. O serviço estava de pé: respondia, devolvia conteúdo, e ainda assim o placar dizia que ele estava quebrado. A causa não estava no Arachne. Estava nos sites que ele tentava ler.
 
 Boa parte da web hoje responde a um leitor automatizado com um desafio de JavaScript: a página chega, o corpo é um script que precisa ser resolvido, e quem não resolve recebe uma parede. Do lado de dentro, aquilo era só mais uma falha. E toda falha, naquele trecho, caía no mesmo `else`: status 500.
 
@@ -27,17 +27,17 @@ No mesmo commit apareceu um segundo problema, esse sim dentro de casa. O `progre
 
 Dez minutos depois veio a segunda camada (commit `6641dfa`, 01:37). A recontagem mostrou 65 respostas 500 em quarenta minutos e nenhum registro de qual URL havia falhado. Contador sem endereço não serve para diagnóstico. A causa do resto era uma mensagem de negócio: "Markdown vazio apos 3 tentativas" continuava caindo no balde de erro interno. Página que devolve casca vazia é falha do upstream, não do serviço que tentou ler. A lista de padrões cresceu, `timed out` passou a ser aceito além de `timeout`, e um `logger.warning` com URL, tipo e os primeiros 180 caracteres do erro fechou o buraco.
 
-A prova veio do mesmo endpoint, depois do restart: 85 respostas 200, duas 202 e zero 500. A carga não mudou. O que mudou foi o vocabulário.
+A prova veio do mesmo endpoint, depois do restart: 85 respostas 200, duas 202 e zero 500. A carga não mudou. O que mudou foi o [vocabulário](/post/arachne-o-erro-que-chegava-como-sucesso/).
 
 ## Por que isso vale mais que o fix
 
-Um contador de 5xx é um instrumento de medição. Quando ele mistura "falhei" com "o site de terceiro me barrou", ele para de medir o que eu penso que mede — e passa a medir o humor da internet. Num dia em que três sites populares apertam o cerco contra automação, o painel fica vermelho sem que uma linha minha tenha mudado.
+Um contador de 5xx é um instrumento de medição. Quando ele mistura "falhei" com "o site de terceiro me barrou", ele para de medir o que eu penso que mede — e passa a medir o humor da internet. Num dia em que três sites populares apertam o cerco contra automação, o [painel fica vermelho](/post/arachne-o-verde-que-nao-provava-nada/) sem que uma linha minha tenha mudado.
 
 Isso corrói de um jeito específico. Primeiro o alarme toca demais. Depois alguém abre o log, não acha nada útil e fecha. Por último o vermelho vira paisagem, e no dia em que o serviço quebrar de verdade ninguém vai olhar, porque já estava vermelho ontem e nada aconteceu.
 
 A distinção também muda o que dá para fazer com o dado. `upstream_blocked` é acionável por domínio: dá para listar quem bloqueia sempre e decidir se vale trocar de estratégia, usar outra saída ou aceitar que aquele site não é fonte. `internal_error` é acionável no código. Os dois no mesmo balde não são acionáveis em lugar nenhum.
 
-Tem uma lição menor, e que eu já paguei caro antes: função que pode devolver `None` precisa dizer isso no nome, no tipo ou na guarda. `was_blocked` era um atributo assumido em um retorno opcional. O código passou meses certo porque o caminho que devolvia `None` era raro — e raro não é nunca.
+Tem uma lição menor, e que eu já paguei caro antes: função que pode devolver `None` precisa dizer isso no nome, no tipo ou na guarda. `was_blocked` era um atributo assumido em um retorno opcional. O código passou meses certo porque o caminho que devolvia `None` era raro — e [raro não é nunca](/post/arachne-tres-facas-do-flake/).
 
 ## Próximo passo
 

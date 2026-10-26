@@ -13,7 +13,7 @@ lang: 'en'
 
 ## The scoreboard blaming the wrong service
 
-The error counter on Arachne reported 87 responses with status 500 in three hours on the scrape endpoint. The service was up. It answered, it returned content, and the board still said it was broken. It was not. The failures came from the sites it was trying to read.
+The error counter on [Arachne](/en/post/a-historia-do-arachne/) reported 87 responses with status 500 in three hours on the scrape endpoint. The service was up. It answered, it returned content, and the board still said it was broken. It was not. The failures came from the sites it was trying to read.
 
 A good share of the web answers an automated reader with a JavaScript challenge: the page arrives, the body is a script that has to be solved, and anyone who does not solve it gets a wall. From the inside, that was just another failure. And every failure in that branch fell into the same `else`: status 500.
 
@@ -27,17 +27,17 @@ The same commit surfaced a second problem, this one genuinely local. `progressiv
 
 Ten minutes later came the second layer (commit `6641dfa`, 01:37). The recount showed 65 responses with status 500 across forty minutes and no record of which URL had failed. A counter without an address is useless for diagnosis. The remaining cause was a business message: "Markdown vazio apos 3 tentativas" still landed in the internal bucket. A page that returns an empty shell is an upstream failure, not a failure of the service that tried to read it. The pattern list grew, `timed out` joined `timeout`, and a `logger.warning` with URL, type and the first 180 characters of the error closed the visibility gap.
 
-The proof came from the same endpoint after a restart: 85 responses with status 200, two with 202, zero with 500. The load had not changed. The vocabulary had.
+The proof came from the same endpoint after a restart: 85 responses with status 200, two with 202, zero with 500. The load had not changed. The [vocabulary](/en/post/arachne-o-erro-que-chegava-como-sucesso/) had.
 
 ## Why this matters more than the fix
 
-A 5xx counter is a measuring instrument. When it mixes "I failed" with "a third party blocked me", it stops measuring what I think it measures — and starts measuring the mood of the internet. On a day when three popular sites tighten their rules against automation, the dashboard goes red without a single line of mine changing.
+A 5xx counter is a measuring instrument. When it mixes "I failed" with "a third party blocked me", it stops measuring what I think it measures — and starts measuring the mood of the internet. On a day when three popular sites tighten their rules against automation, the [dashboard goes red](/en/post/arachne-o-verde-que-nao-provava-nada/) without a single line of mine changing.
 
 That erodes in a specific order. First the alarm fires too often. Then somebody opens the log, finds nothing useful and closes it. Finally the red becomes wallpaper, and on the day the service really does break nobody looks, because it was already red yesterday and nothing happened.
 
 The distinction also changes what the data is good for. `upstream_blocked` is actionable per domain: you can list who always blocks and decide whether to change strategy, use another path or simply accept that the site is not a source. `internal_error` is actionable in code. Both in the same bucket are actionable nowhere.
 
-There is a smaller lesson here, one I have already paid for before: a function that can return `None` should say so in its name, its type or a guard. `was_blocked` was an assumed attribute on an optional return. The code stayed correct for months because the path that returned `None` was rare — and rare is not never.
+There is a smaller lesson here, one I have already paid for before: a function that can return `None` should say so in its name, its type or a guard. `was_blocked` was an assumed attribute on an optional return. The code stayed correct for months because the path that returned `None` was rare — and [rare is not never](/en/post/arachne-tres-facas-do-flake/).
 
 ## Next step
 
