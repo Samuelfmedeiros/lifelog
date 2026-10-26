@@ -1,6 +1,13 @@
 # 📖 LifeLog — Session Hub
 
 
+## Sessao 2026-10-25 (fim de dia) - 18 commits (3 posts + amarracao da loja no corpo do post + suite e2e/vrt); push origin OK
+- **posts**: `yurumi-a-mensagem-que-saiu-sem-recibo` (`ed122d3` hidden -> recusa `4f95447` -> capa refeita com personagens Yurumi `197451f`, issue #88); `lifelog-o-guard-que-lia-a-flag-como-diretorio` (`7f50333` feat -> release `329cfbb`); `descobertas-o-erro-do-vizinho-que-virava-meu-500` (`1c2755c` feat -> release `11d1765` -> links internos `8f0eec8`).
+- **feat(amarracao)**: `dec6b1a` saida para a loja no CORPO do post + UTM canonico; `3f39e4e` guard de link sem UTM no build + `/sobre` e `/en/about`; `d103b29` saida no corpo do post + gate da navbar com 2 CTAs; `c1469dd` guard de saidas entende `--outDir` (recebia a flag como diretorio); `796f4a7` loja sai da navbar abaixo de 400px + locators do gate fixos.
+- **test**: `902bba8` baselines VRT regenerados na CI ubuntu + ratchet pago (#87); `13fe920` stub do analytics `op1.js` no preview local; `a4af1e5` unit test do bootstrap do playwright config; `656701b` canary de servidor same-origin nos diagnosticos.
+- 18 commits na main - push `origin` OK (HEAD `8f0eec8` + doc). Diffs de estado de loop (`cache/`, `coverage/`, `logs/`, `.loop-*.json`) nao commitados - intactos.
+
+
 ## Sessao 2026-10-24 (fim de dia) - 1 commit (amarracao home/navbar -> loja com UTM) na branch do Roger; push origin OK
 - **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar (antes: **zero** link para `skills.seu.pet` fora dos posts); novo e2e `e2e/amarracao` cobrindo home, `/en/`, `/arquivo` e `/en/archive`; baselines VRT regeradas de proposito.
 - 13 modificacoes nao commitadas preservadas (`api/ocultos-data.mjs`, `e2e/*`, `cache/`, `coverage/`, `logs/`, `.loop-*.json`) - diff alheio intacto.

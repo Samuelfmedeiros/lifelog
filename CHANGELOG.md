@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-25] - 18 commits: 3 posts (guard/flag, mensagem sem recibo, erro do vizinho 500) + amarracao da loja; push origin OK
+- **posts**: `ed122d3`/`4f95447`/`197451f` (yurumi — a mensagem que saiu sem recibo: hidden -> recusa -> capa refeita, issue #88); `7f50333`/`329cfbb` (o guard que lia a flag como diretorio); `1c2755c`/`11d1765`/`8f0eec8` (descobertas — o erro do vizinho que virava meu 500: feat -> release -> links internos).
+- **feat(amarracao)** (`dec6b1a`, `3f39e4e`, `d103b29`, `c1469dd`, `796f4a7`): saida para a loja no CORPO do post + UTM canonico; guard de link sem UTM no build; guard entende `--outDir`; loja fora da navbar abaixo de 400px.
+- **test** (`902bba8`, `13fe920`, `a4af1e5`, `656701b`): baselines VRT na CI ubuntu + ratchet pago (#87); stub de analytics no preview; unit do bootstrap do playwright config; canary same-origin.
+- 18 commits na main - push `origin` OK - HEAD main: `8f0eec8` + doc.
+
+
 ## [2026-10-24] - 1 commit: amarracao home/navbar -> loja com UTM; baselines VRT regeradas
 - **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar + e2e `amarracao` (home, `/en/`, `/arquivo`, `/en/archive`).
 - Medido antes: `lifelog.seu.pet` e `/arquivo` com 0 links para `skills.seu.pet`.
