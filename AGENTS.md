@@ -1,5 +1,12 @@
 # 📖 LifeLog — Session Hub
 
+## Sessao 2026-10-26 (fim de dia) - 2 commits do watchdog (capa AI + post orfao versionado) ja publicados no origin; push ok
+- **fix** (`0d89fa0`): capa AI de `portfolio-a-porta-que-servia-o-app-errado` refeita pelo watchdog.
+- **fix** (`273435e`): post orfao `portfolio-a-porta-que-servia-o-app-errado` versionado (a capa estava ok, o `.mdx` nao).
+- Os 2 commits ja estavam no `origin`: o `fetch` mostou que `origin/main` (`2866d9d`) é descendente direto do HEAD local - `git pull --rebase origin main` fez fast-forward sem reescrever nada. Nada de divergência a resolver.
+- 7 diffs nao commitados preservados (`.auto-pipeline.log`, `src/components/PalettePicker.astro` modificados + estados de loop `.loop-*`). Push `origin` OK apos o doc desta rodada.
+
+
 
 ## Sessao 2026-10-25 (fim de dia) - 18 commits (3 posts + amarracao da loja no corpo do post + suite e2e/vrt); push origin OK
 - **posts**: `yurumi-a-mensagem-que-saiu-sem-recibo` (`ed122d3` hidden -> recusa `4f95447` -> capa refeita com personagens Yurumi `197451f`, issue #88); `lifelog-o-guard-que-lia-a-flag-como-diretorio` (`7f50333` feat -> release `329cfbb`); `descobertas-o-erro-do-vizinho-que-virava-meu-500` (`1c2755c` feat -> release `11d1765` -> links internos `8f0eec8`).

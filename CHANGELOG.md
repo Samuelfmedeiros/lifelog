@@ -1,5 +1,10 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-26] - 2 commits do watchdog (capa AI + post orfao), ambos ja no origin; push ok
+- **fix(watchdog)** (`0d89fa0`): capa AI de `portfolio-a-porta-que-servia-o-app-errado`.
+- **fix(watchdog)** (`273435e`): post orfao `portfolio-a-porta-que-servia-o-app-errado` versionado.
+- **ops(sync)**: `origin/main` ja continha os 2 commits (fast-forward `0d89fa0..2866d9d`); commits de hoje = 2, push `origin` OK.
+
 ## [2026-10-25] - 18 commits: 3 posts (guard/flag, mensagem sem recibo, erro do vizinho 500) + amarracao da loja; push origin OK
 - **posts**: `ed122d3`/`4f95447`/`197451f` (yurumi — a mensagem que saiu sem recibo: hidden -> recusa -> capa refeita, issue #88); `7f50333`/`329cfbb` (o guard que lia a flag como diretorio); `1c2755c`/`11d1765`/`8f0eec8` (descobertas — o erro do vizinho que virava meu 500: feat -> release -> links internos).
 - **feat(amarracao)** (`dec6b1a`, `3f39e4e`, `d103b29`, `c1469dd`, `796f4a7`): saida para a loja no CORPO do post + UTM canonico; guard de link sem UTM no build; guard entende `--outDir`; loja fora da navbar abaixo de 400px.
