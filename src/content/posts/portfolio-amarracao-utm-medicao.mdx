@@ -1,0 +1,75 @@
+---
+title: "A amarração que fechou o ciclo de medição"
+description: "13 links cruzados, zero com UTM: a medição do portfólio chegava sem saber quem mandou, e a cura foi um helper de 59 linhas que etiqueta cada saída."
+category: samuel-projects
+date: 2026-10-27 08:00:00 -03:00
+pubDate: 2026-10-27 10:00:00 -03:00
+project: portfolio
+tags: [portfolio, analytics, frontend, http, testing]
+icon: "🚀"
+cover: /covers/portfolio-amarracao-utm-medicao.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+Medir visita sem saber quem mandou é medir metade do caminho. Foi o que acontecia no Portfólio até 24 de outubro: o beacon de visita disparava em toda navegação, registrava caminho e referrer, e chegava no caixa da loja como número solto — sem origem, sem campanha, sem meio. A causa não era no beacon. Era nos 13 links cruzados que o site tinha para os outros projetos (DogWalk, Arachne, LifeLog, skills.seu.pet) e que não carregavam um único parâmetro UTM. Medido pelo @moedas naquele dia: treze saídas, zero com UTM. A visita chegava, mas o destino não sabia de onde.
+
+## O que faltava
+
+O beacon já existia e funcionava. Ele mandava `site`, `path` e `ref` para `/api/hit`, que a loja gravava na tabela `hits` com `site='portfolio'`. O problema era o campo que faltava: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`. Sem eles, uma visita vinda do LifeLog e uma visita vinda de um post no X chegavam indistinguíveis. O número de visitas crescia, mas nenhuma decisão podia ser tomada sobre ele — era como contar pessoas entrando numa loja sem saber se vieram do outdoor ou do panfleto.
+
+A regra do ecossistema já existia e estava documentada: REGRA-AMARRACAO — todo link que sai do portfólio leva UTM, e o beacon carrega os UTM da página. A medição mostrou que a regra não estava sendo cumprida em lugar nenhum. Treze links, zero UTM. A lacuna não era de conhecimento; era de código.
+
+## O helper de 59 linhas
+
+A cura foi um módulo novo: `src/lib/utm.ts`, com duas funções. A primeira, `comUtm`, recebe uma URL e opções (`medium`, `campaign`, `content` opcional, `source` opcional) e devolve a URL com os parâmetros UTM adicionados. A segunda, `utmsDaPagina`, lê a query string atual e extrai os UTM que já estão lá — ou cai em `utm_source=portfolio` quando não há nenhum.
+
+```typescript
+export function comUtm(url: string, opcoes: Opcoes): string {
+  try {
+    const alvo = new URL(url, "https://portifolio.seu.pet");
+    alvo.searchParams.set("utm_source", opcoes.source || UTM_SOURCE);
+    alvo.searchParams.set("utm_medium", opcoes.medium);
+    alvo.searchParams.set("utm_campaign", opcoes.campaign);
+    if (opcoes.content) alvo.searchParams.set("utm_content", opcoes.content);
+    return alvo.toString();
+  } catch {
+    return url;
+  }
+}
+```
+
+Quatro decisões de design que importam:
+
+**URL inválida volta como veio.** O `try/catch` ao redor do construtor `new URL` garante que uma URL malformada não quebra o link — medição nunca pode atrapalhar navegação. Se o `URL` lançar, a função retorna a string original intacta.
+
+**Caminho relativo resolve contra o site.** Passar `"/projetos"` não estoura no construtor — a base fixa `https://portifolio.seu.pet` absorve. O resultado começa com `https://portifolio.seu.pet/projetos?` e carrega os UTM. Link quebrado por medição é o pior tipo de bug: silencioso e invisível.
+
+**Query existente é preservada, não duplicada.** `searchParams.set` substitui se já existir e adiciona se não. Um link como `https://lifelog.seu.pet/?lang=pt` ganha os UTM sem perder o `lang=pt`. Testado explicitamente no `utm.test.ts`.
+
+**Valor gigante é cortado em 64 caracteres.** O destino tem teto de 64 no campo. `utmsDaPagina` aplica `.slice(0, 64)` em cada valor antes de enviar. Sem isso, uma URL com `utm_campaign` de 200 caracteres seria gravada truncada no banco de qualquer forma — melhor cortar antes e manter o controle.
+
+## Onde entrou
+
+Dois pontos de saída foram etiquetados. No `Footer.tsx`, os três links do rodapé (DogWalk, Arachne, LifeLog) passaram a usar `comUtm` com `medium: "footer"`, `campaign: "portfolio"` e `content` com o nome do projeto. No `ProjectHangar.tsx`, cada card de projeto ganhou `siteHref` calculado com `medium: "projeto"`, `campaign` derivado do nome do repositório (slugificado) e `content: "card"`. O link de saída do card agora carrega a origem.
+
+O beacon também mudou. `enviarHit` passou a receber um quarto argumento opcional, `utms`, que sobrescreve o que vem da query string. Por padrão, lê `location.search` — quem chegou com `?utm_source=lifelog` mantém a atribuição. Sem UTM nenhum, cai em `utm_source=portfolio`. O corpo do beacon ganhou os campos `utm_source`, `utm_medium`, `utm_campaign` e `utm_content` via spread: `{ site, path, ref, ...daPagina, ...utms }`.
+
+## Os testes
+
+O `utm.test.ts` tem 69 linhas e cobre os casos que importam: UTM aplicado corretamente, query existente preservada, origem forçável via `source`, caminho relativo resolvido, fallback para `portfolio` sem UTM, atribuição mantida de quem chegou de fora, e corte de valor gigante. O `hit.test.ts` ganhou 28 linhas novas com dois cenários: beacon manda UTM da URL atual, e UTM explícito sobrescreve o da URL.
+
+No total, 97 linhas de teste para 85 linhas de código. Medições quebram silenciosamente — a proporção é intencional.
+
+## O que isso muda
+
+Antes: 13 links cruzados, zero UTM. Visita chegava no caixa da loja sem origem. Número de visitas crescia, mas nenhuma decisão podia ser tomada.
+
+Depois: cada saída carrega `utm_source=portfolio`, `utm_medium` e `utm_campaign`. Cada chegada carrega os UTM de quem mandou. O ciclo fecha: o portfólio sabe para onde mandou gente, e o destino sabe de onde veio. O número de visitas deixa de ser número solto e passa a ser atribuição.
+
+O helper é pequeno — 59 linhas. O impacto é grande: pela primeira vez, o portfólio consegue responder "de onde veio essa visita?" e "para onde mandei gente?". Duas perguntas que antes não tinham resposta.
+
+## Próximo passo
+
+Estender a amarração para os outros pontos de saída que ainda não foram etiquetados — links em posts do blog, botões de CTA e o card de download do currículo. O helper já existe; falta aplicar.
