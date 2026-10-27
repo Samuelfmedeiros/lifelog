@@ -1,0 +1,60 @@
+---
+title: "The agent that finally thought in a loop"
+description: "The TatuEngine's THINK, EVALUATE, DECIDE and OBSERVE cycle ran end to end for the first time — after three integration bugs, scheduled sampling in SFT and a comparator that measures two runs on the same trunk."
+category: samuel-projects
+date: 2026-10-27 12:00:00 -03:00
+pubDate: 2026-10-27 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, agent-loop, sft, model, validation]
+icon: "🦔"
+cover: /covers/tatuengine-o-agente-que-pensou-em-loop.webp
+featured: false
+hidden: true
+lang: en
+---
+
+The TatuEngine had an autopoietic agent designed on paper for months. Immunosystem, associative memory, goal stack, safety guard, semantic supervisor — the full architecture. But it had never run end to end. The reason was not a missing model or GPU. It was three integration bugs stacking up and killing the cycle silently before it could close.
+
+## The cycle that would not close
+
+The M3 cycle is simple in intent: THINK, EVALUATE, DECIDE, OBSERVE, repeat until the agent decides it is done. The function that orchestrates it calls the decider at every step. The problem is that the decider had three chained defects, each one alone enough to stall everything.
+
+The first: evaluation called the guard with a signature that did not exist. The code passed tokens, but the native API expects hidden state, dimension and step. The call threw, the exception was swallowed, alignment stayed stuck at 0.5 and, since the answer threshold is 0.75, the agent never declared DONE. The cycle ran forever or aborted without explanation.
+
+The second: the streaming parser accumulates internally. When the cycle reprocessed the transcript every iteration, the same answer was emitted again. The fix was calling reset before each parse, guaranteeing a single answer per cycle.
+
+The third was trivial and fatal: the server could not find the native binding, because it lives in a test directory, not where the server expected. Three lines of path resolution fix it, but without them nothing loaded.
+
+With all three fixed, the cycle closes in DONE on the second step when the guard is healthy, and stops at the max-cycles breaker when it is in drift. Proven with mocked model and guard, no GPU.
+
+## The motor had a hidden NameError
+
+Before even reaching the agent, there was a more basic defect. The decision method used a variable that only existed in the evaluation scope. On the tool-call path, that raised NameError. And in the model, the forward step function used a renamed parameter while the body still referenced the old name. Any call failed on the first line.
+
+A core audit showed that the heaviest modules in the project, over sixteen hundred lines combined, were not even imported by the server. The code existed, was tested, but was not on the execution path. That is the kind of finding that only appears when someone reads the import graph instead of assuming that what compiles runs.
+
+## Scheduled sampling: teaching the model not to drown
+
+In parallel to the agent, SFT training gained scheduled sampling. The idea: a second pass where the model generates the first tokens of the response with its own argmax and computes the loss against the golden label. When the probability parameter is zero, the old recipe is reproduced bit for bit. It is a way to expose the model to its own mistakes during training, without changing the pipeline.
+
+The second problem was scheduling, not algorithm. Cosine annealing used the total step count as the horizon. Doubling the training budget doubled the high-learning-rate stretch. A recent run had 1.38e-5 at step 400 against 3.8e-6 in the previous run, degraded and aborted. The fix decouples the horizon: when set, cosine ends at the given step and the rest stays at the learning-rate floor. Absent, behavior identical to before.
+
+## Measuring two runs on the same trunk
+
+Validating whether one run beats another required comparing checkpoints. The problem: each checkpoint stores only the trainable deltas, not the whole model. Comparing two checkpoints on different models or holdouts proves nothing.
+
+The comparator rebuilds the trunk once, applies the first checkpoint, measures, zeroes the deltas and applies the second. Both runs are measured on the same model and the same holdout. It measures held-out, Portuguese validation and English validation, with the pure trunk as baseline and English drift computed against it. A portability detail: importing the module in a harness should not require a mirror directory that may not exist. It now tolerates that.
+
+## What changed
+
+The agent stopped being architecture on paper. The cycle closes. The decider decides. The motor no longer raises NameError. Training no longer drowns when the budget grows. And validation compares runs fairly.
+
+```bash
+# Verify the M3 cycle with mocked model and guard
+python3 -m pytest tests/ -k agent -q
+
+# Compare two checkpoints on the same trunk
+python3 scripts/compare_ckpts.py --a run_a.pt --b run_b.pt
+```
+
+Next step: wire the M3 cycle to a real interface and measure whether the agent closes simple tasks without human intervention. The architecture is ready; the proof of use is missing.

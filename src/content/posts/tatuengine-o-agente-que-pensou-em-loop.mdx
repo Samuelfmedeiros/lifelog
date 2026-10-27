@@ -1,0 +1,60 @@
+---
+title: "O agente que finalmente pensou em loop"
+description: "O ciclo THINK, EVALUATE, DECIDE e OBSERVE do TatuEngine rodou ponta a ponta pela primeira vez — depois de três bugs de integração, scheduled sampling no SFT e um comparador que mede dois runs no mesmo tronco."
+category: samuel-projects
+date: 2026-10-27 12:00:00 -03:00
+pubDate: 2026-10-27 12:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, agent-loop, sft, model, validation]
+icon: "🦔"
+cover: /covers/tatuengine-o-agente-que-pensou-em-loop.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+O TatuEngine tinha um agente autopoiético desenhado no papel há meses. Immunosystem, memória associativa, pilha de objetivos, guardião de segurança, supervisor semântico — a arquitetura completa. Mas ela nunca tinha rodado de ponta a ponta. O motivo não era falta de modelo ou de GPU. Era três bugs de integração que se empilhavam e faziam o ciclo morrer silenciosamente antes de fechar.
+
+## O ciclo que não fechava
+
+O ciclo M3 é simples na intenção: THINK, EVALUATE, DECIDE, OBSERVE, repetir até o agente decidir que terminou. A função que orquestra isso chama o decisor a cada passo. O problema é que o decisor tinha três defeitos encadeados, cada um sozinho suficiente para travar tudo.
+
+O primeiro: a avaliação chamava o guardião com uma assinatura que não existia. O código passava tokens, mas a API nativa espera estado oculto, dimensão e passo. A chamada lançava exceção, a exceção era engolida, o alinhamento ficava travado em 0.5 e, como o limiar de resposta é 0.75, o agente nunca declarava DONE. O ciclo rodava para sempre ou abortava sem explicação.
+
+O segundo: o parser de streaming acumula internamente. Quando o ciclo reprocessava o transcript a cada iteração, o mesmo answer era emitido de novo. A correção foi chamar reset antes de cada parse, garantindo uma única resposta por ciclo.
+
+O terceiro era trivial e mortal: o servidor não encontrava o binding nativo, porque ele vive num diretório de testes, não onde o servidor esperava. Três linhas de path resolution resolvem, mas sem elas nada carregava.
+
+Com os três corrigidos, o ciclo fecha em DONE no segundo passo quando o guardião está saudável, e para no breaker de ciclos máximos quando está em drift. Prova com modelo e guardião mockados, sem GPU.
+
+## O motor tinha um NameError escondido
+
+Antes mesmo de chegar ao agente, havia um defeito mais básico. O método de decisão usava uma variável que só existia no escopo da avaliação. No caminho de chamada de ferramenta, isso estourava NameError. E no modelo, a função de passo forward usava um parâmetro renomeado mas o corpo ainda referenciava o nome antigo. Qualquer chamada falhava na primeira linha.
+
+Uma auditoria do núcleo mostrou que os módulos mais pesados do projeto, somando mais de mil e seiscentas linhas, não eram sequer importados pelo servidor. O código existia, estava testado, mas não estava no caminho de execução. Foi o tipo de achado que só aparece quando alguém lê o grafo de imports em vez de assumir que o que compila roda.
+
+## Scheduled sampling: ensinar o modelo a não se afogar
+
+Paralelamente ao agente, o treino SFT ganhou scheduled sampling. A ideia: uma segunda passagem onde o modelo gera os primeiros tokens da resposta com o próprio argmax e calcula a perda contra o label dourado. Quando o parâmetro de probabilidade é zero, a receita antiga é reproduzida bit a bit. É uma forma de expor o modelo ao próprio erro durante o treino, sem mudar o pipeline.
+
+O segundo problema era de agenda, não de algoritmo. O cosine annealing usava o total de passos como horizonte. Dobrar o orçamento de treino dobrava o trecho de learning rate alto. Um run recente tinha 1.38e-5 no passo 400 contra 3.8e-6 no run anterior, degradou e abortou. A correção desacopla o horizonte: quando definido, o cosine termina no passo dado e o resto fica no piso de learning rate. Ausente, comportamento idêntico ao antigo.
+
+## Medir dois runs no mesmo tronco
+
+Validar se um run é melhor que outro exigia comparar checkpoints. O problema: cada checkpoint guarda só os deltas treináveis, não o modelo inteiro. Comparar dois checkpoints em modelos diferentes ou holdouts diferentes não prova nada.
+
+O comparador reconstroi o tronco uma vez, aplica o primeiro checkpoint, mede, zera os deltas e aplica o segundo. Os dois runs são medidos no mesmo modelo e no mesmo holdout. Mede held-out, validação em português e validação em inglês, com o tronco puro como linha de base e o drift do inglês calculado contra ele. Um detalhe de portabilidade: importar o módulo num harness não deve exigir um diretório de mirror que pode não existir. Agora tolera.
+
+## O que mudou
+
+O agente deixou de ser arquitetura no papel. O ciclo fecha. O decisor decide. O motor não estoura NameError. O treino não se afoga quando o orçamento cresce. E a validação compara runs de forma justa.
+
+```bash
+# Verificar o ciclo M3 com modelo e guardião mockados
+python3 -m pytest tests/ -k agent -q
+
+# Comparar dois checkpoints no mesmo tronco
+python3 scripts/compare_ckpts.py --a run_a.pt --b run_b.pt
+```
+
+Próximo passo: ligar o ciclo M3 a uma interface real e medir se o agente fecha tarefas simples sem intervenção humana. A arquitetura está pronta; falta a prova de uso.
