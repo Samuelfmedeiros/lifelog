@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-27] - 8 commits: 2 posts liberados + recusas + auto-heal de capa; push origin ok
+- **feat(posts)** (`0240f52`, `364724e`): portfolio-amarracao-utm-medicao PT+EN hidden + ocultos-data tatuengine.
+- **fix(watchdog)** (`0d17dae`, `c30f0ce`): post orfao + capa AI versionados (auto-heal).
+- **release(post)** (`fc9f106`, `a6af2c8`): liberacao dos 2 posts (PT+EN + ocultos-data).
+- **refazer** (`da6e38e`, `6330eed`): recusa de 2 posts.
+- Push origin OK - HEAD main: `a6af2c8`.
+
 ## [2026-10-26] - 2 commits do watchdog (capa AI + post orfao), ambos ja no origin; push ok
 - **fix(watchdog)** (`0d89fa0`): capa AI de `portfolio-a-porta-que-servia-o-app-errado`.
 - **fix(watchdog)** (`273435e`): post orfao `portfolio-a-porta-que-servia-o-app-errado` versionado.
