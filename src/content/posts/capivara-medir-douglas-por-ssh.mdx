@@ -1,0 +1,88 @@
+---
+title: "O painel que aprendeu a medir uma máquina que não é Linux"
+description: "O hub do Capivara media 35 unidades de systemd e dezenas de containers — todos Linux. Quando a segunda máquina da casa (Douglas, Windows) entrou no inventário, a sonda não servia: sem systemd, sem Docker. A saída foi SSH com -EncodedCommand, JSON isolado e um veredito honesto: host inacessível vira unknown, nunca crit. 88 testes."
+category: samuel-projects
+date: 2026-10-24 16:10:00 -03:00
+pubDate: 2026-10-28 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "ssh", "observability", "windows"]
+cover: /covers/capivara-medir-douglas-por-ssh.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O inventário tinha um ponto cego
+
+O hub do Capivara media tudo que roda na máquina principal: unidades de systemd por escopo, containers Docker, falhas recentes. O veredito no topo da página de serviços é a soma honesta desses itens — `crit` só quando algo crítico cai de verdade.
+
+Mas havia uma segunda máquina na casa: o Douglas, um Windows. Ela não tinha systemd, não tinha Docker, não respondia a `systemctl show`. Entrava no inventário como um item com escopo `remoto` e, na prática, ninguém media nada. O painel mentia por omissão: dizia que tudo estava sob controle porque a única máquina que ele de fato mediu estava bem.
+
+Monitoramento que ignora uma máquina inteira não é monitoramento. É um painel de vaidade com um buraco no meio.
+
+## SSH, mas não do jeito que você pensa
+
+A primeira tentativa foi óbvia: SSH no Douglas e rodar um comando PowerShell que devolvesse JSON. O SSH conectava. O PowerShell rodava. E o JSON não chegava inteiro.
+
+O problema não era rede nem autenticação — era quoting. O comando passava por quatro camadas (ssh → cmd do Windows → PowerShell) e o JSON aninhado se desfazia no meio do caminho. Aspas viravam outra coisa, chaves sumiam, o parse falhava silenciosamente.
+
+A correção foi trocar `-Command "..."` por `-EncodedCommand <base64 UTF-16LE>`. É o mesmo mecanismo que o resto da administração remota do Windows usa, e resolve o quoting de uma vez: o PowerShell recebe o script já decodificado, sem nenhuma camada interpretando aspas. A saída passa a ser uma única linha de JSON comprimido, que o hub parseia isoladamente.
+
+```bash
+# O que o hub manda (conceptualmente):
+ssh -i ~/.ssh/id_ed25519 Samuel@<host> \
+  powershell -NoProfile -EncodedCommand <base64 do probe>
+```
+
+O probe em si é uma lista fixa de medições: RAM total e livre, minutos de uptime, número de processadores lógicos, nome da GPU, se o `llama-server` está rodando. Cada campo é medido, nada é chutado. A host vem de `~/.ssh/config` (bloco `Host douglas`), com fallback para variável de ambiente e, por último, um endereço padrão.
+
+## O veredito honesto
+
+A regra mais importante não está no SSH. Está no classificador.
+
+Quando o host não responde — rede fora, máquina desligada, chave errada — a sonda devolve `ok: false`. E o estado vira `unknown`, com o motivo registrado. **Nunca `crit`.** A razão é direta: não medimos o serviço, medimos a rede. Um host inacessível não prova queda de nada; prova que não temos prova.
+
+Esse detalhe parece pequeno e é o que separa um painel útil de um alarme que ensina a ignorar alarme. O mesmo padrão já existia para itens locais (`unknown` nunca conta como queda), e foi herdado sem mudar a regra — só estendido para uma máquina que não fala systemd.
+
+A tradução para a tela: host inacessível vira "sem SSH" com o motivo técnico, RAM livre abaixo de 400 MB vira `warn`, e o item entra em um grupo novo chamado **Remotos**, com dono marcado como o agente que cuida da máquina Windows.
+
+```js
+const cls = classificarDouglas(probe);
+return {
+  host,
+  ok: Boolean(probe),
+  estado: cls.estado,        // 'ok' | 'warn' | 'unknown'
+  motivo: probe ? cls.motivo : `SSH falhou (${r.err || 'host down'})`,
+  ram_bytes: probe ? Number(probe.ram_free_mb) * 1024 * 1024 : null,
+  desde_curto: probe ? `${Math.floor(probe.uptime_min / 60)}h` : '-',
+  descricao: probe ? (probe.gpu || '') : '',
+  host: probe ? probe.host : hostDouglasPadrao(),
+};
+```
+
+## Mission Control sem domínio separado
+
+No mesmo bloco de trabalho, o Mission Control — o painel que consolida métricas do ecossistema — deixou de viver em um subdomínio próprio e passou a morar dentro do hub do Capivara. A mudança não foi cosmética: remover um domínio separado remove um ponto de falha (DNS, certificado, deploy independente) e centraliza a visão onde o operador já está.
+
+O inventário ganhou um item com escopo `remoto` e a API de serviços passou a expor o campo `host` no contrato da linha. A página de serviços renderiza `REMOTOS 1/1 no ar` quando a sonda volta verde.
+
+## O que provou que funciona
+
+A prova não foi "conectou uma vez". Foi a suíte: 15 casos novos cobrindo o parse com a tarja do SSH, a geração do `EncodedCommand`, os três vereditos (`ok`, `warn`, `unknown`) e o caso em que a sonda estoura sem derrubar o veredito geral. O inventário passou a aceitar escopo remoto sem quebrar os testes existentes.
+
+Resultado final: 88 testes verdes, API `/api/servicos` expondo Douglas com estado `ok` e 558 MB livres, página `/servicos` renderizando `REMOTOS 1/1 no ar`.
+
+```bash
+./node_modules/.bin/vitest --run
+# 88/88 passando
+```
+
+## O que isso muda
+
+O hub deixou de ser um painel que só entende Linux. Agora ele mede uma máquina Windows com a mesma honestidade com que mede um container: mede o que consegue, registra o que não consegue, e nunca pintura de vermelho o que não provou.
+
+A lição maior é de método, não de código: quando um sistema de observabilidade ganha um tipo novo de alvo, a tentação é forçar o alvo a caber no modelo antigo. Aqui o modelo cedeu — criou um escopo `remoto`, um veredito próprio para rede e um campo `host` — e o painel ficou mais verdadeiro, não mais complicado.
+
+## Próximo passo
+
+O alvo seguinte é versionar o inventário medido: hoje ele é um array no código, e a próxima migração de host deveria produzir um diff explícito do que mudou — em vez de 26 itens invisíveis esperando alguém abrir a lista.

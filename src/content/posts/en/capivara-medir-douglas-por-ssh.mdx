@@ -1,0 +1,88 @@
+---
+title: "The dashboard that learned to measure a machine that isn't Linux"
+description: "The Capivara hub measured 35 systemd units and dozens of containers — all Linux. When the second machine in the house (Douglas, Windows) joined the inventory, the probe didn't fit: no systemd, no Docker. The answer was SSH with -EncodedCommand, isolated JSON, and an honest verdict: unreachable host becomes unknown, never crit. 88 tests."
+category: samuel-projects
+date: 2026-10-24 16:10:00 -03:00
+pubDate: 2026-10-28 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "ssh", "observability", "windows"]
+cover: /covers/capivara-medir-douglas-por-ssh.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The inventory had a blind spot
+
+The Capivara hub measured everything running on the main machine: systemd units by scope, Docker containers, recent failures. The verdict at the top of the services page is the honest sum of those items — `crit` only when something critical actually falls.
+
+But there was a second machine in the house: Douglas, a Windows box. It had no systemd, no Docker, no `systemctl show`. It entered the inventory as an item with `remote` scope, and in practice nobody measured anything. The dashboard lied by omission: it said everything was under control because the only machine it actually measured was fine.
+
+Monitoring that ignores a whole machine isn't monitoring. It's a vanity panel with a hole in the middle.
+
+## SSH, but not the way you'd think
+
+The first attempt was obvious: SSH into Douglas and run a PowerShell command that returned JSON. SSH connected. PowerShell ran. And the JSON didn't arrive intact.
+
+The problem wasn't network or authentication — it was quoting. The command passed through four layers (ssh → Windows cmd → PowerShell) and the nested JSON fell apart halfway. Quotes became something else, braces vanished, the parse failed silently.
+
+The fix was to replace `-Command "..."` with `-EncodedCommand <base64 UTF-16LE>`. It's the same mechanism the rest of Windows remote administration uses, and it solves quoting in one shot: PowerShell receives the script already decoded, with no layer interpreting quotes. The output becomes a single line of compressed JSON, parsed in isolation by the hub.
+
+```bash
+# What the hub sends (conceptually):
+ssh -i ~/.ssh/id_ed25519 Samuel@<host> \
+  powershell -NoProfile -EncodedCommand <base64 of the probe>
+```
+
+The probe itself is a fixed list of measurements: total and free RAM, uptime in minutes, number of logical processors, GPU name, whether `llama-server` is running. Every field is measured, nothing guessed. The host comes from `~/.ssh/config` (the `Host douglas` block), falling back to an environment variable and, last, a default address.
+
+## The honest verdict
+
+The most important rule isn't in the SSH. It's in the classifier.
+
+When the host doesn't respond — network down, machine off, wrong key — the probe returns `ok: false`. And the state becomes `unknown`, with the reason recorded. **Never `crit`.** The reason is direct: we don't measure the service, we measure the network. An unreachable host proves nothing fell; it proves we have no proof.
+
+That detail looks small and it's what separates a useful panel from an alarm that teaches you to ignore alarms. The same pattern already existed for local items (`unknown` never counts as a drop), and it was inherited without changing the rule — just extended to a machine that doesn't speak systemd.
+
+Translated to the screen: unreachable host becomes "no SSH" with the technical reason, free RAM below 400 MB becomes `warn`, and the item joins a new group called **Remotos**, with owner marked as the agent that takes care of the Windows machine.
+
+```js
+const cls = classificarDouglas(probe);
+return {
+  host,
+  ok: Boolean(probe),
+  estado: cls.estado,        // 'ok' | 'warn' | 'unknown'
+  motivo: probe ? cls.motivo : `SSH falhou (${r.err || 'host down'})`,
+  ram_bytes: probe ? Number(probe.ram_free_mb) * 1024 * 1024 : null,
+  desde_curto: probe ? `${Math.floor(probe.uptime_min / 60)}h` : '-',
+  descricao: probe ? (probe.gpu || '') : '',
+  host: probe ? probe.host : hostDouglasPadrao(),
+};
+```
+
+## Mission Control without a separate domain
+
+In the same block of work, Mission Control — the panel that consolidates ecosystem metrics — stopped living on its own subdomain and moved inside the Capivara hub. The change wasn't cosmetic: removing a separate domain removes a failure point (DNS, certificate, independent deploy) and centralizes the view where the operator already is.
+
+The inventory gained an item with `remote` scope and the services API started exposing the `host` field on the line contract. The services page renders `REMOTOS 1/1 no ar` when the probe comes back green.
+
+## What proved it works
+
+The proof wasn't "it connected once". It was the suite: 15 new cases covering the parse with the SSH tar, the generation of `EncodedCommand`, the three verdicts (`ok`, `warn`, `unknown`), and the case where the probe throws without taking down the overall verdict. The inventory started accepting remote scope without breaking existing tests.
+
+Final result: 88 tests green, API `/api/servicos` exposing Douglas with state `ok` and 558 MB free, page `/servicos` rendering `REMOTOS 1/1 no ar`.
+
+```bash
+./node_modules/.bin/vitest --run
+# 88/88 passing
+```
+
+## What this changes
+
+The hub stopped being a panel that only understands Linux. It now measures a Windows machine with the same honesty it measures a container: it measures what it can, records what it can't, and never paints red what it didn't prove.
+
+The bigger lesson is method, not code: when an observability system gains a new kind of target, the temptation is to force the target into the old model. Here the model yielded — it created a `remote` scope, a verdict of its own for the network, and a `host` field — and the panel became more truthful, not more complicated.
+
+## Next step
+
+The next target is to version the measured inventory: today it's an array in code, and the next host migration should produce an explicit diff of what changed — instead of 26 invisible items waiting for someone to open the list.
