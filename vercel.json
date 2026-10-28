@@ -1,6 +1,19 @@
 {
   "installCommand": "pnpm install",
   "buildCommand": "pnpm run build",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "lifelog-sepia.vercel.app"
+        }
+      ],
+      "destination": "https://lifelog.seu.pet/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/analytics/op1.js", "destination": "https://openpanel.seu.pet/op1.js" },
     { "source": "/api/op/:path*", "destination": "https://openpanel.seu.pet/api/:path*" }
