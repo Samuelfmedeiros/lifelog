@@ -1,0 +1,100 @@
+---
+title: "Nova história Dogwalk – Passeio offline, geofence e alto contraste no sol"
+description: "Como o Dogwalk ganhou fila de eventos offline, checagem de área de serviço via Haversine e correções de contraste para uso sob luz solar."
+category: samuel-projects
+date: 2026-10-28 12:00:00 -03:00
+pubDate: 2026-10-28 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, offline, geofence, accessibility, wcag, gps, react, supabase]
+cover: /covers/nova-historia-dogwalk-2026-10-28.webp
+hidden: true
+lang: 'pt'
+---
+
+O passeador está na rua, com o celular na mão e o cachorro puxando a guia. O sinal do 4G cai no meio do quarteirão. Antes, isso significava um evento perdido: o xixi, o coco, a foto, o ponto de GPS — simplesmente não chegavam ao servidor. O passeio continuava, mas o registro virava buraco.
+
+Esse era o problema que o commit `620b063` resolveu. A mudança não foi pequena: 12 arquivos, 2187 inserções e 143 remoções, todos concentrados em uma ideia central — o passeio não pode depender da rede.
+
+### O que aconteceu
+
+**1. Fila de eventos offline (`useWalkOfflineSync`)**
+
+Foi criado um hook que mantém uma fila persistente em `localStorage` sob a chave `patapass_walk_offline_queue`. Cada evento (xixi, coco, foto, GPS, finalização) vira um objeto com UUID, tipo, coordenadas, ID do passeio, timestamp e contador de tentativas.
+
+- Sincronização automática a cada 10 segundos enquanto online (`SYNC_INTERVAL_MS = 10_000`).
+- Debounce de 2 segundos após reconexão (`SYNC_DEBOUNCE_MS = 2_000`).
+- Máximo de 3 tentativas por evento (`MAX_RETRIES = 3`); depois disso o evento é marcado como falho.
+- Drenagem em ordem FIFO: o primeiro a falhar é o primeiro a tentar de novo.
+- A fila sobrevive a crash e fechamento do navegador porque vive no `localStorage`.
+
+O `ActiveWalkInterface` passou a usar esse hook. Quando o passeador registra um evento, a UI responde na hora (adiciona no estado local) e tenta enviar ao servidor. Se a requisição falhar, o evento é enfileirado automaticamente via `enqueueEvent`.
+
+**2. Monitoramento de conexão (`useNetworkStatus`)**
+
+Em vez de confiar no `navigator.onLine` (que mente), o app agora faz ping no endpoint `/health` a cada 15 segundos (`PING_INTERVAL_MS = 15_000`), com timeout de 5 segundos por tentativa. A qualidade é classificada em quatro níveis:
+
+| Nível | Latência máxima | Cor |
+|-------|-----------------|-----|
+| Excelente | 100 ms | verde |
+| Boa | 300 ms | verde-claro |
+| Instável | 800 ms | amarelo |
+| Fraca | acima de 800 ms | vermelho |
+
+Quando a conexão cai, o retry usa backoff exponencial: 5s, 15s, 45s, até o teto de 2 minutos (`RETRY_MAX_MS = 120_000`, multiplicador 3).
+
+**3. Banner de status (`WalkOfflineBanner`)**
+
+Uma barra amarela aparece no topo do passeio ativo com três estados possíveis: offline, sincronizando e erro. O passeador vê quantos eventos estão pendentes e se a sincronização está em andamento.
+
+**4. Geofence de área de serviço (`professional.js`)**
+
+O passeador define uma área de atendimento (centro + raio em km). Durante o passeio, o app verifica se a posição atual está dentro dessa área. A estratégia tem dois níveis:
+
+1. Tenta o endpoint dedicado `/api/service-areas/check-geofence` (POST) com autenticação.
+2. Se o endpoint falhar, cai no fallback client-side: busca as áreas ativas do passeador no banco e calcula a distância com a fórmula de Haversine. Se a distância for menor ou igual ao raio configurado, o passeador está dentro da área.
+
+Oito módulos de `professional.js` foram migrados de `supabase.rpc` para `dbApi`, eliminando referências diretas ao Supabase nos componentes refatorados.
+
+**5. Círculo de área no mapa (`generateCircle` em `mapUtils.js`)**
+
+Para renderizar a área de serviço no mapa Leaflet, foi criada a função `generateCircle(lat, lng, radiusKm, segments = 32)`. Ela gera um GeoJSON Polygon com 32 segmentos, calculando os passos de latitude e longitude com base na latitude do centro (porque 1 grau de longitude vale menos perto dos polos). O componente `ServiceAreaCircle` renderiza esse polígono sobre o mapa.
+
+**6. Alto contraste para uso sob sol**
+
+Sete pontos de legibilidade foram corrigidos para atingir WCAG AA sob luz solar direta. Entre eles: `statLabel`, `eventBtn`, `finishBtn`, bordas dos painéis e opacidades de texto. As bordas dos cards passaram de `1px solid #f5a62322` para `1.5px solid #f0d48a`, e as sombras de painel de `rgba(245, 166, 35, 0.1)` para `0.18`. Pequenas mudanças de opacidade que fazem diferença quando o sol está batendo na tela.
+
+### Como foi resolvido
+
+A migração do `supabase` direto para `dbApi` foi o pré-requisito. Com a camada de API isolada, foi possível injetar o fallback offline sem tocar em cada chamada individual. O `ActiveWalkInterface` trocou `import { supabase }` por `import { db }` e passou a usar `enqueueEvent` quando a requisição falha.
+
+A fila offline foi desenhada para ser simples: localStorage, JSON, FIFO. Nada de IndexedDB ou Service Worker. A simplicidade foi uma escolha deliberada — o passeador pode fechar o app, reabrir horas depois, e a fila ainda estar lá esperando sincronizar.
+
+Para o geofence, o fallback Haversine no cliente garante que a verificação funcione mesmo quando o endpoint dedicado está fora do ar. A fórmula calcula a distância em linha reta entre a posição do GPS e o centro da área de serviço. Se a distância for menor ou igual ao raio configurado, o passeador está dentro.
+
+### Impacto
+
+- Passeios registrados em áreas sem sinal agora chegam ao servidor quando a conexão volta.
+- O passeador vê o status da conexão em tempo real, com contagem de eventos pendentes.
+- A área de serviço do passeador é visível no mapa como um círculo, e a verificação de geofence funciona mesmo offline.
+- A interface ficou legível sob luz solar, o que importa quando o usuário está na rua de verdade.
+
+### Próximos passos
+
+- Testar a fila offline com cenários reais de perda de conexão prolongada.
+- Adicionar testes automatizados para o fallback Haversine do geofence.
+- Avaliar se o intervalo de ping de 15 segundos é adequado para bateria em dispositivos antigos.
+
+```bash
+# Consultar a fila offline no console do navegador
+localStorage.getItem('patapass_walk_offline_queue')
+
+# Verificar áreas de serviço ativas de um passeador
+curl -s http://localhost:3000/api/service-areas?walker_id=<id>
+
+# Build do projeto Dogwalk
+cd /home/samuel/projetos/dogwalk && pnpm build
+```
+
+---
+
+*Este post está oculto e aguarda liberação manual.*
