@@ -3,14 +3,14 @@
   "buildCommand": "pnpm run build",
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "has": [
         {
           "type": "host",
           "value": "lifelog-sepia.vercel.app"
         }
       ],
-      "destination": "https://lifelog.seu.pet/:path*",
+      "destination": "https://lifelog.seu.pet/$1",
       "permanent": true
     }
   ],
