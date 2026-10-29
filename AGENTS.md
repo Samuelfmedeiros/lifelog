@@ -1,5 +1,14 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-10-28 (fim de dia) — 4 commits (redirect vercel + 2 posts hidden); push origin ok
+
+- **feat** (`055e807`): nova-historia-dogwalk-2026-10-28 (hidden).
+- **feat** (`84f5a41`): capivara-medir-douglas-por-ssh (hidden).
+- **fix(vercel)** (`fed3683`, `aa9a485`): redirect lifelog-sepia.vercel.app -> lifelog.seu.pet (host-aware, 308/regex src).
+- Fast-forward origin/main (2 commits) aplicado; push origin OK.
+- 12 diffs nao commitados preservados (`.auto-pipeline.log`, `scripts/generate-cover.py`, `PalettePicker.astro`, posts recusados, estados de loop, capa v4).
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessao 2026-10-26 (fim de dia) - 2 commits do watchdog (capa AI + post orfao versionado) ja publicados no origin; push ok
 - **fix** (`0d89fa0`): capa AI de `portfolio-a-porta-que-servia-o-app-errado` refeita pelo watchdog.
 - **fix** (`273435e`): post orfao `portfolio-a-porta-que-servia-o-app-errado` versionado (a capa estava ok, o `.mdx` nao).

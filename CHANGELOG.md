@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-28] - 4 commits: 2 posts hidden + redirect vercel; push origin ok
+
+- **feat(posts)** (`055e807`, `84f5a41`): nova-historia-dogwalk-2026-10-28 + capivara-medir-douglas-por-ssh (hidden).
+- **fix(vercel)** (`fed3683`, `aa9a485`): redirect lifelog-sepia.vercel.app -> lifelog.seu.pet (host-aware).
+- Fast-forward origin/main (2 commits); push origin OK. 12 diffs preservados.
+
 ## [2026-10-27] - 8 commits: 2 posts liberados + recusas + auto-heal de capa; push origin ok
 - **feat(posts)** (`0240f52`, `364724e`): portfolio-amarracao-utm-medicao PT+EN hidden + ocultos-data tatuengine.
 - **fix(watchdog)** (`0d17dae`, `c30f0ce`): post orfao + capa AI versionados (auto-heal).
