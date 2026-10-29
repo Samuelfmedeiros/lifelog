@@ -283,6 +283,9 @@ def main():
         return
 
     slug = sys.argv[1]
+    if slug.startswith("-"):
+        print("Uso: generate-cover.py <slug>  (slug sem flags; use --list-missing ou --all)")
+        return
     # Try to detect project from frontmatter
     project = "descobertas"
     mdx_path = os.path.join(POSTS_DIR, f"{slug}.mdx")
