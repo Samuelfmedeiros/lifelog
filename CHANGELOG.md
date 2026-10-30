@@ -1,5 +1,13 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-29] - 4 commits: auto-heal de capa + post orfao + capa v4 + limpeza de post; push origin ok
+
+- **fix(lifelog)** (`dfe2450`): post orfao `nova-historia-arachne-2026-10-29` versionado.
+- **fix(lifelog)** (`9fff0b5`): capa(s) gerada(s) fora do git versionadas (auto-heal do push).
+- **fix(lifelog)** (`de0d691`): capa v4 (tamandua) do post Yurumi (hidden, pt+en) + guard slug '-'.
+- **fix(security)** (`e164189`): receita tecnica removida do post TatuEngine + lint.
+- Push `origin` OK (`roger/lifelog-20261029-210206`); 63 diffs preservados.
+
 ## [2026-10-28] - 4 commits: 2 posts hidden + redirect vercel; push origin ok
 
 - **feat(posts)** (`055e807`, `84f5a41`): nova-historia-dogwalk-2026-10-28 + capivara-medir-douglas-por-ssh (hidden).
