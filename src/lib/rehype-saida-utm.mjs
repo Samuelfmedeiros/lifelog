@@ -14,6 +14,7 @@
  * Sem JS no cliente, sem dependência nova. Slug vem do nome do arquivo, que é a mesma
  * convenção usada pelo PostLayout (`post.id`).
  */
+/* global URL */
 import path from 'node:path';
 
 const HOSTS = new Set([

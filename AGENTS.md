@@ -1,5 +1,15 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-10-29 (fim de dia) — 4 commits (auto-heal de capa + post orfao + capa v4); push origin ok
+
+- **fix(lifelog)** (`dfe2450`): versiona post orfao `nova-historia-arachne-2026-10-29` (watchdog: capa estava ok, `.mdx` nao).
+- **fix(lifelog)** (`9fff0b5`): versiona capa(s) gerada(s) fora do git (auto-heal do push).
+- **fix(lifelog)** (`de0d691`): capa v4 (tamandua) do post Yurumi (hidden, pt+en) + guard slug '-' no `generate-cover.py`.
+- **fix(security)** (`e164189`): remove receita tecnica do post TatuEngine e corrige lint.
+- Branch `roger/lifelog-20261029-210206` (HEAD; o roteiro declara `main`) — push `origin` OK.
+- 63 diffs nao commitados preservados (`.auto-pipeline.log`, `PalettePicker.astro`, posts recusados, estados de loop, `pnpm-lock.yaml`).
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-10-28 (fim de dia) — 4 commits (redirect vercel + 2 posts hidden); push origin ok
 
 - **feat** (`055e807`): nova-historia-dogwalk-2026-10-28 (hidden).
