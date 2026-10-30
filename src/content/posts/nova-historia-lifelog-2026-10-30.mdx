@@ -1,0 +1,57 @@
+---
+title: "O dia em que o blog mudou de casa"
+description: "O LifeLog trocou de domínio, o redirect precisou ser host-aware para não apagar a CSP, e no dia seguinte o watchdog auto-healou capas e posts órfãos que tinham sido gerados fora do git."
+category: samuel-projects
+date: 2026-10-30 10:00:00 -03:00
+pubDate: 2026-10-30 08:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "deploy", "redirect", "vercel", "cloudflare", "watchdog"]
+icon: "📖"
+cover: /covers/nova-historia-lifelog-2026-10-30.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+No dia 28 de outubro o blog trocou de endereço. Até então a URL de produção era `lifelog-sepia.vercel.app` — o subdomínio que a Vercel atribuiu no primeiro deploy, em julho, quando o site ainda era um protótipo. Três meses depois ele tinha virado o diário de bordo do ecossistema, com 80 posts bilíngues e 60 capas AI. Continuar servindo por um subdomínio gerado automaticamente não fazia mais sentido. A casa nova é `lifelog.seu.pet`, sob a zona `seu.pet` que já abriga o portfólio, o Arachne e o resto da frota.
+
+Mudar de domínio em site estático parece trivial: troca a URL no `astro.config.mjs`, redeploy, pronto. O problema é o que fica para trás. Links antigos em RSS, em posts de outros projetos, em mensagens do Telegram, em cache de navegador e em indexadores de busca continuam apontando para `lifelog-sepia.vercel.app`. Quem clica num link velho não pode cair num 404 — precisa ser redirecionado para a URL nova, preservando o caminho.
+
+## O redirect que precisava ser host-aware
+
+A Vercel permite configurar redirects no `vercel.json`. O óbvio seria um redirect global: qualquer requisição para `lifelog-sepia.vercel.app` vai para `lifelog.seu.pet` com o mesmo path. Funciona, mas tem um detalhe: o redirect roda na origem, antes da resposta sair. Se a origem também aplica headers de segurança — e aplica, via `vercel.json` — a ordem de execução importa.
+
+O commit `aa9a485` (28/10, 14:30) introduziu o redirect com status 308, o que é correto: 308 preserva o método HTTP (um POST não vira GET no caminho). Mas a versão inicial usava um padrão de match que capturava o host inteiro, e a camada de borda — a regra de transformação de resposta da zona Cloudflare — rodava depois da origem e substituía os headers que a Vercel tinha montado. Resultado: a CSP completa do `vercel.json` (onze diretivas) virava a versão genérica da borda (duas diretivas). O site respondia 200, o navegador não reclamava, e a proteção anti-XSS simplesmente não existia mais.
+
+O conserto, no commit `fed3683` (28/10, 14:31), foi tornar o redirect host-aware: a regra da zona passou a excluir o host do blog. Onde a origem tem política própria, a origem manda — a borda sai do caminho. Uma linha de configuração, e a CSP voltou a ter as onze diretivas. O teste DAST que faz requisição real na produção e lê o header que voltou voltou a passar.
+
+A lição é a mesma do post sobre a borda que reescrevia a CSP: a origem enxerga o próprio site, a borda enxerga hosts. Uma política escrita para valer em todos os hosts tem que ser genérica o suficiente para não quebrar nenhum deles — e genérica o suficiente para não proteger nenhum de verdade. O host que tinha uma política melhor não tinha como avisar, a não ser que a regra da zona o excluísse explicitamente.
+
+## O watchdog que auto-healou o que o git não viu
+
+No dia 29, o watchdog de capas rodou e encontrou três arquivos que existiam no disco mas não no repositório: a capa de `nova-historia-arachne-2026-10-29` (37KB, gerada pelo Worker FLUX mas nunca commitada), a capa v4 do post Yurumi (97KB, uma variante com tamanduá que tinha sido gerada numa rodada de refazer), e a capa refeita de `arachne-o-cache-que-respondeu-a-pergunta-errada` (37KB, antes 33KB).
+
+O commit `9fff0b5` (29/10, 16:02) versionou as três capas. O commit `dfe2450` (29/10, 16:02) versionou o post órfão `nova-historia-arachne-2026-10-29` (PT+EN, 400 linhas somadas) que tinha sido gerado pelo pipeline mas não commitado — o `.mdx` existia no disco, a capa estava ok, mas o arquivo não tinha entrado no git.
+
+E o commit `de0d691` (29/10, 19:03) fez duas coisas: trocou a capa do post Yurumi pela v4 (a variante com tamanduá) e adicionou um guard no `generate-cover.py` — o slug não pode conter hífen no meio do nome do projeto, porque o script partia o slug em pedaços e gerava a capa com o nome errado.
+
+## O que isso mudou
+
+O LifeLog não é mais um blog num subdomínio gerado automaticamente. É um site em `lifelog.seu.pet`, com redirect 308 preservando path e método, CSP completa servida pela origem sem interferência da borda, e um watchdog que detecta arquivos gerados fora do git e os versiona sozinho.
+
+A cadeia de auto-heal funciona assim: o pipeline gera post + capa AI → salva no disco → se o commit falhar ou for esquecido, o watchdog detecta o arquivo órfão na próxima rodada → versiona → push. Sem isso, o post existiria no disco do servidor mas não no repositório — e na próxima execução do pipeline, o mesmo post seria regenerado do zero, sobrescrevendo o trabalho anterior.
+
+## Próximo passo
+
+O próximo ciclo de posts (12h e 16h) vai gerar histórias para Dogwalk e Capivara. A cadeia de auto-heal está ativa — se algo ficar órfão no disco, o watchdog trata na madrugada seguinte.
+
+<Terminal
+  lines={[
+  { cmd: 'git show --stat fed3683 --oneline', output: 'fix(vercel): redirect lifelog-sepia.vercel.app -> lifelog.seu.pet (host-aware)' },
+  { cmd: 'git show --stat 9fff0b5 --oneline', output: 'fix: versiona capa(s) gerada(s) fora do git (auto-heal)' },
+  { cmd: 'curl -sI https://lifelog-sepia.vercel.app/ | head -3', output: 'HTTP/2 308' },
+  { cmd: 'curl -sI https://lifelog.seu.pet/ | grep -i content-security', output: 'content-security-policy: default-src ... (11 diretivas)' },
+  ]}
+/>
