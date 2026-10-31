@@ -7,7 +7,7 @@ hidden: true
 project: tatuengine
 cover: /covers/tatuengine-block-codec-27gb-para-245mb.webp
 description: "Um post-mortem técnico de como substituímos um peso por TriangleLens (32GB para 1B de params) por blocos ternários de 32x32 (245MB), na RTX 3060, sem perder a coerência da inferência."
-tags: ["AI Engineering", "CUDA", "C++", "State Space Models", "B2B"]
+tags: ["ai", "cuda", "ssm", "ternary", "vram", "tatuengine"]
 ---
 
 Agentes autônomos de código entram em falha silenciosa por dois motivos principais: alucinação sintática não tratada e exaustão de memória na camada de inferência.
@@ -29,22 +29,3 @@ Se você monta pipeline de inferência local e está batendo em VRAM, o caminho 
 O paradigma por trás: substituímos multiplicações de ponto flutuante por operações de adição em tensores ternários. Isso remove o gargalo da FPU e mapeia diretamente para os Warps da NVIDIA — cada bloco de 32×32 pesos cabe em um Warp, e a travessia paralela de BVH na GPU fica bit-a-bit idêntica ao CPU ground truth.
 
 Quer implementar essa arquitetura no seu cluster ou destravar o limite de VRAM da sua infraestrutura local? O código-fonte completo do BlockLens e a lógica de orquestração do TatuEngine estão detalhados no meu E-book Técnico [R$ 37 → skills.seu.pet/p/o-agente-que-nao-mente]. Para times corporativos, ofereço o Setup Guiado de Infraestrutura [R$ 1.500 → skills.seu.pet/servico], onde integro o motor nativo diretamente na sua pipeline de CI/CD.
-
----
-
-NOTAS PARA O SAMUEL (NAO PUBLICAR — remover antes de subir):
-- "19GB para 1B de params" do texto original foi corrigido para "32GB": o cálculo do
-  Samuel (31/10) confirmou que 1 TriangleLens = 32 bytes/peso × 1B = 32GB (~30 GiB).
-  A afirmação "19GB" quebrava a consistência (71x vs 114x). Mantido "32GB".
-- "1.58-bit" do titulo original foi trocado por "ternarios": a skill tatu-engine documenta
-  peso ternario {-1,0,+1} e 2-bit no TriangleLens. "1.58-bit" e o nome do regime BitNet e
-  NAO esta confirmado internamente. Se quiser manter, verificar com o grupo TatuEngine.
-- "WSL2/Kali" do titulo original foi trocado por "RTX 3060 (CUDA)": a medicao da skill e
-  RTX 3060, e a pos-migracao e CachyOS. Se o treino rodou em WSL/Kali, ajustar com fonte.
-- "27GB para 245MB" confirmado: calculo do Samuel (31/10) = 27.914,24 MB / 245 MB = 113,935 ≈ 114x.
-  BlockLens 32x32, 288 bytes, 2 bits/peso, 0,28125 bytes/peso. Skill tatu-engine, secao "Block-encoded BVH — 114x compressao".
-- MSE 3,7e-9 confirmado: duas ordens abaixo do epsilon do FP32 (1,19e-7). Phase diff 0.00e+00.
-  Erro residual provem da nao-associatividade do ponto flutuante (GPU vs CPU).
-- O bloco memory-context do texto original foi REMOVIDO: expunha estado interno
-  (sessoes, merges pendentes, portas) — vazamento se publicado. Nao recolocar.
-- Publicacao: hidden:true no LifeLog, liberacao pelo Samuel (grupo Portifolio).
