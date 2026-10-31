@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-30] - 5 commits: 2 posts liberados + refazer de recusa + versionamento de capa/post orfao; push origin ok
+
+- **release(post)** (`8755ff4`, `42f1a4e`): `yurumi-a-mensagem-que-saiu-sem-recibo` + `nova-historia-lifelog-2026-10-30` (PT+EN + ocultos-data).
+- **refazer** (`00cb467`): recusa de `nova-historia-arachne-2026-10-29` refeita.
+- **fix(watchdog)** (`ecc30f2`, `63b87b3`): capa + post orfao versionados (auto-heal do push).
+- Push `origin` OK; diffs de estado de loop preservados.
+
 ## [2026-10-28] - 4 commits: 2 posts hidden + redirect vercel; push origin ok
 
 - **feat(posts)** (`055e807`, `84f5a41`): nova-historia-dogwalk-2026-10-28 + capivara-medir-douglas-por-ssh (hidden).

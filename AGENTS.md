@@ -1,5 +1,15 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-10-30 (fim de dia) - 5 commits (2 posts liberados + refazer de recusa + versionamento de capa/post orfao); push origin ok
+
+- **release(post)** (`8755ff4`): `yurumi-a-mensagem-que-saiu-sem-recibo` (PT+EN + ocultos-data).
+- **release(post)** (`42f1a4e`): `nova-historia-lifelog-2026-10-30` (PT+EN + ocultos-data).
+- **refazer** (`00cb467`): recusa de `nova-historia-arachne-2026-10-29` refeita.
+- **fix(watchdog)** (`ecc30f2`, `63b87b3`): capa(s) gerada(s) fora do git versionada (auto-heal do push) + post orfao `nova-historia-lifelog-2026-10-30` versionado (a capa estava ok, o `.mdx` nao).
+- Trabalho de campanha em branch (sem merge automatico): `roger/lifelog-20261029-170600` com `97e509b` (residual da campanha) e `f2a0664` (test e2e RSS EN com contagem dinamica).
+- Fast-forward `origin/main` aplicado; push `origin` OK. 9 diffs de estado de loop (`.loop-*.json`, `.auto-pipeline.log`) nao commitados - intactos.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-10-28 (fim de dia) — 4 commits (redirect vercel + 2 posts hidden); push origin ok
 
 - **feat** (`055e807`): nova-historia-dogwalk-2026-10-28 (hidden).
