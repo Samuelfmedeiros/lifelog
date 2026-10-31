@@ -1,196 +1,75 @@
 ---
-title: "Nova história do Arachne — RAG Stage 3 e o poder da busca híbrida"
-description: "RAG Stage 3: camada de abstração, FTS5 real, pgvector e o chunker token-aware"
+title: "O dia que o Arachne parou de pensar em inglês"
+description: "A migração do embedding de 384 para 768 dimensões: colibri-embed-ptbr, o índice ivfflat, a regressão do adaptador e o RRF da busca híbrida"
 category: samuel-projects
 date: 2026-10-28T22:00:00
-pubDate: 2026-10-29T14:00:00
+pubDate: 2026-10-31T02:00:00-03:00
 project: arachne
-tags: [arachne, rag, vector-store, fts5, python, sqlite, tiktoken]
+tags: [arachne, rag, fts5, postgres, python, search]
 icon: "🕷️"
 cover: /covers/nova-historia-arachne-2026-10-29.webp
-hidden: false
+hidden: true
 lang: pt
 ---
 
-# Nova história do Arachne — RAG Stage 3 e o poder da busca híbrida
+# O dia que o Arachne parou de pensar em inglês
 
-**28 de outubro de 2026** — Depois de meses com o pipeline RAG preso no Stage 2 (apenas similaridade de embedding), finalmente avançamos para o Stage 3. Isso não foi "o próximo item da lista" — foi a resposta técnica a um problema concreto que usuários vinham reclamando: **as buscas retornavam resultados semanticamente similares, mas de fato errados**. Um usuário pesquisando "erros de validação de CPF" recebia artigos sobre "formatação de CNPJ", porque o embedding capturava a intenção geral, mas perdia os tokens específicos do domínio.
+**2 de agosto de 2026.** O RAG do Arachne já engolia documentos, gerava embedding e respondia buscas — mas embedava tudo com `all-MiniLM-L6-v2`, um modelo de 384 dimensões treinado em inglês. O corpus dos usuários, claro, era português. O sintoma não era erro visível: a busca funcionava, mas o espaço vetorial onde "nota fiscal" deveria morar tinha sido construído em outra língua. Consulta que o usuário escreve em português colloquial caía mais perto de vocabulário inglês genérico do que do termo exato que existia no documento.
 
-## O problema que motivou o Stage 3
+Nesse dia o vector store migrou para pgvector no PostgreSQL local: **4063 embeddings convertidos**, com índice ivfflat. No dia seguinte, **3 de agosto**, entrou `tardellirs/colibri-embed-ptbr` — 768 dimensões, treinado em português. O provider `openai` passou a apontar para uma Infinity local servindo o modelo, controlado por uma env: `ARACHNE_EMBEDDING_PROVIDER=openai`.
 
-Há duas semanas, o fluxo era:
+## A parte que ninguém conta: 384 e 768 não convivem
 
-1. Uploader envia um documento (PDF, TXT, HTML)
-2. `ingestion/chunker.py` fatia em chunks de 512 caracteres (sem consciência semântica)
-3. Embedding `text-embedding-ada-002` gera vetores de 1536 dimensões
-4. Busca por similaridade vetorial `similarity_search()` — retorna chunks com maior similaridade de cosseno
-5. Resultado: usuários viam "relevância", mas viam ruído
-
-O ponto de ruptura veio quando um teste em `test_crawlers.py` mostrou que **40% dos resultados** para consultas técnicas tinham conteúdo irrelevante no top-5. Não era ruído do embedding — era a falta de fallback por palavra-chave.
-
-## A solução: Stage 3 — Camada de abstração + FTS5 + pgvector
-
-O commit `d87cd5e6` (10 de junho de 2026) introduziu três mudanças estruturais:
-
-### 1. Camada de abstração `app/rag/vector_store.py`
-
-Agora o sistema escolhe o backend via variável de ambiente `ARACHNE_VECTOR_STORE`:
+Trocar o modelo não é trocar uma config. A coluna de embedding no banco tem dimensionalidade fixa — um vetor de 768 não entra num campo que espera 384. Por isso o script de migração (`scripts/reembed-colibri.py`) começa derrubando o índice ivfflat e a coluna antiga antes de reescrever tudo:
 
 ```bash
-export ARACHNE_VECTOR_STORE=sqlite     # default, zero setup
-export ARACHNE_VECTOR_STORE=pgvector   # PostgreSQL + pgvector
-export ARACHNE_PGVECTOR_URL=postgresql://user:***@host:5432/db
+# migração 384 -> 768 dims, chunks do rag_chunk em pgvector
+source .venv-linux/bin/activate && python3 scripts/reembed-colibri.py
 ```
 
-O `vector_store.py` é uma **fachada** — todas as funções públicas (`search`, `search_hybrid`, `create_kb`, `store_chunks`, etc.) reexportam as mesmas assinaturas do backend de armazenamento para compatibilidade retroativa. Código existente usando `from app.rag.vector_store import search` não precisa de nenhuma alteração.
+O número que ninguém acredita até ver: **4063 chunks re-embedados em 46 segundos**, com GPU local. Em CPU, a mesma operação levaria a diferença entre café e almoço. A migração foi rápida, mas a lição ficou: dimensão de embedding é contrato, não parâmetro. Quando os dois lados discordam, o pior resultado não é o erro — é o silêncio.
 
-### 2. Armazenamento SQLite com FTS5 real (`app/rag/stores/sqlite_store.py`)
+## A regressão que apareceu dois meses depois
 
-Essa é a mudança que mais impactou o dia a dia. O `SQLiteVectorStore` agora tem:
+Em **17 de outubro de 2026**, o commit `f111c958aadb27031b20e362ae93ec342248dbcb` ("fix(embedder): adaptador respeita o provider (openai->colibri 768, default->local 384)") consertou exatamente essa divergência. O adaptador em `app/ingestion/embedder.py` tinha endurecido o código: mandava colibri (768d) **sempre**, ignorando o provider configurado. Quem rodava sem Infinity — provider default, `all-MiniLM-L6-v2` local, 384d — recebia vetores de 768 dimensões de um backend que não os servia, e caía num caminho de fallback que ninguém tinha pedido.
 
-- **Armazenamento BLOB** para embeddings: `_float32_to_bytes()` / `_bytes_to_float32()` usando `struct.pack`
-- **Tabela virtual FTS5** `rag_chunk_fts` com tokenização `porter unicode61`
-- **Busca híbrida** — combina `fts.rank` (score BM25) com similaridade de cosseno
-
-A função `_fts_search()` faz a mágica:
+O fix tem três partes, e nenhuma é decorativa:
 
 ```python
-def _fts_search(kb_id: int, query_text: str, limit: int = 20) -> List[dict]:
-    rows = conn.execute(
-        text("""
-            SELECT c.id, c.doc_id, c.content, c.chunk_index,
-                   c.json_metadata, fts.rank
-            FROM rag_chunk_fts fts
-            JOIN rag_chunk c ON c.id = fts.rowid
-            WHERE rag_chunk_fts MATCH :query
-              AND c.kb_id = :kb_id
-            ORDER BY fts.rank
-            LIMIT :limit
-        """),
-        {"query": query_text, "kb_id": kb_id, "limit": limit},
-    ).all()
-    results = []
-    for row in rows:
-        score = max(0.0, min(1.0, -row.rank / 10.0)) if row.rank else 0.5
-        results.append({
-            "id": row.id,
-            "doc_id": row.doc_id,
-            "content": row.content,
-            "score": round(score, 4),
-            "chunk_index": row.chunk_index,
-            "metadata": json.loads(row.json_metadata) if row.json_metadata else {},
-        })
-    return results
+# app/ingestion/embedder.py — depois do fix
+# openai  -> core.embedder colibri (768d)
+# default -> core.embedder local all-MiniLM (384d), fallback DummyEmbedder
 ```
 
-A chave é o **rank FTS negativo**: `-row.rank / 10.0` converte o rank BM25 em score de 0-1. Quando o rank FTS é bom (BM25 baixo), o score sobe. Quando o termo não aparece, o score cai para 0.5 (valor default).
+1. O adaptador lê `ARACHNE_EMBEDDING_PROVIDER` e respeita o que está configurado, em vez de assumir colibri.
+2. `embed`/`embed_batch` voltaram a devolver lista pura via `.tolist()` — o contrato que os testes cobram, e que a refatoração tinha quebrado.
+3. Envs vazias passam a ser tratadas em vez de virarem string vazia no meio da configuração.
 
-A função `search_hybrid()` em `vector_store.py` combina os dois mundos:
+Quem pagou a conta da regressão foi `test_rag.py::TestEmbedder` — vermelho, apontando o caminho. A suíte `api/tests/test_rag.py` tem hoje **46 testes**, e foi ela que transformou "funciona na minha máquina" em evidência.
+
+## O custo de dimensão diferente não é corrupção
+
+Existe um guard nesse caminho: se o provider cai num embedding de dimensão incompatível com a da store, o sistema levanta `RuntimeError` com mensagem clara em vez de gravar lixo. Um chunk com dimensão errada não é "meio indexado" — é um vizinho errado pra sempre no espaço vetorial. Falhar alto, falhar cedo.
+
+## Onde o embedding encontra a palavra
+
+A busca híbrida fecha o ciclo. O backend SQLite (`app/rag/stores/sqlite_store.py`) mantém uma tabela virtual FTS5 sobre os chunks — `tokenize='porter unicode61'`, external content table, com triggers de insert/delete/update para o índice não sair de sincronia. Na consulta, o FTS5 acha por palavra e o vetor acha por sentido; a fusão é **RRF (Reciprocal Rank Fusion)**:
 
 ```python
-def search_hybrid(query_text, query_vector, kb_id, top_k=10,
-                  min_score=0.3, fts_weight=0.3):
-    # Busca vetorial pura
-    vec_results = search(query_vector, kb_id, top_k=top_k, min_score=min_score)
-    # Busca FTS pura
-    fts_results = _fts_search(kb_id, query_text, limit=top_k)
-    # Merge por id com peso combinado
-    merged = {}
-    for r in vec_results:
-        merged[r["id"]] = {"vec_score": r["score"], "fts_score": None, "content": r["content"]}
-    for r in fts_results:
-        if r["id"] in merged:
-            merged[r["id"]]["fts_score"] = r["score"]
-            # Peso: 70% vetor + 30% palavra-chave
-            merged[r["id"]]["combined"] = round(
-                0.7 * merged[r["id"]]["vec_score"] + 0.3 * merged[r["id"]]["fts_score"], 4
-            )
-        else:
-            merged[r["id"]] = {"vec_score": None, "fts_score": r["score"], "content": r["content"]}
-            merged[r["id"]]["combined"] = round(0.3 * r["score"], 4)
-    # Ordena por combined e filtra por min_score
-    final = [v for v in merged.values() if v.get("combined", 0) >= min_score]
-    final.sort(key=lambda x: x.get("combined", 0), reverse=True)
-    return final
+def search_hybrid(self, query_text, query_vector, kb_id, top_k=10, min_score=0.3):
+    fts_results = _fts_search(kb_id, query_text, limit=top_k * 2)
+    vec_results = self.search(query_vector, kb_id, top_k=top_k * 2, min_score=min_score)
+    K_RRF = 60  # RRF constant — soma por posição de rank, não por score
 ```
 
-Isso significa: **um usuário pesquisando "erros de validação de CPF" agora tem 70% de peso semântico vetorial + 30% de peso por palavra-chave**. A relevância do top-5 foi de 40% para 92% — uma melhoria massiva.
+O detalhe que importa: o RRF soma **posição de rank** (`1/(60+rank)`), não magnitude de score. Depois da troca 384→768, a escala dos scores de cosseno mudou — e o RRF nem percebeu. A decisão de fundir por rank, e não por peso, é o que tornou a troca de embedding indolor para quem já usava a busca.
 
-### 3. Chunking token-aware (`app/ingestion/chunker.py`)
+## O que vem a seguir
 
-A outra peça crítica foi a troca de chunking por caracteres para chunking por tokens. O `chunk_by_tokens()` usa `tiktoken` com o encoder `cl100k_base` (o mesmo do ChatGPT):
+Health check no boot: comparar a dimensão do provider configurado com a da coluna antes de servir tráfego. Hoje o erro aparece na primeira inserção; amanhã ele deve aparecer no startup, com o nome da env errada na mensagem. E quando o espelho sem GPU aparecer, o provider default já sabe o que fazer — 384 dimensões, honestas, do mesmo jeito que 768.
 
-```python
-def chunk_by_tokens(text: str, chunk_size: int = 512, chunk_overlap: int = 64) -> List[dict]:
-    if not text or not text.strip():
-        return []
-    if _TOKENIZER is None:
-        log.warning("tiktoken not installed — falling back to character-based chunking")
-        results = chunk_text(text, chunk_size=chunk_size * 4, chunk_overlap=chunk_overlap * 4)
-        for r in results:
-            r["token_count"] = len(r["content"]) // 4
-        return results
-    tokens = _TOKENIZER.encode(text)
-    ...
+```bash
+# conferir o provider e a dimensão ativos
+grep ARACHNE_EMBEDDING_PROVIDER .env
+python3 -m pytest api/tests/test_rag.py::TestEmbedder -q
 ```
-
-Isso garante que **nenhum chunk corta um conceito técnico ao meio** — algo que acontecia frequentemente com chunks de 512 caracteres, onde um snippet Python de 400 caracteres podia ser quebrado no meio da sintaxe.
-
-O `smart_chunk()` deixa você escolher a estratégia:
-
-```python
-def smart_chunk(text: str, chunk_size: int = 512, chunk_overlap: int = 64, use_tokens: bool = False):
-    if use_tokens:
-        return chunk_by_tokens(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    return chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-```
-
-O pipeline agora roda `smart_chunk(texto, use_tokens=True)` e armazena `token_count` em cada chunk. Isso reduziu "chunks órfãos" (chunks sem contexto compreensível) em **35%** e melhorou a taxa de acerto de busca em **28 pontos percentuais** nos testes internos.
-
-### 4. Armazenamento pgvector (`app/rag/stores/pgvector_store.py`)
-
-Para quem tem PostgreSQL/Supabase, a mesma fachada agora suporta pgvector — mesma API, backend diferente. Nenhuma alteração no código cliente é necessária.
-
-## Como tudo se conecta no fluxo atual
-
-Antes do Stage 3:
-
-```
-documento → chunker(512 char) → embedding(ada-002) → similarity_search() → resultados
-```
-
-Depois:
-
-```
-documento → smart_chunk(use_tokens=True) → embedding →
-  search_hybrid(query_text, query_vector, kb_id, fts_weight=0.3) →
-  resultados com relevância real
-```
-
-O `search_hybrid` é o novo ponto de entrada. Quem só usava `search(embedding, kb_id)` continua funcionando (busca vetorial pura), mas quem quer mais precisão migra para `search_hybrid`.
-
-## Métricas reais do ganho
-
-| Métrica                    | Stage 2 (só vetor) | Stage 3 (híbrido) | Ganho |
-|----------------------------|-------------------|-------------------|-------|
-| Relevância média top-5     | 40%               | 78%               | +38 p.p. |
-| "Chunks órfãos"            | 12% dos chunks    | 4% dos chunks     | -67% |
-| Consulta "erros de CPF" → relevante | 3/5 (60%) | 4/5 (80%) | +20 p.p. |
-| Testes E2E passando        | 21/46 (46%)       | 46/46 (100%)      | +54 p.p. |
-
-Essas métricas vêm diretamente dos commits `d87cd5e6` e dos `tests/test_rag.py`. Os testes foram de 21 para 46 — **todos passando** após o refactor do vector store e do chunker.
-
-## O que isso muda na prática
-
-1. **Para usuários finais**: as buscas realmente funcionam. Termos de domínio (CPF, CNPJ, validação) são encontrados mesmo quando o embedding semântico não corresponde exatamente.
-
-2. **Para desenvolvedores**: a API do cliente não muda. `from app.rag.vector_store import search` é a mesma. Quem quer mais precisão pode migrar para `search_hybrid(query_text, query_vector, kb_id, fts_weight=0.3)`.
-
-3. **Para operações**: o armazenamento SQLite agora tem FTS5 *real* — anteriormente era uma camada simulada. Isso significa que se o pgvector cair, o SQLite é o fallback automático com zero alterações de código.
-
-4. **Próximo passo**: habilitar `ARACHNE_VECTOR_STORE=pgvector` em produção (o Docker compose do Stage 3 já inclui a extensão pgvector para PostgreSQL 17) e rodar a reconstrução dos índices FTS5 nas KBs existentes. Tempo estimado de downtime: **15 minutos** (apenas a reconstrução do índice FTS5). Depois atualizar a documentação do `AGENTS.md` com o novo fluxo `search_hybrid` e confirmar com os 46 testes E2E.
-
-## Próximo passo
-
-Habilitar pgvector em produção e reconstruir os índices FTS5 em todas as KBs existentes. Estimativa: 15 min de downtime, rollback automático via fallback SQLite. Depois atualizar o `AGENTS.md` com o novo fluxo `search_hybrid` e confirmar com os 46 testes E2E.
-path: /home/samuel/projetos/projetos/lifelog/src/content/posts/nova-historia-arachne-2026-10-29.mdx
