@@ -70,23 +70,7 @@ The transferable lesson holds for any gate that lives outside the repository: if
 
 ### Next step
 
-Re-capture the screenshots on every major layout change, and run the dimension test before any commit that touches `vite.config.js`.
-
-```bash
-cd /home/samuel/projetos/projetos/Dogwalk
-
-# Run the manifest contract alone
-npx vitest run tests/manifest-pwa.test.js
-
-# Check the real dimensions without opening the image
-python3 -c "
-import struct
-d = open('public/screenshot-desktop.png','rb').read()
-print(struct.unpack('>II', d[16:24]))"
-
-# Build + full suite check
-pnpm build && npx vitest run
-```
+Re-capture the screenshots on every major layout change, and run the dimension test before any commit that touches the manifest.
 
 ---
 

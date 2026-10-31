@@ -70,23 +70,7 @@ A lição transferível vale para qualquer gate que mora fora do repositório: s
 
 ### Próximo passo
 
-Recapturar as screenshots a cada mudança grande de layout, e rodar o teste de dimensão antes de qualquer commit que mexa em `vite.config.js`.
-
-```bash
-cd /home/samuel/projetos/projetos/Dogwalk
-
-# Rodar o contrato do manifest sozinho
-npx vitest run tests/manifest-pwa.test.js
-
-# Conferir as dimensões reais sem abrir a imagem
-python3 -c "
-import struct
-d = open('public/screenshot-desktop.png','rb').read()
-print(struct.unpack('>II', d[16:24]))"
-
-# Build + checagem completa da suíte
-pnpm build && npx vitest run
-```
+Recapturar as screenshots a cada mudança grande de layout, e rodar o teste de dimensão antes de qualquer commit que mexa no manifesto.
 
 ---
 
