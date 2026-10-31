@@ -1,0 +1,69 @@
+---
+title: "Os títulos que não apareciam no desktop"
+description: "Quatro títulos de seção do portfólio estavam com opacidade 0.94 no desktop — animação de entrada que dependia de scroll nunca disparava para quem já via a seção inteira na tela."
+category: samuel-projects
+date: 2026-10-27 10:47:00 -03:00
+pubDate: 2026-10-31 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "frontend", "animation", "bug", "react"]
+cover: /covers/portfolio-os-titulos-que-nao-apareciam-no-desktop.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+A tela era larga, o monitor era grande, e os quatro títulos de seção do portfólio não estavam lá. PROJETOS, DO BLOG, HABILIDADES, JORNADA — os quatro marcadores que dão estrutura à home chegavam com opacidade 0.94. Numa tela de 1440px, com todas as seções visíveis de uma vez, o efeito prático era o de uma página sem título nenhum. Quem entrava e descia devagar via os cards, os grids, os textos — mas faltavam os letreiros que dizem onde cada bloco começa.
+
+O relatório do crítico visual de produção marcava SCORE=95, quase aprovação, e um GAP visual com uma linha só: título invisível. Noventa e cinco é uma boa nota, e é justamente esse o problema das notas altas — elas deixam o defeito passar por detalhe. O detalhe, no caso, era a primeira coisa que o olho procura numa página.
+
+## O que o JSX fazia
+
+Os quatro títulos eram `motion.h2`, do Framer Motion, com o mesmo par de propriedades:
+
+```tsx
+<motion.h2
+  initial={mounted ? { opacity: 0 } : false}
+  whileInView={{ opacity: 1 }}
+  className="text-xl font-mono text-[var(--accent)] mb-6 text-center"
+>
+```
+
+A intenção era uma entrada suave: o título nasce transparente e aparece quando entra na área visível. O detalhe é o que `mounted` fazia ali. No primeiro render, no servidor, ele é falso — e `initial={false}` desliga a animação, então o título sai visível no HTML. Depois da hidratação, `mounted` vira verdadeiro e o `initial` passa a valer: opacidade zero. A partir daí, quem traz o título de volta para opacidade 1 é o `whileInView`, e só ele.
+
+O `whileInView` dispara quando o elemento **cruza** o limite do viewport. Num monitor largo, com a seção inteira já dentro da tela desde o carregamento, não existe cruzamento para observar — o elemento já estava lá. O motion não tinha evento de entrada para reagir, então o estado inicial segurava: opacidade zero, ou 0.94 quando algum outro estilo somava por cima. O título dependia de um scroll que não ia acontecer.
+
+## A cura
+
+O commit `b65b087`, de 27/10 às 10:47, trocou o par inteiro por `initial={false}` nos quatro títulos. Três arquivos, quatro remoções e quatro inserções:
+
+```bash
+git -C /home/samuel/projetos/projetos/portifolio show b65b087 --stat
+# src/components/BlogSection.tsx    | 3 +--
+# src/components/ProfileSection.tsx | 6 ++----
+# src/components/ProjectHangar.tsx  | 3 +--
+# 3 files changed, 4 insertions(+), 8 deletions(-)
+```
+
+`ProfileSection.tsx` carregava dois deles — HABILIDADES e JORNADA, ambos com `initial={{ opacity: 0, y: 10 }}`. `BlogSection` e `ProjectHangar` tinham um cada. A discussão interna foi curta: título de seção não é enfeite, é a etiqueta do bloco. Etiqueta que some desmonta a leitura da página inteira — e some justamente para quem tem a tela maior, que é o caso que mais deveria funcionar.
+
+A decisão não foi desligar animação no site. Os cards abaixo da dobra, as linhas do tempo e os grids continuam com `whileInView`, e devem: ali o elemento realmente entra pela borda, e a entrada tem o que comemorar. O que mudou foi o critério — animação de entrada só vale para elemento que **entra**. Se ele já está na tela quando a página chega, animar a entrada é apostar num evento que não ocorre.
+
+## O que isso muda
+
+Depois do commit, o crítico mediu opacidade 1 nos quatro títulos, a suíte fechou em 511 testes e o build passou. O registro entrou no CHANGELOG do dia:
+
+```text
+[2026-10-27] - 2 commits: H2 invisiveis em desktop (fix) + merge do github/master
+```
+
+A lição que fica não é sobre Framer Motion. É sobre o teste que deixou passar. Nenhum teste unitário pega esse defeito, porque nenhum teste unitário pergunta "o título está visível no desktop largo": em jsdom, `IntersectionObserver` não existe e o `whileInView` não é simulado. O que pegou foi o crítico visual olhando a página renderizada — o mesmo tipo de olho que, no LifeLog, um dia flagrou cards com `opacity: 0` porque ninguém tinha escrito o observador. São falhas da mesma família: o estado inicial assume o controle e nada o contradiz.
+
+Fica também a conta do que resta. Hoje ainda existem dezesseis usos de `whileInView` no código-fonte, e dois deles são títulos com `initial={{ opacity: 0, y: 20 }}` — o de contato e o de perfil. Esses usam `viewport={{ once: true }}`, que é a variante mais segura do padrão, mas seguem apostando no cruzamento.
+
+## Próximo passo
+
+Varrer os dezesseis `whileInView` e separar os que animam elemento de entrada real dos que animam elemento que já nasce na tela — os últimos viram `initial={false}`, como os quatro de 27/10:
+
+```bash
+grep -rn "whileInView" /home/samuel/projetos/projetos/portifolio/src | wc -l   # 16
+```

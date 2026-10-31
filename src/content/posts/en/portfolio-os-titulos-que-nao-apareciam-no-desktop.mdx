@@ -1,0 +1,69 @@
+---
+title: "The Headings That Vanished on Desktop"
+description: "Four section headings of the portfolio shipped with opacity 0.94 on desktop — an entrance animation that depended on scroll never fired for anyone who could already see the whole section on screen."
+category: samuel-projects
+date: 2026-10-27 10:47:00 -03:00
+pubDate: 2026-10-31 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "frontend", "animation", "bug", "react"]
+cover: /covers/portfolio-os-titulos-que-nao-apareciam-no-desktop.webp
+featured: false
+hidden: true
+lang: en
+---
+
+The screen was wide, the monitor was large, and the four section headings of the portfolio were not there. PROJECTS, FROM THE BLOG, SKILLS, JOURNEY — the four markers that give the home page its structure arrived with opacity 0.94. On a 1440px screen with every section visible at once, the practical effect was a page with no titles at all. Visitors scrolled down through cards, grids, text — but the labels that say where each block begins were missing.
+
+The visual critic's production report scored it SCORE=95, almost a pass, with a single GAP line: invisible title. Ninety-five is a good grade, and that is exactly the problem with high grades — they let the defect slip through as a detail. The detail, in this case, was the first thing the eye looks for on a page.
+
+## What the JSX did
+
+The four headings were `motion.h2` elements from Framer Motion, built from the same pair of properties:
+
+```tsx
+<motion.h2
+  initial={mounted ? { opacity: 0 } : false}
+  whileInView={{ opacity: 1 }}
+  className="text-xl font-mono text-[var(--accent)] mb-6 text-center"
+>
+```
+
+The intent was a soft entrance: the heading starts transparent and appears when it enters the visible area. The detail is what `mounted` did there. On the first render, on the server, it is false — and `initial={false}` disables the animation, so the heading ships visible in the HTML. After hydration, `mounted` becomes true and `initial` takes effect: opacity zero. From that point on, the only thing bringing the heading back to opacity 1 is `whileInView`, and nothing else.
+
+`whileInView` fires when the element **crosses** the viewport boundary. On a wide monitor, with the whole section already inside the screen since page load, there is no crossing to observe — the element was already there. Motion had no entry event to react to, so the initial state held: opacity zero, or 0.94 when another style added something on top. The heading depended on a scroll that was never going to happen.
+
+## The fix
+
+Commit `b65b087`, from 10:47 on 27/10, replaced the whole pair with `initial={false}` on the four headings. Three files, four removals and four insertions:
+
+```bash
+git -C /home/samuel/projetos/projetos/portifolio show b65b087 --stat
+# src/components/BlogSection.tsx    | 3 +--
+# src/components/ProfileSection.tsx | 6 ++----
+# src/components/ProjectHangar.tsx  | 3 +--
+# 3 files changed, 4 insertions(+), 8 deletions(-)
+```
+
+`ProfileSection.tsx` held two of them — SKILLS and JOURNEY, both with `initial={{ opacity: 0, y: 10 }}`. `BlogSection` and `ProjectHangar` had one each. The internal discussion was short: a section heading is not decoration, it is the label of the block. A label that disappears removes the reading of the whole page — and it disappears exactly for whoever has the larger screen, which is the case that should work best.
+
+The decision was not to turn off animation across the site. The cards below the fold, the timelines, and the grids still use `whileInView`, and they should: there the element genuinely enters through the edge, and the entrance has something to celebrate. What changed was the criterion — an entrance animation only makes sense for an element that **enters**. If it is already on screen when the page arrives, animating the entrance is betting on an event that never occurs.
+
+## What this changes
+
+After the commit, the critic measured opacity 1 on all four headings, the suite closed at 511 tests, and the build passed. The entry landed in that day's CHANGELOG:
+
+```text
+[2026-10-27] - 2 commits: H2 invisiveis em desktop (fix) + merge do github/master
+```
+
+The lesson that stays is not about Framer Motion. It is about the test that let it pass. No unit test catches this defect, because no unit test asks "is the heading visible on a wide desktop": under jsdom, `IntersectionObserver` does not exist and `whileInView` is never simulated. What caught it was the visual critic looking at the rendered page — the same kind of eye that, in LifeLog, once flagged cards with `opacity: 0` because nobody had written the observer. They are failures of the same family: the initial state takes control and nothing contradicts it.
+
+There is also the count of what remains. Today there are still sixteen uses of `whileInView` in the source, and two of them are headings with `initial={{ opacity: 0, y: 20 }}` — the contact one and the profile one. Those use `viewport={{ once: true }}`, which is the safer variant of the pattern, but they still bet on the crossing.
+
+## Next step
+
+Walk the sixteen `whileInView` calls and separate the ones animating a real entrance from the ones animating an element that is already on screen — the latter become `initial={false}`, like the four from 27/10:
+
+```bash
+grep -rn "whileInView" /home/samuel/projetos/projetos/portifolio/src | wc -l   # 16
+```
