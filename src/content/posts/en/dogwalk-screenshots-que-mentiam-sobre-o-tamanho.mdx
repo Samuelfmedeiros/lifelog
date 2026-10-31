@@ -1,0 +1,93 @@
+---
+title: "The screenshots that lied about their size"
+description: "Two images declared in the PWA manifest had dimensions completely different from what the app actually rendered — and Chrome flagged it in the rich install. The fix involved reading the PNG's binary header."
+category: samuel-projects
+date: 2026-10-30 00:33:00 -03:00
+pubDate: 2026-10-31 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, progressive-web-app, frontend, testing]
+cover: /covers/dogwalk-screenshots-que-mentiam-sobre-o-tamanho.webp
+hidden: true
+lang: 'en'
+---
+
+The install prompt showed up on screen. The big image, the one Chrome displays to convince you to install the app, was not the app's screen. It was a stretched portrait, a narrow vertical photo squeezed into a horizontal space. It did not look wrong at first glance — it only looked wrong when you compared it to what you actually knew. And nobody compares. Nobody, except whoever wrote the `sizes` field in the manifest.
+
+This is the kind of defect that goes months unnoticed because the product keeps working. The app installs, the service worker registers, the icon lands on the home screen. The only hint that something is off is the browser itself: on a rich install, Chrome flags a mismatch when the declared dimensions do not line up with the file it was given.
+
+### The context: Lighthouse stopped checking this
+
+The starting point was a change in tooling, not in code. Lighthouse 12.0, released in April 2024, removed the PWA category from the report. The decision is recorded in issue 15535 of GoogleChrome/lighthouse: Chrome updated its installability criteria, and the old audits no longer represented what the browser actually requires.
+
+The practical consequence is direct. For years, Lighthouse's "Progressive Web App" category was the manifest's bodyguard: it flagged installability, audited icons, audited whatever was needed, and went red when something was missing. When the category left, nothing warned anyone anymore. The gate that lived outside the repository stopped existing, and the manifest became the responsibility of whoever wrote the file.
+
+The project's answer was to turn the check into a contract test inside the source. Commit `d4becc2d` (29/10/2026) created `tests/manifest-pwa.test.js` with 57 lines. The test does not read the generated manifest from the build: it reads the `manifest:` block straight out of `vite.config.js`, with a safe boundary — it cuts at `strategies:`, which comes right after. That way the test validates the source, not the artifact.
+
+That same commit hardened other parts of the manifest: `lang: 'pt-BR'`, `id: '/'`, and an explicit `purpose` on each icon (`any` for the fixed ones, `maskable` for the maskable one). None of that changes the running app. All of it changes what the operating system understands when the user taps install.
+
+### The actual defect
+
+The screenshot test was born the next day, and for a concrete reason: the files were wrong. Measured on 29/10, `public/screenshot-desktop.png` and `public/screenshot-mobile.png` were both 780x1688 — portrait pixels, phone proportions. The manifest declared something else:
+
+```javascript
+// vite.config.js — manifest block
+screenshots: [
+  { src: '/screenshot-desktop.png', sizes: '1280x800', type: 'image/png',
+    form_factor: 'wide', label: 'PataPass no desktop' },
+  { src: '/screenshot-mobile.png', sizes: '390x844', type: 'image/png',
+    form_factor: 'narrow', label: 'PataPass no celular' },
+],
+```
+
+The mismatch was not a cosmetic detail. Both images were the same size, which was already a symptom: someone captured both the same way, probably with the browser window in the same shape, and the manifest was written with the numbers that were supposed to be correct. The desktop asked for 1280x800 landscape and got 780x1688 portrait. The mobile asked for 390x844 and got exactly the same thing.
+
+Commit `c02a39af` (30/10/2026) fixed the cause, not the symptom. It re-captured both images at the declared dimensions, from the running app, with the cookie banner accepted before the capture — a detail that looks irrelevant and is not: a screenshot with a consent banner overlaid shows a state the user never sees again after accepting. The desktop file went from 252104 bytes to 109751. The mobile, from 244027 to 85664. Smaller and correct files, because an image compressed into a smaller area carries less information.
+
+### The guard that stayed
+
+Fixing the two files would have lasted a single day. On the next capture, the same error comes back. Commit `c02a39af` added a test that reads the real PNG dimension with no image library at all:
+
+```javascript
+// PNG dimensions straight from the header (8-byte signature + IHDR: w and h big-endian)
+function pngSize(path) {
+  const buf = readFileSync(path)
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) {
+    throw new Error(`${path} nao e um PNG valido`)
+  }
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+```
+
+A PNG starts with an 8-byte signature. After it comes the IHDR chunk, and inside it the width and height, big-endian, at fixed offsets from byte 16. Five lines of `readFileSync` replace an entire parser. No PIL, no sharp, no new dependency in the `package.json` of a project that needs a fast build.
+
+The test extracts the `src`/`sizes` pairs from the manifest itself with `matchAll`, requires that exactly two exist, and compares the `realWidth x realHeight` string against the declared one. Five cases passed on the run.
+
+### What this changes
+
+The lesson here is not about well-saved PNGs. It is about what happens when an external tool that used to validate your work changes behavior without asking you. Lighthouse dropping the PWA category did not break anything in the code; it broke the alert system. While nobody noticed, the buildup was silent, because the product stayed usable.
+
+The transferable lesson holds for any gate that lives outside the repository: if it validates something that matters, it needs to be brought inside the project while it still exists. The manifest now has a contract test, and that test depends on no browser version, no DevTools panel, no external service. When it fails, the whole CI stops.
+
+### Next step
+
+Re-capture the screenshots on every major layout change, and run the dimension test before any commit that touches `vite.config.js`.
+
+```bash
+cd /home/samuel/projetos/projetos/Dogwalk
+
+# Run the manifest contract alone
+npx vitest run tests/manifest-pwa.test.js
+
+# Check the real dimensions without opening the image
+python3 -c "
+import struct
+d = open('public/screenshot-desktop.png','rb').read()
+print(struct.unpack('>II', d[16:24]))"
+
+# Build + full suite check
+pnpm build && npx vitest run
+```
+
+---
+
+*This post is hidden and awaits manual release.*

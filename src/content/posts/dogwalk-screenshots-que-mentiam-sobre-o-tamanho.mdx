@@ -1,0 +1,93 @@
+---
+title: "As screenshots que mentiam sobre o tamanho"
+description: "Duas imagens declaradas no manifest do PWA tinham dimensões completamente diferentes das que o app realmente renderizava — e o Chrome sinalizava isso no rich install. A cura envolveu ler o header binário do PNG."
+category: samuel-projects
+date: 2026-10-30 00:33:00 -03:00
+pubDate: 2026-10-31 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, progressive-web-app, frontend, testing]
+cover: /covers/dogwalk-screenshots-que-mentiam-sobre-o-tamanho.webp
+hidden: true
+lang: 'pt'
+---
+
+O prompt de instalação apareceu na tela. A imagem grande, aquela que o Chrome mostra para convencer o usuário a instalar o app, não era a tela do app. Era um retrato esticado, uma foto vertical estreita espremida dentro de um espaço horizontal. Visualmente não estava errado de imediato — só estava errado quando você comparava com o que conhecia. E ninguém compara. Ninguém, exceto quem escreveu o `sizes` no manifest.
+
+Esse é o tipo de defeito que passa meses sem ser notado porque o produto continua funcionando. O app instala, o service worker registra, o ícone aparece na home. A única pista de que algo está fora do lugar é o próprio navegador: no rich install, o Chrome sinaliza quando as dimensões declaradas não batem com as do arquivo entregue.
+
+### O contexto: o Lighthouse parou de cobrar isso
+
+O ponto de partida foi uma mudança de ferramenta, não de código. O Lighthouse 12.0, lançado em abril de 2024, removeu a categoria PWA do relatório. A decisão está registrada na issue 15535 do GoogleChrome/lighthouse: o Chrome atualizou seus critérios de instalabilidade e as auditorias antigas deixaram de representar o que o navegador realmente exige.
+
+A consequência prática é direta. Por anos, a categoria "Progressive Web App" do Lighthouse era o guarda-costas do manifest: ela apontava installable, auditava ícones, auditava o que fosse necessário e falhava vermelho quando faltava algo. Quando a categoria saiu, ninguém mais avisava. O gate que existia fora do repositório deixou de existir, e o manifesto passou a ser responsabilidade de quem escreveu o arquivo.
+
+A resposta do projeto foi transformar a checagem em teste de contrato no código-fonte. O commit `d4becc2d` (29/10/2026) criou `tests/manifest-pwa.test.js` com 57 linhas. O teste não lê o manifesto gerado no build: ele lê o bloco `manifest:` direto do `vite.config.js`, com uma fronteira segura — corta no `strategies:`, que vem logo depois. Assim, o teste valida a fonte, não o artefato.
+
+Esse mesmo commit endureceu outras partes do manifesto: `lang: 'pt-BR'`, `id: '/'`, e `purpose` explícito em cada ícone (`any` para os fixos, `maskable` para a máscara). Nada disso muda o app rodando. Tudo isso muda o que o sistema operacional entende quando o usuário toca em instalar.
+
+### O defeito real
+
+O teste de screenshots nasceu no dia seguinte, e por um motivo concreto: os arquivos estavam errados. Medido em 29/10, `public/screenshot-desktop.png` e `public/screenshot-mobile.png` eram ambos 780x1688 — pixels retrato, proporção de celular. O manifesto declarava outra coisa:
+
+```javascript
+// vite.config.js — bloco manifest
+screenshots: [
+  { src: '/screenshot-desktop.png', sizes: '1280x800', type: 'image/png',
+    form_factor: 'wide', label: 'PataPass no desktop' },
+  { src: '/screenshot-mobile.png', sizes: '390x844', type: 'image/png',
+    form_factor: 'narrow', label: 'PataPass no celular' },
+],
+```
+
+A divergência não era detalhe cosmético. As duas imagens tinham o mesmo tamanho, o que já era um sintoma: alguém capturou as duas da mesma forma, provavelmente com a janela do navegador na mesma forma, e o manifesto foi escrito com os números que deveriam ser os corretos. O desktop pedia 1280x800 paisagem e recebia 780x1688 retrato. O mobile pedia 390x844 e recebia exatamente a mesma coisa.
+
+O commit `c02a39af` (30/10/2026) resolveu a causa, não o sintoma. Recapturou as duas imagens nas dimensões declaradas, a partir do app rodando, com o banner de cookies aceito antes da captura — detalhe que parece irrelevante e não é: uma screenshot com banner de consentimento sobreposto mostra um estado que o usuário nunca vê depois de aceitar. O desktop saiu de 252104 bytes para 109751. O mobile, de 244027 para 85664. Arquivos menores e corretos, porque imagem comprimida dentro de uma área menor carrega menos informação.
+
+### O guarda que ficou
+
+Corrigir os dois arquivos teria sido suficiente por um dia. Na próxima captura, o mesmo erro volta. O commit `c02a39af` adicionou um teste que lê a dimensão real do PNG sem biblioteca de imagem nenhuma:
+
+```javascript
+// Dimensões do PNG direto do header (8 bytes assinatura + IHDR: w e h big-endian)
+function pngSize(path) {
+  const buf = readFileSync(path)
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) {
+    throw new Error(`${path} nao e um PNG valido`)
+  }
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+```
+
+Um PNG começa com uma assinatura de 8 bytes. Depois dela vem o chunk IHDR, e dentro dele a largura e a altura, big-endian, em posições fixas a partir do byte 16. Cinco linhas de `readFileSync` substituem um parser inteiro. Não importa PIL, não importa sharp, não importa dependência nova no `package.json` de um projeto que precisa de build rápido.
+
+O teste pega os pares `src`/`sizes` do próprio manifesto com `matchAll`, exige que existam exatamente dois, e compara a string `larguraReal x alturaReal` com a declarada. Cinco casos passaram na execução.
+
+### O que isso muda
+
+O aprendizado aqui não é sobre PNG bem salvo. É sobre o que acontece quando uma ferramenta externa que validava seu trabalho muda de comportamento sem te consultar. O Lighthouse abandonar a categoria PWA não quebrou nada no código; quebrou o sistema de alerta. Enquanto ninguém notou, o acúmulo foi silencioso, porque o produto continuou utilizável.
+
+A lição transferível vale para qualquer gate que mora fora do repositório: se ele valida algo que importa, ele precisa ser traduzido para dentro do projeto enquanto ainda existe. O manifesto agora tem teste de contrato, e o teste não depende de versão de navegador, de painel de DevTools nem de serviço externo. Falhou, o CI inteiro para.
+
+### Próximo passo
+
+Recapturar as screenshots a cada mudança grande de layout, e rodar o teste de dimensão antes de qualquer commit que mexa em `vite.config.js`.
+
+```bash
+cd /home/samuel/projetos/projetos/Dogwalk
+
+# Rodar o contrato do manifest sozinho
+npx vitest run tests/manifest-pwa.test.js
+
+# Conferir as dimensões reais sem abrir a imagem
+python3 -c "
+import struct
+d = open('public/screenshot-desktop.png','rb').read()
+print(struct.unpack('>II', d[16:24]))"
+
+# Build + checagem completa da suíte
+pnpm build && npx vitest run
+```
+
+---
+
+*Este post está oculto e aguarda liberação manual.*
