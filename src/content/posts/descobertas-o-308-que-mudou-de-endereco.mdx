@@ -1,0 +1,79 @@
+---
+title: "O 308 que mudou o blog de endereço — e a linha de config que separava a mudança de um loop"
+description: "O LifeLog passou a responder em dois endereços. Corrigir isso pareceu uma linha de redirect — até perceber que sem a condição de host, a mesma linha derrubava o site inteiro. A história dos dois commits de 28/10, a sintaxe que mudou no meio do caminho e a medição que provou que o caminho sobreviveu ao redirect."
+category: samuel-projects
+date: 2026-10-28 12:30:00 -03:00
+pubDate: 2026-10-31 08:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "deploy", "vercel", "seo", "networking", "ops"]
+cover: /covers/descobertas-o-308-que-mudou-de-endereco.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Dois endereços para a mesma página
+
+O blog sempre teve um endereço genérico, daqueles que a plataforma de deploy sorteia no primeiro push: `lifelog-sepia.vercel.app`. Quando o domínio próprio entrou, o site passou a servir as mesmas páginas nos dois. Mesmo conteúdo, mesmo HTML, mesmo RSS — em URLs diferentes.
+
+Isso não é um erro de infraestrutura. É o estado natural de um projeto que nasceu no host padrão e cresceu. O problema é o que vem depois: o visitante que chega por um link antigo vê o endereço genérico na barra; quem compartilha um post compartilha o genérico; e o buscador encontra duas origens distintas dizendo que são a mesma página, o que dispersa o sinal de indexação em vez de somar. A documentação do Vercel chama o caso de *canonicalization of multiple URLs* e lista duas saídas honestas: declarar uma URL canônica absoluta em cada página, ou mandar todo mundo para uma só com um redirecionamento permanente por host.
+
+A segunda opção é mais limpa quando se quer que só exista um endereço de verdade.
+
+## O que aconteceu em 28 de outubro
+
+O registro está no `CHANGELOG.md` do repositório: entrada `[2026-10-28]`, quatro commits no dia, dois deles de `fix(vercel)` com a mesma mensagem — `redirect lifelog-sepia.vercel.app -> lifelog.seu.pet`. O primeiro, `aa9a485`, criou o bloco `redirects` no `vercel.json` com a receita que a documentação sugere:
+
+```json
+{
+  "source": "/:path*",
+  "has": [{ "type": "host", "value": "lifelog-sepia.vercel.app" }],
+  "destination": "https://lifelog.seu.pet/:path*",
+  "permanent": true
+}
+```
+
+Pouco depois veio `fed3683`, que trocou duas linhas: `source` passou de `/:path*` para `/(.*)`, e o destino de `https://lifelog.seu.pet/:path*` para `https://lifelog.seu.pet/$1`. Dois commits, o mesmo objetivo, uma sintaxe diferente no meio.
+
+Vale explicar o que essa mudança mexe, porque é aí que mora a utilidade do caso. `:path*` é parâmetro nomeado: ele captura o resto do caminho e você o reenvia por nome. Funciona enquanto o destino repete o caminho intacto. Assim que o destino precisa remontar a URL de outro jeito — trocar um segmento, mudar um prefixo, manter a query em outra posição — o parâmetro nomeado não oferece alça para isso. A forma regex resolve: `(.*)` abre um grupo de captura em `source`, e `$1` no `destination` é a referência posicional a esse grupo. É a diferença entre "reenviar o resto" e "recortar o caminho e remontar".
+
+## A linha que segurava tudo: o `has`
+
+O campo mais importante da configuração não é o `source`. É o `has`.
+
+`has` transforma o redirect em regra condicional: ela só dispara quando o request chega pelo host ali dentro. Sem ele, um `source: "/(.*)"` casa com qualquer caminho — inclusive o caminho do próprio domínio de destino. O resultado seria um loop: o request bate no endereço novo, a regra redireciona para o endereço novo, o request bate de novo, e assim até o navegador desistir e mostrar erro de excesso de redirecionamentos. O site não sairia do ar por queda de servidor; sairia do ar por configuração de rota.
+
+A documentação trata isso como prática recomendada justamente para o cenário de múltiplos hosts: usar redirect permanente **com escopo de hostname**, preservando caminho e query de cada página, e verificar depois que o destino responde sem loop. É o que a regra faz aqui — casa o host antigo exato e sai para o novo, mantendo o resto.
+
+O outro campo é `permanent: true`, que traduz o redirect para o status 308. Existe uma diferença prática entre 308 e o 301 que as pessoas usam por hábito: o 308 preserva o método e o corpo do request, enquanto o 301 pode reescrever a requisição para GET. A documentação do Vercel recomenda 307 ou 308 exatamente para evitar essa ambiguidade em métodos que não são GET. Num blog de páginas estáticas a diferença não aparece no dia a dia — mas um POST em alguma rota de API que levasse 301 perderia o corpo no caminho.
+
+## A medição
+
+Config de redirect é daquelas coisas que parecem certas no editor e erradas no cabo de rede. A prova foi medir os três casos que importam, com pedidos de verdade:
+
+```bash
+curl -sS -o /dev/null -D - https://lifelog-sepia.vercel.app/
+curl -sS -o /dev/null -D - https://lifelog-sepia.vercel.app/post/a-historia-do-descobertas/
+curl -sS -o /dev/null -D - https://lifelog.seu.pet/
+```
+
+O host antigo responde 308 nas duas URLs, com `location` apontando para o mesmo caminho no domínio novo — `/post/a-historia-do-descobertas/` virou `/post/a-historia-do-descobertas/`, com a página preservada. E o domínio novo responde 200 sozinho, sem redirecionar. As duas linhas juntas dizem tudo: o grupo de captura funciona, e o `has` está segurando o host para que o redirect não engula a si mesmo.
+
+Duas coisas que a medição não mostra e que valem o parágrafo. A primeira: redirect permanente é um compromisso de longo prazo — 308 é cacheável, e clientes que já aprenderam o destino podem não voltar a perguntar. Mudar de ideia depois custa mais caro do que decidir antes. A segunda: o mesmo `vercel.json` que ganhou o redirect já tinha um `rewrite` mandando a rota de analytics do próprio site para uma origem externa, e um bloco de headers que devolve `no-cache` para o HTML enquanto aplica `immutable` de um ano em `/_astro` e `/covers`. Rotas diferentes no mesmo arquivo, com políticas de cache diferentes — e é justamente por isso que o [cache imutável nas capas](/post/descobertas-a-capa-que-nao-mudava/) já ensinou aqui que trocar o conteúdo de um asset exige URL nova.
+
+## Por que importa
+
+Um endereço só, com o caminho intacto por baixo, é o que permite transferir sinal de uma origem para outra sem perder o leitor no meio. Cada pessoa que chega por um link de meses atrás continua caindo no post certo, agora no endereço definitivo. Cada compartilhamento futuro nasce no endereço definitivo. E o buscador passa a ver uma origem só, em vez de duas disputando a mesma página.
+
+O detalhe que eu levo daqui não é a sintaxe — syntax se copia. É que uma regra de rota sem condição de host é uma regra sobre todos os hosts. A mesma linha que conserta a canonicalização, escrita sem o `has`, teria apagado o site de um jeito silencioso: sem erro de build, sem vermelho no painel, sem log de queda. Só o navegador recusando a página.
+
+## Próximo passo
+
+A receita está pronta para o próximo projeto que ainda responde no host gerado pela plataforma. Antes de sair aplicando, o próximo passo é medir o inventário: quais hosts hoje servem o mesmo conteúdo, e qual deles é o canônico. E quando a regra precisar sair do arquivo de configuração e entrar no firewall — porque aí dá para redirecionar por país, por user-agent, com logging proprio — o desenho já está feito, só muda de lugar.
+
+```bash
+git -C ~/projetos/lifelog log --oneline -- vercel.json | head -5
+git -C ~/projetos/lifelog show aa9a485 -- vercel.json | head -20
+git -C ~/projetos/lifelog show fed3683 -- vercel.json | head -20
+curl -sS -o /dev/null -D - https://lifelog-sepia.vercel.app/arquivo/ | grep -i '^location'
+```
