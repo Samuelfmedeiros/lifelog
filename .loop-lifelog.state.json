@@ -1,0 +1,169 @@
+{
+  "round": 3,
+  "scores": [
+    {
+      "round": 1,
+      "score": 100,
+      "gaps": [],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 92,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-01T17:20:40.004861+00:00",
+      "critic_fp": "e3e5242182b8"
+    },
+    {
+      "round": 2,
+      "score": 100,
+      "gaps": [],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 92,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-01T18:32:23.068234+00:00",
+      "critic_fp": "e3e5242182b8"
+    },
+    {
+      "round": 3,
+      "score": 100,
+      "gaps": [],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 92,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-01T19:43:28.562836+00:00",
+      "critic_fp": "e3e5242182b8"
+    }
+  ],
+  "started_at": "2026-11-01T17:05:57.981043+00:00",
+  "campaign": "99e083f",
+  "v3_heal": {
+    "wsl_ok": true,
+    "vmmem": {
+      "used_gb": 0.0,
+      "limit_gb": 0.0,
+      "pct": 0.0
+    },
+    "actions": []
+  },
+  "v2_kb": "# Roger — Base de Conhecimento Global\n\nLições aprendidas durante runs do test-loop, compiladas em 02/09/2026.\nUse no worker/reviewer/redator para evitar repetir erros passados.\n\n## Pitfalls Conhecidos\n\n- SECURITY GATE universal: executar critic_security.py (gitleaks+trufflehog+bandit+opengrep) DEPOIS de cada critic. Se falhar, desconta 20pts.\n- SECURITY BATCH (30/08): todas as vulns do security reviewer entram nos gaps de uma vez — worker resolve todas na mesma rodada.\n- Painel A+B+C (30/08): especialistas com seleção hierárquica + debate com tiebreaker. BLOQUEIA sempre que security DISCORDO.\n- Zona cinzenta (28/08): nota 85-90 → 2o reviewer adversarial audita antes de entregar.\n- Debate 2-visões (28/08): 1 DISCORDO → reabre com gaps combinados. Ambos DISCORDAM → prioridade alta.\n- SECURITY_ISSUE (ou inconclusivo) → reabre com gap(s) de segurança.\n- Workers especializados (30/08): cada gap roteado pro worker certo (test/lint/security/ui).\n- Painel falhou → seguir com ENTREGA (não bloquear por falha de reviewer).\n- 2o reviewer falhou → seguir (não reabrir).\n- Security reviewer FALHOU → SECURITY_ISSUE (fail-closed: trata como vulnerabilidade).\n- Yurumi checkpoint apenas se cfg[\"yurumi_checkpoint\"] ativo.\n- HTML via gen_loop_report_html.py (stdlib, <1s). PDF via gen_loop_report_dense.py é fallback.\n- Pós-convergência: melhorias propostas (Roger v2) não bloqueiam entrega, entram no relatório.\n- Regressões (Roger v2): gaps fechados que reaparecem em rodada posterior → prefixo REGRESSÃO:.\n\n## Padrões de Projeto\n\n- `_quarantine_untrusted()`: envolve texto em barreira de segurança (não permitir prompt injection de output de ferramentas).\n- `run_builder()`: executa opencode CLI com prompt em arquivo temporário. Usar `.loop-*-prompt.md` no path do projeto.\n- `_git()`: wrapper que executa git no path do projeto e retorna stdout limpo.\n- `CONFIG_DIR`: `~/.hermes/config/test-loop/` — configurações por projeto (JSON) e KB.\n\n## Lições v3.3 (07/09 — backlog miner, revisadas)\n\n- Banner '🔒 jail ativo' do ai-jail pode contaminar GAPS no quality.db (não só stdout de wsl.exe) — gap que só diz 'jail ativo/comandos sandboxados' é ruído do sandbox, não falha do projeto.\n- Gap 'sem testes novos nesta rodada' repetiu 2x (portifolio) — worker de testes deve ADICIONAR testes novos, não só consertar os existentes.\n- Improvements do propositor chegam limpos desde v3.3 (_clean_improvements_text); ANSI no texto de melhorias = state legado — re-minerar, não propagar.- 2026-09-16 handoff Roger->grupo: tg_progress.notify/ _find_token DEVE rodar com o python do VENV WINDOWS (hermes-agent/venv/Scripts/python.exe). Com o python3 do WSL o _find_token nao acha o .env (fallbacks sao paths Windows) e notify devolve False silencioso -> ack nao sai. Sintoma: RES=False sem erro. Cura: chamar pelo venv Windows.\n- 2026-09-16 handoff Roger->grupo: tg_progress.notify/ _find_token DEVE rodar com o python do VENV WINDOWS (hermes-agent/venv/Scripts/python.exe). Com o python3 do WSL o _find_token nao acha o .env (fallbacks sao paths Windows) e notify devolve False silencioso -> ack nao sai. Sintoma: RES=False sem erro. Cura: chamar pelo venv Windows.\n\n## Regras do projeto ensinadas ao critic (11/09 — Samuel pediu)\n**Bloqueadores determinísticos no critic (critic_check_lifelog.py, -10pts cada):**\n- **Filtro de língua** — toda página `.astro` que chama `getCollection('posts')` precisa do filtro de ID (`!id.startsWith('en/')` em PT, `id.startsWith('en/')` em EN). Tag pages listavam PT+EN misturado desde sempre (bug real 11/09, fix `535ec0c`). Scan de dist (5pts): PT não pode linkar `/en/post/`, EN não pode linkar `/post/` — pega mesmo se o e2e for pulado.\n- **`locale:` é reservado do Astro 7** — não é exposto em `data.lang`; usar `lang:` no frontmatter e filtrar por prefixo do ID, nunca por `data.lang` (retorna undefined).\n- **`project` só do enum** em `src/content/config.ts` — projeto novo = atualizar enum + themes.css. IDs em PT (`seguranca`, `estudos`, `descobertas`), nunca traduzir.\n- **Datas com timezone** — `date:`/`pubDate:` sempre com `-03:00` (YAML sem TZ vira UTC e o dia mostra errado no Brasil).\n- **Privacidade TatuEngine** — post tatu* não pode conter receita técnica (BlockLens, block_traverse, decode_ternary, atomicAdd, benchmarks de speedup, etc.).\n- **Privacidade PCs pessoais** — nunca mencionar PC do Samuel/Douglas, rede da casa, hardware pessoal.\n- **PostCard sempre com `cover=`** — placeholder é silencioso (bug das capas nas tags, fix `05c596a`); passar `icon`+`cover`+`index` como a home.\n**Camadas de defesa:** e2e asserts (tags.spec.ts) → scan de dist no critic (5pts) → bloqueadores de código-fonte (-10pts). Se uma camada falhar, a próxima pega.\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n- `2026-09-08 11:24` (nota 80) **e2e playwright falhou: 🔒 jail ativo — comandos sandboxados (lifelog)**\n- `2026-10-22 18:42` (nota 60) **e2e playwright falhou: 540 passed (10.9m)**\n- `2026-10-22 18:53` (nota 60) **e2e playwright falhou: 540 passed (10.4m)**\n- `2026-10-22 19:08` (nota 60) **e2e playwright falhou: 540 passed (9.5m)**\n- `2026-10-22 19:25` (nota 60) **e2e playwright falhou: 540 passed (11.8m)**\n- `2026-10-22 19:39` (nota 60) **e2e playwright falhou: 540 passed (14.3m)**\n- `2026-10-22 20:02` (nota 60) **e2e playwright falhou: 540 passed (10.8m)**\n- `2026-10-22 20:26` (nota 60) **e2e playwright falhou: 540 passed (19.7m)**\n- `2026-10-23 01:12` (nota 80) **COBERTURA não medida (provider de coverage ausente — rodar `pnpm add -D @vitest/coverage-v8`) — 10pts não concedidos; me**\n- `2026-10-23 01:40` (nota 80) **cobertura total 0% < 50%**\n- `2026-10-23 10:34` (nota 45) **cobertura baixa: ocultos-core.mjs (25% < 50%)**\n- `2026-10-23 10:34` (nota 45) **cobertura total 44% < 50%**\n- `2026-10-23 10:34` (nota 45) **cobertura baixa: liberar.mjs (9% < 50%)**\n- `2026-10-23 11:23` (nota 80) **vitest falhou: Duration  553ms (transform 963ms, setup 0ms, import 1.16s, tests 64ms, environment 1ms)**\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)\n- `2026-10-23 11:23` (nota 80) **COBERTURA não medida (vitest coverage nao medido (rc=1)) — 10pts não concedidos; medir antes de aprovar**\n  (gap fechado automaticamente, arquivado em KB dinâmica v3)",
+  "v2_gh": {
+    "remote": "https://github.com/Samuelfmedeiros/lifelog.git",
+    "owner": "Samuelfmedeiros",
+    "repo": "lifelog",
+    "commits": [
+      {
+        "sha": "99e083f",
+        "msg": "fix(gate): /ocultos traz data-project=dev em toda pagina (falso positivo no chec"
+      },
+      {
+        "sha": "11452c4",
+        "msg": "merge: fecha o acesso publico ao preview de post oculto (aprovado 01/11 13:5x)"
+      },
+      {
+        "sha": "17e3e7c",
+        "msg": "fix(ocultos): fecha o acesso publico ao preview de post oculto"
+      },
+      {
+        "sha": "3cfaccb",
+        "msg": "feat(lifelog): post oculto — o linter do proprio acervo (PT+EN, hidden)"
+      },
+      {
+        "sha": "ba40889",
+        "msg": "fix(posts): mascara caminho privado do vault em yurumi-o-guard-que-mede-o-result"
+      }
+    ],
+    "open_prs": [],
+    "latest_release": "",
+    "default_branch": "main",
+    "pushed_at": "2026-11-01T16:59:18Z",
+    "error": ""
+  },
+  "roger_version": "3.5+rolling(p14/09)",
+  "campaign_branch": "roger/lifelog-20261101-140559",
+  "campaign_base_ref": "99e083f",
+  "campaign_orig_branch": "main",
+  "tokens_since": "2026-11-01T19:32:38.211600+00:00",
+  "tokens_recorded_round": 3,
+  "debate": {
+    "votos": [
+      {
+        "perfil": "qualidade",
+        "parecer": "n/d",
+        "nota": "",
+        "gaps": [],
+        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
+        "infra": true
+      },
+      {
+        "perfil": "seguranca",
+        "parecer": "n/d",
+        "nota": "",
+        "gaps": [],
+        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
+        "infra": true
+      }
+    ],
+    "veredito": "BLOQUEIA",
+    "gaps": [
+      "REVISOR_INDISPONIVEL (ambiente, fail-closed): erro: ModuleNotFoundError: No module named 'openai' — verificar 9Router/credencial; NAO e defeito do codigo"
+    ],
+    "pareceres": {
+      "qualidade": "n/d",
+      "seguranca": "n/d"
+    },
+    "revisor_indisponivel": true
+  },
+  "done": false,
+  "finished_at": null,
+  "ambiente_retries": 0,
+  "workers": [
+    {
+      "round": 2,
+      "worker": "general",
+      "rc": 124
+    },
+    {
+      "round": 3,
+      "worker": "general",
+      "rc": 124
+    }
+  ],
+  "v3_notifications": 2
+}
