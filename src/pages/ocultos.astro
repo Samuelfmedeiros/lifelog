@@ -37,9 +37,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <section id="list-step" class="hidden mt-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-bold" style="color: var(--color-heading)">Aguardando liberação</h2>
-        <button id="refresh-btn" class="px-3 py-1 rounded-lg text-sm" style="border: 1px solid var(--color-border); color: var(--color-text)">
-          Atualizar
-        </button>
+        <div class="flex gap-2">
+          <button id="refresh-btn" class="px-3 py-1 rounded-lg text-sm" style="border: 1px solid var(--color-border); color: var(--color-text)">
+            Atualizar
+          </button>
+          <button id="logout-btn" class="px-3 py-1 rounded-lg text-sm" style="border: 1px solid var(--color-border); color: #ff6b6b">
+            Sair
+          </button>
+        </div>
       </div>
       <p id="list-empty" class="text-sm hidden" style="color: var(--color-text-muted)">Nenhum post oculto no momento.</p>
       <div id="list" class="space-y-4"></div>
@@ -56,6 +61,35 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   var secret = sessionStorage.getItem(SKEY) || '';
   var loginError = document.getElementById('login-error');
   var globalMsg = document.getElementById('global-msg');
+
+  // Para onde voltar depois do login. O middleware manda ?next= quando alguem
+  // abre um /ocultos/preview/... sem sessao aberta.
+  var NEXT = new URLSearchParams(location.search).get('next') || '';
+
+  // Troca o segredo pelo cookie HttpOnly que o api/preview exige.
+  // Retorna o status: 200 abre o cookie; 401 = segredo errado; outro = problema
+  // no endpoint (ex: ADMIN_SECRET ausente) — nesse caso a liberacao continua
+  // funcionando (ela depende do /api/ocultos) e so o preview fica indisponivel.
+  async function abrirSessao() {
+    try {
+      var res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + secret },
+        credentials: 'same-origin'
+      });
+      return res.status;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function voltaParaNext() {
+    if (NEXT && NEXT.indexOf('/ocultos/') === 0) {
+      location.replace(NEXT);
+      return true;
+    }
+    return false;
+  }
 
   function show(id) {
     document.getElementById('login-step').classList.toggle('hidden', id !== 'login');
@@ -248,14 +282,36 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       });
     }  }
 
-  document.getElementById('login-btn').addEventListener('click', function () {
+  document.getElementById('login-btn').addEventListener('click', async function () {
     var val = document.getElementById('secret-input').value.trim();
     if (!val) return;
     secret = val;
-    sessionStorage.setItem(SKEY, secret);
     loginError.classList.add('hidden');
+    var status = await abrirSessao();
+    if (status === 401) {
+      secret = '';
+      sessionStorage.removeItem(SKEY);
+      msg(loginError, 'Segredo invalido.');
+      show('login');
+      return;
+    }
+    sessionStorage.setItem(SKEY, secret);
+    if (voltaParaNext()) return;
     show('list');
     loadList();
+    if (status !== 200) {
+      // Sessao nao abriu (endpoint fora, ADMIN_SECRET ausente): a lista e a
+      // liberacao seguem pelo /api/ocultos; so o preview renderizado nao abre.
+      msg(globalMsg, 'Aviso: sessao de preview nao abriu (status ' + status + '). Liberar/Recusar seguem funcionando.', false);
+    }
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', async function () {
+    try { await fetch('/api/session', { method: 'DELETE', credentials: 'same-origin' }); } catch (e) {}
+    secret = '';
+    sessionStorage.removeItem(SKEY);
+    document.getElementById('secret-input').value = '';
+    show('login');
   });
 
   document.getElementById('refresh-btn').addEventListener('click', loadList);
@@ -266,8 +322,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
   if (secret) {
     document.getElementById('secret-input').value = secret;
-    show('list');
-    loadList();
+    if (NEXT) {
+      // Veio de um preview sem sessao: abre a sessao e volta pro link pedido.
+      abrirSessao().then(function (status) {
+        if (status === 200 && voltaParaNext()) return;
+        show('list');
+        loadList();
+      });
+    } else {
+      abrirSessao();
+      show('list');
+      loadList();
+    }
   }
 })();
 </script>

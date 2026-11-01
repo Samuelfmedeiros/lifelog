@@ -15,6 +15,14 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/ocultos/preview/:lang/:slug",
+      "destination": "/api/preview?lang=:lang&slug=:slug"
+    },
+    {
+      "source": "/ocultos/preview/:lang/:slug/",
+      "destination": "/api/preview?lang=:lang&slug=:slug"
+    },
     { "source": "/analytics/op1.js", "destination": "https://openpanel.seu.pet/op1.js" },
     { "source": "/api/op/:path*", "destination": "https://openpanel.seu.pet/api/:path*" }
   ],

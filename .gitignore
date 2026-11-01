@@ -76,3 +76,9 @@ public/test-light*.png
 # NAO pega symlink, e um symlink rastreado quebra 'pnpm install' no runner
 # com ENOTDIR (incidente 13/09). O padrao abaixo cobre arquivo e diretorio.
 node_modules
+
+# logs de operacao (nunca versionar)
+logs/
+
+# artefato de build (contem o HTML dos previews ocultos; gerado por scripts/gen-preview-data.mjs)
+api/preview-data.mjs

@@ -7,9 +7,18 @@ import { getCollection } from 'astro:content';
 
 const locale = 'pt';
 
+// So os pares com ALGUM lado oculto. Antes gerava um preview para cada uma das
+// ~227 postagens publicadas (455 paginas no build) — duplicata inutil, e o que
+// interessava (o post oculto) ficava exposto. Este HTML nao vai para dist:
+// scripts/gen-preview-data.mjs recolhe do build e apaga (01/11/2026).
 export async function getStaticPaths() {
   const allPosts = await getCollection('posts');
-  const posts = allPosts.filter(p => !p.id.startsWith('en/'));
+  const baseOculta = new Set(
+    allPosts.filter((p) => p.data.hidden).map((p) => p.id.replace(/^en\//, '')),
+  );
+  const posts = allPosts.filter(
+    (p) => !p.id.startsWith('en/') && baseOculta.has(p.id.replace(/^en\//, '')),
+  );
   return posts.map((post) => ({
     params: { slug: post.id },
     props: { post },
