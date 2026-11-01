@@ -1,0 +1,79 @@
+---
+title: "A senha em claro que o CI executava sozinho"
+description: "Um arquivo chamado test_portifolio.py fazia o pytest logar de verdade num endpoint público, com a credencial de admin escrita no corpo do código. O commit 40d3594 tirou a senha do repositório — e deixou claro que rotação de credencial tem três partes, não uma."
+category: samuel-projects
+date: 2026-10-18 01:19:00 -03:00
+pubDate: 2026-11-01 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "security", "secrets", "pytest", "ci-cd", "auth"]
+cover: /covers/capivara-a-senha-que-o-ci-executava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O teste que não era teste
+
+O painel de segurança do Capivara ficava verde. Gitleaks varrendo segredo commitado, bandit varrendo anti-pattern em Python, opengrep com as regras que eu mesmo escrevi. Verde, na minha cabeça, significava uma coisa: nenhum segredo entrou no repositório.
+
+Significava uma coisa só, e não era essa. O segredo não era novo — estava lá há tempo, dentro de um arquivo cujo **nome** fazia o CI executá-lo.
+
+O arquivo se chamava `test_portifolio.py`. Para o pytest, o prefixo `test_` não é etiqueta: é contrato. Qualquer arquivo que comece com esse prefixo é **coletado e executado** como suíte, e o conteúdo não é consultado antes. Dentro dele havia um script de smoke — fazia login real contra o hub público, com e-mail e senha de administrador escritos em texto no corpo do arquivo, dentro de um `-d` de curl.
+
+O resultado: cada `pytest` rodado no CI — e cada execução local minha — autenticava de verdade num endpoint público, usando a credencial de admin versionada. O dashboard verde nunca teve chance de aparecer.
+
+## Por que o scanner não viu
+
+O gitleaks trabalha com o diff. Ele procura forma de segredo no que **entra**: entropia alta, prefixo conhecido, layout de chave. Uma string montada dentro de uma linha de comando em Python não casa regra de nada — é texto de script, indistinguível de dado de exemplo. E, mais importante: o arquivo já estava no repositório antes de o gate existir. Scanner de diff cobre o que entra; não varre o acervo que já está lá.
+
+## O fix: sair do caminho do coletor
+
+O commit `40d3594`, de 18 de outubro, ataca as duas frentes ao mesmo tempo — 19 linhas removidas, 46 adicionadas. A primeira é sair do padrão de coleta: `test_portifolio.py` virou `smoke_portifolio.py`. `smoke_` não é prefixo de coleta, então o pytest passa a ignorar o arquivo, e o nome passa a dizer a verdade — é smoke manual, não teste automatizado.
+
+A segunda é tirar a credencial do código:
+
+```python
+EMAIL = os.environ.get("CAPIVARA_SMOKE_EMAIL", "")
+PASSWORD = os.environ.get("CAPIVARA_SMOKE_PASSWORD", "")
+
+if not (EMAIL and PASSWORD):
+    print("sem credenciais — smoke pulado")
+    sys.exit(0)
+```
+
+Sem as variáveis, o script pula em vez de falhar. Smoke é manual por definição: se não tem credencial no ambiente, não tem o que rodar — e o CI segue verde sem autenticar em lugar nenhum.
+
+Teve um detalhe de calendário que ajudou. No mesmo dia, o Cloudflare Access passou a proteger o domínio público: a rota de login começou a responder 302 no gate. Foi a proteção nova que quebrou a coleta do pytest — ou seja, o sintoma que me fez olhar para o arquivo veio de fora. Enquanto o login "funcionava", o problema ficava invisível atrás do verde.
+
+## Tirar do repositório não troca a senha
+
+Aqui está a parte que me ensinou mais, e é o motivo de eu estar escrevendo isso.
+
+O commit tirou a senha do código — mas **a senha continuou válida**. Ela nunca vazou do banco. O que vazou foi um valor em texto num repositório, e repositório tem histórico: a string continua lá, no commit antigo, para quem clonar.
+
+Rotação de credencial tem três partes. Fazer duas dá a sensação exata de resolvido:
+
+1. Tirar do código (foi o `40d3594`);
+2. Trocar o valor no serviço, com hash bcrypt gravado na tabela de usuários;
+3. Revogar as sessões que já existiam.
+
+A terceira é a que se esquece. O painel emite access token de 60 minutos e refresh token de 7 dias. Sem apagar os refresh tokens, quem já estava logado continua entrando por até uma semana — a rotação vale para o próximo login, não para o que já está aberto:
+
+```sql
+DELETE FROM refresh_tokens WHERE user_email = ?;
+```
+
+Detalhe que custou tempo e vale registrar: a coluna é `user_email`, não `user_id`. A tentativa com a coluna errada estoura `OperationalError: no such column` — e, como o `DELETE` vem depois do `UPDATE` da senha, o erro derruba a transação inteira. O script termina "com sucesso", a senha não muda e as sessões antigas continuam vivas. Rotação pela metade, com aparência de completa.
+
+A prova que passei a exigir são as duas respostas juntas: senha nova devolve 200 com token; senha antiga devolve 401. Uma sozinha não prova nada — 401 na antiga pode ser só a rota fora do ar.
+
+## O que isso muda
+
+- Verde de scanner não significa "sem credencial no repositório". Significa "nenhuma credencial nova entrou". O acervo é outra pergunta.
+- Nome de arquivo é superfície, não etiqueta. `test_*.py` e `conftest.py` são contratos com o coletor; `.env` é contrato com o carregador de ambiente. Quem lê o diretório decide o que executar.
+- Rotação tem três passos, e o terceiro tem relógio: token vivo é acesso vivo. Trocar a senha sem revogar sessão deixa a porta aberta pelo tempo de vida do refresh.
+- Reescrever o histórico do git com `filter-repo` e force push é destrutivo e, depois da rotação, não agrega segurança nenhuma: o valor antigo já não abre nada.
+
+## Próximo passo
+
+O fix encerrou o caso daquele arquivo, mas deixou uma pergunta maior: o que mais no acervo é coletado sem eu saber? O próximo passo é um teste que falha se qualquer arquivo sob o padrão do pytest contiver literal de credencial. O gate que eu tinha olhava o diff — e o buraco estava no que já estava commitado.

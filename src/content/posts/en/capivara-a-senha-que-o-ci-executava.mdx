@@ -1,0 +1,79 @@
+---
+title: "The plaintext password my CI ran by itself"
+description: "A file named test_portifolio.py made pytest log in for real against a public endpoint, with the admin credential written into the script body. Commit 40d3594 pulled the password out of the repository — and made it clear that credential rotation has three parts, not one."
+category: samuel-projects
+date: 2026-10-18 01:19:00 -03:00
+pubDate: 2026-11-01 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "security", "secrets", "pytest", "ci-cd", "auth"]
+cover: /covers/capivara-a-senha-que-o-ci-executava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The test that wasn't a test
+
+The Capivara security dashboard was green. Gitleaks scanning for committed secrets, bandit scanning for Python anti-patterns, opengrep running the rules I wrote myself. Green, in my head, meant one thing: no secret got into the repository.
+
+It meant one thing only, and that wasn't it. The secret wasn't new — it had been sitting there for a while, inside a file whose **name** made CI run it.
+
+The file was called `test_portifolio.py`. To pytest, the `test_` prefix is not a label: it's a contract. Any file starting with that prefix is **collected and executed** as a suite, and the contents are never consulted first. Inside there was a smoke script — it performed a real login against the public hub, with an admin email and password written in plain text in the file body, inside a curl `-d`.
+
+The result: every `pytest` run in CI — and every local run of mine — authenticated for real against a public endpoint, using the versioned admin credential. The green dashboard never stood a chance.
+
+## Why the scanner didn't see it
+
+Gitleaks works on the diff. It looks for the shape of a secret in what **enters**: high entropy, a known prefix, a key layout. A string assembled inside a command line in Python matches no rule — it's script text, indistinguishable from sample data. And more importantly: the file was already in the repository before the gate existed. A diff scanner covers what arrives; it doesn't sweep the archive that's already there.
+
+## The fix: step out of the collector's path
+
+Commit `40d3594`, from October 18, hits both fronts at once — 19 lines removed, 46 added. The first is leaving the collection pattern: `test_portifolio.py` became `smoke_portifolio.py`. `smoke_` is not a collection prefix, so pytest now ignores the file, and the name finally tells the truth — it's a manual smoke, not an automated test.
+
+The second is pulling the credential out of the code:
+
+```python
+EMAIL = os.environ.get("CAPIVARA_SMOKE_EMAIL", "")
+PASSWORD = os.environ.get("CAPIVARA_SMOKE_PASSWORD", "")
+
+if not (EMAIL and PASSWORD):
+    print("no credentials — smoke skipped")
+    sys.exit(0)
+```
+
+Without the variables, the script skips instead of failing. A smoke is manual by definition: no credential in the environment, nothing to run — and CI stays green without authenticating anywhere.
+
+There was a calendar detail that helped. That same day, Cloudflare Access started protecting the public domain: the login route began answering 302 at the gate. The new protection is what broke the pytest collection — meaning the symptom that made me look at the file came from outside. While the login "worked", the problem stayed invisible behind the green.
+
+## Pulling it out of the repo doesn't change the password
+
+This is the part that taught me the most, and it's why I'm writing this.
+
+The commit took the password out of the code — but **the password stayed valid**. It never leaked from the database. What leaked was a plaintext value in a repository, and a repository has history: the string is still there, in the old commit, for anyone who clones it.
+
+Credential rotation has three parts. Doing two gives you the exact feeling of done:
+
+1. Taking it out of the code (that was `40d3594`);
+2. Changing the value in the service, with a bcrypt hash written to the users table;
+3. Revoking the sessions that already existed.
+
+The third is the one that gets forgotten. The panel issues a 60-minute access token and a 7-day refresh token. Without deleting the refresh tokens, whoever was already logged in keeps getting in for up to a week — the rotation applies to the next login, not to what's already open:
+
+```sql
+DELETE FROM refresh_tokens WHERE user_email = ?;
+```
+
+A detail that cost time and is worth recording: the column is `user_email`, not `user_id`. The attempt with the wrong column throws `OperationalError: no such column` — and since the `DELETE` comes after the password `UPDATE`, the error takes the whole transaction down. The script finishes "successfully", the password doesn't change, and the old sessions stay alive. Half a rotation, wearing the face of a complete one.
+
+The proof I now demand is both answers together: the new password returns 200 with a token; the old password returns 401. Either one alone proves nothing — a 401 on the old password could just mean the route is down.
+
+## What this changes
+
+- Scanner green doesn't mean "no credential in the repository". It means "no new credential came in". The archive is a different question.
+- A filename is attack surface, not a label. `test_*.py` and `conftest.py` are contracts with the collector; `.env` is a contract with the environment loader. Whatever reads the directory decides what to execute.
+- Rotation has three steps, and the third one runs on a clock: a live token is live access. Changing the password without revoking sessions leaves the door open for the refresh token's lifetime.
+- Rewriting git history with `filter-repo` plus a force push is destructive and, after rotation, adds no security at all: the old value no longer opens anything.
+
+## Next step
+
+The fix closed the case of that one file, but left a bigger question: what else in the archive is being collected without my knowledge? The next step is a test that fails if any file under the pytest pattern contains a credential literal. The gate I had looked at the diff — and the hole was in what was already committed.
