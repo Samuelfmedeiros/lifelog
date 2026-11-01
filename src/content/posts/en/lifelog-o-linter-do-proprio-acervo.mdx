@@ -1,0 +1,70 @@
+---
+title: "The linter for my own archive — 18 posts that ended with an operations recipe"
+description: "A shell block on the last line of an already published post. The same defect sat in 18 posts, and none of my gates looked at the body of the article: one checked tags, another checked PT/EN pairs. I wrote the guard that was missing — and its first version accused 9 innocent posts."
+category: samuel-projects
+date: 2026-11-01 10:18:00 -03:00
+pubDate: 2026-11-01 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "ci-cd", "quality", "markdown", "testing"]
+icon: "📖"
+cover: /covers/lifelog-o-linter-do-proprio-acervo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The last thing a reader saw was a procedure
+
+At the end of October I opened an article that was already live — not a draft, the page anyone can read — and the last thing on it was a shell block. Three operation commands, one of them pointing at the absolute path of the repository. Above it, the text told a real technical story; below it, the recipe for how I poke at the machine.
+
+The detail that changes everything: it was not an isolated case. I ran a sweep over the whole archive, reading every file, isolating the last element of the body and checking whether it was a fenced block whose first line started with an operation verb. The result was **18 posts** — **37 files** counting the Portuguese and English pairs. Every one of them closed the "Next step" section with a procedure, and in a few the absolute repo path came along with it.
+
+The sweep returned two more findings nobody was seeing:
+
+The first was the **orphan footer**. Every post is born marked as hidden and gets a closing line warning that it awaits manual release. When the post is released, the flag flips to published — and the footer stays. Three articles in one project's series were still published ending with "this post is hidden and awaits manual release".
+
+The second was a release that lied without meaning to. Commit `2866d9d` said PT+EN in the title, but only versioned the Portuguese side of a post about an application port. The English file existed on disk, untracked by git. Effect: the "PT/EN Sync check" step red since 26 October and that post's `/en/` route returning **404** in production. The local gate said "sync perfect" because it read the **filesystem**, while CI reads **git**. A file on disk is not a file in the repository — and absence of proof was never proof of success.
+
+## Why no gate saw it
+
+I had a guard for tags outside the vocabulary, a guard for PT/EN pairs, a guard for a cover that does not exist. All of them looked at *metadata*. None opened the **body** of the article. The defect lived exactly in that gap: it was text, at the end of the file, generated automatically, and no check ever read down there.
+
+The fix could not be repairing 37 files by hand and moving on. Repairing once is a patch; the generator would repeat the pattern on the next post. What was missing was a gate — and the gate was born the same day, in `scripts/check-post-content.py`, wired as a workflow step between the tag check and the type check.
+
+## Three errors, two warnings
+
+The design was dictated by what the sweep showed. Three things **block** the build:
+
+- an absolute host path inside the article body;
+- an operations command block as the **last** element of the post;
+- the "awaits manual release" footer on a post that is already published.
+
+Two things only **warn**, and the reason is the hard part: in several articles the command *is* the subject. There is a post about `node_modules` that has to show the directory tree inside the installed project; there is a post about the vault that has to mention where it mounts. Banning that would be censoring the text. So an operations block in the middle of the body and a quoted disk path become warnings, not errors.
+
+The core of the gate is small — what it does is look at the tail of the file, ignore the footer, and classify what is left:
+
+```python
+tail = FOOTER.sub("", body).rstrip()
+if tail.endswith("```"):
+    start = tail.rfind("```", 0, len(tail) - 3)
+    header = tail[start + 3:].split("\n", 1)[0].strip()
+    block = tail[start + 3 + len(header):]
+    if OP_CMD.search("\n" + block):
+        errors.append(("E2", rel, "bloco de OPERAÇÃO é o último elemento do post"))
+```
+
+And here is the part I almost got wrong. The first version of the absolute-path rule matched any user directory, including the generic ones that show up in article **examples**. Result: **9 posts accused** over example paths, with perfectly clean text. Had I wired that into CI without looking, the build would go red because of posts that had no defect — and the first reaction would be to turn the gate off, which is the worst reaction available. I narrowed the pattern to the owner's real path and to the Windows and WSL forms.
+
+Then came the test that decides whether a gate is worth anything: I wrote a planted post carrying the **three** defects and ran it. It returned E1, E2 and E3, with `rc=1`. A guard that has never been shown a deliberate defect is not a guard, it is decoration. Run against the whole archive: **451 posts, 0 errors, 107 warnings**.
+
+## CI did not go green — and that taught more than the gate
+
+I paid the debt (18 posts rewritten as prose, footers removed, the missing English side versioned) and CI stayed red. Not because the fix failed: because the steps run in series and the first `exit 1` marks **skipped** on everything after it — build, e2e, health check. One day's red was hiding the next one.
+
+With PT/EN sync cured, the next gate to block was the tag vocabulary: **8 errors**, four slugs invented by the generator, one pair per language — `geofence`, `gps`, `redirect`, `ssh`. None had an equivalent in the vocabulary, so they entered as canonical in commit `782efe6`, leaving the vocabulary with **355** slugs. Only then did build, tests and deploy run again.
+
+## What actually changes
+
+The defect class is locked: a new article that ends with an operations recipe does not get past CI, and a released post no longer carries the hidden-post footer. The editorial rule left behind is short — **public text explains the problem, it does not hand over the machine's recipe**. An operations command belongs in the log of whoever runs it, not on the last line of whoever reads.
+
+The next step is the one that always remains after a gate: measure whether it catches what it promises across the entire archive, not only in the file that motivated the fix. A gate born from one case and never run again becomes false comfort.

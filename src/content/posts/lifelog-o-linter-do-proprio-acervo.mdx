@@ -1,0 +1,70 @@
+---
+title: "O linter do próprio acervo — 18 posts que terminavam com receita de operação"
+description: "Um bloco de shell na última linha de um post já publicado. O mesmo defeito estava em 18 posts, e nenhum dos meus gates olhava o corpo do artigo: um olhava tag, outro olhava par PT/EN. Escrevi o guard que faltava — e a primeira versão dele acusou 9 posts inocentes."
+category: samuel-projects
+date: 2026-11-01 10:18:00 -03:00
+pubDate: 2026-11-01 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "ci-cd", "quality", "markdown", "testing"]
+icon: "📖"
+cover: /covers/lifelog-o-linter-do-proprio-acervo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A última coisa que o leitor via era um procedimento
+
+No fim de outubro abri um artigo que já estava no ar — não um rascunho, o que qualquer pessoa lê — e a última coisa da página era um bloco de shell. Três comandos de operação, um deles apontando para o caminho absoluto do repositório. Em cima, o texto contava uma história técnica de verdade; embaixo, a receita de como eu mexo na máquina.
+
+O detalhe que muda tudo: não era um caso isolado. Rodei uma varredura no acervo inteiro lendo cada arquivo, isolando o último elemento do corpo e verificando se ele era um bloco de código cuja primeira linha começasse com verbo de operação. O resultado foi **18 posts** — **37 arquivos** contando os pares em português e inglês. Todos fechavam a seção "Próximo passo" com procedimento, e em alguns o caminho absoluto do repo vinha junto.
+
+A varredura devolveu mais dois achados que ninguém estava vendo:
+
+O primeiro foi o **rodapé órfão**. Todo post nasce marcado como oculto e recebe uma linha final avisando que aguarda liberação manual. Quando o post é liberado, a marcação muda para publicada — e o rodapé fica. Três artigos da série de um dos projetos continuavam publicados terminando com "este post está oculto e aguarda liberação manual".
+
+O segundo foi um release que mentiu sem querer. O commit `2866d9d` dizia PT+EN no título, mas só versionou o português de um post sobre porta de aplicação. O arquivo em inglês existia no disco, não estava rastreado pelo git. Efeito: o step "PT/EN Sync check" do CI vermelho desde 26 de outubro e a rota `/en/` daquele post em **404** em produção. O gate local dizia "sync perfeito" porque ele lia o **filesystem**, enquanto o CI lê o **git**. Arquivo no disco não é arquivo no repositório — e ausência de prova nunca foi prova de sucesso.
+
+## Por que nenhum gate viu
+
+Eu tinha guard para tag fora do vocabulário, guard para par PT/EN, guard para capa que não existe. Todos olhavam *metadado*. Nenhum abria o **corpo** do artigo. O defeito morava exatamente nesse vazio: era texto, no fim do arquivo, gerado automaticamente, e nenhuma verificação lia dali para baixo.
+
+A correção não podia ser consertar 37 arquivos à mão e seguir. Consertar uma vez é remendo; o gerador ia repetir o padrão no post seguinte. O que faltava era um gate — e o gate nasceu no mesmo dia, em `scripts/check-post-content.py`, plugado como step do workflow entre a checagem de tag e o type check.
+
+## Três erros, dois avisos
+
+O desenho foi ditado pelo que a varredura mostrou. Três coisas **bloqueiam** o build:
+
+- caminho absoluto do host no corpo do artigo;
+- bloco de comando de operação como **último** elemento do post;
+- rodapé de "aguarda liberação manual" em post que já está publicado.
+
+Duas coisas apenas **avisam**, e a razão é a parte difícil: em vários artigos o comando *é o assunto*. Tem post sobre `node_modules` que precisa mostrar a árvore de diretórios dentro do projeto instalado; tem post sobre o vault que precisa citar onde ele monta. Proibir isso seria censurar o texto. Então bloco de operação no meio do corpo e caminho de disco citado viram warning, não erro.
+
+O núcleo do gate é pequeno — o que ele faz é olhar o rabo do arquivo, ignorando o rodapé, e classificar o que sobrou:
+
+```python
+tail = FOOTER.sub("", body).rstrip()
+if tail.endswith("```"):
+    start = tail.rfind("```", 0, len(tail) - 3)
+    header = tail[start + 3:].split("\n", 1)[0].strip()
+    block = tail[start + 3 + len(header):]
+    if OP_CMD.search("\n" + block):
+        errors.append(("E2", rel, "bloco de OPERAÇÃO é o último elemento do post"))
+```
+
+E aqui está a parte que eu quase errei. A primeira versão da regra de caminho absoluto casava qualquer diretório de usuário, inclusive os genéricos que aparecem em **exemplo** de artigo. Resultado: **9 posts acusados** por caminho de exemplo, texto perfeitamente limpo. Se eu tivesse ligado aquilo no CI sem olhar, o build ficaria vermelho por causa de posts que não tinham defeito — e a primeira reação seria desligar o gate, que é a pior reação possível. Estreitei o padrão para o caminho real do dono e para as formas Windows e WSL.
+
+Depois veio o teste que decide se um gate presta: escrevi um post plantado com os **três** defeitos e rodei. Ele devolveu E1, E2 e E3, com `rc=1`. Um guard que nunca viu um defeito de propósito não é um guard, é decoração. Rodado no acervo inteiro: **451 posts, 0 erros, 107 warnings**.
+
+## O CI não ficou verde — e isso ensinou mais que o gate
+
+Consertei a dívida (18 posts reescritos em prosa, rodapés removidos, o inglês que faltava versionado) e o CI continuou vermelho. Não porque o conserto falhou: porque os steps rodam em série e o primeiro `exit 1` marca **skipped** em tudo que vem depois — build, e2e, health check. O vermelho de um dia escondia o de outro.
+
+Curado o sync PT/EN, o próximo a barrar foi o vocabulário de tags: **8 erros**, quatro slugs inventados pelo gerador, um par em cada idioma — `geofence`, `gps`, `redirect`, `ssh`. Nenhum tinha equivalente no vocabulário, então entraram como canônicos no commit `782efe6`, deixando o vocabulário com **355** slugs. Só então o build, os testes e o deploy rodaram de novo.
+
+## O que muda de verdade
+
+A classe de defeito está travada: artigo novo que termine com receita de operação não passa do CI, e post liberado não carrega mais o rodapé de oculto. A regra editorial que sobrou é curta — **texto público explica o problema, não entrega a receita da máquina**. Comando de operação pertence ao log de quem executa, não à última linha de quem lê.
+
+O próximo passo é o que sempre sobra depois de um gate: medir se ele pega o que promete no acervo inteiro, e não só no arquivo que motivou a correção. Gate que nasce de um caso e nunca é rodado de novo vira falso conforto.
