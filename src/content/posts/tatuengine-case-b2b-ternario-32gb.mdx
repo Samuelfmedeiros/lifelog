@@ -27,5 +27,3 @@ O que NÃO fizemos (e por quê):
 Se você monta pipeline de inferência local e está batendo em VRAM, o caminho não é quantizar pós-treino (o TatuEngine perde coerência nesse caso — só funciona treinado desde o zero com pesos ternários). O caminho é block encoding + GPU traversal + pipeline híbrido.
 
 O paradigma por trás: substituímos multiplicações de ponto flutuante por operações de adição em tensores ternários. Isso remove o gargalo da FPU e mapeia diretamente para os Warps da NVIDIA — cada bloco de 32×32 pesos cabe em um Warp, e a travessia paralela de BVH na GPU fica bit-a-bit idêntica ao CPU ground truth.
-
-Quer implementar essa arquitetura no seu cluster ou destravar o limite de VRAM da sua infraestrutura local? O código-fonte completo do BlockLens e a lógica de orquestração do TatuEngine estão detalhados no meu E-book Técnico [R$ 37 → skills.seu.pet/p/o-agente-que-nao-mente]. Para times corporativos, ofereço o Setup Guiado de Infraestrutura [R$ 1.500 → skills.seu.pet/servico], onde integro o motor nativo diretamente na sua pipeline de CI/CD.
