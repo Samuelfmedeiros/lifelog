@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-10-31] - 15 commits: 3 posts ocultos liberados + 3 recusas refeitas + watchdog; push origin ok
+
+- **feat/release**: 3 posts ocultos (descobertas-o-308, portfolio-os-titulos, dogwalk-screenshots) publicados PT+EN com `ocultos-data` + `nova-historia-arachne-2026-10-29` republicado.
+- **refazer**: recusas de nova-historia-arachne (issues #179/#162) e tatuengine-case-b2b-ternario-32gb.
+- **fix**: limpeza de conteudo (2 posts) + versionamento de post orfao pelo watchdog. Push `origin` OK.
+
 ## [2026-10-30] - 5 commits: 2 posts liberados + refazer de recusa + versionamento de capa/post orfao; push origin ok
 
 - **release(post)** (`8755ff4`, `42f1a4e`): `yurumi-a-mensagem-que-saiu-sem-recibo` + `nova-historia-lifelog-2026-10-30` (PT+EN + ocultos-data).

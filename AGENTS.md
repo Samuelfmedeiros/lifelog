@@ -1,5 +1,15 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-10-31 (fim de dia) — 15 commits (3 posts ocultos + 3 refazer + watchdog); push origin ok
+
+- **feat(posts ocultos)**: `6d50c26` descobertas-o-308-que-mudou-de-endereco, `1e9da19` portfolio-os-titulos-que-nao-apareciam-no-desktop, `fea2920` dogwalk-screenshots-que-mentiam-sobre-o-tamanho (todos PT+EN, hidden).
+- **release(post)**: `5e4dfe0`, `0abbbbb`, `103790f` liberam os 3 posts (PT+EN + `ocultos-data`); `cbb4b5f` e `b0e2f05` republicam `nova-historia-arachne-2026-10-29`.
+- **refazer** (recusas): `fab14a1` e `8538a1d` (nova-historia-arachne — PT em portugues de verdade, issue #179), `d375ba0` (tatuengine-case-b2b-ternario-32gb), `ba221eb` (nova-historia-arachne reescrito com fatos reais, issue #162).
+- **fix(content)**: `6b88196` remove bloco de comando no fim de dogwalk-screenshots; `0e9ae80` remove notas internas de tatuengine-case-b2b (#186).
+- **fix(watchdog)**: `523468b` versiona post orfao `tatuengine-case-b2b-ternario-32gb` (capa ok, `.mdx` fora do git).
+- Push `origin` OK (`main` == `origin/main`, fast-forward). 34 diffs nao commitados preservados (29 posts `.mdx`, `logs/` e 1 post novo nao rastreado) — trabalho alheio intacto.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-10-30 (fim de dia) - 5 commits (2 posts liberados + refazer de recusa + versionamento de capa/post orfao); push origin ok
 
 - **release(post)** (`8755ff4`): `yurumi-a-mensagem-que-saiu-sem-recibo` (PT+EN + ocultos-data).
