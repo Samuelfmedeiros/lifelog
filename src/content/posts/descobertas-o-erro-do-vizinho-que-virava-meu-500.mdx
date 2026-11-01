@@ -43,8 +43,4 @@ Tem uma lição menor, e que eu já paguei caro antes: função que pode devolve
 
 O log agora tem URL por falha. O passo seguinte é agregar por domínio: contar bloqueios por host na semana e transformar isso em uma lista de fontes sabidamente hostis, para o scraper não gastar quatro tentativas em um site que nunca vai entregar. Erro classificado é matéria-prima; erro classificado e agrupado é decisão.
 
-```bash
-git log --oneline -3 -- api/app/api/search_routes.py
-curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ARACHNE/api/search/scrape" -d '{"url":"https://exemplo.com"}'
-docker logs arachne-api 2>&1 | grep "\[scrape\] falha" | tail -5
-```
+O caminho para chegar nisso é o mesmo que fechou o incidente, e cabe em três perguntas. A primeira é o histórico do arquivo de rotas de busca: os três commits mais recentes que o tocaram são exatamente as duas camadas de correção desta história. A segunda é uma requisição POST de verdade no endpoint de scrape, olhando apenas o código de status da resposta — é esse número que separa um 200 de um `upstream_blocked` sem precisar ler o corpo. A terceira é o log do serviço: as últimas cinco linhas de falha do scrape trazem o par URL e tipo de erro que vira matéria-prima do agrupamento por domínio.

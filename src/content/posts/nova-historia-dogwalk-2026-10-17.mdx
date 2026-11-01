@@ -54,13 +54,4 @@ Com o banco pronto e as tabelas corretas, a suíte de testes passou a executar c
 - **Recomendação** – Refatorar o algoritmo `dogwalk/api/recommend.py` para usar a camada de vector‑search já provisionada no projeto.
 - **Alertas avançados** – Configurar alertas de latência de resposta da API de Stripe para garantir que os repasses ocorram dentro do SLA de 2 s.
 
-```bash
-# Exemplo de comando usado durante a resolução
-alembic upgrade head
-psql -d dogwalk -c "SELECT count(*) FROM users;"
-npx wrangler pages deploy dist/ --project-name dogwalk
-```
-
----
-
-*Este post está oculto e aguardando liberação manual.*
+O ciclo que resolveu o incidente cabe em três passos: aplicar a migração com `alembic upgrade head`, contar os usuários logo depois da subida para validar que a migração rodou sobre dado real, e publicar o build do front no projeto `dogwalk` do Cloudflare Pages pelo mesmo caminho que o CI já usa em todo build verde.

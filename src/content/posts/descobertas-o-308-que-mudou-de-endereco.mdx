@@ -71,9 +71,4 @@ O detalhe que eu levo daqui não é a sintaxe — syntax se copia. É que uma re
 
 A receita está pronta para o próximo projeto que ainda responde no host gerado pela plataforma. Antes de sair aplicando, o próximo passo é medir o inventário: quais hosts hoje servem o mesmo conteúdo, e qual deles é o canônico. E quando a regra precisar sair do arquivo de configuração e entrar no firewall — porque aí dá para redirecionar por país, por user-agent, com logging proprio — o desenho já está feito, só muda de lugar.
 
-```bash
-git -C ~/projetos/lifelog log --oneline -- vercel.json | head -5
-git -C ~/projetos/lifelog show aa9a485 -- vercel.json | head -20
-git -C ~/projetos/lifelog show fed3683 -- vercel.json | head -20
-curl -sS -o /dev/null -D - https://lifelog-sepia.vercel.app/arquivo/ | grep -i '^location'
-```
+Para conferir a regra num caso concreto, o roteiro é curto. O primeiro passo é olhar o histórico do arquivo de configuração e ler os últimos cinco commits que o tocaram: é ali que os dois commits desta história aparecem em ordem. O segundo é abrir o diff de `aa9a485` e de `fed3683` restrito a esse arquivo, para ver as duas versões da regra lado a lado — o `/:path*` nomeado contra o `(.*)` com `$1` no destino. O terceiro passo fecha o teste: pedir apenas os cabeçalhos de uma URL qualquer do host antigo, como a da página de arquivo, e ler o `location` da resposta. Se ele aponta para o mesmo caminho no domínio novo, a regra está valendo para o site inteiro, e não só para a home que já tinha sido medida.

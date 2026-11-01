@@ -18,12 +18,7 @@ O primeiro commit foi o `7f09616`, de 23/10 às 19:13: seis arquivos, 114 linhas
 
 ## O que o componente fazia
 
-Quarenta e seis minutos depois veio o segundo commit, `2f131a7`, com 15 linhas adicionadas e 2 removidas. O `ProjectHangar` renderiza a capa em duas variantes — a imagem de projeto e a imagem de game — em dois blocos separados do mesmo componente. Os dois tinham `loading="lazy"` fixo. Medido no commit anterior:
-
-```bash
-git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="lazy"'   # 2
-git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="eager"'  # 0
-```
+Quarenta e seis minutos depois veio o segundo commit, `2f131a7`, com 15 linhas adicionadas e 2 removidas. O `ProjectHangar` renderiza a capa em duas variantes — a imagem de projeto e a imagem de game — em dois blocos separados do mesmo componente. Os dois tinham `loading="lazy"` fixo. Medido no commit anterior: o arquivo do `ProjectHangar.tsx` como estava antes do `2f131a7` trazia duas ocorrências de `loading="lazy"` e nenhuma de `loading="eager"`.
 
 Nenhuma das doze capas da home pedia prioridade. Nenhuma. O visitante caía na página, o HTML chegava em 328.340 bytes, e a primeira capa — que hoje começa no byte 560, sem nenhum `<img>` antes dela — entrava na fila como se estivesse a três telas de distância.
 
@@ -61,7 +56,4 @@ A regra que ficou escrita no componente é curta e vale para qualquer lista long
 
 Medir o LCP da home antes e depois em conexão limitada e revisar a marcação sempre que a ordem dos cards mudar. A ordem já mudou: os três cards novos entraram no topo, empurrando o resto para baixo.
 
-```bash
-# distribuição de prioridade das capas no HTML servido
-curl -s https://exemplo.com | grep -o 'loading="[a-z]*"' | sort | uniq -c   # 3 eager, 9 lazy
-```
+A conferência final é uma contagem no HTML servido, não no código-fonte: reunir o valor de cada atributo `loading` e agrupar as ocorrências por variante. O resultado esperado é 3 `eager` e 9 `lazy` — os três primeiros cards pedindo prioridade explícita e as nove capas abaixo da dobra seguindo adiadas, que é exatamente onde o adiamento trabalha a favor.

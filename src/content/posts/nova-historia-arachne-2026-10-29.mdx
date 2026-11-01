@@ -68,8 +68,4 @@ O detalhe que importa: o RRF soma **posição de rank** (`1/(60+rank)`), não ma
 
 Health check no boot: comparar a dimensão do provider configurado com a da coluna antes de servir tráfego. Hoje o erro aparece na primeira inserção; amanhã ele deve aparecer no startup, com o nome da env errada na mensagem. E quando o espelho sem GPU aparecer, o provider default já sabe o que fazer — 384 dimensões, honestas, do mesmo jeito que 768.
 
-```bash
-# conferir o provider e a dimensão ativos
-grep ARACHNE_EMBEDDING_PROVIDER .env
-python3 -m pytest api/tests/test_rag.py::TestEmbedder -q
-```
+Conferir o par provider/dimensão em uso é uma variável de ambiente e uma suíte: `ARACHNE_EMBEDDING_PROVIDER` diz qual provider está ativo e os testes de `api/tests/test_rag.py::TestEmbedder` conferem que a dimensão devolvida bate com a da coluna. Enquanto o health check no boot não existe, é essa a checagem que evita o erro só aparecer na primeira inserção.

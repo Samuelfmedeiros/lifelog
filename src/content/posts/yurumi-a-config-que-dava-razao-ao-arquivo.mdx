@@ -70,13 +70,4 @@ A partir daqui, a precedência é uma linha de código com um comentário que di
 
 Falta fechar a última porta: as duas asserções de delegação precisam perder a guarda condicional e virar um teste hermético — arquivo fake com valor antigo, ambiente com valor novo, afirmação explícita de que o ambiente vence. Enquanto a prova depender de uma variável que talvez esteja exportada, o contrato é verificado por acidente.
 
-```bash
-# a chave do ambiente entra, ou o arquivo passa por cima?
-NINEROUTER_API_KEY=do-ambiente pytest tests/test_secrets_loader.py -q
-
-# quais nomes o loader enxerga (só as chaves, nunca os valores)
-python3 -c "from core.config import load_secrets; print(sorted(load_secrets()))"
-
-# hermeticidade: a suíte não deve reagir ao ambiente do operador
-YURUMI_EMBED_URL=http://exemplo pytest tests/test_config.py -q
-```
+O protocolo que fecha cada uma dessas dúvidas é curto. Para saber de que lado a precedência cai, exportar a chave do roteador com um valor conhecido e rodar a bateria de testes do loader dentro desse ambiente: com o arquivo vencendo, o teste cai. Para confirmar que o loader enxerga a chave certa, imprimir apenas os nomes que `load_secrets()` devolve — nunca os valores — e conferir que o nome canônico aparece na lista. E para medir hermeticidade, exportar uma variável `YURUMI_` falsa antes de rodar a bateria de configuração: se o verde continuar de pé, a suíte deixou de depender do shell de quem executa.

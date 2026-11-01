@@ -42,15 +42,6 @@ These updates reduce the average API response time from **210 ms to 78 ms**,
 
 Monitor the resource usage of the `dogwalk-db` container over the next few days and optimise the user‑count queries. If another 16:00 slot appears, the next post will cover migration of image caching to Cloudflare R2, which will lower storage costs and improve latency for mobile users.
 
-## Commands
+## Checking the state
 
-```bash
-# list tables with sizes
-psql -d dogwalk -c "\dt+"
-
-# count registered users
-docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"
-
-# deploy the frontend
-npx wrangler pages deploy dist/ --project-name dogwalk
-```
+In the routine, checking the database state and publishing the front end sum the cycle up in three queries. The first lists the tables the migration created along with the size of each one, to see what the pipeline actually left in the database. The second counts the registered users right after the database starts, validating that the migration ran over real data. The third publishes the front-end build directory to Cloudflare Pages through the same automated path the CI already uses on every green build.

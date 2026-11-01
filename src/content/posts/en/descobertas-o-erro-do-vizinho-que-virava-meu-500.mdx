@@ -43,8 +43,4 @@ There is a smaller lesson here, one I have already paid for before: a function t
 
 The log now carries a URL per failure. The next step is aggregation by domain: count blocks per host over a week and turn that into a list of known-hostile sources, so the scraper stops spending four attempts on a site that will never deliver. A classified error is raw material; a classified and grouped error is a decision.
 
-```bash
-git log --oneline -3 -- api/app/api/search_routes.py
-curl -s -o /dev/null -w "%{http_code}\n" -X POST "$ARACHNE/api/search/scrape" -d '{"url":"https://example.com"}'
-docker logs arachne-api 2>&1 | grep "\[scrape\] falha" | tail -5
-```
+The path there is the same one that closed the incident, and it fits in three questions. The first is the history of the search routes file: the three most recent commits that touched it are exactly the two layers of correction in this story. The second is a real POST request to the scrape endpoint, looking only at the response status code — that number is what separates a 200 from an `upstream_blocked` without reading the body. The third is the service log: the last five scrape failure lines carry the URL-and-error-type pair that becomes the raw material for grouping by domain.

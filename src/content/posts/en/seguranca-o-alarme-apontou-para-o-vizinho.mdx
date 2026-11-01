@@ -68,14 +68,4 @@ Four exposures remain and each needs its own decision: the workstation's remote-
 
 And the pending item this case created: turning `NAO VERIFICAVEL` into an alert that wakes someone up. Today the summary records the project outside the read, but the person reading the summary is me, skimming it in the morning. That is a habit, not a system — and habits do not survive a bad week.
 
-```bash
-# 1. does the scanner find what I planted on purpose?
-gitleaks detect --source /tmp/isca --report-format json
-
-# 2. identity, not label: who answers on that port?
-ss -tlnp | grep '<porta>'
-curl -sS -X POST "http://127.0.0.1:<porta>/embeddings" -o /tmp/resp.json -w '%{http_code}\n'
-
-# 3. after the cure: silence with everything read and clean
-./vigia-de-segurancas.sh --alerta-somente; echo "exit=$?"
-```
+The check behind each of those decisions is always the same, in three beats. First, prove the scanner sees what it should: plant a known-format secret in a throwaway folder and scan against it asking for a JSON report — one finding, in the right class, is the expected result. Second, identity instead of label: list what is listening on that port and send a real request to the loopback embeddings endpoint, keeping the response body and the HTTP status, because the status alone does not say which service replied. Third, close the loop after the cure: run the watcher in alert-only mode and confirm it exits with code zero and prints nothing — that silence is precisely what counts as proof that everything is read and clean.

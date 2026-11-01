@@ -24,7 +24,7 @@ O culpado não era CSS mal escrito. Era uma construção de componente que parec
 
 O portfólio usa framer-motion para animações de entrada. O jeito canônico de escrever isso é:
 
-```bash
+```tsx
 initial={{ opacity: 0, y: 20 }}
 animate={{ opacity: 1, y: 0 }}
 ```
@@ -45,7 +45,7 @@ Três episódios, três curas pontuais. O padrão continuava vivo em 52 pontos d
 
 O fix de raiz não foi trocar `opacity: 0` por `opacity: 1` — isso mataria a animação inteira. Foi inverter o gate: o HTML nasce **visível** e a animação só é permitida no cliente, depois do mount.
 
-```bash
+```tsx
 const mounted = useMounted();
 <motion.div initial={mounted ? { opacity: 0, y: 20 } : false} ... />
 ```
@@ -64,7 +64,7 @@ Mexer no ciclo de render tem consequência. O `GameShowcase` registrava um liste
 
 O diagnóstico foi por identidade de nó: comparar a referência do elemento antes e depois do mount mostrou objetos diferentes. A cura foi parar de amarrar listener em nó que pode ser trocado — o `click` passou a ser delegado no container, que sobrevive às re-renderizações:
 
-```bash
+```tsx
 const btn = (e.target as HTMLElement).closest("[data-game-btn]");
 if (!btn) return;
 ```
@@ -81,8 +81,4 @@ Vale registrar o estado real: este trabalho não está terminado. O fix das cama
 
 Merge do PR #146 e re-medição do HTML em produção. A meta é objetiva: a contagem precisa cair para perto das 60 camadas decorativas, invisíveis de propósito. Se a contagem não descer, o gate vazou em algum componente — e aí é sinal de que a família tem um quarto episódio esperando.
 
-```bash
-git log --oneline --grep="SSR" -- src/components/ProfileSection.tsx
-grep -rc "initial={{ opacity: 0" src/components/*.tsx | grep -v ':0'
-curl -s https://samuelmedeiros.vercel.app | grep -o 'opacity:0' | wc -l
-```
+Três verificações fecham o ciclo, e todas medem contagem, não opinião. No histórico de `ProfileSection.tsx`, buscar os commits que mencionam SSR mostra quantas vezes esse arquivo já foi tocado pela mesma família de bug. Na árvore de componentes, listar os arquivos que ainda contêm o `initial={{ opacity: 0` cru — menos os que não têm nenhuma ocorrência — devolve exatamente os pontos em que o gate ainda não chegou. E no HTML servido da home em produção, contar quantas vezes `opacity:0` aparece: hoje são 129 tags, e a meta é descer para perto das 60 camadas decorativas, que são invisíveis de propósito.

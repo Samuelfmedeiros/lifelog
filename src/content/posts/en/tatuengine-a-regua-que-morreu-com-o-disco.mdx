@@ -58,11 +58,4 @@ A measurement that depends on one disk has to live in the same repository as the
 
 Next step: with the ruler alive and two levers measured, the question is no longer whether the format appears but whether accuracy can leave the seed's noise without dragging English drift along — because both levers measured so far move the drift before they move the hit rate.
 
-```bash
-# one ruler, one checkpoint at a time: the GPU is shared
-python tatu_valida_geracao.py --ckpt out/sft_best.pt --tag trained --out out/valida.jsonl
-python tatu_valida_geracao.py --random --tag control --out out/valida.jsonl
-
-# the delta that matters: trained against its own control
-python -c "import json;[print(d['tag'],d['pct_thought_band'],d['acc24'],d['H']) for d in map(json.loads,open('out/valida.jsonl'))]"
-```
+Running the ruler is deliberately modest: one checkpoint at a time, because the GPU is shared. Each pass of the validator writes one JSONL line tagged with the run — trained or control — and returns, in the same record, the share inside the format band, `acc24` and the H of the Hamiltonian radar. The delta that matters comes out of reading those lines: the trained run against its own random control, paired inside the same pass. That pairing is what separates what training added from what was already there before it.

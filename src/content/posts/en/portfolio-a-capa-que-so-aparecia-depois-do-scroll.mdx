@@ -18,12 +18,7 @@ The first commit was `7f09616`, on 10/23 at 19:13: six files, 114 lines added. T
 
 ## What the component was doing
 
-Forty-six minutes later came the second commit, `2f131a7`, adding 15 lines and removing 2. `ProjectHangar` renders the cover in two variants — the project image and the game image — in two separate blocks of the same component. Both had a hardcoded `loading="lazy"`. Measured on the previous commit:
-
-```bash
-git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="lazy"'   # 2
-git show 2f131a7^:src/components/ProjectHangar.tsx | grep -c 'loading="eager"'  # 0
-```
+Forty-six minutes later came the second commit, `2f131a7`, adding 15 lines and removing 2. `ProjectHangar` renders the cover in two variants — the project image and the game image — in two separate blocks of the same component. Both had a hardcoded `loading="lazy"`. Measured on the previous commit: the `ProjectHangar.tsx` file as it stood before `2f131a7` carried two occurrences of `loading="lazy"` and none of `loading="eager"`.
 
 Not one of the twelve covers on the home page asked for priority. None. The visitor landed, the HTML arrived at 328,340 bytes, and the first cover — which today starts at byte 560 with zero `<img>` tags before it — joined the queue as if it were three screens away.
 
@@ -61,7 +56,4 @@ The rule left behind in the component is short and applies to any long list: wha
 
 Measure the home page LCP before and after on a throttled connection, and revisit the markup whenever the card order changes. The order already changed: the three new cards went in at the top, pushing everything else down.
 
-```bash
-# priority distribution of the covers in the served HTML
-curl -s https://example.com | grep -o 'loading="[a-z]*"' | sort | uniq -c   # 3 eager, 9 lazy
-```
+The closing check is a count on the served HTML, not on the source: gather the value of every `loading` attribute and group the occurrences by variant. The expected result is 3 `eager` and 9 `lazy` — the first three cards explicitly asking for priority and the nine covers below the fold still deferred, which is exactly where deferral works in your favour.

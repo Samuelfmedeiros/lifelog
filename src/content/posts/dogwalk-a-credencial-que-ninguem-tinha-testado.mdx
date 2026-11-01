@@ -49,14 +49,4 @@ A regra é a que fecha o ciclo: credencial só entra no ambiente depois de o efe
 
 Ficou um problema em aberto: nenhum token da máquina tem permissão de leitura ou escrita no produto de captcha — todos devolvem os mesmos códigos de permissão negada. Criar o widget definitivo e rotacionar o segredo exige um clique no painel, com um token novo. Enquanto isso não acontece, o caminho está mapeado e as ferramentas estão plantadas. O que é bem melhor que a situação de ontem: um segredo no cofre, um valor de exemplo no ambiente e ninguém sabendo qual dos dois estava mentindo.
 
-```bash
-# o par falso: prova que o segredo existe sem usá-lo
-curl -s https://challenges.cloudflare.com/turnstile/v0/siteverify \
-  -d "secret=$SECRET" -d "response=probe-par-falso" | head -c 200
-
-# formato antes de qualquer coisa: 40 é o oficial
-printf %s "$SECRET" | wc -c
-
-# e o estado real do serviço que depende dele
-curl -s -o /dev/null -w "%{http_code}\n" "$API/health"
-```
+O procedimento inteiro cabe em três perguntas, e nenhuma delas revela o segredo. A primeira é o par falso: enviar o valor candidato junto de um token inventado para a verificação de captcha e ler apenas o começo da resposta — ali chega `invalid-input-secret` ou `invalid-input-response`, e é essa diferença que diz se a credencial existe do outro lado. A segunda é medida, não opinião: contar os caracteres do valor antes de qualquer outra coisa, porque quarenta é o formato oficial e o valor de junho tinha trinta e quatro. A terceira é o estado real do serviço que depende dela, olhando só o código de status que o endpoint de saúde devolve.

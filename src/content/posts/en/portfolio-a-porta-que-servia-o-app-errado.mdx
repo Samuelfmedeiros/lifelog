@@ -1,0 +1,65 @@
+---
+title: "The port that served the wrong app"
+description: "The Portfólio e2e suite spent a day looking at a stranger's site: the cause was a reused preview on the port under test, and the fix became a port-release loop plus an identity test that fails on the very first navigation."
+category: samuel-projects
+date: 2026-10-25 21:33:38 -03:00
+pubDate: 2026-10-26 16:00:00 -03:00
+project: portfolio
+tags: [portfolio, playwright, testing, frontend, nextjs]
+cover: /covers/portfolio-a-porta-que-servia-o-app-errado.webp
+featured: false
+hidden: false
+lang: 'en'
+---
+
+The worst result a test suite can produce is not red. It is green measuring the wrong thing.
+
+That is what nearly happened to the Portfólio e2e suite. The symptom was an error line the operator had to read twice before understanding: `ERRO_IDENTIDADE_PREVIEW: 3450 nao serve o portifolio`. The port under test answered — health check hit, HTML came back, tests passed — but what was being served there was not the branch. It was another application, most likely an old preview from some session that stayed up. On an ordinary day this goes by in silence: the suite validates a site that is not yours and declares your work done — and it would even get as far as auditing the accessibility of a stranger without anyone noticing.
+
+## The first fix, in September
+
+This hole was not born now. On September 16, commit `a938aeb` had already closed its first version: back then the config shut the webServer down entirely whenever the test variable pointed at a local address — the port requested by the operator, an ephemeral one like 3450, was left with nobody serving the branch, and the very first navigation fell through to whatever other service was up on the machine. The fix derived the port from the test URL and brought up the branch's `next start` on that exact port. The next day, `670e07d` recorded the derivation in a config test, so a future edit would not shut the server down again without anyone noticing.
+
+## The hole reopened, in October
+
+On October 25, the same error came back by a different path. The config had gained a polite line: `reuseExistingServer: process.env.TEST_BASE_URL ? true : !process.env.CI` — if something healthy answered on the port, it reused it. The practical effect was the same as the bug's first version: with the port occupied, Playwright brought up nothing and measured what was already there. Commit `a2a347a` removed the politeness and pinned `reuseExistingServer: false`, with a comment that states the cause: "Reuso causava ERRO_IDENTIDADE_PREVIEW quando porta já estava ocupada por outro app."
+
+```bash
+git show a2a347a -- playwright.config.ts | grep -A1 'reuseExistingServer'
+```
+
+Turning reuse off pushes the problem to the next step: now the webServer has to come up on its own, always — and a port occupied by a stubborn process kills `next start` before the first test.
+
+## One kill was not enough
+
+The first attempt to guarantee a free port was surgical and insufficient. Commit `533d5bf` (25/10, 21:33) made the webServer command clean the port before starting: a single `lsof`, the processes on the port, `kill -9`, and the start. It worked until the first run where the port's occupant did not die instantly — or came back. `next start` would come up on an address that was not yet its own.
+
+Commit `42d996c`, from the same day, swapped the single shot for the loop. While the port answers, kill and wait; only when it is genuinely free does the server start:
+
+```bash
+git show 42d996c -- playwright.config.ts | grep 'command:'
+```
+
+```bash
+while fuser ${previewPort}/tcp >/dev/null 2>&1; do fuser -k ${previewPort}/tcp 2>/dev/null || true; sleep 0.2; done; ./node_modules/.bin/next start -p ${previewPort}
+```
+
+The difference between the two versions is the difference between checking and guaranteeing. The `lsof` with `&&` looks once; the `while` treats port release as a state that may take a few turns to actually exist.
+
+## The regression that became a test
+
+The third piece of the day closes the cycle without relying on memory. Commit `9a9b5b2` ("test: add port cleanup guard assertions for preview identity gap") added two simple assertions to the config test: the webServer command must contain `fuser` and must contain `while`. Anyone who swaps the loop for another elegant approach fails the suite before any test runs.
+
+```bash
+pnpm exec vitest run src/test/playwright-config.test.ts
+```
+
+And the identity contract itself, `tests/preview-identity.spec.ts`, stays cheap on purpose: two checks on the first navigation, no full audit. The home must have the `main#main-content` and the skip-to-content link, the title must mention Samuel, and a nonexistent route must land on Next's own 404. The suite still aborts any request outside the origin under test, so the preview fetches neither a photo nor a feed during the check. The signals are the same ones the project's accessibility guard already used — borrowed because they are cheap, specific, and enough to answer a single question: is this my app?
+
+## What this changes
+
+A test passing against the wrong server is worse than a test that fails: it burns machine time, produces a pretty report, and protects nothing. The three layers together — reuse off, port released by loop, identity checked on the first navigation — turn ambiguous green into green that means what it says. And the config guard prevents that six months from now someone, with the best of intentions, turns reuse back on because "it works on my machine."
+
+## Next step
+
+Take the same identity contract to the other projects that run Playwright against a local preview — the test file is generic enough to be copied, and the first assertion, the `main#main-content` one, already exists in every layout.

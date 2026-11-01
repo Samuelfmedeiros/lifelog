@@ -45,8 +45,4 @@ A lição que fica vale para qualquer sistema de mensageria entre processos: ent
 
 O reforço hoje é disparado por um job periódico. O passo seguinte é medir a taxa de ack por destino ao longo de uma semana — se um grupo concentra pendências recorrentes, o problema não é o lembrete, é o contrato com aquele agente.
 
-```bash
-git log --oneline --since="2026-10-24 20:00" -- core/identity.py core/a2a_push.py core/a2a_ack.py
-python -m pytest tests/test_a2a_ack.py tests/test_identity.py -q
-python -c "from core import a2a_ack; print(a2a_ack.status())"
-```
+O recibo é auditável em dois níveis. Pelo histórico, restrito à janela do dia seguinte à mudança e aos três módulos envolvidos — identidade, push e ack —, dá para ver o ponto exato em que o ack virou obrigatório. Pelo estado, uma leitura do módulo de ack devolve os três contadores de uma vez: pendente, reforçado e escalado. E as duas baterias de teste que cobrem esse caminho — a do ack e a da identidade — são o que impede o recibo de voltar a ser apenas uma promessa.

@@ -24,7 +24,7 @@ The culprit was not badly written CSS. It was a component pattern that looked ha
 
 The portfolio uses framer-motion for entrance animations. The canonical way to write one is:
 
-```bash
+```tsx
 initial={{ opacity: 0, y: 20 }}
 animate={{ opacity: 1, y: 0 }}
 ```
@@ -45,7 +45,7 @@ Three episodes, three point fixes. The pattern stayed alive in 52 spots.
 
 The root fix was not swapping `opacity: 0` for `opacity: 1` — that would kill the animation. It was inverting the gate: the HTML is born **visible**, and animation is only allowed on the client, after mount.
 
-```bash
+```tsx
 const mounted = useMounted();
 <motion.div initial={mounted ? { opacity: 0, y: 20 } : false} ... />
 ```
@@ -64,7 +64,7 @@ Changing the render cycle has consequences. `GameShowcase` registered a `click` 
 
 The diagnosis came from node identity: comparing the element reference before and after mount showed two different objects. The cure was to stop binding listeners to nodes that can be swapped — the `click` moved to delegation on the container, which survives re-renders:
 
-```bash
+```tsx
 const btn = (e.target as HTMLElement).closest("[data-game-btn]");
 if (!btn) return;
 ```
@@ -81,8 +81,4 @@ Worth recording the real state: this work is not finished. The hero layer fix sh
 
 Merge PR #146 and re-measure the HTML in production. The target is objective: the count needs to drop close to the 60 decorative layers, which are invisible on purpose. If it does not drop, the gate leaked in some component — and that means the family has a fourth episode waiting.
 
-```bash
-git log --oneline --grep="SSR" -- src/components/ProfileSection.tsx
-grep -rc "initial={{ opacity: 0" src/components/*.tsx | grep -v ':0'
-curl -s https://samuelmedeiros.vercel.app | grep -o 'opacity:0' | wc -l
-```
+Three checks close the loop, and all of them measure counts, not opinions. In the history of `ProfileSection.tsx`, searching for the commits that mention SSR shows how many times that file has already been touched by the same family of bug. Across the component tree, listing the files that still contain the raw `initial={{ opacity: 0` — minus those with no occurrences at all — returns exactly the spots the gate has not reached yet. And on the served HTML of the production home page, counting how often `opacity:0` appears gives 129 tags today, with the target of dropping close to the 60 decorative layers, which are invisible on purpose.

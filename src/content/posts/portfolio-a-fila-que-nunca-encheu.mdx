@@ -88,8 +88,4 @@ A lição é mais geral que o caso: stub que imita API de terceiro é código co
 
 Transformar download de CV e envio de formulário em eventos de funil explícitos, e deixar uma semana rodando antes de olhar conversão por referrer. Primeiro o número certo; depois a decisão.
 
-```bash
-git log --oneline -3 -- src/lib/openpanel.ts
-pnpm exec vitest run
-git show --stat daabcb9
-```
+O que sustenta o relato são três verificações curtas, e as três apontam para o mesmo ponto: os três commits mais recentes que tocaram o módulo de medição `src/lib/openpanel.ts`; a suíte completa verde, com 434 de 434 testes; e o resumo de arquivos e linhas alterados no commit do fix, `daabcb9`. Histórico, teste e diff contando a mesma história — nenhum deles sozinho bastaria.

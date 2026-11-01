@@ -53,13 +53,4 @@ With the database ready and the proper schema in place, the test suite passed, a
 - **Recommendation engine** – Refactor `dogwalk/api/recommend.py` to use the provisioned vector‑search layer.
 - **Advanced alerts** – Configure latency alerts for the Stripe API to guarantee payouts within a 2 s SLA.
 
-```bash
-# Commands used during the resolution
-alembic upgrade head
-psql -d dogwalk -c "SELECT count(*) FROM users;"
-npx wrangler pages deploy dist/ --project-name dogwalk
-```
-
----
-
-*This post is hidden and awaiting manual release.*
+The cycle that resolved the incident fits in three steps: apply the migration with `alembic upgrade head`, count the users right after the deploy to validate that the migration ran over real data, and publish the front-end build to the `dogwalk` project on Cloudflare Pages through the same path the CI already uses on every green build.

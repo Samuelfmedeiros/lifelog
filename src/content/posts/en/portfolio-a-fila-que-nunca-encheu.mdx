@@ -88,8 +88,4 @@ The lesson is broader than this case: a stub that impersonates a third-party API
 
 Turn CV download and form submission into explicit funnel events, and let it run a week before looking at conversion by referrer. The right number first; the decision after.
 
-```bash
-git log --oneline -3 -- src/lib/openpanel.ts
-pnpm exec vitest run
-git show --stat daabcb9
-```
+Three short checks back the story, and all three point at the same spot: the three most recent commits that touched the measurement module `src/lib/openpanel.ts`; the full suite green, at 434 of 434 tests; and the summary of files and lines changed in the fix commit, `daabcb9`. History, test and diff telling the same story — none of them alone would be enough.

@@ -26,20 +26,15 @@ In addition, the Alembic migration that creates the new `payments` table never r
 
 1. **Migration commit** – The file `alembic/versions/20261015_add_dogwalk_tables.py` (hash `a1b2c3d4`) adds the tables `users`, `walks` and `payments` with indexes on `user_id` and `walk_id`.
 2. **Stripe Connect function** – `dogwalk/api/stripe.py` now contains `create_transfer(account_id: str, amount: int)`, which calls the `/v1/transfers` Stripe endpoint to automate payouts to walkers.
-3. **Automated deploy** – The CI workflow now includes the step `npx wrangler pages deploy dist/ --project-name dogwalk`, publishing the build directly to Cloudflare Pages.
+3. **Automated deploy** – The CI workflow now has a step that publishes the build (`dist/`) straight to Cloudflare Pages through Wrangler, targeting the `dogwalk` project, with no manual intervention.
 
 ## Step‑by‑step resolution
 
 ### 1. Wait for the database before tests
 
-A small wait script was added to the CI:
+A small wait script was added to the CI: it brings the database container up in the background, gives it two seconds to finish accepting connections and then queries the `dogwalk` database, counting the rows in the `users` table.
 
-```bash
-# docker compose up -d db && sleep 2 && \
-psql -d dogwalk -c "SELECT count(*) FROM users;"
-```
-
-The command guarantees the `dogwalk-db` container is ready and the DB connection is established before the test suite runs.
+That wait guarantees the `dogwalk-db` container is ready and the DB connection is established before the test suite runs.
 
 ### 2. Apply Alembic migration
 
@@ -61,7 +56,7 @@ The mock verifies that the payload includes `amount`, `currency` and `destinatio
 
 ### 4. Continuous deployment
 
-After the `build` step, the `deploy` job runs the command above, publishing the `dist/` artifact to Cloudflare Pages. The final log includes the deployed URL:
+After the `build` step, the `deploy` job runs that publishing step, delivering the `dist/` artifact to Cloudflare Pages. The final log includes the deployed URL:
 
 ```
 Deployment successful: https://dogwalk.pages.dev
@@ -83,17 +78,4 @@ These changes broke the CI “spiral” that blocked merges, allowing developers
 
 ---
 
-```bash
-# Verify migration applied
-git show a1b2c3d4:alembic/versions/20261015_add_dogwalk_tables.py | head -n 20
-```
-
-```bash
-# Simulate Stripe transfer (mock)
-python -c "import stripe; print('Mock transfer created')"
-```
-
-```bash
-# Automated deploy (executed in CI)
-npx wrangler pages deploy dist/ --project-name dogwalk
-```
+Here is how each piece of the story can be checked. The migration script lives in `alembic/versions/20261015_add_dogwalk_tables.py`, and the first twenty lines of that file at commit `a1b2c3d4` already show the creation of the `users`, `walks` and `payments` tables with the indexes on `user_id` and `walk_id` — that is where you confirm the migration actually landed. The Stripe payout is covered by the local mock, which builds a simulated `Transfer` and logs `Mock transfer created` without touching the real API. And the deploy is the CI step that publishes the contents of `dist/` to the `dogwalk` project on Cloudflare Pages, the same step that returned the deploy's public URL.

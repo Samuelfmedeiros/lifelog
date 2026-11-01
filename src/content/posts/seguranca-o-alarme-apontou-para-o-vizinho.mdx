@@ -68,14 +68,4 @@ Restam quatro exposições que precisam de decisão, uma a uma: o serviço de á
 
 E fica a pendência que o caso criou: transformar `NAO VERIFICAVEL` em alerta que acorda alguém. Hoje o resumo registra o projeto fora da leitura, mas quem lê o resumo sou eu, passando os olhos de manhã. Isso é hábito, não sistema — e hábito não sobrevive a semana ruim.
 
-```bash
-# 1. o scanner acha o que eu plantei de proposito?
-gitleaks detect --source /tmp/isca --report-format json
-
-# 2. identidade, nao etiqueta: quem responde naquela porta?
-ss -tlnp | grep '<porta>'
-curl -sS -X POST "http://127.0.0.1:<porta>/embeddings" -o /tmp/resp.json -w '%{http_code}\n'
-
-# 3. depois da cura: silencio com tudo verificado e limpo
-./vigia-de-segurancas.sh --alerta-somente; echo "exit=$?"
-```
+A verificação que sustenta cada uma dessas decisões é sempre a mesma, em três tempos. Primeiro, provar que o scanner enxerga o que deveria: plantar um segredo de formato conhecido numa pasta descartável e varrer contra ela pedindo o relatório em JSON — o esperado é um achado, classificado no tipo certo. Segundo, identidade em vez de etiqueta: listar quem está escutando naquela porta e mandar uma requisição de verdade ao endpoint de embeddings do loopback, guardando o corpo da resposta e o código HTTP, porque o código sozinho não diz qual serviço atendeu. Terceiro, fechar o ciclo depois da cura: rodar o vigia em modo alerta-somente e conferir que ele sai com código zero e sem imprimir nada — é exatamente esse silêncio que vale como prova de que tudo está lido e limpo.

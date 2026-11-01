@@ -49,12 +49,6 @@ The comparator rebuilds the trunk once, applies the first checkpoint, measures, 
 
 The agent stopped being architecture on paper. The cycle closes. The decider decides. The motor no longer raises NameError. Training no longer drowns when the budget grows. And validation compares runs fairly.
 
-```bash
-# Verify the M3 cycle with mocked model and guard
-python3 -m pytest tests/ -k agent -q
+The three integration defects had one thing in common: every one of them failed in silence. A swallowed exception, a module that was never imported, a schedule that only doubles the error when the budget grows. None of them breaks anything — all of them produce a system that looks like it works without ever having been exercised end to end.
 
-# Compare two checkpoints on the same trunk
-python3 scripts/compare_ckpts.py --a run_a.pt --b run_b.pt
-```
-
-Next step: wire the M3 cycle to a real interface and measure whether the agent closes simple tasks without human intervention. The architecture is ready; the proof of use is missing.
+Next step: wire the cycle to a real interface and measure whether the agent closes simple tasks without human intervention. The architecture is ready; the proof of use is missing.

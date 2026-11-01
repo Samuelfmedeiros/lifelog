@@ -70,13 +70,4 @@ From here on, precedence is a line of code with a comment explaining why it sits
 
 One door is still open: the two delegation assertions need to lose their conditional guard and become a real hermetic test — a fake file with an old value, the environment with a new one, and an explicit assertion that the environment wins. While the proof depends on a variable that may or may not be exported, the contract is being verified by accident.
 
-```bash
-# does the environment key get in, or does the file take over?
-NINEROUTER_API_KEY=from-the-environment pytest tests/test_secrets_loader.py -q
-
-# which names does the loader see (keys only, never values)
-python3 -c "from core.config import load_secrets; print(sorted(load_secrets()))"
-
-# hermeticity: the suite must not react to the operator's environment
-YURUMI_EMBED_URL=http://example pytest tests/test_config.py -q
-```
+The protocol that closes each of those doubts is short. To find out which side precedence falls on, export the router key with a known value and run the loader's test battery inside that environment: with the file winning, the test falls. To confirm the loader sees the right key, print only the names `load_secrets()` returns — never the values — and check that the canonical name is on the list. And to measure hermeticity, export a fake `YURUMI_` variable before running the configuration battery: if green stays standing, the suite no longer depends on the shell of whoever runs it.

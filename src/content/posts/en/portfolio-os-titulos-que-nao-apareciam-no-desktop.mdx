@@ -34,15 +34,7 @@ The intent was a soft entrance: the heading starts transparent and appears when 
 
 ## The fix
 
-Commit `b65b087`, from 10:47 on 27/10, replaced the whole pair with `initial={false}` on the four headings. Three files, four removals and four insertions:
-
-```bash
-git -C /home/samuel/projetos/projetos/portifolio show b65b087 --stat
-# src/components/BlogSection.tsx    | 3 +--
-# src/components/ProfileSection.tsx | 6 ++----
-# src/components/ProjectHangar.tsx  | 3 +--
-# 3 files changed, 4 insertions(+), 8 deletions(-)
-```
+Commit `b65b087`, from 10:47 on 27/10, replaced the whole pair with `initial={false}` on the four headings. Three files, four insertions and eight removals — `BlogSection.tsx`, `ProfileSection.tsx`, and `ProjectHangar.tsx`.
 
 `ProfileSection.tsx` held two of them — SKILLS and JOURNEY, both with `initial={{ opacity: 0, y: 10 }}`. `BlogSection` and `ProjectHangar` had one each. The internal discussion was short: a section heading is not decoration, it is the label of the block. A label that disappears removes the reading of the whole page — and it disappears exactly for whoever has the larger screen, which is the case that should work best.
 
@@ -62,8 +54,4 @@ There is also the count of what remains. Today there are still sixteen uses of `
 
 ## Next step
 
-Walk the sixteen `whileInView` calls and separate the ones animating a real entrance from the ones animating an element that is already on screen — the latter become `initial={false}`, like the four from 27/10:
-
-```bash
-grep -rn "whileInView" /home/samuel/projetos/projetos/portifolio/src | wc -l   # 16
-```
+Walk the sixteen `whileInView` calls and separate the ones animating a real entrance from the ones animating an element that is already on screen — the latter become `initial={false}`, like the four from 27/10.

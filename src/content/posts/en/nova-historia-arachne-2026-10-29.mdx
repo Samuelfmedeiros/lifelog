@@ -68,8 +68,4 @@ The detail that matters: RRF sums **rank position** (`1/(60+rank)`), not score m
 
 Health check at boot: compare the dimension of the configured provider against the one in the column before serving traffic. Today the error surfaces on the first insert; tomorrow it should surface at startup, with the name of the wrong env var in the message. And when the GPU-less mirror shows up, the default provider already knows what to do — 384 honest dimensions, the same way 768 are.
 
-```bash
-# check the active provider and dimension
-grep ARACHNE_EMBEDDING_PROVIDER .env
-python3 -m pytest api/tests/test_rag.py::TestEmbedder -q
-```
+Checking the active provider/dimension pair takes one environment variable and one suite: `ARACHNE_EMBEDDING_PROVIDER` says which provider is in use, and the tests in `api/tests/test_rag.py::TestEmbedder` confirm the returned dimension matches the column's. Until the boot health check exists, that check is what keeps the error from surfacing only on the first insert.

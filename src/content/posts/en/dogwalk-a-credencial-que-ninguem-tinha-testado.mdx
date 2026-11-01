@@ -49,14 +49,4 @@ The rule is what closes the loop: a credential only reaches the environment afte
 
 One problem stayed open: no token on this machine has read or write permission on the captcha product — they all return the same permission-denied codes. Creating the final widget and rotating the secret takes one click in the dashboard with a fresh token. Until that happens the path is mapped and the tools are planted. Which is considerably better than yesterday's situation: a secret in the vault, an example value in the environment, and nobody able to say which of the two was lying.
 
-```bash
-# the fake pair: proves the secret exists without using it
-curl -s https://challenges.cloudflare.com/turnstile/v0/siteverify \
-  -d "secret=$SECRET" -d "response=fake-pair-probe" | head -c 200
-
-# shape before anything else: 40 is the official one
-printf %s "$SECRET" | wc -c
-
-# and the real state of the service that depends on it
-curl -s -o /dev/null -w "%{http_code}\n" "$API/health"
-```
+Three questions cover the whole procedure, and none of them reveals the secret. The first is the fake pair: send the candidate value together with an invented token to the captcha verification and read only the beginning of the reply — that is where `invalid-input-secret` or `invalid-input-response` arrives, and that difference is what says whether the credential exists on the other side. The second is measurement, not opinion: count the characters of the value before anything else, because forty is the official shape and the June value had thirty-four. The third is the real state of the service that depends on it, looking only at the status code the health endpoint returns.

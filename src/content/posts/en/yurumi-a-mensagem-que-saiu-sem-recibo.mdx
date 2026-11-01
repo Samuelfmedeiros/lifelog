@@ -45,8 +45,4 @@ The lesson holds for any messaging system between processes: sending and receivi
 
 Nudging is currently fired by a periodic job. The next step is measuring the acknowledgement rate per destination over a week — if one group concentrates pending items, the problem is not the reminder, it is the contract with that agent.
 
-```bash
-git log --oneline --since="2026-10-24 20:00" -- core/identity.py core/a2a_push.py core/a2a_ack.py
-python -m pytest tests/test_a2a_ack.py tests/test_identity.py -q
-python -c "from core import a2a_ack; print(a2a_ack.status())"
-```
+The receipt is auditable at two levels. Through the history, scoped to the window starting the day after the change and to the three modules involved — identity, push and ack —, you can see the exact point where acknowledgement became mandatory. Through state, one read of the ack module returns all three counters at once: pending, nudged and escalated. And the two test batteries covering that path — the ack one and the identity one — are what keeps the receipt from turning back into a mere promise.

@@ -58,11 +58,4 @@ Medição que depende de um disco só precisa morar no mesmo repositório do có
 
 Próximo passo: com a régua viva e duas alavancas medidas, a pergunta deixa de ser se o formato aparece e passa a ser se a precisão consegue sair do ruído da semente sem arrastar o drift de inglês junto — porque as duas alavancas medidas mexem no drift antes de mexer no acerto.
 
-```bash
-# uma régua, um checkpoint por vez: a GPU é compartilhada
-python tatu_valida_geracao.py --ckpt out/sft_best.pt --tag treinado --out out/valida.jsonl
-python tatu_valida_geracao.py --random --tag controle --out out/valida.jsonl
-
-# o delta que interessa: treinado contra o próprio controle
-python -c "import json;[print(d['tag'],d['pct_thought_band'],d['acc24'],d['H']) for d in map(json.loads,open('out/valida.jsonl'))]"
-```
+A execução da régua é deliberadamente modesta: um checkpoint por vez, porque a GPU é compartilhada. Cada passada do validador grava uma linha de JSONL etiquetada com a rodada — treinado ou controle — e devolve, na mesma entrada, a fração dentro da banda de formato, o `acc24` e o H do radar hamiltoniano. O delta que interessa sai da leitura dessas linhas: a rodada treinada comparada com o próprio controle aleatório, pareadas dentro da mesma passada. É esse pareamento que separa o que o treino acrescentou do que já estava ali antes dele.

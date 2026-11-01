@@ -70,13 +70,4 @@ Essas atualizações também reduzem o tempo médio de resposta da API de **210�
 
 Essas iniciativas deverão ser concluídas até o próximo trimestre, consolidando ainda mais a confiabilidade da plataforma.
 
-```bash
-# lista as tabelas com tamanho
-psql -d dogwalk -c "\dt+"
-
-# conta os usuarios cadastrados
-docker compose up -d db && sleep 2 && psql -d dogwalk -c "SELECT count(*) FROM users;"
-
-# deploy do front-end
-npx wrangler pages deploy dist/ --project-name dogwalk
-```
+Na rotina, conferir o estado do banco e publicar o front resumem o ciclo em três consultas. A primeira lista as tabelas criadas pela migration junto do tamanho de cada uma, para ver o que o pipeline realmente deixou no banco. A segunda conta os usuários cadastrados logo depois de subir o banco de dados, validando que a migration rodou sobre dados reais. A terceira publica o diretório de build do front no Cloudflare Pages pelo mesmo caminho automatizado que o CI já usa a cada build verde.

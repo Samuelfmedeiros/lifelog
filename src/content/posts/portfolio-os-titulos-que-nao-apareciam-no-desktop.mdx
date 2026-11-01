@@ -34,15 +34,7 @@ O `whileInView` dispara quando o elemento **cruza** o limite do viewport. Num mo
 
 ## A cura
 
-O commit `b65b087`, de 27/10 às 10:47, trocou o par inteiro por `initial={false}` nos quatro títulos. Três arquivos, quatro remoções e quatro inserções:
-
-```bash
-git -C /home/samuel/projetos/projetos/portifolio show b65b087 --stat
-# src/components/BlogSection.tsx    | 3 +--
-# src/components/ProfileSection.tsx | 6 ++----
-# src/components/ProjectHangar.tsx  | 3 +--
-# 3 files changed, 4 insertions(+), 8 deletions(-)
-```
+O commit `b65b087`, de 27/10 às 10:47, trocou o par inteiro por `initial={false}` nos quatro títulos. Três arquivos, quatro inserções e oito remoções — `BlogSection.tsx`, `ProfileSection.tsx` e `ProjectHangar.tsx`.
 
 `ProfileSection.tsx` carregava dois deles — HABILIDADES e JORNADA, ambos com `initial={{ opacity: 0, y: 10 }}`. `BlogSection` e `ProjectHangar` tinham um cada. A discussão interna foi curta: título de seção não é enfeite, é a etiqueta do bloco. Etiqueta que some desmonta a leitura da página inteira — e some justamente para quem tem a tela maior, que é o caso que mais deveria funcionar.
 
@@ -62,8 +54,4 @@ Fica também a conta do que resta. Hoje ainda existem dezesseis usos de `whileIn
 
 ## Próximo passo
 
-Varrer os dezesseis `whileInView` e separar os que animam elemento de entrada real dos que animam elemento que já nasce na tela — os últimos viram `initial={false}`, como os quatro de 27/10:
-
-```bash
-grep -rn "whileInView" /home/samuel/projetos/projetos/portifolio/src | wc -l   # 16
-```
+Varrer os dezesseis `whileInView` e separar os que animam elemento de entrada real dos que animam elemento que já nasce na tela — os últimos viram `initial={false}`, como os quatro de 27/10.
