@@ -46,7 +46,9 @@ for (const alvo of alvos) {
 // 2. O painel de login continua aberto.
 const painel = await get('/ocultos/');
 ok('/ocultos/ responde 200 (tela de login)', painel.status === 200, `status ${painel.status}`);
-ok('/ocultos/ nao entrega corpo de post', !painel.texto.includes('data-project'));
+// O <html> de toda pagina carrega data-project="dev"; o que NAO pode aparecer e um
+// data-project de post (renderizado) nem o corpo do post.
+ok('/ocultos/ nao entrega corpo de post', !/data-project="(?!dev")/.test(painel.texto), `${painel.texto.length} bytes`);
 
 // 3. Segredo errado nao abre sessao.
 const errado = await fetch(`${base}/api/session`, {
