@@ -23,11 +23,11 @@ That is the kind of failure that has no alarm: the process exists, the cron fire
 
 ## Symptom A: 4,541 notes on the wrong drive
 
-On 12/09 I opened the C: drive tree because of something else and saw a directory that should not have existed. `C:\mnt\d\SAMUEL` — 4,541 Markdown files, tens of megabytes, spread across an entire directory tree I never created.
+On 12/09 I opened the C: drive tree because of something else and saw a directory that should not have existed. `C:\mnt\d\<user>` — 4,541 Markdown files, tens of megabytes, spread across an entire directory tree I never created.
 
-The real vault, at `D:\SAMUEL\Hermes Memory`, was right there, with the correct notes. Only nothing new was reaching it.
+The real vault, at `D:\<user>\Hermes Memory`, was right there, with the correct notes. Only nothing new was reaching it.
 
-The cause was one line of code. The indexer has a constant holding the vault path, and it was written in POSIX format — `/mnt/d/SAMUEL/Hermes Memory`. In WSL that is perfect: `/mnt/d` is the path to the D: drive through the Linux subsystem. On Windows, though, Python resolves `/mnt/d/...` as a path **relative** to the current drive. With the current drive being C:, the path becomes `C:\mnt\d\SAMUEL\Hermes Memory`.
+The cause was one line of code. The indexer has a constant holding the vault path, and it was written in POSIX format — `/mnt/d/<user>/Hermes Memory`. In WSL that is perfect: `/mnt/d` is the path to the D: drive through the Linux subsystem. On Windows, though, Python resolves `/mnt/d/...` as a path **relative** to the current drive. With the current drive being C:, the path becomes `C:\mnt\d\<user>\Hermes Memory`.
 
 And the script created the directories. With `parents=True`, `mkdir` does not complain when the parent is missing — it builds the whole tree from scratch. So the indexer never failed: it created the very directory it was expecting to find. A configuration error that validates itself and stays alive.
 
@@ -51,7 +51,7 @@ The old guard — the script that runs at 7am and validates that the indexer is 
 'def _resolve_extra_path('
 'write_if_changed'
 'if project_filter:'
-'D:/SAMUEL/Hermes Memory'
+'D:/<user>/Hermes Memory'
 os.name
 ```
 
@@ -71,14 +71,14 @@ Three changes, and the order matters.
 
 **Two: the symptoms became named checks.** The phantom path got its own name — `FANTASMA` — and the stopped indexer got `ATRASADO`. Names matching observed symptoms, not abstract buckets. When the log says `FALHA: FANTASMA`, I know exactly what happened without opening the log.
 
-**Three: every new check carries the why.** The guard does not have a list of strings; it has a dictionary, and each required token comes with a sentence explaining which failure it prevents. The token `'D:/SAMUEL/Hermes Memory'` is not just "this must be in the file" — it is "without this it writes to `C:/mnt/d`". The next person touching the indexer reads the why before removing the line.
+**Three: every new check carries the why.** The guard does not have a list of strings; it has a dictionary, and each required token comes with a sentence explaining which failure it prevents. The token `'D:/<user>/Hermes Memory'` is not just "this must be in the file" — it is "without this it writes to `C:/mnt/d`". The next person touching the indexer reads the why before removing the line.
 
 ## The guard as it stands
 
 Running at 7am, the log has twenty-seven lines. Twenty-four are `OK`. The other three are the two failures that actually happened:
 
 ```
-2026-09-14 01:07:13 | FALHA: FANTASMA: C:\mnt\d\SAMUEL existe -- notas saindo fora do vault
+2026-09-14 01:07:13 | FALHA: FANTASMA: C:\mnt\d\<user> existe -- notas saindo fora do vault
 2026-09-29 07:00:08 | FALHA: ATRASADO: repo commitado 11d depois da nota mais nova do vault
 2026-10-01 07:01:13 | FALHA: ATRASADO: repo commitado 14d depois da nota mais nova do vault
 ```
@@ -98,7 +98,7 @@ What is worth keeping: the 14 days of `ATRASADO` ended in `OK` four hours after 
   { cmd: 'grep -c . ~/.yurumi/code-to-vault-guard.log', description: 'How many times the guard ran — 27 lines, 24 of them OK' },
   { cmd: 'grep FANTASMA ~/.yurumi/code-to-vault-guard.log', description: 'First failure: 4,541 notes written to the wrong drive' },
   { cmd: 'grep ATRASADO ~/.yurumi/code-to-vault-guard.log', description: 'Second failure: indexer stopped and nobody complained' },
-  { cmd: 'ls C:/mnt/d/SAMUEL', description: 'The phantom path, after cleanup' }
+  { cmd: 'ls C:/mnt/d/<user>', description: 'The phantom path, after cleanup' }
 ]} />
 
 ---
