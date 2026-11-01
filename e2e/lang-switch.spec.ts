@@ -47,18 +47,7 @@ test.describe('language switch keeps current page', () => {
   });
 });
 
-test('preview oculto PT -> EN mantem o slug (era home /en/)', async ({ page }) => {
-  await page.goto('/ocultos/preview/pt/lifelog-tres-concertos-uma-causa/')
-  const btn = page.locator('a.navbar-lang')
-  await expect(btn).toHaveAttribute('href', /\/ocultos\/preview\/en\/lifelog-tres-concertos-uma-causa\//)
-  await btn.click()
-  await expect(page).toHaveURL(/\/ocultos\/preview\/en\/lifelog-tres-concertos-uma-causa\//)
-})
-
-test('preview oculto EN -> PT mantem o slug (era href relativo = 404)', async ({ page }) => {
-  await page.goto('/ocultos/preview/en/lifelog-tres-concertos-uma-causa/')
-  const btn = page.locator('a.navbar-lang')
-  await expect(btn).toHaveAttribute('href', /\/ocultos\/preview\/pt\/lifelog-tres-concertos-uma-causa\//)
-  await btn.click()
-  await expect(page).toHaveURL(/\/ocultos\/preview\/pt\/lifelog-tres-concertos-uma-causa\//)
-})
+// O botao de idioma do preview oculto (PT <-> EN mantendo o slug) era testado aqui
+// quando /ocultos/preview/** era pagina estatica. Desde 01/11/2026 esse HTML e
+// servido por /api/preview sob cookie, entao a verificacao vive onde a rota existe:
+// scripts/check-preview-gate.mjs (local) e scripts/check-ocultos-gate.mjs (producao).

@@ -119,6 +119,12 @@ jobs:
     - name: Build Astro
       run: pnpm build
 
+    - name: Preview de post oculto — gate de sessao (local)
+      run: |
+        echo "🔒 Conferindo que /ocultos/preview/** nao e publico..."
+        node scripts/check-preview-gate.mjs
+        echo "✅ preview exige cookie de sessao; nada de HTML publico em dist/ocultos/preview"
+
     - name: SEO bilíngue — hreflang e assets do head (guardiao)
       run: |
         echo "🔎 Verificando hreflang e assets do <head> no dist..."

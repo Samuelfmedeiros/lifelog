@@ -50,11 +50,9 @@ test.describe('Ocultos fora do indice', () => {
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   });
 
-  test('preview de post oculto leva noindex nos dois idiomas', async ({ page }) => {
-    await page.goto('/ocultos/preview/pt/seguranca-aprovado-sem-olhar/');
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
-    await page.goto('/ocultos/preview/en/seguranca-aprovado-sem-olhar/');
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+  test('rota de preview nao e publica (404) — o servido sob cookie e conferido pelo check-preview-gate', async ({ request }) => {
+    const resp = await request.get('/ocultos/preview/pt/seguranca-aprovado-sem-olhar/');
+    expect(resp.status()).toBe(404);
   });
 });
 
