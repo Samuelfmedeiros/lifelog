@@ -105,6 +105,12 @@ jobs:
       run: python3 scripts/check-duplicate-topic.py
     - name: Tag vocabulary check (Opção C)
       run: python3 scripts/check-tags.py --strict
+    - name: Post content guard — path do host, bloco de operação, rodapé obsoleto
+      # Nasceu de defeito real (31/10/2026): 18 posts publicados fechavam a seção
+      # "Próximo passo" com bloco de comando de OPERAÇÃO e alguns citavam o caminho
+      # absoluto do repo do dono. O gerador fazia isso em todo post novo e nenhum
+      # gate olhava o conteúdo — o Samuel achou o resíduo num post já liberado.
+      run: python3 scripts/check-post-content.py --strict
 
     - name: Astro type check
       continue-on-error: true

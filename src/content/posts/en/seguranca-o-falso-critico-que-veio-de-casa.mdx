@@ -62,8 +62,4 @@ The incident log now holds one line per burst, with a count and an origin, inste
 
 One gap remains. There is no test that injects an event shaped like a probe and asserts it lands as noise, and none that injects a plausible username and password and asserts it escalates to critical. Without that pair, the next change to the heuristic can flip the classification and nobody will notice.
 
-```bash
-ss -tlnp | tail -n +2 | wc -l                            # how many ports are listening
-ss -tnp | grep -c 127.0.0.1                              # local connections open right now
-journalctl --user -u <decoy-unit> -n 20 --no-pager        # recent events from the canary
-```
+Tracking the frequency afterwards means reading three numbers from the host itself: how many ports are listening, how many local connections are open at that moment, and the last events of the unit playing the decoy role. If probes grow, it became signal; if they stay at zero, the exclusion is working.

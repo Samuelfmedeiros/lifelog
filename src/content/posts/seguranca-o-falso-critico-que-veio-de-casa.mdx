@@ -62,8 +62,4 @@ O registro de incidentes agora tem uma linha por rajada, com contagem e origem, 
 
 Falta um teste que injeta um evento com cara de sonda e verifica que ele cai como ruído, e outro que injeta usuário e senha plausíveis e verifica que sobe como crítico. Sem esse par, a próxima mudança na heurística pode inverter a classificação sem ninguém notar.
 
-```bash
-ss -tlnp | tail -n +2 | wc -l                            # quantas portas estão em escuta
-ss -tnp | grep -c 127.0.0.1                              # conexões locais abertas agora
-journalctl --user -u <unidade-da-isca> -n 20 --no-pager   # eventos recentes do canário
-```
+Acompanhar a frequência depois é ver três números do próprio host: quantas portas estão em escuta, quantas conexões locais estão abertas naquele instante e os últimos eventos da unit que faz o papel de isca. Se as sondas crescerem, virou sinal; se ficarem em zero, a exclusão está funcionando.
