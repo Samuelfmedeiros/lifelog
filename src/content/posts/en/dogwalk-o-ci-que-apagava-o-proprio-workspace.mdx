@@ -1,0 +1,61 @@
+---
+title: "The CI That Erased Its Own Workspace"
+description: "Disk cleanup in the Dogwalk deploy lived in the middle of the workflow. On a self-hosted runner the work folder holds the checkout and the actions cache at the same time — and the 'harmless' step took down everything that came after it."
+category: samuel-projects
+date: 2026-10-28 21:47:00 -03:00
+pubDate: 2026-11-02 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, github-actions, self-hosted, devops, workflow]
+cover: /covers/dogwalk-o-ci-que-apagava-o-proprio-workspace.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+The Dogwalk deploy runs on a self-hosted runner. That is great for speed and terrible for disk: every build leaves behind `node_modules`, `dist`, `coverage`, `test-reports`, plus a CI virtual environment. Add that up on every push and, within a few weeks, the machine that builds the project stops building anything. The debt came from an inventory taken on October 22 — the runner's work folder was the biggest offender on the list.
+
+The fix looked trivial: a cleanup step in the workflow. It took me a little over seven hours and four commits to learn that it was not trivial at all, and that my first version was destroying the very job it existed to serve.
+
+## What happened
+
+On October 28, at 14:03, the disk guard lands (`63f17dcc`): before the build, measure free space and abort unless at least 5 GB is available, otherwise the build dies mid-run with an out-of-space error. In the same commit, a `Cleanup _work` step with `if: always()` ran `rm -rf` over the entire runner work folder, with a glob.
+
+Eleven minutes later (`70affd9e`) I moved that cleanup to after the health check. It seemed reasonable: clean up once the pipeline had genuinely finished. Still red. At 20:11 (`4d1950eb`) the cleanup became the last step of the workflow, only after the notifications. Then the symptom became clear and indefensible: the notification step ran `git rev-parse` to build its message and died with `No such file or directory`. The checkout had been deleted out from under it.
+
+The cause was this: on a self-hosted runner, the work folder is not a single folder. It holds the repository GitHub Actions just checked out **and** the `_actions` cache the steps load actions from. An `rm -rf` with a glob at the root wipes both. `Post Checkout code` — which runs after checkout — failed because the cache was gone, and every step that read the working directory after the cleanup inherited a directory that no longer existed.
+
+## How it stands now
+
+The fix has three pieces, and the most important one is not code.
+
+The first is the scope of the cleanup. Instead of wiping the root, the step deletes only what is bulky and disposable, and nothing else:
+
+```yaml
+- name: Cleanup _work (frees disk; preserves repo and _actions)
+  if: always()
+  working-directory: /tmp
+  run: |
+    W="${GITHUB_WORKSPACE:-/home/runner/work/dog-walk/dog-walk}"
+    for D in node_modules dist .venv-ci coverage test-reports; do
+      rm -rf "$W/$D" 2>/dev/null || true
+    done
+    df -h / | tail -1
+```
+
+The detail that saves the step is `working-directory: /tmp`. A step has to be alive to run its command, and if its current directory has already been deleted, the shell never even starts. Pointing at a directory that genuinely exists before removing the rest is the difference between cleaning up and sabotaging.
+
+The second piece is the disk guard, which learned the lesson: when space runs low it aborts the build but no longer deletes anything mid-path — only ephemeral runner junk. Cleaning in the middle of a job is precisely the behavior that broke the pipeline.
+
+The third piece is a pre-commit hook (`da3e282b`). A script scans the workflows whenever one of them enters a commit and blocks the reintroduction of `rm -rf` with a glob on the work folder, with a message that says what is safe to clean. Two commits later, I tried to put the shortcut back in a branch cleanup and the hook stopped me. It was the best thing I wrote that day.
+
+## Why it matters
+
+A maintenance step is more dangerous than a feature step, because nobody reviews it. A feature breaks and everybody looks. Cleanup that erases the workspace seven steps ahead only shows up as red on something with nothing to do with disk — and the temptation is to blame the runner, the network, the npm cache. Those were seven hours walking backward from a symptom that lived far from the cause.
+
+The rule that stuck: on a self-hosted runner, cleaning up is an operation over what you know, never over a glob. And no cleanup runs in the middle of a job — if it is meant to free disk, it is the last step, when there is nothing left to break.
+
+## Next step
+
+The runner still fills up. The next measure is pruning the `_actions` cache by age, with a separate scheduled job, instead of pushing that responsibility into the deploy. And the workflow hook will gain one more rule: block `rm -rf` without an explicit `working-directory`, which is how the defect comes back in disguise.
