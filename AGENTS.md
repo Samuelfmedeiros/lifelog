@@ -1,5 +1,13 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-01 (fim de dia) — 11 commits na campanha roger/lifelog-20261101-140559 (pushados); docs no main; push origin ok
+
+- **campanha** `roger/lifelog-20261101-140559` (HEAD `8f275e8`): 11 commits hoje — `4540048` release post lifelog-o-linter-do-proprio-acervo (PT+EN + ocultos-data); `065eca9` release post capivara-a-senha-que-o-ci-executava (PT+EN); `3cfaccb` feat post oculto o-linter-do-proprio-acervo (PT+EN, hidden); `17e3e7c` fix(ocultos) fecha acesso publico ao preview de post oculto; `11452c4` merge do fix/ocultos-gate; `99e083f` fix(gate) /ocultos traz data-project=dev (falso positivo no check); `ba40889` fix(posts) mascara caminho privado do vault; `8f275e8` fix(lifelog) remove CTA de venda do tatuengine-case-b2b-ternario-32gb.
+- Push da campanha no `origin` OK (feito pelo finalizar-dia.sh, que segue o HEAD). **PENDING merge**: campanha ainda nao integrada ao `main` — merge/deploy exige ordem do Samuel, nada feito automaticamente.
+- `origin/main` avancou 8 commits de outra sessao hoje (`63c9c1d` fix ci preview-gate tolera zero post, `70c4a8e` fix build gen-preview-data, `3236d0f` fix content receita, `ba64e93` chore ocultos, `78a5d5c` fix lifelog CTA, entre outros) — main Local estava 8 atras e 0 a frente: doc assado sobre `origin/main`, push FF ok e main Local avancado com update-ref.
+- Working tree com 21 diffs preservados (posts .mdx, logs) — trabalho alheio intacto.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-10-31 (fim de dia) — 15 commits (3 posts ocultos + 3 refazer + watchdog); push origin ok
 
 - **feat(posts ocultos)**: `6d50c26` descobertas-o-308-que-mudou-de-endereco, `1e9da19` portfolio-os-titulos-que-nao-apareciam-no-desktop, `fea2920` dogwalk-screenshots-que-mentiam-sobre-o-tamanho (todos PT+EN, hidden).

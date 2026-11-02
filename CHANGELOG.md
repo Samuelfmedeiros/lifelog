@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-01] - 11 commits na campanha roger/lifelog-20261101-140559 (2 posts liberados + gate de /ocultos); push origin ok
+
+- **release**: `4540048` lifelog-o-linter-do-proprio-acervo e `065eca9` capivara-a-senha-que-o-ci-executava (PT+EN + ocultos-data); `3cfaccb` post oculto do linter.
+- **fix**: `17e3e7c`/`11452c4` fecham acesso publico ao preview de /ocultos; `99e083f` corrige falso positivo de data-project=dev; `ba40889` mascara caminho do vault; `8f275e8` remove CTA de venda.
+- Campanha pushada no origin; merge no main PENDING (ordem do Samuel). origin/main seguiu com 8 commits de outra sessao. Docs de fim de dia no main, push origin OK.
+
 ## [2026-10-31] - 15 commits: 3 posts ocultos liberados + 3 recusas refeitas + watchdog; push origin ok
 
 - **feat/release**: 3 posts ocultos (descobertas-o-308, portfolio-os-titulos, dogwalk-screenshots) publicados PT+EN com `ocultos-data` + `nova-historia-arachne-2026-10-29` republicado.
