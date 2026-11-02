@@ -40,9 +40,9 @@ optixInit() → OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND
 
 Two weeks trying to work around it. What saved us: **CUDA works natively in WSL** (direct NVIDIA ioctl). RT Cores don't — but CUDA Cores do. That was the first lesson: *don't force a technology where it doesn't fit*.
 
-### The second wall: 27 GB of lenses
+### The second wall: the structure that wouldn't fit
 
-Converting the 1B-parameter network to BVH as individual lenses would cost **27 GB** — impossible for 12 GB of VRAM. The solution was the hybrid pipeline: the heavy matmuls (in_proj, out_proj, lm_head) run in CUDA reading the original tensors, while the SSM state (conv1d, RMSNorm, step) stays on CPU:
+Converting the 1B-parameter network to BVH as individual lenses would cost a structure orders of magnitude larger than the model — impossible for the VRAM. The solution was the hybrid pipeline: the heavy matmuls (in_proj, out_proj, lm_head) run in CUDA reading the original tensors, while the SSM state (conv1d, RMSNorm, step) stays on CPU:
 
 ```
 CPU: embedding → RMSNorm → conv1d+SiLU → SSM step → residual
@@ -61,7 +61,7 @@ The validation that proved the hybrid worked: **50257 identical logits** between
 
 ### Block Codec: radical compression
 
-The discovery that changed the game: instead of 1 lens per weight, **compact ternary blocks** — 245 MB total vs 27.26 GB float32 — over 100× compression, with ULP tolerance.
+The discovery that changed the game: instead of 1 lens per weight, **compact ternary blocks** — a structure orders of magnitude smaller than float32, with ULP tolerance.
 
 ### GPU Block-Traversal
 
@@ -85,8 +85,8 @@ And the **Hybrid Sandbox** to protect file tools — path validation, size/type 
 |--------|--------------|-------|
 | Commits | 1 | 302 |
 | Tests | 0 | 400+ C++ (30 suites) + 51 sandbox |
-| GPU speedup |  (OptiX didn't work) | 252× block-traversal |
-| Compression | 27.26 GB (float32) | 245 MB (block codec, 114×) |
+| GPU speedup |  (OptiX didn't work) | orders of magnitude in block-traversal |
+| Compression | unworkable as float32 1:1 | orders of magnitude smaller (block codec) |
 | Pipeline | Conceptual | Hybrid CPU/GPU bit-exact |
 | Agent | 0 subsystems | 8 subsystems |
 | Model | Mamba 2.8B (planned) | BitMamba-2 1B (functional) |

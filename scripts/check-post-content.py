@@ -16,6 +16,7 @@ Erros (E*, bloqueiam com --strict):
   E1 caminho absoluto do host no corpo        (/home/samuel, /mnt/, /Users/, C:\\, \\wsl)
   E2 último elemento do post é bloco de OPERAÇÃO
   E3 rodapé "aguarda liberação manual" em post com hidden: false
+  E4 receita proprietária do TatuEngine (números/estruturas que não sobem pro ar)
 Warnings (W*, não bloqueiam — o comando pode ser o ASSUNTO do post):
   W1 bloco de operação em outro ponto do corpo
 
@@ -49,6 +50,23 @@ FOOTER_TEXT = re.compile(
     re.I,
 )
 CODE_BLOCK = re.compile(r"```([A-Za-z0-9_+-]*)\n(.*?)```", re.S)
+
+# E4 — receita proprietária do TatuEngine (Samuel, 12/08 + 01/11/2026).
+# NUNCA publicar: nome interno do codec, fator de compressão, tamanhos de
+# estrutura, granularidade do bloco, MSE da validação e speedup medido.
+# Cada par é (rótulo, regex). Ajustar AQUI, nunca no post.
+RECIPE = [
+    ("codec-interno", re.compile(r"BlockLens|TriangleLens")),
+    ("fator-compressao", re.compile(r"\b114\s*[×x]\b|\b114x\b")),
+    ("tamanho-estrutura", re.compile(r"\b245(?:[.,]30)?\s?MB\b|\b245MB\b")),
+    ("footprint-brut", re.compile(r"\b27(?:[.,]26)?\s?GB\b|\b27GB\b")),
+    ("footprint-intermediario", re.compile(r"\b18[.,]66\s?GB\b")),
+    ("bloco", re.compile(r"\b32\s*[×x]\s*32\b")),
+    ("bloco-cache", re.compile(r"~\s?28\s?MB\b")),
+    ("mse", re.compile(r"3[.,]7e-?\s?9\b")),
+    ("mse out_proj", re.compile(r"MSE[^\n]{0,40}0[.,]36\b")),
+    ("speedup", re.compile(r"\b69[.,]4\s*[×x]")),
+]
 
 # Caminho de disco/dir privado citado no corpo: NÃO bloqueia (em vários posts o
 # caminho é o próprio assunto do artigo) — serve para o dono decidir o que varrer.
@@ -85,8 +103,10 @@ def main() -> int:
             elif HOST_HINT.search(body):
                 warns.append(("W2", rel, "caminho de disco/host citado no corpo (assunto do post?)"))
 
-            # rodapé "post oculto" — só é defeito quando o post está publicado
-            has_footer = bool(FOOTER_TEXT.search(text))
+            # rodapé "post oculto" — só é defeito quando o post está publicado.
+            # Só conta no FIM do arquivo: citar a frase no meio do texto (um post
+            # que fala do próprio gate) é assunto, não rodapé.
+            has_footer = bool(FOOTER_TEXT.search(body[-400:]))
             if has_footer and hidden is False:
                 errors.append(("E3", rel, "rodapé 'aguarda liberação manual' em post publicado"))
 
@@ -98,6 +118,12 @@ def main() -> int:
                 block = tail[start + 3 + len(header) :]
                 if OP_CMD.search("\n" + block):
                     errors.append(("E2", rel, "bloco de OPERAÇÃO é o último elemento do post"))
+
+            # E4 — receita proprietária do TatuEngine (público ou oculto:
+            # o que está escrito hoje é o que sobe amanhã)
+            for label, rx in RECIPE:
+                if rx.search(body):
+                    errors.append(("E4", rel, f"receita TatuEngine no corpo ({label})"))
 
             # operação em qualquer outro ponto = warning (pode ser o assunto do post)
             for m in CODE_BLOCK.finditer(body):
