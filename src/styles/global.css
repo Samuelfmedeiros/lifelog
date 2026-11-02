@@ -273,6 +273,7 @@ body {
 }
 .navbar-link.cta:hover {
   background: color-mix(in srgb, var(--navbar-cta-bg, var(--color-accent)) 88%, black);
+  /* hover derivado do próprio ctaBg — acompanha a paleta (antes era #3d3fa8 fixo) */
   transform: translateY(-1px);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--navbar-cta-bg, var(--color-accent)) 35%, transparent);
 }
