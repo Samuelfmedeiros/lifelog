@@ -38,9 +38,12 @@ for (const lang of IDIOMAS) {
   }
 }
 
+// Zero preview e estado legitimo: o painel /ocultos pode estar vazio (o ultimo
+// oculto sai do acervo, ou nenhum foi gerado ainda). O que NAO pode e sobrar
+// HTML estatico em dist/ocultos/preview — isso e que dejaria o post publico.
+// Por isso a checagem de remocao abaixo continua sendo falha dura.
 if (total === 0) {
-  console.error('gen-preview-data: NENHUM preview no build. Confira getStaticPaths dos previews.');
-  process.exit(1);
+  console.warn('gen-preview-data: nenhum post oculto no build — painel vazio, sem preview para proteger.');
 }
 
 const cabecalho = [
