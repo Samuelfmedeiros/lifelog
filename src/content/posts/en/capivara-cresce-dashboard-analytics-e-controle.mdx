@@ -33,14 +33,14 @@ Capivara needed to grow.
 Before the dashboard, I was at the **crappy spreadsheet** level:
 
 ```
- Dogwalk Revenue — June
+ Dogwalk Revenue — one month, by week
 ┌──────────┬────────┬──────────┐
-│ Week  │ R$  │ Walks  │
+│ Week  │ Band  │ Walks  │
 ├──────────┼────────┼──────────┤
-│ Week 1  │ 1,250  │ 14  │
-│ Week 2  │ 980  │ 11  │  ← Google Sheets
-│ Week 3  │ 1,470  │ 17  │  raw dog
-│ Week 4  │ 2,100  │ 23  │
+│ Week 1  │ low  │ few  │
+│ Week 2  │ low  │ few  │  ← Google Sheets
+│ Week 3  │ mid  │ mid  │  raw dog
+│ Week 4  │ high  │ many  │
 └──────────┴────────┴──────────┘
 ```
 
@@ -302,20 +302,22 @@ This gave me visibility into **who accesses what and when** — without relying 
 
 ## Financial analytics with categories
 
-Dogwalk processes ~50 transactions per month between walks, withdrawals, and chargebacks. Each transaction has a value, a walker, a client, and a status. But **what really matters** is the categorization:
+Dogwalk processes several kinds of transactions per month between walks, withdrawals, and chargebacks. Each transaction has a value, a walker, a client, and a status. But **what really matters** is the categorization:
 
-| Category  | Jun/26 | Jul/26 | Change |
-|--------------|:------:|:------:|:------:|
-| Walks  | R$ 4,720 | R$ 5,810 | +23% |
-| Withdrawals  | R$ 3,100 | R$ 4,200 | +35% |
-| Fees  | R$ 470  | R$ 580  | +23% |
-| Chargebacks  | R$ 120  | R$ 90  | -25% |
-| **Net**  | **R$ 1,030** | **R$ 940** | **-9%** |
+| Category  | Direction | What it is |
+|---------------|:--------:|:--------:|
+| Walks  | up | the main revenue front |
+| Withdrawals  | up more | payouts to walkers |
+| Fees  | up | tracks volume |
+| Chargebacks  | down | improving against the prior month |
+| **Net**  | **slightly down** | **despite the gross growth** |
 
-The backend exposes this aggregated data via the `/dogwalk/revenue` endpoint:
+Month over month: walks +23%, withdrawals +35%, fees +23%, chargebacks -25%, net -9%. Growing gross while net falls is exactly the kind of thing only categorization shows.
+
+The backend exposes this aggregated data via an authenticated revenue endpoint:
 
 ```python
-@router.get("/revenue")
+@router.get("/financial-stats")
 async def revenue_stats(current_user=Depends(get_current_user),
   db=Depends(get_db)):
   """Revenue aggregated by month with category breakdown."""
@@ -476,7 +478,7 @@ At first I wanted to monitor **everything** — latency of each endpoint, Umami 
 
 ### 5. Financial data needs context
 
-Seeing "R$ 5,810" in isolation says nothing. Seeing "R$ 5,810 — 23% higher than last month" tells a story. The `revenueChange` was the most praised feature by those who tested the dashboard.
+Seeing a lone number says nothing. Seeing "walk revenue 23% higher than last month" tells a story. The `revenueChange` was the most praised feature by those who tested the dashboard.
 
 ## The evolution metrics
 

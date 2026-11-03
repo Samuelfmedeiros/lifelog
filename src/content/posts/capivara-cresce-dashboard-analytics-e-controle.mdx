@@ -32,14 +32,14 @@ O Capivara precisava crescer.
 Antes do dashboard, eu tava no nível **planilha cagada**:
 
 ```
- Dogwalk Revenue — Junho
+ Dogwalk Revenue — um mes, por semana
 ┌──────────┬────────┬──────────┐
-│ Semana  │ R$  │ Passeios │
+│ Semana  │ Faixa  │ Passeios │
 ├──────────┼────────┼──────────┤
-│ Semana 1 │ 1.250  │ 14  │
-│ Semana 2 │ 980  │ 11  │  ← Google Sheets
-│ Semana 3 │ 1.470  │ 17  │  raw dog
-│ Semana 4 │ 2.100  │ 23  │
+│ Semana 1 │ baixa  │ poucos   │
+│ Semana 2 │ baixa  │ poucos   │  ← Google Sheets
+│ Semana 3 │ media  │ media    │  raw dog
+│ Semana 4 │ alta   │ muitos   │
 └──────────┴────────┴──────────┘
 ```
 
@@ -301,20 +301,22 @@ Isso me deu visibilidade de **quem acessa o quê e quando** — sem depender de 
 
 ## Analytics financeiros com categorias
 
-O Dogwalk processa ~50 transações por mês entre passeios, saques e estornos. Cada transação tem um valor, um walker, um tutor, e um status. Mas **o que realmente importa** é a categorização:
+O Dogwalk processa transações de vários tipos por mês entre passeios, saques e estornos. Cada transação tem um valor, um walker, um tutor, e um status. Mas **o que realmente importa** é a categorização:
 
-| Categoria  | Junho/26 | Julho/26 | Variação |
-|---------------|:--------:|:--------:|:--------:|
-| Passeios  | R$ 4.720 | R$ 5.810 | +23%  |
-| Saques  | R$ 3.100 | R$ 4.200 | +35%  |
-| Taxas  | R$ 470  | R$ 580  | +23%  |
-| Estornos  | R$ 120  | R$ 90  | -25%  |
-| **Líquido**  | **R$ 1.030** | **R$ 940** | **-9%** |
+| Categoria  | Direção | O que é |
+|---------------|:--------:|:--------:|
+| Passeios  | subiu | principal frente de receita |
+| Saques  | subiu mais | repasse aos walkers |
+| Taxas  | subiu | acompanha o volume |
+| Estornos  | caiu | melhora frente ao mês anterior |
+| **Líquido**  | **caiu pouco** | **apesar do crescimento bruto** |
 
-O backend expõe esses dados agregados via endpoint `/dogwalk/revenue`:
+De um mês para o outro: passeios +23%, saques +35%, taxas +23%, estornos -25%, líquido -9%. Crescer bruto e cair líquido ao mesmo tempo é justamente o tipo de coisa que só a categorização mostra.
+
+O backend expõe esses dados agregados via endpoint autenticado de receita:
 
 ```python
-@router.get("/revenue")
+@router.get("/financial-stats")
 async def revenue_stats(current_user=Depends(get_current_user),
   db=Depends(get_db)):
   """Revenue aggregated by month with category breakdown."""
@@ -475,7 +477,7 @@ No começo eu queria monitorar **tudo** — latência de cada endpoint, tempo de
 
 ### 5. Dados financeiros precisam de contexto
 
-Ver "R$ 5.810" isolado não diz nada. Ver "R$ 5.810 — 23% maior que mês passado" conta uma história. O `revenueChange` foi a feature mais elogiada por quem testou o dashboard.
+Ver um número isolado não diz nada. Ver "receita de passeios 23% maior que o mês passado" conta uma história. O `revenueChange` foi a feature mais elogiada por quem testou o dashboard.
 
 ## As métricas da evolução
 
