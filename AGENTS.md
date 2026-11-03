@@ -1,5 +1,15 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-02 (fim de dia) — 12 commits (post Dogwalk liberado + campanha navbar CTA NOTA 100); docs no main; push origin ok
+
+- **12 commits hoje** (`git log --all --since='2026-11-02 00:00' --until='2026-11-03 00:00'`). Atencao: o contador do `finalizar-dia.sh` filtra sem `--all` e reportou 0 — lifelog passa o dia em 5 branches.
+- **post Dogwalk**: `cfcc183` post oculto (PT+EN) → `621566b` release com ocultos-data na branch `lifelog-continue-20261102` (ja no origin); `175d06e` move hidden posts para `ocultos/`; `219cc00` test(preview) cobre zero-post e sobra de dist nos dois gates.
+- **campanha Roger navbar CTA** (NOTA 100): `8fd0be3` residual; `f4dd4a5` / `9aac7f8` merges (rodada 1); `3322910` limpa residuos do gate; `18e1868` feat(navbar) CTA segue a paleta com contraste AA nas 6 paletas.
+- **main**: `df361b4` merge completo (conflitos resolvidos + testes de ocultos + posts renomeados); `ccb0971` fix remove CTA de venda do post tatuengine-case-b2b-ternario-32gb. main Local (`df361b4`) 2 a frente de `origin/main`, FF-safe.
+- **PENDING merge no main** (ordem do Samuel): `roger/lifelog-20261101-140559` (checkout atual), `roger/lifelog-navbar-cta-20261102-170321`, `roger/lifelog-cta-limpo` (`18e1868`).
+- Working tree com 24 diffs preservados (posts .mdx, logs) — trabalho alheio intacto.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada); commit so dos 2 docs em worktree sobre `main`, push origin ok.
+
 ## Sessão 2026-11-01 (fim de dia) — 11 commits na campanha roger/lifelog-20261101-140559 (pushados); docs no main; push origin ok
 
 - **campanha** `roger/lifelog-20261101-140559` (HEAD `8f275e8`): 11 commits hoje — `4540048` release post lifelog-o-linter-do-proprio-acervo (PT+EN + ocultos-data); `065eca9` release post capivara-a-senha-que-o-ci-executava (PT+EN); `3cfaccb` feat post oculto o-linter-do-proprio-acervo (PT+EN, hidden); `17e3e7c` fix(ocultos) fecha acesso publico ao preview de post oculto; `11452c4` merge do fix/ocultos-gate; `99e083f` fix(gate) /ocultos traz data-project=dev (falso positivo no check); `ba40889` fix(posts) mascara caminho privado do vault; `8f275e8` fix(lifelog) remove CTA de venda do tatuengine-case-b2b-ternario-32gb.
