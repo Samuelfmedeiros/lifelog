@@ -48,12 +48,16 @@
     "pytest falhou: rc=4"
    ],
    "files_touched": [
-    ".loop-lifelog.state.json",
-    "AGENTS.md",
-    "playwright.config.ts"
+    "(package.json",
+    ".test.ts",
+    "src/lib/*.test.ts",
+    "embedder.py",
+    "/home/samuel/.hermes/logs/roger-test-loop/latest.json",
+    ".loop-handoff.json",
+    ".loop-worker-general-r[234].md"
    ],
-   "worker_tail": "s expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n\u001b[0m\n\u001b[0m$ \u001b[0mlsof -i :4321 -i :4322 2>/dev/null | head -20\nCOMMAND       PID   USER FD   TYPE    DEVICE SIZE/OFF NODE NAME\nnode-Main 1521221 samuel 22u  IPv4 311142383      0t0  TCP localhost:rwhois (LISTEN)\n\u001b[0m\n\u001b[91m\u001b[1mError: \u001b[0mFailed to execute statement\n",
-   "ts": "2026-11-03T11:14:43.879484+00:00"
+   "worker_tail": "[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=25]\u001b[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=30]\u001b[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=30]\u001b[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=30]\u001b[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=25]\u001b[0m\n\u001b[0m→ \u001b[0mRead e2e/ocultos.spec.ts\u001b[90m [offset=80, limit=30]\u001b[0m\n",
+   "ts": "2026-11-03T21:58:26.681933+00:00"
   },
   {
    "round": 5,
@@ -136,5 +140,5 @@
    "ts": "2026-11-03T15:24:51.544097+00:00"
   }
  ],
- "updated_at": "2026-11-03T20:56:51.299009+00:00"
+ "updated_at": "2026-11-03T21:58:26.681933+00:00"
 }
