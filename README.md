@@ -154,3 +154,4 @@ vercel deploy --prod --token $VERCEL_TOKEN
 ## 📝 License
 
 Personal project — © 2026 Samuel Medeiros
+# Minor change
