@@ -1,11 +1,5 @@
 # 📋 CHANGELOG — LifeLog
 
-## [2026-11-02] - 12 commits: post Dogwalk liberado + navbar CTA contraste AA (NOTA 100); push origin ok
-
-- **release**: `621566b` dogwalk-o-ci-que-apagava-o-proprio-workspace (PT+EN + ocultos-data); `cfcc183` post oculto; `175d06e` ocultos/; `219cc00` testes dos gates de preview.
-- **feat/fix**: `18e1868` navbar CTA com contraste AA nas 6 paletas; `ccb0971` remove CTA de venda; `3322910` limpa residuos do gate; `df361b4` merge completo com testes de ocultos.
-- Campanhas `roger/lifelog-cta-limpo` e `roger/lifelog-navbar-cta-20261102-170321` PENDING merge no main. Docs de fim de dia no main, push origin OK.
-
 ## [2026-11-01] - 11 commits na campanha roger/lifelog-20261101-140559 (2 posts liberados + gate de /ocultos); push origin ok
 
 - **release**: `4540048` lifelog-o-linter-do-proprio-acervo e `065eca9` capivara-a-senha-que-o-ci-executava (PT+EN + ocultos-data); `3cfaccb` post oculto do linter.
