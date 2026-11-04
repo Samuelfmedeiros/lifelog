@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-03] - 17 commits em 5 branches: post Arachne oculto + release TatuEngine + scrub de revenue + e2e de ocultos; push origin ok
+
+- **conteudo**: `39c86b8` post arachne PT+EN hidden; `ae51a56` release tatuengine-case-b2b-ternario-32gb; `8f41488` scrub de revenue real; `8f12b73` remove CTA de venda; `9051fdf` remove receita residual; `b3fdaf3` cria EN ausente.
+- **infra/ci**: `1dbedd4` marcadores de conflito do merge `df361b4`; `3172c2f` contrato dos specs de ocultos + guarda do feed EN; `5549368` Fix tests (#269).
+- **entregas Roger**: `5b062f1` / `554d87f` / `ca95389` / `d103d45` / `8671e0c` / `aa9d2c5` nas 3 campanhas de 03/11.
+- Doc no `main` (8 a frente, FF-safe) com push origin verificado. Campanhas com merge/push PENDING (ordem do Samuel).
+
 ## [2026-11-01] - 11 commits na campanha roger/lifelog-20261101-140559 (2 posts liberados + gate de /ocultos); push origin ok
 
 - **release**: `4540048` lifelog-o-linter-do-proprio-acervo e `065eca9` capivara-a-senha-que-o-ci-executava (PT+EN + ocultos-data); `3cfaccb` post oculto do linter.

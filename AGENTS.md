@@ -1,5 +1,17 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-03 (fim de dia) — 17 commits em 5 branches (post Arachne oculto + release TatuEngine + scrub de revenue + fixture de e2e); docs no main; push origin ok
+
+- **17 commits hoje** (`git log --all --since='2026-11-03 00:00' --until='2026-11-04 00:00'`, cada commit uma vez). Atencao: lifelog passa o dia em 5 branches; o `finalizar-dia.sh` mostrou so 8 (branch checada).
+- **campanha `roger/lifelog-20261101-140559`** (8 commits, checkout atual): `1dbedd4` fix(e2e) resolve marcadores de conflito commitados no merge `df361b4`; `b3fdaf3` fix(content+ci) cria EN ausente do tatuengine-case-b2b; `39c86b8` post(lifelog-entrega) arachne-o-reddit-que-derrubava-a-pesquisa-inteira (PT+EN, hidden); `9051fdf` remove receita TatuEngine residual; `8f12b73` remove CTA de venda do post tatuengine-case-b2b-ternario-32gb; `ae51a56` release tatuengine-case-b2b-ternario-32gb (PT+EN + ocultos-data); `8f41488` scrub real revenue data from public posts; `5549368` Fix tests (#269).
+- **campanhas de entrega `roger/lifelog-entrega-20261103-*`** (3 rodadas: 060301 / 155351 / 194416): `5b062f1` feat resolveir status branch e preparar merge; `554d87f` feat(workflow) stage round 2/3 handoff data; `ca95389` test(lifeloop) commit staged handoff state; `d103d45` feat(lifeloop) rounds 2-4; `8671e0c` commit handoff state; `aa9d2c5` minor change for PR.
+- **`fix/lifelog-ci-ocultos-spec`**: `3172c2f` fix(e2e) contrato dos specs de ocultos + guarda do feed EN.
+- **main Local `13db80b` 8 a frente / 0 atras de `origin/main`** = FF-safe: doc de fim de dia commitado no main (worktree detachado, checkout da campanha preservado) e push origin ok, provado por `git ls-remote` + AGENTS.md remoto.
+- **PENDING push** (nao feito pelo job de docs): `roger/lifelog-entrega-20261103-155351`, `roger/lifelog-entrega-20261103-194416` e `fix/lifelog-ci-ocultos-spec` nao existem no origin.
+- **PENDING merge no main** (ordem do Samuel): `roger/lifelog-20261101-140559` (checkout atual) e as 3 entregas do dia.
+- Working tree com 7 diffs preservados (`.loop-*`, coverage) — trabalho alheio intacto.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-11-01 (fim de dia) — 11 commits na campanha roger/lifelog-20261101-140559 (pushados); docs no main; push origin ok
 
 - **campanha** `roger/lifelog-20261101-140559` (HEAD `8f275e8`): 11 commits hoje — `4540048` release post lifelog-o-linter-do-proprio-acervo (PT+EN + ocultos-data); `065eca9` release post capivara-a-senha-que-o-ci-executava (PT+EN); `3cfaccb` feat post oculto o-linter-do-proprio-acervo (PT+EN, hidden); `17e3e7c` fix(ocultos) fecha acesso publico ao preview de post oculto; `11452c4` merge do fix/ocultos-gate; `99e083f` fix(gate) /ocultos traz data-project=dev (falso positivo no check); `ba40889` fix(posts) mascara caminho privado do vault; `8f275e8` fix(lifelog) remove CTA de venda do tatuengine-case-b2b-ternario-32gb.
