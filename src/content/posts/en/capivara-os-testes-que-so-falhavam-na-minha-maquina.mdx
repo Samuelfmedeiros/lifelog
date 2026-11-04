@@ -1,0 +1,104 @@
+---
+title: "The 11 tests that only failed on my machine"
+description: "The Capivara suite passed in CI and broke in my terminal. The cause was not my code: it was Node 26 declaring a global localStorage that stayed undefined, and jsdom giving up on copying its own."
+date: 2026-10-17 17:26:00 -03:00
+pubDate: 2026-11-04 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "testing", "vitest", "node", "frontend", "ci"]
+icon: "🐹"
+cover: /covers/capivara-os-testes-que-so-falhavam-na-minha-maquina.webp
+featured: false
+hidden: true
+lang: en
+---
+
+## The worst kind of red test
+
+There is a category of failure that erodes more trust than a production bug: the test that passes in CI and fails on your machine. You open the terminal, run the suite, see eleven names in red, and the only information available is that the server — the same server running the exact same commit — is green.
+
+That is what happened to the Capivara frontend after the migration to CachyOS. The admin panel carries 296 component tests on vitest with jsdom, plus a browser mode with 9. In CI, everything passed. Locally, 285 out of 296. Eleven failures, all with the same signature:
+
+```text
+TypeError: Cannot read properties of undefined (reading 'clear')
+TypeError: Cannot read properties of undefined (reading 'removeItem')
+```
+
+Eleven tests, one error line. And that line did not point at my code — it pointed at `localStorage.clear()` inside a test `beforeEach`.
+
+## What Node changed without telling anyone
+
+The natural conclusion is: "jsdom does not implement localStorage, I need a polyfill". But jsdom does implement it, and always has. The problem is that it **stops copying** its own implementation onto the global object when that global already exists.
+
+Starting with Node 22.4, the runtime began exposing `localStorage` and `sessionStorage` as globals — the experimental webstorage API. There is one detail that changes everything: without the `--localstorage-file` flag, those globals exist but evaluate to `undefined`. The property is there, defined, and the value is empty.
+
+When jsdom assembles the test environment, it runs a check along the lines of "does this property already exist on the global?". If it does, jsdom respects it and does not overwrite — so it will not trample what the host defined. With Node 22.4+ declaring `localStorage` as `undefined`, jsdom respects an empty value. The result is the worst of both worlds: the property exists (so no fallback code ever fires) and the value is `undefined` (so any method call blows up).
+
+On my machine, `node --version` answered v26.13.0. The CI workflow pins `NODE_VERSION: "22"`, and at migration time the runner was still on a line older than that behaviour change. Same code, same commit, two runtimes — and the test becomes a coin flip.
+
+## The fix: stop trusting silent fallbacks
+
+The obvious first attempt would be to run vitest with `--localstorage-file` and call it done. That fixes it for me and does not fix it for anyone else — the suite would now depend on an environment flag nobody remembers to pass. A test that needs verbal instructions to run is not a test, it is a ritual.
+
+The fix that stayed in `frontend/src/test/setup.ts` is an in-memory polyfill, installed only when the value is `undefined`:
+
+```ts
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() { return data.size },
+    key: (index: number) => [...data.keys()][index] ?? null,
+    getItem: (key: string) => (data.has(key) ? data.get(key)! : null),
+    setItem: (key: string, value: string) => { data.set(String(key), String(value)) },
+    removeItem: (key: string) => { data.delete(key) },
+    clear: () => { data.clear() },
+  } as Storage
+}
+
+for (const key of ['localStorage', 'sessionStorage'] as const) {
+  if (window[key] === undefined) {
+    Object.defineProperty(globalThis, key, {
+      configurable: true,
+      writable: true,
+      value: createMemoryStorage(),
+    })
+  }
+}
+```
+
+Three decisions inside that block deserve an explanation, because each one closes a door to flakiness.
+
+The first is using a `Map` as the backing store. A plain object literal would work, but it would inherit `Object.prototype` — so `getItem('constructor')` would return a function instead of `null`. A `Map` exposes no prototype per key, so behaviour stays identical to a real storage.
+
+The second is implementing the whole `Storage` API, including `length` and `key(index)`. It is tempting to implement only `getItem`/`setItem`/`clear`, which is what the `ThemeToggle` tests use today. But a partial polyfill is a trap with a due date: the day someone writes a test that iterates keys, it fails on Node and passes in CI, and the investigation starts from scratch again.
+
+The third is the `if (window[key] === undefined)` guard. It only acts when needed. If a future Node release ships a working storage, the polyfill overwrites nothing — the suite keeps testing the real environment behaviour instead of my mock.
+
+The result measured in commit `b845d2a`: 296 out of 296 on vitest with jsdom (previously 285), 9 out of 9 on browser mode.
+
+## The same bug, wearing a different costume
+
+The commit carries a second fix, and it is the same story in different clothes. `playwright.config.ts` hardcoded the chromium binary at `/usr/bin/chromium`, which existed on WSL and does not exist on CachyOS. The whole e2e died with `Executable doesn't exist` — not a test failure, an infrastructure failure dressed up as a red test.
+
+The fix follows the same logic as the `undefined` check: only use the system binary if it actually exists, otherwise fall back to the chromium Playwright downloads.
+
+```ts
+const systemChromium = '/usr/bin/chromium'
+const localExecutable =
+  !process.env.CI && existsSync(systemChromium) ? systemChromium : undefined
+```
+
+And there was a third, quieter one: the default `baseURL` pointed at port 8001, which after the migration answers the raw API without the SPA. The real application runs on 8022, and CI uses 8002. A wrong default throws no error — it returns 404 on every request, and you spend the afternoon convinced you broke authentication.
+
+With the three fixes in place, local e2e closed at 4 out of 5. The fifth was not a bug: the user `playwright@test.com` only exists in the ephemeral CI database, created by `seed_e2e_user.py`, which aborts outside GitHub Actions by design. It is the only legitimate red — and now it is documented instead of buried among ten others.
+
+## What this changes
+
+Eleven local failures are not eleven bugs. They were a single mismatch between the machine runtime and the CI runtime, amplified by three defaults nobody revisited when the environment changed.
+
+The lesson is about the kind of default. A hardcoded `executablePath`, a hardcoded `baseURL`, a presumed global — all three share the same defect: they assume a specific environment and fail silently when it changes. In every case the fix was replacing the assumption with a cheap check (`existsSync`, `=== undefined`, an environment variable with an explicit fallback).
+
+The second lesson is that a green CI does not absolve the local machine. If the two environments run different runtime versions, the CI green only proves the code works *there*. That is why the workflow `NODE_VERSION` became part of the diagnosis instead of a footnote.
+
+## Next step
+
+The next target is pinning the Node version in `package.json` with `engines` plus an `.nvmrc`, so the divergence between machine and CI surfaces at install time instead of showing up as a red test three weeks later. Until that exists, the local suite remains the only place where the difference is visible — which is exactly why it has to run before every commit, even when CI has already said everything is fine.
