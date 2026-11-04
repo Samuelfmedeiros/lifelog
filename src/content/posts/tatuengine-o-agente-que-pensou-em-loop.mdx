@@ -1,6 +1,6 @@
 ---
 title: "O agente que finalmente pensou em loop"
-description: "O ciclo do agente do TatuEngine rodou ponta a ponta pela primeira vez — depois de três bugs de integração que morriam em silêncio, scheduled sampling no treino e um comparador que mede dois runs no mesmo tronco."
+description: "O ciclo do agente rodou de ponta a ponta pela primeira vez — depois de três falhas de integração que morriam em silêncio e de um treino que passou a medir dois runs no mesmo ponto de partida."
 category: samuel-projects
 date: 2026-10-27 12:00:00 -03:00
 pubDate: 2026-10-27 12:00:00 -03:00
@@ -9,46 +9,56 @@ tags: [tatuengine, agent-loop, sft, model, validation]
 icon: "🦔"
 cover: /covers/tatuengine-o-agente-que-pensou-em-loop.webp
 featured: false
-hidden: false
+hidden: true
 lang: pt
 ---
 
-O TatuEngine tinha um agente autopoiético desenhado no papel há meses. Arquitetura completa — mas ela nunca tinha rodado de ponta a ponta. O motivo não era falta de modelo ou de GPU. Eram três bugs de integração que se empilhavam e faziam o ciclo morrer silenciosamente antes de fechar.
+O agente autopoiético do TatuEngine existia no papel há meses. A arquitetura estava desenhada, o modelo estava treinado, a máquina estava lá. Só faltava uma coisa: o ciclo nunca tinha rodado até o fim.
 
-## O ciclo que não fechava
+O ciclo é simples na intenção — pensar, avaliar, decidir, observar o resultado e repetir até declarar que terminou. A função que orquestra chama o decisor a cada passo. O problema é que o decisor carregava três defeitos encadeados, cada um sozinho suficiente para travar tudo. E, como quase todo defeito de integração, nenhum deles fazia barulho.
 
-O ciclo é simples na intenção: o agente pensa, avalia, decide, observa o resultado e repete até declarar que terminou. A função que orquestra isso chama o decisor a cada passo. O problema é que o decisor tinha três defeitos encadeados, cada um sozinho suficiente para travar tudo.
+## Três formas de travar sem avisar
 
-O primeiro: a avaliação chamava o guardião com uma assinatura que não existia. O código passava um conjunto de argumentos, mas a API nativa espera outro. A chamada lançava exceção, a exceção era engolida, o alinhamento ficava travado num valor baixo — e como o limiar de resposta fica acima desse valor, o agente nunca declarava que terminou. O ciclo rodava para sempre ou abortava sem explicação.
+A primeira era de contrato. Uma etapa chamava a outra com um conjunto de argumentos que a implementação não aceitava mais. A chamada estourava, a exceção era capturada por um tratador amplo e descartada. O estado que a decisão seguinte consultava continuava no valor inicial — sempre abaixo do limiar que declara conclusão, e ninguém sabia por quê.
 
-O segundo: o parser de streaming acumula estado internamente. Quando o ciclo reprocessava a conversa a cada iteração, a mesma resposta era emitida de novo. A correção foi zerar o parser antes de cada leitura, garantindo uma única resposta por ciclo.
+A segunda era de estado acumulado. O componente que lê a saída do modelo guardava buffer entre chamadas. A cada iteração, a resposta anterior era emitida de novo: o agente pensava duas vezes a mesma coisa e o histórico crescia sem avançar um passo. A correção é zerar o leitor antes de cada leitura, uma resposta por ciclo.
 
-O terceiro era trivial e mortal: o servidor não encontrava o binding nativo, porque ele vivia num diretório de testes, não onde o servidor esperava. Três linhas de resolução de caminho resolvem, mas sem elas nada carregava.
+```python
+def ciclo(passo):
+    estado = Estado.inicial()
+    while not estado.concluido:
+        leitor.reset()                     # uma resposta por iteracao
+        resposta = leitor.ler(modelo.pensar(estado))
+        estado = passo(estado, resposta)
+    return estado
+```
 
-Com os três corrigidos, o ciclo fecha no segundo passo quando o guardião está saudável, e para no disjuntor de ciclos máximos quando está à deriva. A prova roda com modelo e guardião mockados, sem GPU.
+A terceira era de caminho. Um componente nativo não estava onde o processo procurava. O arquivo existia no repositório, os testes passavam, mas o carregamento apontava para outro diretório. Nada subia — e o sintoma aparecia como recurso indisponível, não como erro de configuração. Três linhas de resolução de caminho resolvem; sem elas, nada carregava.
 
-## O motor tinha um NameError escondido
+Com as três corrigidas, o ciclo fecha quando o avaliador está saudável e para no disjuntor de ciclos máximos quando está à deriva. A prova roda com modelo e avaliador simulados, sem GPU — o que também significa que ela mede a integração, não a qualidade das respostas.
 
-Antes mesmo de chegar ao agente, havia um defeito mais básico. O método de decisão usava uma variável que só existia no escopo da avaliação. No caminho de chamada de ferramenta, isso estourava NameError. E na função de passo do modelo, um parâmetro tinha sido renomeado mas o corpo ainda referenciava o nome antigo. Qualquer chamada falhava na primeira linha.
+## O núcleo também estava quebrado, e fora do caminho
 
-Uma auditoria do núcleo mostrou algo pior: os módulos mais pesados do projeto, somando mais de mil e seiscentas linhas, não eram sequer importados pelo servidor. O código existia, estava testado, mas não estava no caminho de execução. Foi o tipo de achado que só aparece quando alguém lê o grafo de imports em vez de assumir que o que compila roda.
+Abaixo do agente havia um defeito mais básico. Um método de decisão usava uma variável que só existia no escopo da avaliação; no caminho de execução de ferramenta, isso estourava na primeira linha. E uma função de passo do modelo tinha o parâmetro renomeado num lugar e o nome antigo ainda referenciado no corpo.
 
-## Scheduled sampling: ensinar o modelo a não se afogar
+A auditoria seguinte não confiou no que compila: leu o grafo de imports. Boa parte do núcleo — justamente os módulos mais pesados — não era importada por ninguém em produção. Código escrito, testado, versionado e fora do caminho de execução. Esse tipo de achado não aparece em teste unitário; aparece quando alguém desenha quem chama quem.
 
-Paralelamente ao agente, o treino ganhou scheduled sampling. A ideia: uma segunda passagem em que o modelo gera os primeiros tokens da resposta com o próprio argmax e calcula a perda contra o rótulo dourado. Quando a probabilidade de troca é zero, a receita antiga é reproduzida bit a bit. É uma forma de expor o modelo ao próprio erro durante o treino, sem mudar o pipeline.
+## Treinar o modelo para não se afogar no próprio erro
 
-O segundo problema era de agenda, não de algoritmo. O cosine annealing usava o total de passos como horizonte. Dobrar o orçamento de treino dobrava o trecho de learning rate alto, e um run recente degradou e abortou por isso. A correção desacopla o horizonte: quando definido, a queda termina no passo dado e o resto fica no piso. Ausente, comportamento idêntico ao antigo.
+Paralelamente ao agente, o treino ganhou uma mudança de exposição. A ideia é simples: numa segunda passagem, o modelo gera os primeiros passos da resposta com o próprio palpite e a perda é medida contra o rótulo dourado. Com o interruptor desligado, a receita antiga é reproduzida bit a bit — nada muda para quem não pediu.
 
-## Medir dois runs no mesmo tronco
+O segundo problema ali não era de algoritmo, era de agenda. O horizonte do decaimento de learning rate estava amarrado ao orçamento total de passos de treino. Aumentar o orçamento aumentava também a fatia com learning rate alto; um run recente degradou e abortou por isso. A correção desacopla as duas coisas: o decaimento termina onde foi definido e o restante fica no piso. Sem o parâmetro, o comportamento é idêntico ao anterior.
 
-Validar se um run é melhor que outro exigia comparar checkpoints. O problema: cada checkpoint guarda só os deltas treináveis, não o modelo inteiro. Comparar dois checkpoints em modelos diferentes ou holdouts diferentes não prova nada.
+## Comparar dois runs sem se enganar
 
-O comparador reconstroí o tronco uma vez, aplica o primeiro checkpoint, mede, zera os deltas e aplica o segundo. Os dois runs são medidos no mesmo modelo e no mesmo holdout: held-out, validação em português, validação em inglês, com o tronco puro como linha de base e o drift do inglês calculado contra ela. Um detalhe de portabilidade: importar o módulo num harness não pode exigir um diretório espelho que talvez não exista. Agora tolera.
+Validar se um run ficou melhor que outro exigia comparar checkpoints — e aí apareceu outro problema de método. Cada checkpoint guarda apenas os deltas treináveis, não o modelo inteiro. Comparar dois checkpoints aplicados sobre modelos diferentes, ou medidos em holdouts diferentes, não prova nada além de ruído.
 
-## O que mudou
+O comparador reconstrói o tronco uma vez, aplica o primeiro checkpoint, mede, zera os deltas e aplica o segundo. Os dois runs passam pelo mesmo modelo e pelo mesmo holdout, com o tronco puro como linha de base.
 
-O agente deixou de ser arquitetura no papel. O ciclo fecha. O decisor decide. O motor não estoura NameError. O treino não se afoga quando o orçamento cresce. E a validação compara runs de forma justa.
+## O que muda
 
-Os três defeitos de integração tinham uma coisa em comum: cada um falhava em silêncio. Exceção engolida, módulo nunca importado, agenda que só dobra o erro quando o orçamento cresce. Nenhum quebra — todos produzem um sistema que aparenta funcionar sem nunca ter sido exercitado ponta a ponta.
+O agente deixou de ser arquitetura no papel. O ciclo fecha, o decisor decide, o núcleo não estoura na primeira chamada, o treino não se desorganiza quando o orçamento cresce e a validação compara runs de forma justa.
 
-Próximo passo: ligar o ciclo a uma interface real e medir se o agente fecha tarefas simples sem intervenção humana. A arquitetura está pronta; falta a prova de uso.
+O padrão que une os três defeitos de integração é o mesmo: todos falhavam em silêncio. Exceção engolida, módulo fora do caminho de execução, agenda que só mostra o erro quando o orçamento muda. Nenhum deles quebra o build. Todos produzem um sistema que parece vivo sem nunca ter sido exercitado de ponta a ponta.
+
+O próximo passo é ligar o ciclo a uma interface real e medir se ele conclui tarefas simples sem intervenção. A arquitetura está pronta; falta a prova de uso.
