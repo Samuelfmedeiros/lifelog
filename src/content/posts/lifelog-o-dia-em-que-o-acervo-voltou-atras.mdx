@@ -1,0 +1,67 @@
+---
+title: "O dia em que o acervo voltou atrás"
+description: "Doze posts publicados carregavam números que não podiam estar no ar. A primeira varredura não zerou o problema — errou dois arquivos — e o gate que nasceu dela hoje guarda até os posts que ainda estão ocultos."
+category: samuel-projects
+date: 2026-11-04 10:00:00 -03:00
+pubDate: 2026-11-04 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "ci-cd", "quality", "seguranca", "data"]
+icon: "📖"
+cover: /covers/lifelog-o-dia-em-que-o-acervo-voltou-atras.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O parágrafo que eu não devia ter escrito
+
+Tinha um post no ar explicando a arquitetura de um motor de compressão. O texto era bom: contava a decisão de ternarizar pesos, mostrava o custo de memória antes e depois, admitia o que tinha dado errado. No fim, depois de todo o aprendizado, havia um parágrafo oferecendo o código-fonte por um preço e um serviço de setup por outro.
+
+Escrever sobre o que se construiu é o ponto deste blog. Vender dentro do post usando o próprio post como isca é outra coisa. O parágrafo saiu rápido — um commit, uma linha, duas remoções (`78a5d5c`) — e no mesmo dia o post inteiro saiu do acervo (`ba64e93`). Mas a facilidade do conserto escondia o tamanho do problema: se um post tinha isso, quantos mais tinham?
+
+## Quatro varreduras em quatro dias
+
+A resposta veio em pedaços, e nenhuma varredura sozinha deu o quadro completo.
+
+A primeira (`3236d0f`) atacou os números. Doze posts publicados citavam métricas internas de um dos projetos — fator de compressão, tamanho de estrutura, consumo de memória, ganho medido em GPU. Individualmente cada número parecia um dado técnico inocente. Juntos, formavam a receita: qualquer leitor com experiência suficiente podia reconstruir a abordagem inteira sem nunca ter aberto o repositório. Foram treze arquivos tocados entre português e inglês, 91 linhas entrando e 75 saindo.
+
+A lição chegou uma hora depois. A varredura tinha limpado doze posts e dito que o acervo estava curado. Não estava: dois arquivos ainda tinham receita residual, e o commit seguinte (`9051fdf`) tirou 142 linhas e colocou 24. Eu tinha declarado o problema resolvido antes de rodar a verificação de novo — que é exatamente o mesmo erro de achar que ausência de prova é prova de sucesso.
+
+A terceira varredura (`8f41488`) foi humilhante por um motivo diferente: não vazava tecnologia, vazava dinheiro. Dois posts de outro projeto mostravam a receita real, mês a mês, em reais — uma tabela semanal com valor por semana e outra com passeios, saques, taxas e estornos de dois meses, com variação percentual. O texto ficou melhor quando os números saíram: no lugar de "R$ 4.720" entrou "subiu", no lugar do líquido caindo 9% entrou "caiu apesar do crescimento bruto". A história não perdeu nada. Perdeu o leitor errado, que é o único que se importa com o valor exato.
+
+A quarta (`b3fdaf3`) consertou um par quebrado: a versão em inglês de um post nunca tinha sido versionada, então a limpeza de receita tinha passado só no arquivo em português. O conserto criou o par ausente e limpou o resto no mesmo commit — porque corrigir um idioma e deixar o outro sujo é metade da correção.
+
+## O gate que nasceu junto
+
+Corrigir quatorze posts à mão é remendo. O gerador ia repetir o padrão no post seguinte, e ninguém ia notar até o próximo vazamento. Então a varredura virou gate: um passo no pipeline que abre o corpo de cada artigo e procura a categoria, nunca o valor.
+
+```python
+RECIPE = [
+    ("codec-interno",        re.compile(...)),   # nome interno do algoritmo
+    ("fator-compressao",     re.compile(...)),   # taxa de compressão medida
+    ("tamanho-estrutura",    re.compile(...)),   # tamanho da estrutura em disco
+    ("footprint-brut",       re.compile(...)),   # memória necessária para rodar
+    ("footprint-intermediario", re.compile(...)),# etapa intermediária do pipeline
+    ("bloco",                re.compile(...)),   # granularidade do bloco
+    ("speedup",              re.compile(...)),   # ganho medido em GPU
+    ("mse",                  re.compile(...)),   # erro da validação
+]
+
+for label, rx in RECIPE:
+    if rx.search(body):
+        errors.append(("E4", rel, f"receita TatuEngine no corpo ({label})"))
+```
+
+Cada par é rótulo e padrão. O rótulo aparece no erro, então a mensagem diz *o que* vazou sem repetir *o quanto* — o gate acusa a categoria e não imprime o número proibido no log. E a lista mora no gate, não no post: ajustar a receita é mudar uma linha no verificador, não caçar texto espalhado pelo acervo.
+
+A parte que só ficou clara no fim: o gate olha também os posts ocultos. Post oculto não é post privado — é um post esperando liberação, e o que está escrito hoje é o que sobe amanhã. Vazar no oculto é só escolher a data do vazamento.
+
+## O que mudou
+
+O acervo hoje tem 456 artigos e o gate responde zero erros. Nenhum deles foi reescrito para esconder história: as narrativas continuam inteiras, com decisão, trade-off e número de verdade nos lugares onde o número é meu — commits, linhas removidas, arquivos tocados, cobertura de teste. O que saiu foi o que não era meu para publicar: receita de implementação alheia à narrativa e dinheiro real da operação.
+
+A regra que ficou vale para qualquer coisa publicada: **despublicar também é commit, e precisa de verificação**. A primeira varredura provou que uma correção bem-feita ainda deixa resto, e que o resto só aparece quando alguém roda o teste de novo em cima do que acabou de consertar — não quando alguém decide que acabou.
+
+## Próximo passo
+
+O gate já cobre caminho absoluto, bloco de operação no fim, rodapé de post oculto e receita proprietária. Falta uma categoria: acordo comercial e preço citados em qualquer post, que foi exatamente o defeito do parágrafo original e hoje só é pego por memória. É a próxima regra a entrar na lista — e, como esta, ela vai nascer primeiro como varredura no acervo inteiro, para ver quantos posts existentes ainda carregam o que não deveria.
