@@ -59,6 +59,23 @@ function loadPosts(): PostData[] {
   return posts;
 }
 
+// EN: mesmo filtro da pagina (src/pages/en/rss.xml.ts: !hidden), lido de
+// posts/en/. NAO usar POSTS.length aqui: o espelho PT<->EN nao e 1:1 — existem
+// posts so-EN (backlog de traducao) e pares com a versao PT em
+// src/content/ocultos/ (PT oculto, EN publica). O contrato que vale: o feed EN
+// tem exatamente os posts EN nao-ocultos, e nenhum oculto vaza.
+function loadEnPosts(): string[] {
+  const files = readdirSync(join(POSTS_DIR, 'en')).filter((f: string) => f.endsWith('.mdx'));
+  const slugs: string[] = [];
+  for (const file of files) {
+    const fm = parseFrontmatter(readFileSync(join(POSTS_DIR, 'en', file), 'utf-8'));
+    if (fm.draft) continue;
+    if (fm.hidden) continue;
+    slugs.push(file.replace(/\.mdx$/, ''));
+  }
+  return slugs;
+}
+
 // 🚀 Carregado dinamicamente! Testes nunca mais desatualizados.
 const POSTS = loadPosts();
 
@@ -287,7 +304,15 @@ test.describe('RSS Feed', () => {
     expect(response?.ok()).toBeTruthy();
     const text = await response!.text();
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(POSTS.length);
+    expect(items).toBe(loadEnPosts().length);
+    // Guarda de vazamento: nenhum post EN com hidden:true entra no feed.
+    const enOcultos = readdirSync(join(POSTS_DIR, 'en'))
+      .filter((f: string) => f.endsWith('.mdx'))
+      .filter((f: string) => parseFrontmatter(readFileSync(join(POSTS_DIR, 'en', f), 'utf-8')).hidden)
+      .map((f: string) => f.replace(/\.mdx$/, ''));
+    for (const slug of enOcultos) {
+      expect(text).not.toContain(`/en/post/${slug}/`);
+    }
     expect(text).toContain('<language>en-us</language>');
     expect(text).not.toContain('<link>https://lifelog.seu.pet/post/');
     // slugs EN sao traduzidos (ex.: bitmamba-1b-training... vs treinando...),

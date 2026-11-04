@@ -1,6 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
+// GitHub Actions exporta CI=true; local (sem a variavel) roda falso.
+// Cast explícito porque @types/node não está completo nesta árvore.
+const env = process.env as Record<string, string | undefined>;
+const isCi = env.CI === 'true';
+// Endereço do preview sai do ambiente (mesma convenção de record-demo.spec.ts).
+// Deriva a porta da URL: `astro preview` não lê a env, precisa de --port.
+const previewBaseUrl =
+  env.E2E_BASE_URL || env.PLAYWRIGHT_TEST_URL || 'http://localhost:4321';
+const previewPort = new URL(previewBaseUrl).port || '4321';
+
 export default defineConfig({
   testDir: '.',
   // 13/09/2026: 20s nao suportava o preview sob carga (net::ERR_ABORTED em
@@ -10,7 +20,11 @@ export default defineConfig({
   retries: 2,
   fullyParallel: false,
   use: {
-    baseURL: 'http://localhost:4321',
+    // 03/11/2026: a porta sai do ambiente (mesma convenção que
+    // e2e/record-demo.spec.ts já usa). O CI exporta PLAYWRIGHT_TEST_URL mas
+    // NINGUEM lia — com o endereço fixo no config, rodar a suite local ao lado
+    // de outro preview (campanha viva) era impossivel sem EADDRINUSE.
+    baseURL: previewBaseUrl,
     navigationTimeout: 45000,
     // trace so quando falha: evidencia p/ o artefato do CI
     trace: 'retain-on-failure',
@@ -18,16 +32,25 @@ export default defineConfig({
     // VRT — snapshot por componente, tolerância pequena pra animações/antialiasing
     screenshot: { mode: 'only-on-failure', fullPage: false },
   },
-  // Servidor: o CI/CD workflow já sobe o preview antes dos testes, e com
-  // reuseExistingServer o Playwright reaproveita esse server quando ele já
-  // está no ar. Sem NENHUM server ativo (rodada 3 da campanha 23/10: TODOS os
-  // e2e morreram com net::ERR_CONNECTION_REFUSED e o critic só viu
-  // "e2e playwright falhou:" vazio), o Playwright sobe o próprio preview.
+  // Servidor: no CI o workflow já sobe o preview na :4321 antes dos testes
+  // (deploy.yml "Start preview server"), então lá REAPROVEITAR é o contrato.
+  // LOCAL é o oposto: reuseExistingServer=true fez a suíte inteira rodar
+  // 20 min contra um preview órfão de outra worktree na mesma porta
+  // (medido 03/11) — prova inválida com cara de verde. Local (~CI ausente)
+  // sobe o server desta árvore ou estoura EADDRINUSE alto, nunca silêncio.
   webServer: {
-    command: 'pnpm preview',
-    url: 'http://localhost:4321/',
-    reuseExistingServer: true,
-    timeout: 60_000,
+    // O Playwright roda o comando a partir do diretorio do CONFIG (e2e/).
+    // Sem `cwd: '..'` o astro preview procura e2e/dist e morre com
+    // "The output directory .../e2e/dist/ does not exist" (medido 04/11).
+    cwd: '..',
+    // Mesma URL do baseURL: o preview que sobe aqui tem que escutar EXATAMENTE
+    // onde os testes navegam. Deriva a porta de E2E_BASE_URL (default 4321).
+    url: `${previewBaseUrl}/`,
+    // -p <porta>: astro preview nao le E2E_BASE_URL, e a porta default dele
+    // (4321) nao coincide com a de E2E_BASE_URL quando esta eh sobrescrita.
+    command: `pnpm exec astro preview --port ${previewPort}`,
+    reuseExistingServer: isCi,
+    timeout: 120_000,
   },
   projects: [
     {
