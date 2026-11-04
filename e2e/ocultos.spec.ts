@@ -88,11 +88,7 @@ test.describe('Verificacao de ocultos no frontend', () => {
 
   test('Posts liberados aparecem no sitemap', async ({ page }) => {
     await page.goto('/sitemap.xml');
-    
-<<<<<<< HEAD
-    await expect(page.locator(`text=${HIDDEN_SLUG}`)).toBeVisible();
-=======
-    await expect(page.locator(`text=${HIDDEN_SLUG}`).first()).toBeHidden();
->>>>>>> 00baa1f (merge complete: resolve conflicts, add ocultos tests, rename posts)
+
+    await expect(page.locator(`text=${HIDDEN_SLUG}`).first()).toBeVisible();
   });
 });
