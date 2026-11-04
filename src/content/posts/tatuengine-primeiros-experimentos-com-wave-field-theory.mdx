@@ -10,14 +10,9 @@ featured: true
 lang: 'pt'
 ---
 
-
 ## Contexto
 
-O TatuEngine nasceu de uma pergunta boba: **"RT Cores processam redes neurais?"** Parece piada, mas a ideia por trás tinha fundamento real — uma rede neural é, no fim, uma função que transforma um vetor de entrada num vetor de saída. Se você codificar os pesos como geometria 3D (triângulos com índice de refração), cada token de entrada vira um raio que atravessa essa geometria, e a saída emerge da interferência construtiva das ondas do outro lado.
-
-É lindo na teoria. Na prática, WSL não tem RT Cores.
-
-Mas a pergunta certa não era "como usar RT Cores no WSL". A pergunta certa era: **"se eu tratar inferência como propagação de onda num campo de fase, o que acontece?"**
+O TatuEngine nasceu de uma pergunta boba: **"RT Cores processam redes neurais?"** Parece piada, mas a ideia por trás tinha fundamento real — uma rede neural é, no fim, uma função que transforma um vetor de entrada num vetor de saída. A pergunta certa era: **"se eu tratar inferência como propagação de onda num campo de fase, o que acontece?"**
 
 Essa pergunta começou os experimentos.
 
@@ -32,92 +27,38 @@ Token de entrada → raio com fase inicial φ₀
 Saída → interferência de todas as ondas no detector
 ```
 
-Cada peso da rede virava um triângulo numa BVH (Bounding Volume Hierarchy). Uma inferência era literalmente um ray-trace: disparar raios, calcular desvio de fase, somar coerentemente.
+Cada peso virava um triângulo numa BVH. Uma inferência era literalmente um ray-trace: disparar raios, calcular desvio de fase, somar coerentemente.
 
-O problema apareceu rápido: **1 bilhão de parâmetros em float32 = 36 GB de lentes**. Cada peso virava 3 vértices × 3 floats + 3 propriedades ópticas — dezenas de bytes por peso. Para 1B de parâmetros, dezenas de GB — sem chance de caber em VRAM de GPU consumidor.
+O problema apareceu rápido: **1 bilhão de parâmetros em float32 = dezenas de GB de lentes**. Sem chance de caber em VRAM de GPU consumidor.
 
 ## O primeiro pivot: abordagem híbrida
 
-Em vez de converter TUDO em geometria (impossível pra 1B de params), dividi o pipeline:
-
-| Passo | Onde roda | Por quê |
-|-------|-----------|---------|
-| Embedding lookup | CPU | Tabela linear — sem ganho em GPU |
-| RMSNorm | CPU | Operação vetorial simples |
-| **in_proj / out_proj / lm_head** | **GPU (bridge_matmul)** | **Matmul pesado — 99% dos FLOPs** |
-| Conv1d + SiLU | CPU | Estado sequencial pequeno |
-| SSM step | CPU | Inerentemente sequencial — `h(t) = f(h(t-1), x(t))` |
-| Residual add | CPU | Soma vetorial trivial |
-
-Essa divisão não foi óbvia no começo. O SSM do Mamba é diferente do Transformer: o hidden state `h(t)` depende de `h(t-1)`. Você não consegue paralelizar sobre o tempo como attention. Mas os matmuls (que são a parte cara) são independentes por token.
+Em vez de converter TUDO em geometria (impossível), dividi o pipeline: matmuls pesados na GPU (99% dos FLOPs), o resto na CPU. Essa divisão não foi óbvia no começo — o SSM do Mamba é inherentemente sequencial, não se paraleliza sobre o tempo como attention.
 
 ## A descoberta que mudou tudo: Block Codec
 
-A abordagem híbrida funcionou, mas ainda era cara — 10ms por token em CPU pra 1B de params. Aí veio o insight: **pesos ternários seguem padrões locais**. Blocos consecutivos de pesos compartilham zero, sinal e magnitude similar.
+A abordagem híbrida funcionou, mas ainda era cara. Aí veio o insight: **pesos ternários seguem padrões locais**. Blocos consecutivos de pesos compartilham zero, sinal e magnitude similar.
 
-Em vez de 1 lente por peso na representação 1:1, um **bloco compacto** cabia em um bloco enxuto:
-
-```
-Cada bloco:
-- payload compacto (poucos bits por peso)
-- cabeçalho mínimo
-- metadados espaciais mínimos
-Total: uma fração de byte por peso (bem abaixo da representação 1:1)
-```
-
-**128× de compressão.** E o melhor: o kernel de travessia pode processar blocos inteiros em paralelo com 32 threads no mesmo warp.
-
-## GPU Block-Traversal: o primeiro resultado real
-
-Com o Block Codec funcionando, escrevi o kernel CUDA de travessia — cada thread processa uma linha do bloco, warp shuffle pra soma parcial, shared memory pra acumulador.
-
-O resultado surpreendeu:
-
-| Pipeline | CPU | GPU | Speedup |
-|----------|-----|-----|---------|
-| Inferência 1 token | 10.552 ms | **41.9 µs** | **252×** |
-| Bake 100K células | ~70 ms | 4.8 ms | **15×** |
-| Traversal 16 raios | 74.2 ms | 0.52 ms | **146×** |
-
-252 microssegundos por token numa GPU que também roda CUDA Cores. Pra comparação, um Transformer de tamanho similar leva 3-5ms no mesmo hardware.
+Em vez de 1 lente por peso na representação 1:1, um **bloco compacto** cabia em um bloco enxuto — uma fração de byte por peso, bem abaixo da representação 1:1. O kernel de travessia processa blocos inteiros em paralelo.
 
 ## O que aprendi com esses experimentos
 
 ### 1. Ternarizar depois do treino destrói coerência
 
-O modelo que testei (BitMamba-1B) já era ternário nativo — treinado com pesos em {-1, 0, +1}. Tentei ternarizar um modelo float32 pós-treino e os logits viraram ruído. **Modelos ternários precisam ser treinados assim desde o início.**
+O modelo que testei (BitMamba-1B) já era ternário nativo. Tentei ternarizar um modelo float32 pós-treino e os logits viraram ruído. **Modelos ternários precisam ser treinados assim desde o início.**
 
 ### 2. Softplus com float32 estoura silenciosamente
 
-`expf(89.0f) = +inf`. Isso quebrou meus testes de SSM step por 2 dias até eu perceber que o `softplus` do A_log tava gerando `inf` nos últimos batches. A solução é a formulação numericamente estável (`log1pf(expf(-abs(x)))`).
+`expf(89.0f) = +inf`. Quebrou meus testes de SSM step por 2 dias até perceber que o softplus do A_log gerava `inf` nos últimos batches. A solução é a formulação numericamente estável.
 
 ### 3. SSM não carrega história no hidden state
 
-Eu esperava que o hidden state `h(t)` carregasse contexto, tipo o hidden do RNN. Mas `Δh ≈ 0.0001` entre tokens consecutivos. A memória real do Mamba está no `kv_cache` (conv buffer + SSM state). O hidden é quase um pass-through.
-
-### 4. O AutoTrainer converge rápido demais — e isso é bom
-
-Com spacing 3.5 entre lentes (default), o AutoTrainer atinge 99.5% de qualidade em 14 steps. Não porque o sistema é simples — mas porque **cada lente já resolve o gradiente local sem interferência**. Com spacing 0.8 (lentes sobrepostas), a entropia sobe e o trainer realmente precisa trabalhar. Mas 3.5 é o sweet spot pra inferência pura.
-
-### 5. O Adjacent Method vence o gradiente numérico
-
-Em vez de computar gradiente por diferenças finitas (caro, instável), o Adjacent Method testa as 3 opções adjacentes de índice de refração (η-1, η, η+1) e escolhe a que minimiza a função de fase. 3× mais rápido, sem falsos gradientes, convergência determinística.
-
-## Os números frios
-
-| Métrica | Junho (início) | Julho (hoje) |
-|---------|----------------|--------------|
-| Testes | 0 | 400+ (30 suítes) |
-| Speedup GPU |  | 252× |
-| Compressão | float32 1:1 inviável | ordens de grandeza menor (block codec) |
-| Pipeline | Conceitual | Híbrido CPU/GPU |
-| Agente | 0 | 8 subsistemas |
-| Modelo | Mamba 2.8B (planejado) | BitMamba-1B (funcional) |
+Esperava que o hidden state `h(t)` carregasse contexto, tipo RNN. Mas `Δh ≈ 0` entre tokens consecutivos. A memória real do Mamba está no `kv_cache` (conv buffer + SSM state). O hidden é quase um pass-through.
 
 ## O que vem a seguir
 
-O pipeline híbrido é funcional, mas a visão original não foi **totalmente** realizada: os pesos não são geometria real durante a inferência — o Block Codec é uma representação comprimida, não uma travessia óptica de verdade.
+O pipeline híbrido é funcional, mas a visão original não foi totalmente realizada: os pesos não são geometria real durante a inferência — o Block Codec é uma representação comprimida, não uma travessia óptica de verdade.
 
-O próximo passo é conectar o **MotorGPU** (kernel de travessia paralela) com o pipeline de agente que construímos depois — Immunosystem, LTM associativo, GoalStack, ToolUseBuffer. O agente deve conseguir chamar ferramentas, lembrar sessões passadas e auto-corrigir o campo de fase baseado em feedback.
+O próximo passo é conectar o MotorGPU com o pipeline de agente (Immunosystem, LTM associativo, GoalStack, ToolUseBuffer). O agente deve conseguir chamar ferramentas, lembrar sessões passadas e auto-corrigir o campo de fase baseado em feedback.
 
-> TL;DR: Comecei querendo fazer ray tracing pra redes neurais, descobri que SSM híbrido é o caminho real, comprimi o modelo em ordens de grandeza com o Block Codec e alcancei speedup de ordens de grandeza em GPU. O TatuEngine não é mais uma ideia maluca — é um motor de inferência funcional que trata pesos de rede como um campo de fase. E sim, ainda acho que um dia RT Cores vão processar geometria neural de verdade.
+> TL;DR: Comecei querendo fazer ray tracing pra redes neurais, descobri que SSM híbrido é o caminho real, comprimi o modelo com o Block Codec e alcancei speedup de ordens de grandeza em GPU. O TatuEngine não é mais uma ideia maluca — é um motor de inferência funcional que trata pesos de rede como um campo de fase.
