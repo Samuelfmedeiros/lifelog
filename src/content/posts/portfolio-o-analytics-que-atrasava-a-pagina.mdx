@@ -1,0 +1,60 @@
+---
+title: "O analytics que atrasava a página em 646 ms"
+description: "Os dois beacons de medição do portfólio disparavam na hidratação e somavam 646 ms ao load: 1303 ms com eles, 657 ms sem. O conserto foi esperar o load e rodar na folga da thread principal."
+category: samuel-projects
+date: 2026-11-05 12:00:00 -03:00
+pubDate: 2026-11-05 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "performance", "analytics", "nextjs", "react"]
+cover: /covers/portfolio-o-analytics-que-atrasava-a-pagina.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+O portfólio carrega em 657 ms quando os beacons de analytics estão desligados. Com eles ligados, carrega em 1303 ms. A diferença é de 646 ms — quase o dobro do tempo de carga, gasta em duas requisições que não têm nada a ver com o conteúdo que o visitante veio ver.
+
+Esse número não apareceu num painel de monitoramento. Apareceu numa medição manual, feita em 04 de novembro, alternando o carregamento com e sem os dois endpoints. A primeira leitura foi de descrença: 646 ms é muito para dois `fetch` de beacon, daqueles que a gente trata como "só um ping". A segunda leitura foi de reconhecimento — o problema não era o tamanho da resposta, era o lugar onde ela acontecia.
+
+O site tem dois caminhos de medição. Um dispara um hit a cada troca de rota, pelo componente que fica montado no layout. O outro carrega o SDK do OpenPanel, que é cookieless e por isso sobe sem esperar consentimento. Os dois apontam para endpoints internos do próprio domínio — `/api/hit` e `/api/op/*` — que o `next.config.js` reescreve para serviços externos. E aí está a parte que engana: um rewrite não é um arquivo estático. É um proxy na borda do Vercel. Cada chamada custa um round-trip de rede que o navegador não tinha como adivinhar, e os dois estavam no caminho crítico.
+
+Onde exatamente eles rodavam: dentro do `useEffect` da hidratação, antes do evento `load`. Ou seja, no pior lugar possível. O navegador ainda estava montando a página, buscando fonte, resolvendo layout, e dois componentes decidiam abrir conexão com a borda para avisar que alguém entrou. O visitante esperava por uma informação que interessa a mim, não a ele.
+
+O conserto saiu no commit `7f54c6f`, de 05 de novembro, com o título "perf(analytics): adia beacons para depois do load". A ideia é uma só: medição não entra no caminho crítico. Ela espera a página terminar de carregar e roda na primeira folga da thread principal.
+
+O helper que faz isso tem 35 linhas e uma responsabilidade: agendar uma função para depois do `load`. Se a página já terminou de carregar — caso de navegação SPA no App Router, onde não existe novo `load` —, ele nem registra listener: roda direto na folga seguinte. Se ainda está carregando, espera o evento uma única vez.
+
+```ts
+export function agendarAposCarga(fn: () => void): void {
+  if (typeof window === "undefined") return;
+
+  const rodarNaFolga = () => {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(() => fn());
+      return;
+    }
+    window.setTimeout(fn, 0);
+  };
+
+  if (document.readyState === "complete") {
+    rodarNaFolga();
+    return;
+  }
+
+  window.addEventListener("load", rodarNaFolga, { once: true });
+}
+```
+
+Três decisões moram nessas linhas. A primeira é o `{ once: true }` no listener: sem ele, cada navegação registraria um listener novo e o beacon sairia duplicado depois do primeiro load. A segunda é o `requestIdleCallback` com fallback para `setTimeout`: o primeiro entrega a função quando o navegador tem folga de verdade, o segundo cobre os ambientes que não têm a API — jsdom nos testes e Safari antigo em produção. A terceira é o curto-circuito por `readyState === "complete"`, que resolve o caso do App Router: navegar entre páginas não dispara `load`, e esperar por um evento que nunca vem deixaria a medição muda.
+
+A troca nos dois componentes foi de uma linha cada: a chamada direta virou uma chamada agendada. Em `ConditionalAnalytics.tsx`, o carregamento do SDK passou a rodar dentro do agendador. Em `HitBeacon.tsx`, o envio do hit por troca de rota seguiu o mesmo caminho. Nada de reescrever componente, nada de mexer em layout.
+
+O que dava para fazer errado — e é o que quase sempre se faz — era resolver com `setTimeout` fixo. Um atraso arbitrário de 500 ms parece resolver e não resolve: em máquina rápida a medição ainda compete com a hidratação, em máquina lenta o beacon chega tarde e o dado fica enviesado. O agendador não chuta tempo; ele espera um evento real (`load`) e uma condição real (thread ociosa).
+
+A cobertura veio junto com o conserto, não depois. São quatro testes de contrato: não roda antes do `load` e roda depois; usa `requestIdleCallback` quando existe; com `readyState` completo não depende do `load`; e não estoura em ambiente sem `window`. O teste que exercita o fallback apaga `requestIdleCallback` de propósito, porque o jsdom não tem a API e o caminho de produção no Safari também não. A suíte fechou em 539 de 539 e o `next build` saiu com código 0.
+
+O ganho prático é o número que abriu este texto: o load volta para a casa dos 657 ms quando o visitante entra, e a medição acontece alguns milissegundos depois, na folga. Ninguém perde dado — o hit continua sendo enviado, o `screen_view` continua sendo contado. O que muda é a ordem: primeiro a página, depois a conta.
+
+Tem uma lição maior aqui, e ela vale além do portfólio. Uma métrica que atrasa a página mede a página errada. Se o beacon entra no caminho crítico, o tempo que ele registra já não é o tempo que o visitante sentiu — é o tempo com o próprio instrumento pendurado no pescoço. Instrumento de medição não pode ser parte do que se mede.
+
+O próximo passo é continuar medindo com o mesmo método: desligar o suspeito, medir, religar, medir. O próximo candidato é o custo da própria hidratação do SDK, que agora acontece fora do `load`, mas ainda ocupa thread principal. E o teste de contrato fica no CI, para que a próxima pessoa que precisar de um beacon novo não repita o `useEffect` direto sem perceber o que ele custa.
