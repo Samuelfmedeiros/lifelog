@@ -1,0 +1,70 @@
+---
+title: "O monitoramento que ficou cego"
+description: "Fechei um vazamento de topologia no endpoint de saúde da API e, no mesmo commit, deixei o painel de Monitoramento exibindo um grid vazio por doze horas. A página não quebrou: ela mentiu com educação."
+category: samuel-projects
+date: 2026-11-04 12:30:00 -03:00
+pubDate: 2026-11-05 08:00:00 -03:00
+project: arachne
+tags: [arachne, api, monitoring, auth, testing, vue]
+cover: /covers/arachne-o-monitoramento-que-ficou-cego.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Um GET anônimo descrevia a minha infraestrutura
+
+No dia 4 de novembro, às 12h30, fechei um vazamento no Arachne que me incomodava mais pelo tipo do que pelo tamanho. O endpoint de saúde da API respondia a qualquer requisição sem credencial com o retrato completo do ecossistema: se o banco estava de pé, se o serviço auxiliar respondia, quais modelos de linguagem estavam carregados e até caminhos de arquivo do servidor. Nada ali era segredo criptográfico, e é justamente por isso que passou tanto tempo: não parece grave. Mas é o tipo de informação que economiza horas de reconhecimento para quem está procurando por onde entrar. Um GET sem token entregava a topologia interna de brinde.
+
+A correção seguiu o desenho que eu devia ter usado desde o começo: o endpoint público passou a devolver o mínimo — `{"status": "ok"}` — e todo o detalhe de subsistemas migrou para uma rota separada, atrás de autenticação. Quem precisa do retrato completo é o painel interno, que já tem sessão. Quem faz verificação externa só precisa saber se a coisa está de pé. Duas perguntas diferentes, dois endpoints diferentes.
+
+## O mesmo commit que tapou o buraco apagou o painel
+
+O detalhe que interessa vem agora: a página de Monitoramento era consumidora daquele payload. Ela chamava a rota pública e montava os cartões a partir dos campos de banco, serviço auxiliar, busca semântica e modelo. Com o payload reduzido a uma chave, esses campos passaram a vir indefinidos.
+
+O que aconteceu depois não foi um erro — foi pior. A página tinha uma guarda por componente: se o valor viesse indefinido, o componente simplesmente não entrava na lista final. Nenhuma exceção, nenhum 500, nenhuma tela vermelha. O carregamento terminava com sucesso, a lista saía vazia e o painel exibia um grid em branco.
+
+```javascript
+const { data } = await api.get('/health')
+const comps = []
+const mk = (name, v) => {
+  if (v === undefined) return  // a guarda que transformou contrato quebrado em vazio
+  comps.push({ name, status: v?.online ? 'online' : 'offline' })
+}
+mk('database', data?.database)
+mk('sidecar', data?.sidecar)
+```
+
+Entre 12h30 do dia 4 e 00h25 do dia 5 — cerca de doze horas — o Monitoramento não disse "não consegui falar com o serviço". Ele disse "não há nenhum serviço rodando". São frases com o mesmo desenho na tela e significados opostos. Se eu tivesse olhado o painel naquela tarde, teria concluído que o ecossistema estava morto, quando o que estava morto era o contrato entre duas partes do meu próprio código.
+
+## O teste que garantia o vazamento
+
+A suíte de contratos de autenticação tinha a rota de saúde na lista de rotas protegidas: o teste exigia que um GET anônimo recebesse 401. Ou seja, aquele teste era, na prática, um guardião do vazamento — passava verde justamente porque o furo existia. Quando a rota passou a ser pública por decisão de desenho, a lista teve que mudar: a rota mínima saiu dos protegidos e a rota profunda entrou no lugar.
+
+Fica a lição que eu repito para mim mesmo desde então: teste verde não significa sistema certo, significa sistema igual ao contrato que você escreveu no teste. Se o contrato está errado, o verde também está. Contrato que muda por decisão de segurança precisa de revisão consciente de todos os testes que o cercam, não de um ajuste para o CI parar de reclamar.
+
+## O contrato agora tem três asserções
+
+A correção foi na página e, junto com ela, no teste — os dois no mesmo movimento, porque um sem o outro só muda o lugar do bug.
+
+Primeiro, o endpoint público passou a ser verificado por igualdade, não por presença: a resposta precisa ser exatamente a chave de status, e nenhuma das chaves de subsistema pode aparecer. Igualdade é mais dura que "contém", e é o que impede o payload de crescer de novo sem ninguém notar.
+
+Segundo, a rota profunda passou a ser testada como protegida: requisição anônima recebe 401. E o detalhe que gostei de encontrar no código é que esse 401 não é um mero "não": a tentativa é registrada como sondagem de baixa severidade, com IP e identificação do cliente. Recusar e anotar, em vez de recusar em silêncio.
+
+Terceiro, o teste que amarra o painel ao endpoint: as cinco chaves que a tela lê precisam existir na resposta profunda, e uma chave de lista que a página antiga lia precisa continuar ausente. Essa asserção negativa é a mais valiosa do conjunto: a versão anterior da tela lia uma lista de serviços que o endpoint nunca devolveu — um formato fantasma, que já produzia grid vazio meses antes do vazamento. O bug estava ali o tempo todo, dormindo, esperando alguém mexer no payload para virar visível.
+
+Prova da rodada: vinte testes de contrato passando no backend e treze testes de página passando no frontend, com a página consumindo a rota profunda pelo token do interceptor — não mais por cabeçalho montado à mão em cada tela.
+
+## O que isso muda
+
+Três coisas, em ordem de importância.
+
+A primeira: fechar vazamento é mudança de contrato, não faxina. Toda vez que eu endureço um endpoint, preciso procurar quem consome aquele formato antes de fechar o commit — não depois do painel ficar em branco. O commit que tapa o buraco tem que listar os consumidores que ele quebra.
+
+A segunda: "sem dados" e "fora do ar" precisam ser estados visualmente diferentes. A guarda que engole o indefinido pertence à mesma família do tratador amplo que engole exceção — é confortável de escrever, deixa o código limpo de ler e apaga justamente a informação que eu precisava ver. Um painel que erra alto me acorda; um painel que erra em silêncio me deixa tomar decisão em cima de ficção.
+
+A terceira: asserção negativa vale ouro. Testar que um campo sensível não aparece, e que um formato antigo não volta, protege mais que testar que o caminho feliz funciona — porque o caminho feliz todo mundo testa.
+
+## Próximo passo
+
+O painel hoje confia em cinco chaves e não tem estado próprio de "contrato quebrado". O próximo passo é separar explicitamente três estados na tela — carregando, sem dados por falha de contrato, e serviços realmente fora do ar — e fazer o teste falhar quando o grid ficar vazio por resposta inesperada, e não apenas quando uma chave específica desaparecer. Enquanto os três estados não existirem, um payload reduzido vai continuar parecendo uma infraestrutura vazia.
