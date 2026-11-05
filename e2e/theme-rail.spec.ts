@@ -71,16 +71,15 @@ test.describe('Theme Rail', () => {
     await expect(enLang).toHaveText('PT');
   });
 
-  test('navbar order: CTAs (portfólio, loja) primeiro, depois links, rail e lang', async ({ page }) => {
+  test('navbar order: CTA portfólio, links, loja, rail e lang', async ({ page }) => {
     // .navbar-links > * incluiria o <script> inline que o PalettePicker injeta
     // como filho direto — :not(script) mantém os índices abaixo
     const links = page.locator('.navbar-links > :not(script)');
     const count = await links.count();
 
     // Ordem dentro de navbar-links (navbar sem logo — 15/08/2026).
-    // 24/10/2026: a loja entrou como segundo CTA (o LifeLog levava 423 páginas para a
-    // loja e a navbar não tinha NENHUM link para ela), então os índices andaram um:
-    // [0] CTA Portfólio, [1] CTA Loja, [2] Início, [3] Arquivo, [4] Sobre,
+    // 05/11/2026: Samuel pediu a loja DEPOIS de Arquivo, não como 2º CTA:
+    // [0] CTA Portfólio, [1] Início, [2] Arquivo, [3] Loja, [4] Sobre,
     // [5] #theme-rail (controls), [6] lang
     expect(count).toBeGreaterThanOrEqual(7);
 
@@ -92,14 +91,15 @@ test.describe('Theme Rail', () => {
     await expect(cta).toHaveAttribute('href', /utm_source=lifelog(&|$)/);
     await expect(cta).toHaveAttribute('href', /utm_medium=navbar/);
 
-    const loja = links.nth(1);
+    await expect(links.nth(1)).toHaveAttribute('href', '/');
+    await expect(links.nth(2)).toHaveAttribute('href', '/arquivo');
+
+    const loja = links.nth(3);
     await expect(loja).toHaveAttribute('href', /^https:\/\/skills\.seu\.pet\?/);
     await expect(loja).toHaveAttribute('href', /utm_source=lifelog(&|$)/);
     await expect(loja).toHaveAttribute('href', /utm_medium=navbar/);
     await expect(loja).toHaveAttribute('href', /utm_campaign=amarracao/);
 
-    await expect(links.nth(2)).toHaveAttribute('href', '/');
-    await expect(links.nth(3)).toHaveAttribute('href', '/arquivo');
     await expect(links.nth(4)).toHaveAttribute('href', '/sobre');
     await expect(links.nth(5)).toHaveId('theme-rail');
     await expect(links.nth(6)).toHaveClass(/navbar-lang/);
