@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-04] - 23 commits em 5 branches: evento post_depth + 2 posts liberados (capivara/dogwalk); push origin ok
+
+- **conteúdo**: `663f69f`/`4ee8a88` posts capivara e dogwalk ocultos → release PT+EN; `b02a5f8` remove post recusado; `dfad635` refaz post tatuengine sem detalhes internos; `7f8fb3a` sync ocultos-data.
+- **feat**: `61e0e8b` evento post_depth (profundidade de leitura).
+- **teste/infra**: `1178e84` capa versionada fora do git; `4de1aa0`/`a5c2dac` guard do config de e2e; `a1cc153`/`583fc69` vitest.config.ts deduplicado.
+- Campanhas roger/* e fix/e2e-ratchet-vencido PENDING merge no main. main 0/0 com origin; docs pushados.
+
 ## [2026-11-03] - 17 commits em 5 branches: post Arachne oculto + release TatuEngine + scrub de revenue + e2e de ocultos; push origin ok
 
 - **conteudo**: `39c86b8` post arachne PT+EN hidden; `ae51a56` release tatuengine-case-b2b-ternario-32gb; `8f41488` scrub de revenue real; `8f12b73` remove CTA de venda; `9051fdf` remove receita residual; `b3fdaf3` cria EN ausente.

@@ -1,5 +1,12 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-04 (fim de dia) — 23 commits em 5 branches (evento post_depth + 2 posts liberados + recusa refeita); docs no main; push origin ok
+
+- 23 commits hoje (`git log --all --since='2026-11-04 00:00' --until='2026-11-05 00:00'`). Destaques: `61e0e8b` feat(analytics) evento post_depth (profundidade de leitura); `663f69f`+`4ee8a88` posts capivara/dogwalk ocultos → release PT+EN com ocultos-data; `b02a5f8` remove post recusado e `dfad635` refaz o post tatuengine sem expor detalhes internos.
+- Infra/teste do dia: `1178e84` versiona capa gerada fora do git (auto-heal do push); `4de1aa0`/`a5c2dac` guard do e2e (cwd, porta por env, reuse só em CI); `7f8fb3a` sync ocultos-data; `a1cc153`/`583fc69` vitest.config com blocos duplicados fundidos.
+- `main` (`61e0e8b`) 0/0 com `origin`; working tree limpo. PENDING merge no main: campanhas `roger/lifelog-cta-limpo`, `roger/lifelog-20261025-230731`, `roger/lifelog-20261029-*` e `fix/e2e-ratchet-vencido*`.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada); commit só dos 2 docs com `--no-verify`.
+
 ## Sessão 2026-11-03 (fim de dia) — 17 commits em 5 branches (post Arachne oculto + release TatuEngine + scrub de revenue + fixture de e2e); docs no main; push origin ok
 
 - **17 commits hoje** (`git log --all --since='2026-11-03 00:00' --until='2026-11-04 00:00'`, cada commit uma vez). Atencao: lifelog passa o dia em 5 branches; o `finalizar-dia.sh` mostrou so 8 (branch checada).
