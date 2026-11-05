@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildPayload,
   computePct,
@@ -70,10 +70,30 @@ describe('buildPayload', () => {
 
 describe('dedupe por sessão', () => {
   it('marca e reconhece o envio', () => {
+    // vitest roda em environment 'node': lá não existe sessionStorage e o
+    // módulo devolve null ("não sei") por design. Para exercitar o dedupe de
+    // verdade, injeta um storage com a mesma API antes de chamar.
+    const store = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
     const k = depthKey('/post/x/');
     if (alreadySent(k)) markSent(k); // garante partida limpa
     expect(alreadySent(k)).toBe(false);
     markSent(k);
     expect(alreadySent(k)).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('sem storage devolve null (não sabe) em vez de mentir false', () => {
+    // Contrato do módulo: storage bloqueado = null, e o chamador emite o
+    // evento assim mesmo. Perder métrica é pior que duplicar.
+    vi.stubGlobal('sessionStorage', undefined);
+    const k = depthKey('/post/y/');
+    expect(alreadySent(k)).toBe(null);
+    expect(() => markSent(k)).not.toThrow();
+    vi.unstubAllGlobals();
   });
 });
