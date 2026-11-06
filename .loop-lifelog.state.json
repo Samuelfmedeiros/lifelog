@@ -1,6 +1,32 @@
 {
   "round": 1,
-  "scores": [],
+  "scores": [
+    {
+      "round": 1,
+      "score": 90,
+      "gaps": [
+        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
+      ],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 93,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-06T20:19:22.572070+00:00",
+      "critic_fp": "e3e5242182b8"
+    }
+  ],
   "started_at": "2026-11-06T18:35:24.783251+00:00",
   "campaign": "3577404",
   "v3_heal": {
@@ -49,5 +75,21 @@
   "campaign_branch": "roger/lifelog-20261106-153527",
   "campaign_base_ref": "1726938",
   "campaign_orig_branch": "roger/lifelog-entrega-20261106-124030",
-  "tokens_since": "2026-11-06T18:35:27.773035+00:00"
+  "tokens_since": "2026-11-06T18:35:27.773035+00:00",
+  "visual": [
+    {
+      "project": "lifelog",
+      "nota": null,
+      "verificavel": false,
+      "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
+      "achados": [],
+      "shots": [
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-171630-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-171630-mobile.png"
+      ],
+      "juiz": "gemini/gemini-3.5-flash-lite",
+      "quando": "2026-11-06 17:16:30"
+    }
+  ],
+  "tokens_recorded_round": 1
 }

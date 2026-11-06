@@ -141,6 +141,15 @@ GRADE = {
     "observatorio": (1.06, 1.02, 1.10),
 }
 
+NEGATIVE_TAIL = (
+    "No chains, no ropes, no cables, no wires, no fences, no railings, no grids, "
+    "no lattice, no net, no mesh, no hatching, no stripes, no scratches, no "
+    "graffiti, no scaffolding, no ladders, no brackets, no jagged or abstract "
+    "line patterns, no wireframe, no puzzle pieces, no frames, no borders, no "
+    "vignette, no overlays, no checkered pattern, no diagonal lines, no repeated "
+    "linear motifs. Smooth natural environment only."
+)
+
 STYLE_TAIL = (
     "16-bit pixel art game background, chunky visible pixels, limited palette of "
     "warm tan, deep navy and teal, crisp dithering, wide landscape composition, "
@@ -152,7 +161,7 @@ def build_bg_prompt(scene_key, title=""):
     scene = SCENES.get(scene_key)
     if not scene:
         raise SystemExit(f"cena desconhecida: {scene_key} (use --scene)")
-    return f"{scene} {STYLE_TAIL}"
+    return f"{scene} {STYLE_TAIL} {NEGATIVE_TAIL}"
 
 
 def gen_background(prompt, path, tries=3):
@@ -244,6 +253,9 @@ def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None):
     """Sprite ancorado embaixo/centro, com sombra de contato e vinheta inferior."""
     sprite = trim_alpha(sprite)
     cover = pixelate(cover_bg.convert("RGBA"), scene=scene).convert("RGBA")
+    # blur leve no fundo pixelado: remove a leitura de "grade/esquematico"
+    # (o bloco duro do NEAREST li como blueprint de linhas finas)
+    cover = cover.filter(ImageFilter.GaussianBlur(1.1))
     sh = int(h * sprite_h_ratio)
     sw = int(sprite.width * (sh / sprite.height))
     sp = soften_alpha(sprite).resize((sw, sh), _RES)
