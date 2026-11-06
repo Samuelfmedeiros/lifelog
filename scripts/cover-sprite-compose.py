@@ -197,8 +197,10 @@ def cover_crop(img, w, h):
     return img.crop(box).resize((w, h), _RES)
 
 
-def pixelate(img, grid=256):
+def pixelate(img, grid=256, scene=None):
     """Reduz a resolucao e volta com NEAREST -> chunky pixel art (casa com o sprite)."""
+    if scene:
+        img = apply_grade(img, scene)
     w, h = img.size
     small = img.resize((grid, max(1, int(grid * h / w))), _RES)
     return small.resize((w, h), _NEAREST)
@@ -241,7 +243,7 @@ def apply_grade(bg, scene):
 def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None):
     """Sprite ancorado embaixo/centro, com sombra de contato e vinheta inferior."""
     sprite = trim_alpha(sprite)
-    cover = pixelate(cover_bg.convert("RGBA"), scene).convert("RGBA")
+    cover = pixelate(cover_bg.convert("RGBA"), scene=scene).convert("RGBA")
     sh = int(h * sprite_h_ratio)
     sw = int(sprite.width * (sh / sprite.height))
     sp = soften_alpha(sprite).resize((sw, sh), _RES)
@@ -315,7 +317,7 @@ def main():
             raise SystemExit("nao consegui gerar o fundo")
     bg = Image.open(bg_path).convert("RGB")
 
-    cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H)
+    cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H, scene=scene)
     out = os.path.join(LIFELOG_DIR, f"public/covers/{slug}.webp")
     cover.save(out, "WEBP", quality=88, method=6)
     print(f"OK {out} scene={scene} bytes={os.path.getsize(out)}")
