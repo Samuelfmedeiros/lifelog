@@ -1,10 +1,12 @@
 {
-  "round": 3,
+  "round": 1,
   "scores": [
     {
       "round": 1,
-      "score": 100,
-      "gaps": [],
+      "score": 80,
+      "gaps": [
+        "e2e playwright falhou: FALHA_SUBPROCESS: Command '['bash', '-lc', 'set -o pipefail; cd \\'/home/samuel/projetos/projetos/lif"
+      ],
       "detail": {
         "critic_rc": 0,
         "security": {
@@ -13,7 +15,7 @@
           "gap": ""
         },
         "coverage": {
-          "total": 92,
+          "total": 93,
           "gaps": [],
           "low_files": [],
           "error": "",
@@ -21,58 +23,12 @@
           "via": "local"
         }
       },
-      "ts": "2026-11-01T17:20:40.004861+00:00",
-      "critic_fp": "e3e5242182b8"
-    },
-    {
-      "round": 2,
-      "score": 100,
-      "gaps": [],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 92,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-01T18:32:23.068234+00:00",
-      "critic_fp": "e3e5242182b8"
-    },
-    {
-      "round": 3,
-      "score": 100,
-      "gaps": [],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 92,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-01T19:43:28.562836+00:00",
+      "ts": "2026-11-06T01:05:11.790568+00:00",
       "critic_fp": "e3e5242182b8"
     }
   ],
-  "started_at": "2026-11-01T17:05:57.981043+00:00",
-  "campaign": "99e083f",
+  "started_at": "2026-11-06T00:22:33.574588+00:00",
+  "campaign": "9013d52",
   "v3_heal": {
     "wsl_ok": true,
     "vmmem": {
@@ -89,81 +45,51 @@
     "repo": "lifelog",
     "commits": [
       {
-        "sha": "99e083f",
-        "msg": "fix(gate): /ocultos traz data-project=dev em toda pagina (falso positivo no chec"
+        "sha": "9013d52",
+        "msg": "fix(ui): ordem da navbar (portifolio>inicio>arquivo>loja>sobre), contraste do ic"
       },
       {
-        "sha": "11452c4",
-        "msg": "merge: fecha o acesso publico ao preview de post oculto (aprovado 01/11 13:5x)"
+        "sha": "06164db",
+        "msg": "test(e2e): destrava o gate — fixture derivada do acervo, skip honesto de /api/* "
       },
       {
-        "sha": "17e3e7c",
-        "msg": "fix(ocultos): fecha o acesso publico ao preview de post oculto"
+        "sha": "8519eeb",
+        "msg": "post(hidden): portfolio o analytics que atrasava a pagina (PT+EN) + capa AI"
       },
       {
-        "sha": "3cfaccb",
-        "msg": "feat(lifelog): post oculto — o linter do proprio acervo (PT+EN, hidden)"
+        "sha": "cb21399",
+        "msg": "test(post-depth): exercita dedupe com sessionStorage injetado — CI vermelho desd"
       },
       {
-        "sha": "ba40889",
-        "msg": "fix(posts): mascara caminho privado do vault em yurumi-o-guard-que-mede-o-result"
+        "sha": "23b12e9",
+        "msg": "post(hidden): arachne o monitoramento que ficou cego (PT+EN) + capa AI"
       }
     ],
     "open_prs": [],
     "latest_release": "",
     "default_branch": "main",
-    "pushed_at": "2026-11-01T16:59:18Z",
+    "pushed_at": "2026-11-05T19:17:23Z",
     "error": ""
   },
   "roger_version": "3.5+rolling(p14/09)",
-  "campaign_branch": "roger/lifelog-20261101-140559",
-  "campaign_base_ref": "99e083f",
+  "campaign_branch": "roger/lifelog-20261105-212235",
+  "campaign_base_ref": "9013d52",
   "campaign_orig_branch": "main",
-  "tokens_since": "2026-11-01T19:32:38.211600+00:00",
-  "tokens_recorded_round": 3,
-  "debate": {
-    "votos": [
-      {
-        "perfil": "qualidade",
-        "parecer": "n/d",
-        "nota": "",
-        "gaps": [],
-        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
-        "infra": true
-      },
-      {
-        "perfil": "seguranca",
-        "parecer": "n/d",
-        "nota": "",
-        "gaps": [],
-        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
-        "infra": true
-      }
-    ],
-    "veredito": "BLOQUEIA",
-    "gaps": [
-      "REVISOR_INDISPONIVEL (ambiente, fail-closed): erro: ModuleNotFoundError: No module named 'openai' — verificar 9Router/credencial; NAO e defeito do codigo"
-    ],
-    "pareceres": {
-      "qualidade": "n/d",
-      "seguranca": "n/d"
-    },
-    "revisor_indisponivel": true
-  },
-  "done": false,
-  "finished_at": null,
-  "ambiente_retries": 0,
-  "workers": [
+  "tokens_since": "2026-11-06T00:22:35.054911+00:00",
+  "visual": [
     {
-      "round": 2,
-      "worker": "general",
-      "rc": 124
-    },
-    {
-      "round": 3,
-      "worker": "general",
-      "rc": 124
+      "project": "lifelog",
+      "nota": 100,
+      "verificavel": true,
+      "motivo": "2/2 captura(s) analisada(s), 0 achado(s)",
+      "achados": [],
+      "shots": [
+        "/home/samuel/.hermes/output/visual/lifelog/20261105-220307-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261105-220307-mobile.png"
+      ],
+      "juiz": "gemini/gemini-3.5-flash-lite",
+      "quando": "2026-11-05 22:03:07"
     }
   ],
-  "v3_notifications": 2
+  "tokens_recorded_round": 1
 }
