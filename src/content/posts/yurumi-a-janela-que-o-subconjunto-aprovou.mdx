@@ -1,0 +1,94 @@
+---
+title: "Yurumi: a janela que o subconjunto aprovou e o corpus reprovou"
+description: "A mesma mudança deu três vereditos diferentes em três medições. Um piloto com 80 itens aprovou, outro com 426 reprovou, e só o corpus completo mostrou a causa raiz: a janela diluía o embedding do turno-alvo."
+date: 2026-11-06 08:00:00 -03:00
+pubDate: 2026-11-06 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "benchmark", "retrieval", "metrics", "python", "testing"]
+cover: /covers/yurumi-a-janela-que-o-subconjunto-aprovou.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A pergunta que parecia simples
+
+Recuperação semântica tem um defeito de origem: o texto que você indexa é um turno
+isolado de conversa. Uma pergunta de três palavras, uma resposta curta, e pronto.
+Quando o usuário lembra de um assunto pelo contexto — *"aquele problema que a gente
+teve terça"* — o turno sozinho não carrega nada disso.
+
+A hipótese era óbvia: pegar o turno e os vizinhos dele, concatenar, indexar o bloco
+inteiro. Se o embedding passa a ver o contexto, a busca por assunto deveria acertar
+mais. Implementei uma janela configurável de N turnos para cada lado e rodei o
+benchmark do corpus LoCoMo, que é o acervo que uso para medir recall antes de
+qualquer coisa tocar produção.
+
+O que eu não esperava era que a mesma mudança, medida três vezes, desse três
+vereditos diferentes — e que somente o último estivesse certo.
+
+## Três medições, três respostas
+
+O primeiro piloto usou um subconjunto pequeno de itens reais. O resultado foi
+uma regressão seca: `hit@1` caiu de 0,7895 para 0,0877 e `recall@10` de 0,8246
+para 0,1228. O delta deu negativo, e a leitura honesta era: a janela destrói a
+recuperação. Anotei o veredito como REPROVADO e segui.
+
+Só que um delta tão grande assim tem cheiro de ambiente, não de estatística.
+Quando um acerto perfeito vira quase zero, o sintoma é de coleção de índice
+apagada, de embedder respondendo fora do formato, de timeout silencioso — não de
+uma mudança de texto que deveria ser neutra. Refiz a medição e a regressão era
+artefato de infraestrutura: com o caminho são, o ganho apareceu e foi reproduzido
+em três execuções seguidas. Veredito corrigido para APROVADO no piloto.
+
+A terceira medição foi no corpus completo, com cross-talk — conversas diferentes
+convivendo no mesmo índice. E aí a janela reprovou de verdade: `recall@10` foi de
+0,4669 para 0,3349, o `mrr` de 0,3254 para 0,2046, e o acerto da conversa correta
+na primeira posição caiu de 93,8% para 49,1%. Não era artefato. Era o efeito real
+da mudança, aparecendo só quando o índice tinha dificuldade de verdade.
+
+## A causa raiz
+
+A janela concatena os turnos vizinhos num texto só e embeda o resultado. O problema
+é que o embedding é uma média do sinal do bloco inteiro: quanto mais texto ao redor,
+mais o turno-alvo disputa espaço com os vizinhos. No corpus curto, o turno já era
+quase o bloco, então a diluição não aparecia — a janela parecia ganhar. No corpus
+completo, o bloco passa a carregar conversas longas e o turno que interessa vira
+minoria dentro do próprio vetor.
+
+A parte que doeu foi entender por que o piloto enganou. O subconjunto pequeno tinha
+todos os itens de uma mesma conversa, então não existia cross-talk possível: qualquer
+busca acertava porque só havia uma fonte. Eu tinha medido uma melhora em um problema
+que não existia lá.
+
+O código que gerou o bloco é curto e é exatamente onde a diluição nasce:
+
+```python
+def apply_chunk_window(items, window):
+    """Concatena N turnos vizinhos do mesmo session ao texto do item."""
+    text = " ".join(n["text"] for n in neighbors)
+```
+
+Uma linha de junção. O embedding resultante é a média do sinal de todos os turnos
+que entraram na corda, e o turno que a busca deveria encontrar é só um dos eles.
+
+## O que muda
+
+A régua que você usa para decidir precisa ter a dificuldade do problema real. Um
+subconjunto fácil produz veredito otimista; um subconjunto com infra quebrada
+produz veredito catastrófico. Os dois são falsos, e a diferença entre eles não está
+no tamanho da amostra — está em separar o que é estatística do que é ambiente.
+Delta grande e negativo em mudança que deveria ser neutra é sintoma de medição
+quebrada, não de código ruim.
+
+A decisão final foi manter a janela em zero em produção. O gargalo multi-hop, que
+era o alvo original da hipótese, continua na mesma casa — e isso indica que ele é
+de arquitetura, não de tamanho de bloco. Nenhuma janela de contexto resolve
+recuperação que precisa ligar dois turnos distantes.
+
+## Próximo passo
+
+Antes de pilotar qualquer coisa nova, o corpus de medição precisa ter conversas
+distintas por construção — cross-talk obrigatório, não acidental. Enquanto o piloto
+rodar em amostra sem competição, ele continua aprovando melhorias que o corpus
+completo reprova.

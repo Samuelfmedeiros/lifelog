@@ -1,0 +1,97 @@
+---
+title: "Yurumi: the window the subset approved and the corpus rejected"
+description: "The same change produced three different verdicts across three measurements. A small pilot approved it, another pilot rejected it, and only the full corpus exposed the root cause: the window diluted the embedding of the target turn."
+date: 2026-11-06 08:00:00 -03:00
+pubDate: 2026-11-06 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "benchmark", "retrieval", "metrics", "python", "testing"]
+cover: /covers/yurumi-a-janela-que-o-subconjunto-aprovou.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The question that looked simple
+
+Semantic retrieval has a defect baked into it: what you index is a single
+conversation turn. A three-word question, a short answer, done. When a user
+remembers a topic by context — *"that problem we had on Tuesday"* — the turn on
+its own carries none of that.
+
+The hypothesis was obvious: take the turn and its neighbours, concatenate them,
+index the whole block. If the embedding starts seeing the context, search by
+topic should hit more often. I built a configurable window of N turns on each
+side and ran the LoCoMo benchmark, the collection I use to measure recall before
+anything touches production.
+
+What I did not expect was that the same change, measured three times, would give
+three different verdicts — and that only the last one was right.
+
+## Three measurements, three answers
+
+The first pilot used a small subset of real items. The result was a sharp
+regression: `hit@1` fell from 0.7895 to 0.0877 and `recall@10` from 0.8246 to
+0.1228. The delta came out negative and the honest reading was: the window
+destroys retrieval. I recorded the verdict as REJECTED and moved on.
+
+But a delta that large smells like environment, not statistics. When a perfect
+hit collapses to near zero, the symptom is a wiped index collection, an embedder
+answering in the wrong shape, a silent timeout — not a text change that should
+be neutral. I re-ran the measurement and the regression was an infrastructure
+artifact: with a healthy path, the gain appeared and reproduced across three
+consecutive runs. Verdict corrected to APPROVED on the pilot.
+
+The third measurement ran on the full corpus, with cross-talk — different
+conversations living in the same index. There the window genuinely failed:
+`recall@10` went from 0.4669 to 0.3349, `mrr` from 0.3254 to 0.2046, and hitting
+the correct conversation in first position dropped from 93.8% to 49.1%. Not an
+artifact. The real effect of the change, visible only once the index had actual
+competition.
+
+## The root cause
+
+The window concatenates neighbouring turns into one string and embeds the
+result. The problem is that an embedding averages the signal of the whole block:
+the more text around it, the more the target turn competes with its neighbours.
+On the short corpus the turn already was almost the whole block, so dilution never
+showed up — the window looked like a win. On the full corpus the block carries
+long conversations and the turn that matters becomes a minority inside its own
+vector.
+
+The part that hurt was understanding why the pilot lied. The small subset had all
+items from the same conversation, so no cross-talk was possible: any search hit
+because there was only one source. I had measured an improvement on a problem
+that did not exist there.
+
+The code that builds the block is short, and it is exactly where dilution is born:
+
+```python
+def apply_chunk_window(items, window):
+    """Concatenate N neighbouring turns of the same session into the item text."""
+    text = " ".join(n["text"] for n in neighbors)
+```
+
+One join line. The resulting embedding is the average of the signal of every turn
+that made it into the string, and the turn the search should find is just one of
+them.
+
+## What changes
+
+The ruler you use to decide has to carry the real difficulty of the problem. An
+easy subset produces an optimistic verdict; a subset with broken infrastructure
+produces a catastrophic one. Both are false, and the difference between them is
+not sample size — it is separating what is statistics from what is environment.
+A large negative delta on a change that should be neutral is a symptom of a
+broken measurement, not of bad code.
+
+The final decision was to keep the window at zero in production. The multi-hop
+bottleneck, the original target of the hypothesis, sits in the same place — which
+suggests it is architectural, not a matter of block size. No context window fixes
+retrieval that has to connect two distant turns.
+
+## Next step
+
+Before piloting anything new, the measurement corpus needs distinct conversations
+by construction — cross-talk mandatory, not accidental. While the pilot runs on
+a sample without competition, it will keep approving improvements the full corpus
+rejects.
