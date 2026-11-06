@@ -88,3 +88,4 @@ logs/
 # artefato de build (contem o HTML dos previews ocultos; gerado por scripts/gen-preview-data.mjs)
 api/preview-data.mjs
 coverage/
+_bg-*.webp

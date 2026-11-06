@@ -80,7 +80,7 @@ PROJECT_STYLES = {
         "colors": ["#1d4ed8", "#38bdf8", "#fde68a"],
     },
     "yurumi": {
-        "prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper",
+        "prompt_suffix": "Pixel art adventure scene, horizontal 16:9 wide landscape framing. Myrmecophaga tridactyla, anthropomorphic giant anteater (tamanduá-bandeira) with a long narrow tubular snout pointing upward, small rounded ears, huge bushy tail behind his left leg, wearing a green military-style jacket with teal trim, cargo pants, boots and a large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. Long narrow tubular snout mammal, no beak, no bird, no kiwi, no wings, no feathers. 16:9 wallpaper",
         "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
@@ -92,6 +92,14 @@ PROJECT_STYLES = {
 
 def log(msg):
     print(f"[covers] {msg}")
+
+
+def stable_index(key, modulo):
+    """Indice deterministico por slug — hash() do Python e randomizado por processo
+    (PYTHONHASHSEED), o que mudava a composicao a cada regeneracao."""
+    import zlib
+
+    return zlib.crc32(key.encode("utf-8")) % modulo
 
 
 def parse_frontmatter(content):
@@ -175,7 +183,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "Low-angle heroic perspective, dramatic lighting, towering elements",
         "Dutch angle tilt, asymmetric balance, tension in framing",
     ]
-    comp_idx = hash(slug) % len(compositions)
+    comp_idx = stable_index(slug, len(compositions))
     composition = compositions[comp_idx]
 
     # --- Project-specific moods ---

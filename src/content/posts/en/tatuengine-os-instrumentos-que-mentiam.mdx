@@ -1,0 +1,133 @@
+---
+title: "The instruments that lied — and the lab that learned to read its own report"
+description: "In 48 hours, two measurement instruments in the project returned the wrong answer. One listed a third of what existed by sorting text as text. The other fabricated a number where data was missing. The cure for both was the same."
+date: 2026-11-06 16:00:00 -03:00
+pubDate: 2026-11-06 16:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, metric, testing, audit, python, lessons]
+cover: /covers/tatuengine-os-instrumentos-que-mentiam.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The report that said there were ten layers
+
+There is a rule I learned the hard way on this project: no number deserves trust
+before the instrument that produced it has been audited. It isn't distrust of
+someone else's tool — it is methodological distrust. And November spent two
+consecutive days proving it to me twice, with two different defects, in the same
+place.
+
+On Thursday, a model maintenance step needed to answer a simple question: is the
+artifact I am holding complete? The script that answers this prints a report at
+the top of its output — one line with the range of layers found and the total
+count. I had read that report dozens of times without ever reading the code that
+assembled it. That morning it said the artifact had layers zero through nine. The
+artifact had dozens of layers. A third of them showed up on paper; the rest
+existed, was right there, and nobody saw them.
+
+An operator reading that report would conclude nothing else: truncated model,
+half-written checkpoint, retrain. The right decision based on the wrong data is
+still the wrong decision — it just costs more.
+
+## '10' comes before '2'
+
+The cause was one line. The layers of a model have keys that start at zero, and
+the report grabbed the smallest and largest key to format the range. The keys
+were text. And comparing text is comparing character by character:
+
+```python
+layers = ["0", "1", "2", "10", "11", "31"]
+
+# comparing as text
+print(min(layers), max(layers))
+
+# comparing as a number
+print(min(layers, key=int), max(layers, key=int))
+```
+
+The first line prints `0 2`. The second prints `0 31`. No test failed, no
+exception was raised, no color changed in the terminal. The report sat there,
+green and wrong, for weeks, because everything it claimed was internally
+consistent: the count gave the right total and the range gave the wrong one. The
+inconsistency between the two halves of the same sentence was the only symptom —
+and a quiet symptom doesn't get attention.
+
+The fix was to compare as a number, not as text. One line. But the real value of
+that morning wasn't the line: it was the isolated proof that came with it. Before
+accepting the fix, I ran the report on the same artifact and captured the before
+and the after. The before said zero to nine. The after said zero to thirty-one.
+A diff of output, not a diff of code, is what proves a fix — corrected code and
+still-wrong output coexist more often than I like to admit.
+
+## The other instrument fabricated a number
+
+The next defect was the opposite, and therefore more dangerous. The following day
+I was building an A/B comparator to measure engine quality under two data
+regimes: one dense, one sparse. The idea is simple and anyone who has ever run a
+benchmark recognizes it: you want to know whether a change helps in the easy
+scenario, the hard one, or just moves the problem from one side to the other. So
+the comparator ran both regimes and crossed three different metrics, plus
+execution cost kept separate, so that a quality gain couldn't hide behind a time
+cost.
+
+The hole: when one of the regimes didn't run — missing data, a step that didn't
+complete, a response format different from the expected one — the comparator did
+what every comparator does out of laziness: it assumed zero. Zero is a number.
+Zero goes into an average, zero becomes a row in a table, zero becomes a
+conclusion. And the conclusion said the sparse regime had degraded, when the
+truth was that nobody had measured it.
+
+The fix was teaching the instrument to say *I don't know*. When an arm produces
+no data, the gap stays explicit in the report, marked as unverifiable, and it
+does not enter the average as if it were a measurement. A missing arm does not
+fabricate a number. If you cannot assert it, you do not assert it — and the
+report needs vocabulary for that, otherwise silence turns into zero by default.
+
+```python
+def summarize(arms):
+    report = {}
+    for name, data in arms.items():
+        if data:
+            report[name] = compute(data)
+        else:
+            report[name] = None   # unverifiable, not zero
+    return report
+```
+
+That change came together with a hardening pass on the comparator itself:
+tolerating a different expectation format between the two regimes, serializing
+objects that don't expose an internal dictionary, reading execution cost from
+where it is actually written. Tedious, invisible, and exactly the kind of work
+that decides whether tomorrow's number means anything. The scope of the change
+was checked by the ecosystem's quality gate before I considered the matter
+closed — the same gate, mind you, that has already blocked me for shipping green
+pytest runs without acceptance tests.
+
+## What changes
+
+Both defects had the same root, and I only saw it after fixing both: the
+instrument was built to produce an answer, not to produce the right answer.
+Sorting text instead of a number always produces an answer. Assuming zero where
+data is missing always produces an answer. An instrument that never fails is an
+instrument that doesn't know how to tell the truth — it only knows how to say
+*something*.
+
+The practical consequence is an order of operations I'm carrying into the next
+experiments: calibrate before you measure. Before trusting the report of a new
+step, I run that report on a case where I already know the answer. If the
+instrument gets the known one right, it has earned the right to opine on the
+unknown. If it gets the known one wrong, no downstream reading is worth anything.
+
+And when a report lies because of a data type mistake, it lies quietly. No
+exception, no log, no stack trace. The only antidote is methodological suspicion:
+the sentence that sounds trivial — *the range of layers* — deserves the same
+distrust as the headline metric.
+
+## Next step
+
+The A/B comparator now needs a known case built in: a pair of artifacts whose
+verdict I already know by heart, running on every execution as a sanity test of
+the instrument itself. Until that exists, every number it produces is a
+hypothesis, not a measurement.

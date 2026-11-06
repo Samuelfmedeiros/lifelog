@@ -1,0 +1,80 @@
+---
+title: "História do Pipeline de Geração de Posts do LifeLog"
+description: "Nova atualização do pipeline de geração de posts do LifeLog — decisão local do Yurumi, guarda determinística, fallback aprimorado e consistência diária das histórias."
+date: 2026-11-06 14:54:50 -03:00
+pubDate: 2026-11-06 14:54:50 -03:00
+project: lifelog
+tags: [lifelog, pipeline, updates, yurumi]
+featured: false
+hidden: false
+cover: /covers/a-historia-do-pipeline-update.webp
+---
+
+Este post documenta a atualização do pipeline de geração de posts do LifeLog em 2026-11-06, implementando um fluxo de trabalho de história mais robusto e autônomo.
+
+## Motivo da atualização
+
+O pipeline de posts anterior era limitado por decisões centralizadas, dependência de modelos remotos e um sistema de fallback frágil. Para melhorar a confiabilidade, introduziu-se:
+
+- **Decisão local via Yurumi:** Cada slot de post now consulta o Yurumi localmente para decidir qual projeto deve ser publicado a seguir — determinístico, sem chamadas de API externas, sem sobrescritas acidentais.
+- **Guarda determinística:** O estado é gravado em `~/.hermes/scripts/.lifelog-catchup-state.json`, garantindo reprodutibilidade entre reinicializações.
+- **Novo fluxo de fallback:** Rotação de 9router → tokensave → fallback para fallback original, eliminando pontos únicos de falha e reduzindo a duplicação de histórias.
+
+## O novo pipeline
+
+1. **Catchup Fase (uma vez):** Todos os projetos são marcados como publicados (`published`), após o que o pipeline avança para a grade cíclica.
+2. **Grade cíclica:** Dois posts por dia — primeiro projetado para o slot 12h, segundo para o slot 16h — respeitando um gap mínimo de dois dias entre os posts de um mesmo projeto.
+3. **Seleção de projetos:** Usando o Yurumi, cada slot pergunta ao Knowledge Graph do Yurumi: *Qual projeto é mais urgente hoje?*
+   * O vetoring considera:*
+   * Histórico de posts recentes (gap).
+   * Urgência do roteiro (tags, POA).
+   * Contexto do dia (eventos no mundo, alterações no código).
+4. **Geração de posts:** Com o projeto escolhido, o pipeline cria uma entrada PT+EN, gera uma capa via AI, executa o script de validação `lifelog-post-gen.py`, e publica os arquivos para `/ocultos`.
+5. **Fallback e rotação:** Se qualquer etapa falhar, o pipeline automaticamente roda a perna alternativa (9router ↔ tokensave) e respeita cooldown de rota.
+
+## Utilização do Yurumi
+
+O Yurumi consulta a Knowledge Graph (`yurumi_search`) pelo projeto mais adequado com base em:
+
+- **Chave recente:** quantos dias se passaram desde o último post do projeto.
+- **Escore de urgência:** ponderado por tags de incidente (por exemplo, `cron-failure`, `cron-skew`).
+- **Contexto do ambiente:** com base nos eventos de última hora (alterações no roteiro, PRs abertos).
+
+Isto elimina o bias humano e garante que histórias mais recentes tenham prioridade.
+
+## Decisão determinística
+
+Todos os estados são persistidos em `~/.hermes/scripts/.lifelog-catchup-state.json`, incluindo:
+
+* Lista de projetos `published` (avançados após cada publicação).
+* Histórico de gap por projeto.
+* Rastro de auditoria completo para o pipeline (logs, ações).
+
+Isso torna o pipeline totalmente reprodutível, facilitando a auditoria, a reversão e a depuração.
+
+## Melhoria de fallback
+
+A antiga perna única (`opencode-go`) apresentava `HTTP 402: Insufficient account funds` e instabilidade. O novo pipeline adiciona uma segunda perna (`9router` → `rotacao-tokensave`) com rotação automática entre elas quando uma perna está sem saldo ou falha.
+
+Rotas:
+
+- **Perna 1:** `custom:9router/9router-rotation` (prioridade)
+- **Perna 2:** `custom:9router/rotacao-tokensave` (back-up)
+
+Rotação entre elas com base em métricas de conta (`balance`, `last_success`) e `ciclo_cooldown_h: 3` entre trocas, evitando oscilações rápidas.
+
+## Resultado
+
+- **Consistência:** 2 histórias por dia, sem lacunas, sem sobrescritas.
+- **Qualidade:** Gatilhos de qualidade (threshold >= 90) e verificação de geração de capa.
+- **Auditabilidade:** Tudo gravado no Yurumi (decisões, alterações, motivos).
+- **Resiliência:** Rotas de fallback automáticas eliminam interrupções de um único ponto de falha.
+
+## Impacto futuro
+
+Este pipeline é um componente reutilizável para outros projetos (por exemplo, Dogwalk, Arachne). A decisão local via Yurumi e a guarda determinística podem ser aproveitadas para qualquer sistema de publicação que exija consistência, responsabilidade e resiliência.
+
+---
+*Próximo passo:* executar `hermes cron list` para confirmar o agendamento do próximo post e `hermes cron edit <id> --next-run <timestamp>` para ajustar o cron se necessário.
+
+**Melhoria sugerida:** Instrumentar métricas no pipeline (ex: `lifelog-post-gen.py --metrics`) e expor um painel Prometheus (`/metrics`) para observabilidade em tempo real.

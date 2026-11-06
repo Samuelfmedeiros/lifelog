@@ -89,7 +89,7 @@ PROJECT_STYLES = {
     "seguranca": {"prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper", "colors": ["#ef4444", "#fca5a5", "#fde68a"]},
     "lifelog": {"prompt_suffix": "Minimal flat illustration, one single large solid vertical page-card shape in vivid violet with a bold amber accent band across its lower third, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no lines, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#a855f7", "#fde68a"]},
     "estudos": {"prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
-    "yurumi": {"prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
+    "yurumi": {"prompt_suffix": "Pixel art adventure scene, horizontal 16:9 wide landscape framing. Myrmecophaga tridactyla, anthropomorphic giant anteater (tamanduá-bandeira) with a long narrow tubular snout pointing upward, small rounded ears, huge bushy tail behind his left leg, wearing a green military-style jacket with teal trim, cargo pants, boots and a large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. Long narrow tubular snout mammal, no beak, no bird, no kiwi, no wings, no feathers. 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
     "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
 }
 
@@ -116,6 +116,14 @@ COMPOSITIONS = [
 ]
 
 
+def stable_index(key, modulo):
+    """Indice deterministico por slug — hash() do Python e randomizado por processo
+    (PYTHONHASHSEED), o que mudava a composicao a cada regeneracao."""
+    import zlib
+
+    return zlib.crc32(key.encode("utf-8")) % modulo
+
+
 def build_prompt(slug, project, title):
     style = PROJECT_STYLES.get(project, PROJECT_STYLES["descobertas"])
     title_context = ""
@@ -126,7 +134,7 @@ def build_prompt(slug, project, title):
                   "and", "the", "for", "with", "from", "that", "this", "was", "were")][:8]
         if words:
             title_context = f"Visual metaphor for: {' '.join(words)}. "
-    comp_idx = hash(slug) % len(COMPOSITIONS)
+    comp_idx = stable_index(slug, len(COMPOSITIONS))
     composition = COMPOSITIONS[comp_idx]
     mood = PROJECT_MOODS.get(project, "atmospheric, immersive, cinematic")
     return (
