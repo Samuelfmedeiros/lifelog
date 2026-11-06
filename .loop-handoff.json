@@ -6,20 +6,22 @@
    "worker": "test",
    "rc": 0,
    "gaps": [
-    "Cobertura geral insuficiente; adicione testes nos módulos sem teste e melhore asserts fracos."
+    "build falhou: [ELIFECYCLE] Command failed with exit code 1.",
+    "e2e playwright falhou: FALHA_SUBPROCESS: Command '['bash', '-lc', 'set -o pipefail; cd \\'/mnt/HOME/samuel/projetos/projetos",
+    "src/content/posts/a-historia-do-pipeline-update.mdx: project 'pipeline-update' fora do enum (IDs em PT; adicionar em content.config.ts se é projeto novo)"
    ],
    "files_touched": [
+    "src/content.config.ts",
+    ".loop-handoff.json",
+    "(.loop-worker-general-r2.md",
+    ".loop-worker-general-r*.md",
+    "(`src/content/posts/.loop-worker-general-r2.md",
+    "generate-cover.py",
     "(`.loop-worker-general-r2.md",
-    "src/lib/post-depth.test.ts",
-    "playwright-config.test.ts",
-    "post-depth.test.ts",
-    "i18n.js",
-    "src/lib/i18n.js",
-    "src/lib/palettes.ts",
-    "src/lib/saida.ts"
+    ".loop-worker-general-r2.md"
    ],
-   "worker_tail": "ttes.ts\n\u001b[0m→ \u001b[0mRead src/lib/rehype-saida-utm.mjs\n\u001b[0m→ \u001b[0mRead src/lib/i18n.js\n\u001b[0m→ \u001b[0mRead src/lib/saida.ts\n\u001b[0m→ \u001b[0mRead src/lib/palettes.ts\n\u001b[0m→ \u001b[0mRead src/lib/rehype-saida-utm.mjs\n\u001b[0m→ \u001b[0mRead src/lib/palettes.ts\u001b[90m [offset=48, limit=100]\u001b[0m\n\u001b[0m→ \u001b[0mRead src/lib/rehype-saida-utm.mjs\u001b[90m [offset=54, limit=100]\u001b[0m\n\u001b[0m→ \u001b[0mRead src/lib/i18n.js\n\u001b[0m→ \u001b[0mRead src/lib/saida.ts\n",
-   "ts": "2026-11-06T17:05:28.682638+00:00"
+   "worker_tail": "r de data sem caps\n591b060 docs: sessao fim de dia 2026-11-05 — AGENTS.md + CHANGELOG.md\n5932c3d release(post): tatuengine-o-agente-que-pensou-em-loop (PT+EN + ocultos-data)\na841296 release(post): portfolio-o-analytics-que-atrasava-a-pagina (PT+EN + ocultos-data)\n\u001b[0m\n\u001b[0m✱ \u001b[0mGrep \"roger-delivery-pipeline-check\"\u001b[90m 0 matches\u001b[0m\n\u001b[0m• \u001b[0mExplore Roger delivery pipeline\u001b[90m Explore Agent\u001b[0m\n",
+   "ts": "2026-11-06T20:29:38.910568+00:00"
   },
   {
    "round": 3,
@@ -39,5 +41,5 @@
    "ts": "2026-11-01T19:32:38.209107+00:00"
   }
  ],
- "updated_at": "2026-11-06T17:05:28.682638+00:00"
+ "updated_at": "2026-11-06T20:29:38.910568+00:00"
 }

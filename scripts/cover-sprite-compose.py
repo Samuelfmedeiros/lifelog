@@ -69,9 +69,10 @@ SCENES = {
         "Empty scene, no characters, no animals, no people, no text."
     ),
     "torre-servidores": (
-        "empty corridor of a data center, rows of dark server racks, small green "
-        "and amber LEDs, cool blue light on the floor, no one in the corridor. "
-        "Empty scene, no characters, no animals, no people, no text."
+        "empty wide stone plateau at dusk under a teal sky, one single tall "
+        "monolithic obelisk silhouette on the horizon, low fog, distant "
+        "mountains, smooth open ground. Empty scene, no buildings, no machines, "
+        "no cables, no panels, no characters, no animals, no people, no text."
     ),
     "floresta-nebulosa": (
         "empty dense forest clearing at night, giant twisted trees, bioluminescent "
@@ -84,19 +85,23 @@ SCENES = {
         "no people, no text."
     ),
     "ruinas-runas": (
-        "empty ruins of an ancient stone temple at night, broken columns, "
-        "glowing runic carvings, moss and fireflies, full moon. "
-        "Empty scene, no characters, no animals, no people, no text."
+        "empty wide moonlit grassland at night, one single broken stone column "
+        "on the horizon, low ground mist, huge full moon, fireflies near the "
+        "floor, smooth open ground. Empty scene, no walls, no rows of pillars, "
+        "no runes, no carvings, no characters, no animals, no people, no text."
     ),
     "biblioteca-flutuante": (
-        "empty abandoned library interior, tall wooden shelves, open books and "
-        "scrolls floating in the air, warm lantern light, dust motes. "
-        "Empty scene, no characters, no animals, no people, no text."
+        "wide sunrise grassland with a single big tree silhouette on the horizon, "
+        "warm orange and gold sky, low mist on the ground, a few small floating "
+        "light motes, wide clean empty sky above. "
+        "Empty scene, no man-made structures, no characters, no animals, no "
+        "people, no text."
     ),
     "ponte-lanternas": (
-        "empty old wooden bridge over a still lake at night, rows of paper "
-        "lanterns reflected in the water, mist, mountains in the distance. "
-        "Empty scene, no characters, no animals, no people, no text."
+        "calm open lake at twilight, smooth water mirror, glowing rocks floating "
+        "above the surface, distant mountains, clear gradient sky. "
+        "Empty scene, no bridge, no lanterns, no ropes, no boats, no characters, "
+        "no animals, no people, no text."
     ),
     "caverna-cristais": (
         "empty crystal cave, giant blue and violet crystals growing from the "
@@ -142,12 +147,8 @@ GRADE = {
 }
 
 NEGATIVE_TAIL = (
-    "No chains, no ropes, no cables, no wires, no fences, no railings, no grids, "
-    "no lattice, no net, no mesh, no hatching, no stripes, no scratches, no "
-    "graffiti, no scaffolding, no ladders, no brackets, no jagged or abstract "
-    "line patterns, no wireframe, no puzzle pieces, no frames, no borders, no "
-    "vignette, no overlays, no checkered pattern, no diagonal lines, no repeated "
-    "linear motifs. Smooth natural environment only."
+    "Clean natural landscape only, no man-made structures, no linear repeated "
+    "patterns, no text."
 )
 
 STYLE_TAIL = (
@@ -206,10 +207,12 @@ def cover_crop(img, w, h):
     return img.crop(box).resize((w, h), _RES)
 
 
-def pixelate(img, grid=256, scene=None):
-    """Reduz a resolucao e volta com NEAREST -> chunky pixel art (casa com o sprite)."""
+def pixelate(img, grid=256, scene=None, enabled=True):
+    """Grade de cor + (opcional) reducao/volta com NEAREST -> chunky pixel art."""
     if scene:
         img = apply_grade(img, scene)
+    if not enabled:
+        return img
     w, h = img.size
     small = img.resize((grid, max(1, int(grid * h / w))), _RES)
     return small.resize((w, h), _NEAREST)
@@ -249,13 +252,16 @@ def apply_grade(bg, scene):
     return out
 
 
-def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None):
-    """Sprite ancorado embaixo/centro, com sombra de contato e vinheta inferior."""
+def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None, pixel=False):
+    """Sprite ancorado embaixo/centro, com sombra de contato e vinheta inferior.
+
+    `pixel=False` (padrao): fundo gerado pela IA entra liso — a pixelizacao
+    NEAREST do fundo inteiro le como "grade/esquematico" (Samuel reprovou
+    06/11/2026: "fundo tem algo como correntes e linhas"). O sprite continua
+    em pixel art crisp; a integracao vem da sombra de contato + vinheta.
+    """
     sprite = trim_alpha(sprite)
-    cover = pixelate(cover_bg.convert("RGBA"), scene=scene).convert("RGBA")
-    # blur leve no fundo pixelado: remove a leitura de "grade/esquematico"
-    # (o bloco duro do NEAREST li como blueprint de linhas finas)
-    cover = cover.filter(ImageFilter.GaussianBlur(1.1))
+    cover = pixelate(cover_bg.convert("RGBA"), scene=scene, enabled=pixel).convert("RGBA")
     sh = int(h * sprite_h_ratio)
     sw = int(sprite.width * (sh / sprite.height))
     sp = soften_alpha(sprite).resize((sw, sh), _RES)
@@ -329,7 +335,8 @@ def main():
             raise SystemExit("nao consegui gerar o fundo")
     bg = Image.open(bg_path).convert("RGB")
 
-    cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H, scene=scene)
+    cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H,
+                    scene=scene, pixel=("--pixel" in sys.argv))
     out = os.path.join(LIFELOG_DIR, f"public/covers/{slug}.webp")
     cover.save(out, "WEBP", quality=88, method=6)
     print(f"OK {out} scene={scene} bytes={os.path.getsize(out)}")
