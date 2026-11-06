@@ -1,0 +1,39 @@
+---
+title: "O held loss caiu. O modelo piorou 103%."
+description: "A metrica que todo mundo usa para escolher um checkpoint de fine-tuning aprova modelos que esqueceram o que sabiam. A medicao que prova."
+date: 2026-11-05 20:10:00 -03:00
+pubDate: 2026-11-05 20:10:00 -03:00
+project: descobertas
+tags: [ml, fine-tuning, metrica, forgetgate]
+cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
+featured: false
+hidden: true
+---
+
+Quando você faz fine-tuning, chega a hora de escolher um checkpoint. A régua que quase todo mundo usa é a mesma: `eval_loss`, ou a versão teacher-forced, `held_loss`. Menor número, checkpoint melhor. Seleciona, exporta, sobe.
+
+O número caiu de **9.09 para 8.38**. Parece vitória. É exatamente o cenário em que o modelo piorou.
+
+## O que a métrica não vê
+
+`held_loss` mede uma coisa: o quanto o modelo acerta no conjunto que você segurou. Ela não mede a outra — o quanto ele **esqueceu** do que já sabia antes de você chegar.
+
+Na corrida que originou este texto, o held loss caiu 9.09 -> 8.38 enquanto uma capacidade anterior, o inglês, **degradou +103%**. O número usado para aprovar o checkpoint melhorou ao mesmo tempo em que o modelo piorava de verdade. Os dois fatos são compatíveis: melhorar em um eço não significa manter os outros.
+
+Zero dependências, vinte testes, e um `exit code` de gate que um pipeline de CI entende: `keep` ou `abort`. O núcleo decide; quem treina só obedece o veredito.
+
+## Onde isso está hoje
+
+Estado honesto, sem inflar:
+
+- **Funciona:** o núcleo de medição. Scorecard entra, relatório de drift e exit code saem. Determinístico, zero dependências, 20 testes passando.
+- **Falta:** o *model runner* (gerar o scorecard a partir de um checkpoint), uma *probe suite* calibrada e um *trainer callback*.
+- **Publicado:** `0.1.0` no PyPI e no npm, com o nome reservado e licenciamento *two-tier*.
+
+Não está à venda, e não vou vender antes do runner existir. O que estou acumulando agora é o argumento técnico — que é o ativo que não se copia.
+
+Se você treina modelos e escolhe checkpoint por loss, teste a hipótese no seu último run antes de confiar na régua. Se o dela era suficiente, você não tinha percebido.
+
+Repositório: [forgetgate](https://github.com/Samuelfmedeiros/forgetgate)
+
+Ferramentas parecidas, no mesmo espírito de medir antes de acreditar: [Skills Shop](https://safmarket.seu.pet/?utm_source=lifelog&utm_medium=post&utm_campaign=forgetgate-heldloss)

@@ -1,0 +1,42 @@
+---
+title: "The held loss went down. The model got 103% worse."
+description: "The metric everyone uses to pick a fine-tuning checkpoint approves models that forgot what they knew. The measurement that proves it."
+date: 2026-11-05 20:10:00 -03:00
+pubDate: 2026-11-05 20:10:00 -03:00
+project: descobertas
+hidden: true
+tags: [ml, fine-tuning, metric, forgetgate]
+cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
+---
+
+At some point in every fine-tuning run you have to pick a checkpoint. The ruler almost everybody reaches for is the same one: `eval_loss`, or its teacher-forced cousin, `held_loss`. Lowest number wins. You select it, export it, ship it.
+
+The number went from **9.09 down to 8.38**. It looks like a win. It is exactly the scenario where the model got worse.
+
+## What the metric cannot see
+
+`held_loss` measures one thing: how well the model answers on the held-out set you kept aside. It does not measure the other thing — how much it **forgot** what it already knew before you arrived.
+
+In the run this post comes from, held loss fell 9.09 -> 8.38 while an earlier capability, English, **degraded by +103%**. The number used to approve the checkpoint got better at the same time the model actually got worse. Both facts are compatible: improving one set does not mean keeping the others.
+
+## The tool that measures the other half
+
+[ForgetGate](https://github.com/Samuelfmedeiros/forgetgate) is built around a simple claim: a checkpoint is not better because it is lower on one number, it is better because it did not forget. The scorecard it produces carries held loss and regressed probes together, and states the verdict in one word a CI pipeline understands: `keep`, or `abort`.
+
+Zero dependencies, twenty tests, and an exit code a pipeline can gate on. The core decides; whoever trains just obeys the verdict.
+
+## Where it stands today
+
+Honest status, no inflation:
+
+- **Works:** the measurement core. Scorecard in, drift report and exit code out. Deterministic, zero dependencies, 20 tests passing.
+- **Missing:** the *model runner* (produce a scorecard from a checkpoint), a calibrated *probe suite*, and a *trainer callback*.
+- **Published:** `0.1.0` on PyPI and npm, name reserved, *two-tier* licensing.
+
+It is not for sale, and I will not sell it before the runner exists. What I am building right now is the technical argument — the asset that cannot be copied.
+
+If you train models and pick checkpoints by loss, test the hypothesis on your last run before trusting the ruler. If the ruler was enough, you never noticed.
+
+Repository: [forgetgate](https://github.com/Samuelfmedeiros/forgetgate)
+
+Related tools, same spirit of measuring before believing: [Skills Shop](https://safmarket.seu.pet/?utm_source=lifelog&utm_medium=post&utm_campaign=forgetgate-heldloss)
