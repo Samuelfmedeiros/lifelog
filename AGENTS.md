@@ -1,5 +1,13 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-05 (fim de dia) — 13 commits em 4 branches (posts PT+EN, gate E2E, navbar); push origin ok
+
+- `origin/main` recebeu hoje 3 releases de post: `5932c3d` tatuengine (PT+EN + ocultos-data), `a841296` portfolio e `2baff8e` arachne.
+- `main` local estava 1 à frente / 3 atrás do `origin/main` antes da rodada: `9013d52` fix(ui) navbar (ordem portifolio>inicio>arquivo>loja>sobre, contraste do ícone de busca, separador de data sem caps), `06164db` test(e2e) gate destravado com fixture derivada do acervo, `8519eeb` post hidden portfolio, `cb21399` test(post-depth) com sessionStorage injetado, `23b12e9` post hidden arachne.
+- Campanhas Roger do dia: `roger/lifelog-20261105-084436` e `roger/lifelog-20261105-204810` (trabalho residual + UI) e `roger/lifelog-20261105-212235` (HEAD `847c066`) com `d504930` docs (template de resumo ancorado para o workflow do Yurumi) e `847c066` remoção de arquivos mortos do loop worker.
+- Rodada: 13 commits no dia em 4 branches. Doc escrito em worktree detachado sobre `origin/main`; o fix da navbar (`9013d52`) foi reentrado no `main` por cherry-pick para não regredir a UI.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-11-04 (fim de dia) — 23 commits em 5 branches (evento post_depth + 2 posts liberados + recusa refeita); docs no main; push origin ok
 
 - 23 commits hoje (`git log --all --since='2026-11-04 00:00' --until='2026-11-05 00:00'`). Destaques: `61e0e8b` feat(analytics) evento post_depth (profundidade de leitura); `663f69f`+`4ee8a88` posts capivara/dogwalk ocultos → release PT+EN com ocultos-data; `b02a5f8` remove post recusado e `dfad635` refaz o post tatuengine sem expor detalhes internos.

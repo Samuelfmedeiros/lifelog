@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-05] - 13 commits em 4 branches: 3 posts liberados PT+EN, gate E2E e navbar; push origin ok
+
+- **conteúdo**: `5932c3d`/`a841296`/`2baff8e` release de posts (tatuengine, portfolio, arachne) PT+EN + ocultos-data no `origin/main`.
+- **feat/test**: `06164db` gate e2e destravado com fixture derivada do acervo; `cb21399` teste de dedupe com sessionStorage injetado; `9013d52` fix(ui) navbar.
+- **campanhas**: `roger/lifelog-20261105-084436`, `-204810` e `-212235` (HEAD `847c066`).
+- main local 1 à frente / 3 atrás do origin antes da rodada; doc em worktree, push FF e cherry-pick do `9013d52` para preservar o fix da navbar.
+
 ## [2026-11-04] - 23 commits em 5 branches: evento post_depth + 2 posts liberados (capivara/dogwalk); push origin ok
 
 - **conteúdo**: `663f69f`/`4ee8a88` posts capivara e dogwalk ocultos → release PT+EN; `b02a5f8` remove post recusado; `dfad635` refaz post tatuengine sem detalhes internos; `7f8fb3a` sync ocultos-data.
