@@ -1,0 +1,72 @@
+---
+title: "The self-test that passed without running anything"
+description: "A checker that said OK and exited with code zero without declaring how many checks it had executed. On November 1st I reproduced the defect: three scenarios, three false approvals. What changes when the certificate starts demanding an explicit count."
+category: samuel-projects
+date: 2026-11-01 09:00:00 -03:00
+pubDate: 2026-11-07 16:00:00 -03:00
+project: estudos
+tags: ["estudos", "testing", "ci", "python", "reliability", "lessons"]
+cover: /covers/estudos-o-autoteste-que-passou-sem-rodar.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The checker that never said what it had done
+
+For weeks one leg of my quality flow worked like this: a self-test ran, printed a single line, and exited with code zero. The approval criterion was simple and sounded reasonable — if the exit code was zero and the output did not contain the word that signals failure, the item was green.
+
+Nobody suspected anything because the item was always green. It only stopped being trustworthy on the day I stopped asking "did it pass?" and started asking "how much did it run?".
+
+The answer, on November 1st 2026, was uncomfortable: that self-test could have been executing zero assertions and still be approved. The condition that released it measured two things — absence of an error code and absence of a word in the text — and neither of them measured execution.
+
+## What exit code zero actually proved
+
+The defect was not in the self-test. It was in the contract between the self-test and whoever read it.
+
+What existed was a state check: if the process ended cleanly and did not complain, we assume it worked. That assumption holds for simple commands and falls apart for a suite. A suite can run zero cases through a path that should not exist — an empty list of checks, a collector that found no files, a loop that exits before the first iteration — and in every one of those cases the process ends normally and prints something close to OK.
+
+The word "OK" and the exit code zero are the consequence of no error having happened. They are not the consequence of work having happened.
+
+I decided to measure it instead of arguing about it. I wrote a fourteen-line exercise that reproduces both the checker and the old criterion, with three scenarios: a self-test that runs zero checks and prints OK; one that runs assertions but does not count them; and one that declares zero out of zero.
+
+```python
+def selftest(n, counts):
+    if not counts:
+        return 0, "OK\n"
+    return 0, f"[selftest] checks: {n}/{n} passed\n"
+
+old = lambda rc, out: rc == 0 and "falhou" not in out
+
+for name, n, counts in [("zero checks", 0, False),
+                        ("runs 12, no count", 12, False),
+                        ("declares 0/0", 0, True)]:
+    rc, out = selftest(n, counts)
+    print(name, "->", "PASS" if old(rc, out) else "FAIL")
+```
+
+The result was what the suspicion predicted: all three scenarios passed. Three approvals, zero useful assertions in two of them. The old criterion did not distinguish "no failure occurred" from "no test occurred", and those are different things wearing the same face.
+
+## The fix: the count becomes part of the result
+
+The correction narrowed the contract. The self-test became required to declare how many checks it executed and how many passed, in a single searchable format — one line carrying the count in the middle of the output. The checker, instead of assuming, looks for that line.
+
+If the line is absent, the item fails. Not out of politeness: because the missing count is exactly the symptom of the defect. A self-test that does not declare what it ran is a self-test that cannot be audited, and being audited is the only reason for it to sit inside a certificate at all.
+
+The second half of the fix is a floor. Beyond declaring, the count has to be plausible. If the number of cases collapses — because someone removed assertions, because a collector stopped finding files, because a regression wiped half the suite — the certificate fails with the number printed next to the expected minimum. A test that does not run cannot hide behind a test that runs too little.
+
+Both changes share the same principle: the checker now answers a question that has a verifiable answer. Not "was there an error?", but "how many cases ran, how many passed, and is that number what we expected?".
+
+## Why this matters beyond the self-test
+
+The pattern is older than my own flow. It shows up everywhere someone treats silence as success:
+
+- a health check that queries an endpoint and only looks at the HTTP status, never reading the body — 200 with an empty list passes;
+- a scheduled job that ends with code zero because its entry condition was never satisfied;
+- a report that says "no occurrences" when the collector could not read the source at all.
+
+In every case the failure is identical: the measurement was taken in the wrong place. It measured the absence of a symptom, not the presence of work.
+
+The rule that stayed with me is direct. Every check I write has to declare its own executed scope, and whoever reads it has to verify that number before accepting the green. Green without a count is not green — it is the absence of failure, which is something else.
+
+The next step is to mechanize the opposite: turn each check of mine that today only says "ok" into one that says "ok, and it was N cases". The fourteen-line exercise already became the test case that reminds me of this.

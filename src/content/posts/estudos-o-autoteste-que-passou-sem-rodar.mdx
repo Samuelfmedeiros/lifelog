@@ -1,0 +1,72 @@
+---
+title: "O autoteste que passou sem rodar nada"
+description: "Um verificador que dizia OK e saía com código zero sem declarar quantos checks tinha executado. Em 1º de novembro eu reproduzi o defeito: três cenários, três aprovações falsas. O que muda quando o atestado passa a exigir a contagem explícita."
+category: samuel-projects
+date: 2026-11-01 09:00:00 -03:00
+pubDate: 2026-11-07 16:00:00 -03:00
+project: estudos
+tags: ["estudos", "testing", "ci", "python", "reliability", "lessons"]
+cover: /covers/estudos-o-autoteste-que-passou-sem-rodar.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O verificador que nunca dizia o que tinha feito
+
+Durante semanas uma perna do meu fluxo de qualidade funcionava assim: um autoteste rodava, imprimia uma linha e saía com código zero. O critério de aprovação era simples e parecia razoável — se o código de saída fosse zero e a saída não contivesse a palavra que indica falha, o item estava verde.
+
+Ninguém desconfiou de nada porque o item sempre esteve verde. Ele só deixou de ser confiável no dia em que parei de perguntar "passou?" e comecei a perguntar "quanto rodou?".
+
+A resposta, em 1º de novembro de 2026, foi desconfortável: aquele autoteste podia estar executando zero verificações e ainda assim ser aprovado. A condição que o liberava media duas coisas — ausência de código de erro e ausência de uma palavra no texto — e nenhuma delas media execução.
+
+## O que a saída zero realmente provava
+
+O defeito não estava no autoteste. Estava no contrato entre o autoteste e quem o lia.
+
+O que existia era uma verificação de estado: se o processo terminou bem e não reclamou, supomos que trabalhou. Essa suposição vale para comandos simples e desmorona para uma suíte. Uma suíte pode rodar zero casos por um caminho que não deveria existir — uma lista de checks vazia, um coletor que não achou os arquivos, um laço que sai antes da primeira iteração — e, em todos esses casos, o processo termina normalmente e imprime algo parecido com OK.
+
+A palavra "OK" e o código zero são consequência de não ter havido erro. Não são consequência de ter havido trabalho.
+
+Decidi medir isso em vez de argumentar. Escrevi um exercício de catorze linhas que reproduz o verificador e o critério antigo, com três cenários: um autoteste que roda zero checks e imprime OK; um que roda verificações mas não as conta; e um que declara zero de zero.
+
+```python
+def autoteste(n, conta):
+    if not conta:
+        return 0, "OK\n"
+    return 0, f"[selftest] checks: {n}/{n} passed\n"
+
+antigo = lambda rc, out: rc == 0 and "falhou" not in out
+
+for nome, n, conta in [("zero checks", 0, False),
+                       ("roda 12, nao conta", 12, False),
+                       ("declara 0/0", 0, True)]:
+    rc, out = autoteste(n, conta)
+    print(nome, "->", "PASSA" if antigo(rc, out) else "reprova")
+```
+
+O resultado foi o que a desconfiança mandava: os três cenários passaram. Três aprovações, zero verificações úteis em dois deles. O critério antigo não distinguia "não houve falha" de "não houve teste", que são coisas diferentes com a mesma aparência.
+
+## A cura: a contagem como parte do resultado
+
+A correção foi estreitar o contrato. O autoteste passou a ser obrigado a declarar quantos checks executou e quantos passaram, num formato único e pesquisável — uma linha com a contagem no meio da saída. O verificador, em vez de supor, procura essa linha.
+
+Se a linha não existe, o item reprova. Não por educação: porque a ausência da contagem é exatamente o sintoma do defeito. Um autoteste que não declara o que rodou é um autoteste que não pode ser auditado, e auditar é a única razão de ele existir dentro de um atestado.
+
+A segunda metade da cura é um piso. Além de declarar, a contagem tem que ser plausível. Se o número de casos despenca — porque alguém removeu verificações, porque um coletor deixou de achar arquivos, porque uma regressão apagou metade da suíte — o atestado reprova com o número impresso ao lado do mínimo esperado. Um teste que não roda não pode se esconder atrás de um teste que roda pouco.
+
+Ambas as mudanças têm o mesmo princípio: o verificador passa a responder uma pergunta que tem resposta conferível. Não "houve erro?", mas "quantos casos rodaram, quantos passaram, e esse número é o que se esperava?".
+
+## Por que isso importa além do autoteste
+
+O padrão é mais velho que o meu fluxo. Ele aparece em todo lugar onde alguém trata silêncio como sucesso:
+
+- um health check que consulta um endpoint e só olha o código HTTP, sem ler o corpo — 200 com lista vazia passa;
+- um job agendado que termina com código zero porque a condição de entrada nunca foi satisfeita;
+- um relatório que diz "sem ocorrências" quando o coletor não conseguiu ler a fonte.
+
+Em todos os casos a falha é idêntica: a medição foi feita no lugar errado. Mediu-se a ausência de sintoma, não a presença do trabalho.
+
+A regra que ficou para mim é direta. Toda verificação que eu escrever precisa declarar o próprio escopo executado, e quem a lê precisa conferir esse número antes de aceitar o verde. Verde sem contagem não é verde — é ausência de falha, que é outra coisa.
+
+O próximo passo é mecanizar o contrário: transformar cada verificação minha que hoje só diz "ok" em uma que diga "ok, e foram N casos". O exercício de catorze linhas já virou o caso de teste que me lembra disso.
