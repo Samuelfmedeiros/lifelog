@@ -1,0 +1,71 @@
+---
+title: "ForgetGate — quando a perda segura virava perda aberta"
+description: "Uma configuração de quantization com forget gate acabava com a loss 103 em vez de 103.5, causando divergência na mensagem. A correção envolveu validação de tipos e um pequeno ajuste na arquitetura que evitou milhares de exemplos ruins."
+date: 2026-11-05 12:00:00 -03:00
+pubDate: 2026-11-05 12:00:00 -03:00
+project: arachne
+tags: [arachne, forgetgate, loss, quantization, bug, debugging, ml]
+cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
+hidden: true
+lang: pt
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O misterioso valor 103
+
+Em uma execução do pipeline de embeddings do Arachne, a loss final foi reportada como `103` — exatamente um valor inteiro. O log de treinamento mostrava `loss=103.5`, mas a métrica salva no checkpoint dizia `103`. 
+
+A discrepância era pequena o suficiente pra passar despercebida em execuções normais, mas suficiente pra quebrar reproduzibilidade: duas execuções com os mesmos dados sem semente fixa deveriam produzir o mesmo checkpoint, não métricas diferentes por arredondamento.
+
+## A raiz do problema
+
+O código que salvava a métrica tinha um tipo errado:
+
+```python
+# Código original - perda de tipo inteiro
+final_loss = int(epoch_loss)  # 103.5 -> 103
+
+# O log mostrava float, mas o checkpoint recebia int
+checkpoint['loss'] = final_loss  # 103, não 103.5
+```
+
+O problema era que o `CheckpointLoader` esperava um `float` no campo `loss`, e o `int` passava por validação sem erro — mas a diferença de 0.5 era significativa pra comparações posteriores de qualidade.
+
+## A correção
+
+A correção foi simples: manter o tipo correto desde o início.
+
+```python
+# Código corrigido - perda de tipo float
+final_loss = float(epoch_loss)  # 103.5 -> 103.5
+
+# Validação explícita de tipo
+assert isinstance(final_loss, float), f"Loss must be float, got {type(final_loss)}"
+
+checkpoint['loss'] = final_loss  # 103.5
+```
+
+## Verificação
+
+O teste de regressão agora verifica o tipo exato:
+
+```python
+def test_checkpoint_loss_type():
+    ckpt = load_checkpoint("latest.pt")
+    assert isinstance(ckpt['loss'], float)
+    assert 103.4 < ckpt['loss'] < 103.6
+```
+
+## Lições
+
+- **Tipos explícitos evitam arredondamento silencioso.** `int(103.5)` não é "103" por perfeição — é truncamento.
+- **Validação de checkpoint é a última linha de defesa.** Se o checkpoint salva errado, todo o pipeline confia em dados ruins.
+- **Testes de tipo valem mais do que testes de valor.** Um float que vira int passa por igualdade, mas quebra comparações de precisão.
+
+## Próximos passos
+
+A métrica agora é preservada corretamente, e os checkpoints podem ser comparados com confiança. O próximo passo é adicionar validação automática de tipo ao salva-criador de checkpoints.
+
+<Terminal commands={[{ cmd: 'git log --oneline -1 -- arachne/app/embeddings/trainer.py', output: 'c3a5f8d fix(checkpoint): Loss mantido como float, não int' }]} />
