@@ -94,7 +94,7 @@ The LifeLog taught me that **automating writing is easy, guaranteeing quality is
 
 <Terminal
   lines={[
-    { cmd: 'cd /home/samuel/projetos/projetos/lifelog && git log --oneline -5', output: 'a1b2c3d fix(gate): rejeita posts com <600 palavras\n4e5f6a7 feat(pipeline): adiciona verificação de estrutura\nb8c9d0e chore: limpa posts antigos sem qualidade' },
+    { cmd: 'cd lifelog && git log --oneline -5', output: 'a1b2c3d fix(gate): rejeita posts com <600 palavras\n4e5f6a7 feat(pipeline): adiciona verificação de estrutura\nb8c9d0e chore: limpa posts antigos sem qualidade' },
     { cmd: 'wc -w src/content/posts/pipeline-de-geracao-de-posts-revisao-2026-11-07.mdx', output: '642 — palavras no PT' },
     { cmd: 'python3 scripts/check-tags.py --dry-run', output: '0 errors: all tags validated against vocabulary' }
   ]}
