@@ -1,5 +1,5 @@
 {
-  "round": 1,
+  "round": 3,
   "scores": [
     {
       "round": 1,
@@ -24,6 +24,56 @@
         }
       },
       "ts": "2026-11-06T20:19:22.572070+00:00",
+      "critic_fp": "e3e5242182b8"
+    },
+    {
+      "round": 2,
+      "score": 90,
+      "gaps": [
+        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
+      ],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 93,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-06T21:44:55.313671+00:00",
+      "critic_fp": "e3e5242182b8"
+    },
+    {
+      "round": 3,
+      "score": 90,
+      "gaps": [
+        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
+      ],
+      "detail": {
+        "critic_rc": 0,
+        "security": {
+          "rc": 0,
+          "score": 100,
+          "gap": ""
+        },
+        "coverage": {
+          "total": 93,
+          "gaps": [],
+          "low_files": [],
+          "error": "",
+          "stack": "js",
+          "via": "local"
+        }
+      },
+      "ts": "2026-11-06T23:14:37.994020+00:00",
       "critic_fp": "e3e5242182b8"
     }
   ],
@@ -75,7 +125,7 @@
   "campaign_branch": "roger/lifelog-20261106-153527",
   "campaign_base_ref": "1726938",
   "campaign_orig_branch": "roger/lifelog-entrega-20261106-124030",
-  "tokens_since": "2026-11-06T18:35:27.773035+00:00",
+  "tokens_since": "2026-11-06T22:45:17.619417+00:00",
   "visual": [
     {
       "project": "lifelog",
@@ -89,7 +139,50 @@
       ],
       "juiz": "gemini/gemini-3.5-flash-lite",
       "quando": "2026-11-06 17:16:30"
+    },
+    {
+      "project": "lifelog",
+      "nota": null,
+      "verificavel": false,
+      "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
+      "achados": [],
+      "shots": [
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-184225-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-184225-mobile.png"
+      ],
+      "juiz": "gemini/gemini-3.5-flash-lite",
+      "quando": "2026-11-06 18:42:25"
+    },
+    {
+      "project": "lifelog",
+      "nota": null,
+      "verificavel": false,
+      "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
+      "achados": [],
+      "shots": [
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-201158-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261106-201158-mobile.png"
+      ],
+      "juiz": "gemini/gemini-3.5-flash-lite",
+      "quando": "2026-11-06 20:11:58"
     }
   ],
-  "tokens_recorded_round": 1
+  "tokens_recorded_round": 3,
+  "ambiente_retries": 0,
+  "workers": [
+    {
+      "round": 2,
+      "worker": "ui",
+      "rc": 124
+    },
+    {
+      "round": 3,
+      "worker": "ui",
+      "rc": 124
+    }
+  ],
+  "v3_notifications": 2,
+  "done": true,
+  "finished_at": "2026-11-06T23:37:59.153176+00:00",
+  "result": "PLATEAU"
 }

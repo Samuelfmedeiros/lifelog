@@ -151,6 +151,66 @@ NEGATIVE_TAIL = (
     "patterns, no text."
 )
 
+# paleta por cena (topo -> base) usada pelo fundo procedural
+PALETTE = {
+    "cerrado-cosmico": [(18, 22, 48), (38, 44, 86), (84, 66, 96), (150, 104, 92)],
+    "cerrado-amanhecer": [(28, 26, 62), (96, 72, 104), (196, 138, 110), (238, 196, 150)],
+    "cerrado-chuva": [(22, 30, 52), (44, 62, 92), (92, 116, 140), (150, 172, 186)],
+    "campo-estrelas": [(18, 16, 62), (46, 44, 116), (102, 92, 176), (176, 160, 216)],
+    "torre-servidores": [(24, 30, 40), (38, 52, 66), (74, 94, 112), (132, 152, 168)],
+    "floresta-nebulosa": [(12, 26, 26), (24, 52, 44), (48, 86, 62), (96, 124, 92)],
+    "deserto-areia": [(48, 24, 56), (124, 48, 74), (204, 112, 70), (242, 192, 126)],
+    "ruinas-runas": [(28, 10, 18), (72, 20, 30), (132, 44, 46), (204, 104, 74)],
+    "biblioteca-flutuante": [(18, 46, 48), (44, 96, 88), (116, 172, 138), (206, 232, 190)],
+    "ponte-lanternas": [(8, 14, 44), (22, 38, 88), (58, 84, 136), (142, 166, 206)],
+    "caverna-cristais": [(14, 20, 44), (26, 42, 78), (52, 78, 120), (96, 124, 158)],
+    "observatorio": [(12, 18, 40), (30, 44, 80), (70, 90, 120), (140, 154, 172)],
+}
+
+
+def procedural_bg(w, h, scene_key, seed_text=""):
+    """Fundo deterministic: degradé + ruido de valor de BAIXA frequencia.
+
+    Substitui o gerador de imagem (rodadas 1-4, 06/11/2026): o FLUX insistiu em
+    correntes, lampioes, racks e listras mesmo com prompt positivo-only — Samuel
+    reprovou 3x ("fundo tem algo como correntes e linhas" -> "linhas formando
+    listras"). Aqui nao existe alta frequencia: so 4 oitavas em 4/8/16/32 blocos,
+    amplitude decrescente, mais um brilho difuso. Sem linha dura, sem grade, sem repeticao.
+    """
+    import numpy as np
+    up = getattr(getattr(Image, "Resampling", Image), "BILINEAR", 2)
+    pal = np.array(PALETTE.get(scene_key, PALETTE["cerrado-cosmico"]), dtype=float) / 255.0
+    rng = np.random.default_rng(abs(hash((scene_key, seed_text))) % (2 ** 32))
+
+    field = np.zeros((h, w), dtype=float)
+    total = 0.0
+    for i, blocks in enumerate((4, 8, 16, 32)):
+        g = rng.random((blocks + 1, blocks + 1))
+        # BILINEAR + blur: BICUBIC/Lanczos nos grids pequenos cria RINGING
+        # (contorno cinza em cada celula) — Samuel leu como "linhas formando
+        # listras"/grade em 20:20. Reamostragem monotona nao produz contorno.
+        up_img = Image.fromarray((g * 255).astype(np.uint8)).resize((w, h), up)
+        up_img = up_img.filter(ImageFilter.GaussianBlur(3.0 + i))
+        amp = (0.52, 0.26, 0.14, 0.08)[i]
+        field += amp * (np.asarray(up_img, dtype=float) / 255.0)
+        total += amp
+    field /= total
+
+    y = np.linspace(0.0, 1.0, h)[:, None]
+    x = np.linspace(0.0, 1.0, w)[None, :]
+    base = 0.62 * y + 0.38 * np.clip(1.25 - 0.55 * y - 0.45 * x, 0.0, 1.0)
+    t = np.clip(base * 0.55 + field * 0.75, 0.0, 1.0)
+
+    cx, cy = rng.uniform(0.15, 0.85), rng.uniform(0.05, 0.35)
+    d = np.sqrt(((x - cx) * w) ** 2 + ((y - cy) * h) ** 2) / max(w, h)
+    t = np.clip(t + np.exp(-((d / 0.55) ** 2)) * rng.uniform(0.10, 0.22) * 0.6, 0.0, 1.0)
+
+    pos = t * (pal.shape[0] - 1)
+    i0 = np.clip(np.floor(pos).astype(int), 0, pal.shape[0] - 2)
+    frac = (pos - i0)[..., None]
+    img = pal[i0] * (1.0 - frac) + pal[i0 + 1] * frac
+    return Image.fromarray((np.clip(img, 0.0, 1.0) * 255).astype(np.uint8), "RGB")
+
 STYLE_TAIL = (
     "16-bit pixel art game background, chunky visible pixels, limited palette of "
     "warm tan, deep navy and teal, crisp dithering, wide landscape composition, "
@@ -329,11 +389,15 @@ def main():
     sprite = Image.open(spr_path).convert("RGBA")
 
     bg_path = os.path.join(LIFELOG_DIR, f"public/covers/_bg-{slug}.webp")
-    if not os.path.exists(bg_path):
-        ok = gen_background(build_bg_prompt(scene, title), bg_path)
-        if not ok:
-            raise SystemExit("nao consegui gerar o fundo")
-    bg = Image.open(bg_path).convert("RGB")
+    if "--bg=ai" in sys.argv:
+        if not os.path.exists(bg_path):
+            ok = gen_background(build_bg_prompt(scene, title), bg_path)
+            if not ok:
+                raise SystemExit("nao consegui gerar o fundo")
+        bg = Image.open(bg_path).convert("RGB")
+    else:
+        # padrao: fundo procedural (sem artefato de gerador). Use --bg=ai para voltar ao FLUX.
+        bg = procedural_bg(COVER_W, COVER_H, scene, seed_text=slug)
 
     cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H,
                     scene=scene, pixel=("--pixel" in sys.argv))
