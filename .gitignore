@@ -91,3 +91,6 @@ coverage/
 
 # lixo de sessao (skills/snapshots) nao vai pro repo
 .hermes/
+
+# backups das capas quadradas (rollback local, nao versionar)
+public/covers/*.bak-quadrado-*
