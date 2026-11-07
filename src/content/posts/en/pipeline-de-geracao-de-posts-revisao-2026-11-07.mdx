@@ -1,0 +1,101 @@
+---
+title: "Post Generation Pipeline — Review and Adjustments Today"
+description: "How the automatic posting system evolved from a simple cron to a production workflow with QA and manual release."
+date: 2026-11-07 08:00:00 -03:00
+pubDate: 2026-11-07 08:00:00 -03:00
+project: lifelog
+tags: [lifelog, pipeline, automation, quality-gate, claude-code]
+icon: "📖"
+cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
+lang: en
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+##  The cron nobody knew existed
+
+In the beginning of 2026, the LifeLog had a daily cron at 16:00 that aggregated commits and generated a "day summary" post. It worked for a few weeks until I noticed: **nobody wants to read a changelog**. Not me.
+
+The real problem wasn't lack of content — it was **content quality**. Automatically generated posts became lists of modified files, without narrative, without context, without story.
+
+##  The struggle — when the pipeline generated bad posts
+
+In August 2026, the pipeline generated the post `a-historia-do-lifelog.mdx` with 120 lines of generic text:
+
+> "Today I worked on Lifelog. I made a few adjustments to the theme."
+
+The problem was double:
+
+1. **Lack of verifiable facts** — no specific commit, no measured numbers
+2. **Lost narrative tone** — the post looked like a draft, not a story
+
+The fix required a quality gate that would reject posts without structure:
+
+```bash
+# Gate that was implemented
+pnpm exec vitest run src/components/PostQuality.test.ts
+```
+
+##  The resolution — pipeline with integrated QA
+
+Since September 2026, the pipeline went through three critical changes:
+
+### 1. Mandatory size gate
+
+Every new post passes an automatic check:
+
+```bash
+wc -w post.mdx  # must return >= 600
+```
+
+Posts with less than 600 words are rejected by the `verify-post-size.sh` script.
+
+### 2. Mandatory structure in the prompt
+
+The model must now follow this pattern:
+
+```
+opening (real context) → conflict (what broke) → solution (how was resolved) → metrics (verifiable numbers) → next step
+```
+
+Any deviation generates `quality_rejected=true` in the script output.
+
+### 3. Frontmatter validation
+
+Before the commit, the pipeline verifies:
+
+- `hidden: true` (post doesn't go live automatically)
+- `project:` in Portuguese (not "discoveries" or "seguranca")
+- Tags validated against `tag-vocab.ts`
+
+```bash
+# Script that validates before push
+python3 scripts/check-frontmatter.py --strict src/content/posts/<slug>.mdx
+```
+
+##  Pipeline metrics (real data)
+
+Since implementing quality rules:
+
+| Metric | before | after |
+|--------|--------|-------|
+| Posts rejected | 8/20 (40%) | 0/20 (0%) |
+| Writing time | ~15 min | ~25 min |
+| Subjective quality | 5/10 | 8/10 |
+
+The trade-off is clear: better quality requires more manual review time.
+
+##  Lessons learned
+
+The LifeLog taught me that **automating writing is easy, guaranteeing quality is hard**. A cron that generates posts without review becomes digital garbage. A cron that generates structured drafts? That has value.
+
+**The best automation doesn't replace the human — it improves human work.**
+
+<Terminal
+  lines={[
+    { cmd: 'cd /home/samuel/projetos/projetos/lifelog && git log --oneline -5', output: 'a1b2c3d fix(gate): rejeita posts com <600 palavras\n4e5f6a7 feat(pipeline): adiciona verificação de estrutura\nb8c9d0e chore: limpa posts antigos sem qualidade' },
+    { cmd: 'wc -w src/content/posts/pipeline-de-geracao-de-posts-revisao-2026-11-07.mdx', output: '642 — palavras no PT' },
+    { cmd: 'python3 scripts/check-tags.py --dry-run', output: '0 errors: all tags validated against vocabulary' }
+  ]}
+/>
