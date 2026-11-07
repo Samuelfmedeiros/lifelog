@@ -1,78 +1,8 @@
 {
-  "round": 3,
-  "scores": [
-    {
-      "round": 1,
-      "score": 100,
-      "gaps": [],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 92,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-01T17:20:40.004861+00:00",
-      "critic_fp": "e3e5242182b8"
-    },
-    {
-      "round": 2,
-      "score": 100,
-      "gaps": [],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 92,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-01T18:32:23.068234+00:00",
-      "critic_fp": "e3e5242182b8"
-    },
-    {
-      "round": 3,
-      "score": 100,
-      "gaps": [],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 92,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-01T19:43:28.562836+00:00",
-      "critic_fp": "e3e5242182b8"
-    }
-  ],
-  "started_at": "2026-11-01T17:05:57.981043+00:00",
-  "campaign": "99e083f",
+  "round": 1,
+  "scores": [],
+  "started_at": "2026-11-07T17:27:09.317994+00:00",
+  "campaign": "bf42e2b",
   "v3_heal": {
     "wsl_ok": true,
     "vmmem": {
@@ -89,81 +19,35 @@
     "repo": "lifelog",
     "commits": [
       {
-        "sha": "99e083f",
-        "msg": "fix(gate): /ocultos traz data-project=dev em toda pagina (falso positivo no chec"
+        "sha": "bf42e2b",
+        "msg": "revert(post): arachne volta para hidden:true e readmite no /ocultos"
       },
       {
-        "sha": "11452c4",
-        "msg": "merge: fecha o acesso publico ao preview de post oculto (aprovado 01/11 13:5x)"
+        "sha": "1973c91",
+        "msg": "fix(capa): nova capa do post arachne mobile topbar (URL v2, cache-bust)"
       },
       {
-        "sha": "17e3e7c",
-        "msg": "fix(ocultos): fecha o acesso publico ao preview de post oculto"
+        "sha": "25681f4",
+        "msg": "refazer: recusa de arachne-a-barra-que-roubava-a-tela-do-celular"
       },
       {
-        "sha": "3cfaccb",
-        "msg": "feat(lifelog): post oculto — o linter do proprio acervo (PT+EN, hidden)"
+        "sha": "9619fd0",
+        "msg": "refazer: recusa de 2026-11-05-forgetgate-held-loss-103"
       },
       {
-        "sha": "ba40889",
-        "msg": "fix(posts): mascara caminho privado do vault em yurumi-o-guard-que-mede-o-result"
+        "sha": "9b96b8e",
+        "msg": "refazer: recusa de pipeline-de-geracao-de-posts-revisao-2026-11-07"
       }
     ],
     "open_prs": [],
     "latest_release": "",
     "default_branch": "main",
-    "pushed_at": "2026-11-01T16:59:18Z",
+    "pushed_at": "2026-11-07T17:06:00Z",
     "error": ""
   },
   "roger_version": "3.5+rolling(p14/09)",
-  "campaign_branch": "roger/lifelog-20261101-140559",
-  "campaign_base_ref": "99e083f",
+  "campaign_branch": "roger/lifelog-20261107-142710",
+  "campaign_base_ref": "bf42e2b",
   "campaign_orig_branch": "main",
-  "tokens_since": "2026-11-01T19:32:38.211600+00:00",
-  "tokens_recorded_round": 3,
-  "debate": {
-    "votos": [
-      {
-        "perfil": "qualidade",
-        "parecer": "n/d",
-        "nota": "",
-        "gaps": [],
-        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
-        "infra": true
-      },
-      {
-        "perfil": "seguranca",
-        "parecer": "n/d",
-        "nota": "",
-        "gaps": [],
-        "texto": "erro: ModuleNotFoundError: No module named 'openai'",
-        "infra": true
-      }
-    ],
-    "veredito": "BLOQUEIA",
-    "gaps": [
-      "REVISOR_INDISPONIVEL (ambiente, fail-closed): erro: ModuleNotFoundError: No module named 'openai' — verificar 9Router/credencial; NAO e defeito do codigo"
-    ],
-    "pareceres": {
-      "qualidade": "n/d",
-      "seguranca": "n/d"
-    },
-    "revisor_indisponivel": true
-  },
-  "done": false,
-  "finished_at": null,
-  "ambiente_retries": 0,
-  "workers": [
-    {
-      "round": 2,
-      "worker": "general",
-      "rc": 124
-    },
-    {
-      "round": 3,
-      "worker": "general",
-      "rc": 124
-    }
-  ],
-  "v3_notifications": 2
+  "tokens_since": "2026-11-07T17:27:10.624500+00:00"
 }
