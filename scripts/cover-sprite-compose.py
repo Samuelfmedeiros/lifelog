@@ -16,6 +16,7 @@ Saida: public/covers/<slug>.webp (WebP, 1024x1024, sprite ancorado embaixo/centr
 - fundo: worker FLUX com prompt de CENA VAZIA (sem personagem/animal/pessoa)
 - cena: registrada em SCENES (chave -> tema). Default por projeto.
 """
+import hashlib
 import json
 import os
 import sys
@@ -23,6 +24,8 @@ import time
 import urllib.request
 
 import importlib.util
+
+import numpy as np
 
 from PIL import Image, ImageDraw, ImageFilter  # noqa: E402
 
@@ -43,7 +46,38 @@ except AttributeError:  # pragma: no cover - Pillow antigo
     _NEAREST = Image.NEAREST
 
 SPRITE = os.path.join(LIFELOG_DIR, "public/sprites/yurumi-hero.png")
+POSE_DIR = os.path.join(LIFELOG_DIR, "public/sprites/poses")
 COVER_W, COVER_H = 1024, 1024
+
+
+def pick_pose(slug):
+    """Personagem varia por post direto do acervo de poses do Samuel (06/11/22:59).
+
+    Samuel: 'vou mandar personagem em varias posicoes... recorta e reusa todas
+    daqui em diante'. Enquanto as poses nao chegam, cai no hero canonico.
+    Escolha deterministico por hash do slug: mesmo post = mesma pose, e posts
+    novos espalham pelas poses (sem repetir vizinho). --pose NOME força uma.
+    """
+    forced = [a for a in sys.argv if a.startswith("--pose=")]
+    if not os.path.isdir(POSE_DIR):
+        return SPRITE
+    poses = sorted(f for f in os.listdir(POSE_DIR) if f.lower().endswith(".png"))
+    if not poses:
+        return SPRITE
+    if forced:
+        want = forced[0].split("=", 1)[1]
+        hit = next((p for p in poses if os.path.splitext(p)[0] == want), None)
+        if hit:
+            return os.path.join(POSE_DIR, hit)
+    # distribuicao ROUND-ROBIN por posto (nao por hash): hash colidia e repetia
+    # a mesma pose em 4 das 9 capas (medido pelo VLM 07/11/2026 00:2x). Aqui
+    # cada post pega a pose seguinte da lista ordenada de posts do projeto.
+    posts = sorted(SCENE_BY_SLUG)
+    if slug in posts:
+        idx = posts.index(slug) % len(poses)
+    else:  # post fora do mapa: cair no hash (estavel, sem repetir vizinho)
+        idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(poses)
+    return os.path.join(POSE_DIR, poses[idx])
 
 # Fundos diferenciados por postagem: chave -> descricao da cena (sem personagem)
 SCENES = {
@@ -59,9 +93,11 @@ SCENES = {
         "Empty scene, no characters, no animals, no people, no text."
     ),
     "cerrado-chuva": (
-        "empty wide landscape under rain: twisted cerrado trees, wet red earth, "
-        "rain streaks and puddles, dark clouds with a single ray of light, "
-        "abandoned lantern. Empty scene, no characters, no animals, no people, no text."
+        "empty wide landscape just after rain: twisted cerrado trees, wet red "
+        "earth with mirror puddles reflecting the sky, low mist, dark clouds "
+        "with a single ray of light, an abandoned lantern on the ground. "
+        "Air is wet but no falling rain, no streaks, no lines in the sky. "
+        "Empty scene, no characters, no animals, no people, no text."
     ),
     "campo-estrelas": (
         "empty highland field at night, millions of stars, milky way arch, "
@@ -91,16 +127,20 @@ SCENES = {
         "no runes, no carvings, no characters, no animals, no people, no text."
     ),
     "biblioteca-flutuante": (
-        "wide sunrise grassland with a single big tree silhouette on the horizon, "
-        "warm orange and gold sky, low mist on the ground, a few small floating "
-        "light motes, wide clean empty sky above. "
-        "Empty scene, no man-made structures, no characters, no animals, no "
-        "people, no text."
+        "empty floating library above a misty valley at golden hour, stone and "
+        "wood shelves drifting in the air, open books and paper fragments "
+        "floating gently between them, warm amber light, low clouds far below, "
+        "clean sky above. "
+        "Empty scene, no grassland, no plain, no big tree, no man-made "
+        "structures on the ground, no characters, no animals, no people, "
+        "no text."
     ),
     "ponte-lanternas": (
-        "calm open lake at twilight, smooth water mirror, glowing rocks floating "
-        "above the surface, distant mountains, clear gradient sky. "
-        "Empty scene, no bridge, no lanterns, no ropes, no boats, no characters, "
+        "calm open lake at twilight, smooth water mirror, small glowing "
+        "driftwood pieces and smooth river stones resting on the water, "
+        "soft light bloom under the surface, distant mountains, clear "
+        "gradient sky. Empty scene, no bridge, no lanterns, no ropes, "
+        "no wires, no lines across the image, no boats, no characters, "
         "no animals, no people, no text."
     ),
     "caverna-cristais": (
@@ -251,8 +291,15 @@ def gen_background(prompt, path, tries=3):
     return False
 
 
-def cover_crop(img, w, h):
-    """Crop central no aspect alvo (sem distorcer) + resize."""
+def cover_crop(img, w, h, y_anchor=0.45):
+    """Crop no aspect alvo (sem distorcer) + resize.
+
+    `y_anchor` desloca a janela vertical quando a imagem e mais alta que o
+    alvo: 0.45 pega a faixa um pouco acima do centro, onde ficam o horizonte e
+    o assunto numa cena de paisagem — cortar exatamente no meio (0.5) decepava
+    o ceu e sobrava chao vazio. Medido 07/11/2026 ao passar a capa de 1024x1024
+    para 1680x720 (21/9, o aspect real do hero do post).
+    """
     iw, ih = img.size
     target = w / h
     src = iw / ih
@@ -262,7 +309,7 @@ def cover_crop(img, w, h):
         box = (x, 0, x + nw, ih)
     else:
         nh = int(iw / target)
-        y = (ih - nh) // 2
+        y = int((ih - nh) * y_anchor)
         box = (0, y, iw, y + nh)
     return img.crop(box).resize((w, h), _RES)
 
@@ -278,8 +325,63 @@ def pixelate(img, grid=256, scene=None, enabled=True):
     return small.resize((w, h), _NEAREST)
 
 
+def _dehalo(rgb, alpha, iters=6):
+    """Tira o aro claro (residuo da folha branca) da borda do recorte.
+
+    Medido 07/11/2026 em `espiando`: depois do corte binario, 1.234 pixels
+    opacos na borda da silhueta tem luminancia media 239,2 (quantis 220/244/253)
+    — o branco da folha virou borda solida, exatamente o aro que aparece na
+    capa. Cura: pixel de borda claro bebe a cor do vizinho opaco escuro (a
+    outline do personagem); se nao houver vizinho escuro, some (alpha 0).
+    Pixel art aguenta perder 1-2 px de silhueta.
+    """
+    rgb = rgb.copy(); alpha = alpha.copy()
+    for _ in range(iters):
+        lum = rgb[..., 0] * .299 + rgb[..., 1] * .587 + rgb[..., 2] * .114
+        transp = alpha < 10
+        viz = np.zeros_like(transp)
+        viz[:-1, :] |= transp[1:, :]; viz[1:, :] |= transp[:-1, :]
+        viz[:, :-1] |= transp[:, 1:]; viz[:, 1:] |= transp[:, :-1]
+        alvo = (alpha >= 250) & (lum > 190) & viz
+        if not alvo.any():
+            break
+        escuro = (alpha >= 250) & (lum <= 190)
+        nova = np.zeros_like(rgb); novo_alpha = alpha.copy()
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            sh_r = np.roll(np.roll(rgb, dy, 0), dx, 1)
+            sh_e = np.roll(np.roll(escuro, dy, 0), dx, 1)
+            m = alvo & sh_e & (nova.sum(-1) == 0)
+            nova[m] = sh_r[m]
+        novo_alpha[alvo & (nova.sum(-1) == 0)] = 0     # sem vizinho escuro: apaga
+        rgb = np.where(alvo[..., None] & (nova.sum(-1) > 0)[..., None], nova, rgb)
+        alpha = novo_alpha
+    return rgb, alpha
+
+
+def hard_matte(sprite, thr=70):
+    """Alpha binario + remocao do aro claro — borda seca, sem halo.
+
+    Medido 07/11/2026 na pose `espiando`: 2.629 pixels na faixa semi-transparente
+    (25<alpha<230) e 100% deles claros (luminancia media 241) — residuo da folha
+    branca da sheet. Cortar a faixa sem mais nada deixa 1.234 pixels OPACOS e
+    CLAROS na borda: o branco vira contorno solido. `_dehalo` pinta essa borda
+    com a outline escura do personagem. Pixel art quer borda SECA, nunca o
+    GaussianBlur do soften_alpha (ele espalha o branco para dentro).
+    """
+    rgb = np.asarray(sprite.convert("RGBA"))[..., :3].astype(int)
+    alpha = np.asarray(sprite.convert("RGBA"))[..., 3]
+    alpha = np.where(alpha >= thr, 255, 0)
+    rgb, alpha = _dehalo(rgb, alpha)
+    out = Image.fromarray(np.dstack([np.clip(rgb, 0, 255), alpha]).astype("uint8"))
+    return out
+
+
 def soften_alpha(sprite, grow=1, blur=1.2):
-    """Borda do recorte: expande 1px e desfoja o alpha (evita 'cortado com estilete')."""
+    """Borda do recorte: expande 1px e desfoja o alpha (evita 'cortado com estilete').
+
+    Opt-in via `--soft-edge`. Em sprite de PIXEL ART esse borrao puxa a cor do
+    fundo original (branco da sheet) para a borda — halo. Nao usar em pose.
+    """
     a = sprite.getchannel("A")
     a = a.filter(ImageFilter.MaxFilter(grow * 2 + 1))
     a = a.filter(ImageFilter.GaussianBlur(blur))
@@ -312,32 +414,36 @@ def apply_grade(bg, scene):
     return out
 
 
-def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None, pixel=False):
-    """Sprite ancorado embaixo/centro, com sombra de contato e vinheta inferior.
+def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None, pixel=False, soft_edge=False):
+    """Sprite ancorado embaixo, com sombra de contato e vinheta inferior.
 
     `pixel=False` (padrao): fundo gerado pela IA entra liso — a pixelizacao
     NEAREST do fundo inteiro le como "grade/esquematico" (Samuel reprovou
     06/11/2026: "fundo tem algo como correntes e linhas"). O sprite continua
     em pixel art crisp; a integracao vem da sombra de contato + vinheta.
+
+    Enquadramento horizontal: em moldura quadrada o personagem fica no centro;
+    em paisagem (w/h > 1.5, ex.: 1680x720 = 21/9 do hero do post) ele entra no
+    terco esquerdo (x_ratio 0.36) para a cena respirar no resto do quadro —
+    centralizar em 21/9 deixa o personagem "nadando" no meio de um banner.
     """
     sprite = trim_alpha(sprite)
     cover = pixelate(cover_bg.convert("RGBA"), scene=scene, enabled=pixel).convert("RGBA")
     sh = int(h * sprite_h_ratio)
     sw = int(sprite.width * (sh / sprite.height))
-    sp = soften_alpha(sprite).resize((sw, sh), _RES)
-    x = (w - sw) // 2
+    # borda SECA por padrao: o borrao do soften_alpha puxava o branco da folha
+    # para a borda (halo, provado por medicao em 07/11/2026). `--soft-edge`
+    # devolve o borrao para sprite que nao eh pixel art.
+    sp = (soften_alpha if soft_edge else hard_matte)(sprite).resize((sw, sh), _RES)
+    x_ratio = 0.36 if (w / h) > 1.5 else 0.5
+    x = int(w * x_ratio - sw / 2)
+    x = max(8, min(w - sw - 8, x))
     y = h - sh - int(h * 0.02)
     foot_y = min(h, y + sh)
 
-    # sombra/rima escura logo atras do personagem (da peso e tira o 'flutuando')
-    rim = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    rm = sprite.convert("L").point(lambda v: 255 if v > 40 else 0)
-    rm = rm.resize((sw, sh), _RES).filter(ImageFilter.GaussianBlur(6))
-    black = Image.new("RGBA", (sw, sh), (6, 10, 20, 120))
-    rim.paste(black, (x - 4, y + 3), rm.resize((sw, sh), _RES))
-    rim = rim.filter(ImageFilter.GaussianBlur(5))
-    cover = Image.alpha_composite(cover, rim)
-
+    # Samuel 06/11/2026 22:10 aprovou a PAISAGEM de fundo: nada de silhueta
+    # escura atras do personagem (lia como "fundo retangular"). Personagem
+    # integra por sombra de contato no chao + vinheta inferior, nada de lamina.
     # sombra de contato projetada no chao (aparece dos dois lados dos pes)
     sh_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(sh_layer)
@@ -367,8 +473,27 @@ def compose(cover_bg, sprite, w, h, sprite_h_ratio=0.92, scene=None, pixel=False
     return cover.convert("RGB")
 
 
+def cover_size(argv):
+    """Tamanho da capa. Padrao 1680x720 (21/9) — e o aspect real do hero do post
+    (PostLayout.astro usa `aspect-[21/9]` + `object-cover`). Medido 07/11/2026:
+    capa quadrada 1024x1024 era cortada pelo CSS em ~26% da altura (corte
+    central), e Samuel viu o personagem decapitado/enquadramento estranho —
+    "ta quadrado e la nao vai caber quadrado". `--size WxH` sobrescreve.
+    """
+    for a in argv:
+        if a.startswith("--size="):
+            try:
+                w, h = a.split("=", 1)[1].lower().split("x")
+                return int(w), int(h)
+            except Exception:
+                pass
+    return int(os.environ.get("LIFELOG_COVER_W", 1680)), int(
+        os.environ.get("LIFELOG_COVER_H", 720))
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    cover_w, cover_h = cover_size(sys.argv)
     scene = "cerrado-cosmico"
     if "--scene" in sys.argv:
         scene = sys.argv[sys.argv.index("--scene") + 1]
@@ -383,24 +508,30 @@ def main():
         else:
             scene = DEFAULT_SCENE.get(project, scene)
 
-    spr_path = SPRITE
+    spr_path = pick_pose(slug)
     if not os.path.exists(spr_path):
         raise SystemExit(f"sprite nao encontrado: {spr_path}")
     sprite = Image.open(spr_path).convert("RGBA")
 
     bg_path = os.path.join(LIFELOG_DIR, f"public/covers/_bg-{slug}.webp")
-    if "--bg=ai" in sys.argv:
+    # Samuel 06/11/2026 22:10: "o fundo aqui para mim estava aprovado... devia ter
+    # tirado era so as linhas, mas a paisagem do fundo tava ok". Ou seja: cenario
+    # IA de VOLTA como padrao (paisagem aprovada), com as cenas reescritas para
+    # nao nascerem correntes/cabos/rails. O fundo procedural fica so como opt-in
+    # (--bg=procedural) e o residuo de xadrez do sprite, que era a causa real das
+    # "listras", foi curado em scripts/sprite-cutout.py (maior componente + buracos).
+    if "--bg=procedural" in sys.argv:
+        bg = procedural_bg(cover_w, cover_h, scene, seed_text=slug)
+    else:
         if not os.path.exists(bg_path):
             ok = gen_background(build_bg_prompt(scene, title), bg_path)
             if not ok:
                 raise SystemExit("nao consegui gerar o fundo")
         bg = Image.open(bg_path).convert("RGB")
-    else:
-        # padrao: fundo procedural (sem artefato de gerador). Use --bg=ai para voltar ao FLUX.
-        bg = procedural_bg(COVER_W, COVER_H, scene, seed_text=slug)
 
-    cover = compose(cover_crop(bg, COVER_W, COVER_H), sprite, COVER_W, COVER_H,
-                    scene=scene, pixel=("--pixel" in sys.argv))
+    cover = compose(cover_crop(bg, cover_w, cover_h), sprite, cover_w, cover_h,
+                    scene=scene, pixel=("--pixel" in sys.argv),
+                    soft_edge=("--soft-edge" in sys.argv))
     out = os.path.join(LIFELOG_DIR, f"public/covers/{slug}.webp")
     cover.save(out, "WEBP", quality=88, method=6)
     print(f"OK {out} scene={scene} bytes={os.path.getsize(out)}")

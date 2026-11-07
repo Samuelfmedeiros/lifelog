@@ -83,6 +83,32 @@ def largest_component(keep):
     return best, best_n
 
 
+def fill_holes(mask):
+    """Fecha buracos internos: transparencia cercada por pixel opaco."""
+    h, w = mask.shape
+    inv = ~mask
+    seen = np.zeros((h, w), dtype=bool)
+    q = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if inv[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
+    for y in range(h):
+        for x in (0, w - 1):
+            if inv[y, x] and not seen[y, x]:
+                seen[y, x] = True
+                q.append((y, x))
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and inv[ny, nx] and not seen[ny, nx]:
+                seen[ny, nx] = True
+                q.append((ny, nx))
+    return mask | (inv & ~seen)
+
+
 def main():
     im = Image.open(SRC).convert("RGB")
     a = np.asarray(im).astype(np.int16)
@@ -92,11 +118,17 @@ def main():
     if n == 0:
         raise SystemExit("recorte vazio")
 
+    # fecha buracos internos (transparencia cercada por opaco): a maior
+    # componente sozinha deixava 1 buraco de 1.284 px (lum 92, sat 0 no fonte
+    # = casaco escuro) e Samuel leu "personagem com buraco no meio" (22:10:29).
+    person = fill_holes(person)
+
     # reconecta pixels do personagem que tocam a componente (halo de 2px): evita
     # borda serrada sem voltar a puxar o xadrez
     halo = person.copy()
     person = halo | np.roll(person, 1, 0) | np.roll(person, -1, 0) \
         | np.roll(person, 1, 1) | np.roll(person, -1, 1)
+    person = fill_holes(person)
 
     ys, xs = np.where(person)
     x0, x1 = max(0, xs.min() - 3), min(person.shape[1], xs.max() + 4)

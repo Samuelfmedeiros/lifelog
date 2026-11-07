@@ -1,18 +1,19 @@
 {
-  "round": 3,
+  "round": 1,
   "scores": [
     {
       "round": 1,
-      "score": 90,
+      "score": 70,
       "gaps": [
-        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
+        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi",
+        "security gate: bandit: severidade HIGH encontrada — >> Issue: [B310:blacklist] Audit url open for permitted schemes. Allowing use of"
       ],
       "detail": {
         "critic_rc": 0,
         "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
+          "rc": 1,
+          "score": 75,
+          "gap": "bandit: severidade HIGH encontrada — >> Issue: [B310:blacklist] Audit url open for permitted schemes. Allowing use of"
         },
         "coverage": {
           "total": 93,
@@ -23,21 +24,23 @@
           "via": "local"
         }
       },
-      "ts": "2026-11-06T20:19:22.572070+00:00",
+      "ts": "2026-11-07T04:32:16.006991+00:00",
       "critic_fp": "e3e5242182b8"
     },
     {
-      "round": 2,
-      "score": 90,
+      "round": 1,
+      "score": 50,
       "gaps": [
-        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
+        "preview não subiu na 4321: PREVIEW_FALHOU port_ok=1 bound= (porta suja/órfã — não rodou playwright)",
+        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi",
+        "security gate: bandit: severidade HIGH encontrada — >> Issue: [B310:blacklist] Audit url open for permitted schemes. Allowing use of"
       ],
       "detail": {
         "critic_rc": 0,
         "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
+          "rc": 1,
+          "score": 75,
+          "gap": "bandit: severidade HIGH encontrada — >> Issue: [B310:blacklist] Audit url open for permitted schemes. Allowing use of"
         },
         "coverage": {
           "total": 93,
@@ -48,37 +51,12 @@
           "via": "local"
         }
       },
-      "ts": "2026-11-06T21:44:55.313671+00:00",
-      "critic_fp": "e3e5242182b8"
-    },
-    {
-      "round": 3,
-      "score": 90,
-      "gaps": [
-        "VISUAL NÃO VERIFICÁVEL: nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobi"
-      ],
-      "detail": {
-        "critic_rc": 0,
-        "security": {
-          "rc": 0,
-          "score": 100,
-          "gap": ""
-        },
-        "coverage": {
-          "total": 93,
-          "gaps": [],
-          "low_files": [],
-          "error": "",
-          "stack": "js",
-          "via": "local"
-        }
-      },
-      "ts": "2026-11-06T23:14:37.994020+00:00",
+      "ts": "2026-11-07T06:27:53.901408+00:00",
       "critic_fp": "e3e5242182b8"
     }
   ],
-  "started_at": "2026-11-06T18:35:24.783251+00:00",
-  "campaign": "3577404",
+  "started_at": "2026-11-07T03:58:14.038328+00:00",
+  "campaign": "4da02b6",
   "v3_heal": {
     "wsl_ok": true,
     "vmmem": {
@@ -95,37 +73,37 @@
     "repo": "lifelog",
     "commits": [
       {
-        "sha": "1726938",
-        "msg": "fix: capa AI de 2026-11-05-forgetgate-held-loss-103 (watchdog)"
+        "sha": "4da02b6",
+        "msg": "feat(lifelog): complete round 3 with handoff state and coverage updates"
       },
       {
-        "sha": "d6ffc34",
-        "msg": "feat: post yurumi-a-janela-que-o-subconjunto-aprovou (hidden) + cura capa/tags d"
+        "sha": "508c05d",
+        "msg": "feat: pipeline update and hidden posts system"
       },
       {
-        "sha": "5397cd0",
-        "msg": "fix(build): capa do post forgetgate-held-loss-103 ausente no bundle"
+        "sha": "fcfe6f2",
+        "msg": "fix: capa AI de a-historia-do-pipeline-update (watchdog)"
       },
       {
-        "sha": "3c4dbdc",
-        "msg": "release(post): forgetgate-held-loss-103 (PT+EN + ocultos-data)"
+        "sha": "22693fb",
+        "msg": "feat(covers): add WebP cover images and state file"
       },
       {
-        "sha": "f15a386",
-        "msg": "fix(ui): ordem da navbar (portifolio>inicio>arquivo>loja>sobre), contraste do ic"
+        "sha": "3577404",
+        "msg": "Add new AI covers, posts, scripts; remove obsolete worker files"
       }
     ],
     "open_prs": [],
     "latest_release": "",
     "default_branch": "main",
-    "pushed_at": "2026-11-06T16:30:55Z",
+    "pushed_at": "2026-11-07T02:28:55Z",
     "error": ""
   },
   "roger_version": "3.5+rolling(p14/09)",
-  "campaign_branch": "roger/lifelog-20261106-153527",
-  "campaign_base_ref": "1726938",
-  "campaign_orig_branch": "roger/lifelog-entrega-20261106-124030",
-  "tokens_since": "2026-11-06T22:45:17.619417+00:00",
+  "campaign_branch": "roger/lifelog-20261107-005819",
+  "campaign_base_ref": "4da02b6",
+  "campaign_orig_branch": "roger/lifelog-entrega-20261106-154740",
+  "tokens_since": "2026-11-07T03:58:19.634502+00:00",
   "visual": [
     {
       "project": "lifelog",
@@ -134,11 +112,11 @@
       "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
       "achados": [],
       "shots": [
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-171630-desktop.png",
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-171630-mobile.png"
+        "/home/samuel/.hermes/output/visual/lifelog/20261107-012933-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261107-012933-mobile.png"
       ],
       "juiz": "gemini/gemini-3.5-flash-lite",
-      "quando": "2026-11-06 17:16:30"
+      "quando": "2026-11-07 01:29:33"
     },
     {
       "project": "lifelog",
@@ -147,42 +125,12 @@
       "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
       "achados": [],
       "shots": [
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-184225-desktop.png",
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-184225-mobile.png"
+        "/home/samuel/.hermes/output/visual/lifelog/20261107-032515-desktop.png",
+        "/home/samuel/.hermes/output/visual/lifelog/20261107-032515-mobile.png"
       ],
       "juiz": "gemini/gemini-3.5-flash-lite",
-      "quando": "2026-11-06 18:42:25"
-    },
-    {
-      "project": "lifelog",
-      "nota": null,
-      "verificavel": false,
-      "motivo": "nenhuma captura analisada: desktop: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message\":\"[gemini/gemini-3.5-flash-lite] [429]: {\\n  \\\"error\\\"; mobile: juiz falhou rc=1: FALHOU: gemini/gemini-3.5-flash-lite: HTTP 503 {\"error\":{\"message",
-      "achados": [],
-      "shots": [
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-201158-desktop.png",
-        "/home/samuel/.hermes/output/visual/lifelog/20261106-201158-mobile.png"
-      ],
-      "juiz": "gemini/gemini-3.5-flash-lite",
-      "quando": "2026-11-06 20:11:58"
+      "quando": "2026-11-07 03:25:15"
     }
   ],
-  "tokens_recorded_round": 3,
-  "ambiente_retries": 0,
-  "workers": [
-    {
-      "round": 2,
-      "worker": "ui",
-      "rc": 124
-    },
-    {
-      "round": 3,
-      "worker": "ui",
-      "rc": 124
-    }
-  ],
-  "v3_notifications": 2,
-  "done": true,
-  "finished_at": "2026-11-06T23:37:59.153176+00:00",
-  "result": "PLATEAU"
+  "tokens_recorded_round": 1
 }

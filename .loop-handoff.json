@@ -58,7 +58,27 @@
    ],
    "worker_tail": "3-507           \n-------------------|---------|----------|---------|---------|-------------------\n\n=============================== Coverage summary ===============================\nStatements   : 92.81% ( 349/376 )\nBranches     : 86.78% ( 197/227 )\nFunctions    : 88.88% ( 48/54 )\nLines        : 95.26% ( 302/317 )\n================================================================================\n\u001b[0m\n",
    "ts": "2026-11-06T23:21:37.240009+00:00"
+  },
+  {
+   "round": 5,
+   "worker": "test",
+   "rc": 0,
+   "gaps": [
+    "Cobertura geral insuficiente; adicione testes nos módulos sem teste e melhore asserts fracos."
+   ],
+   "files_touched": [
+    "post-depth.test.ts",
+    "liberar.test.ts",
+    "/mnt/HOME/samuel/projetos/projetos/lifelog/scripts/smoke_test.py",
+    "smoke_test.py",
+    "scripts/smoke_test.py",
+    "/mnt/HOME/samuel/projetos/lifelog/scripts/smoke_test.py",
+    ".loop-handoff.json",
+    "revisor_report_508c05d.md"
+   ],
+   "worker_tail": " 466 [chromium] › e2e/lifelog.spec.ts:152:5 › Páginas de Posts › \"estudos-a-semana-em-que-medi-minha-memoria-artificial\" deve renderizar corretamente (1.7s)\n\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 300000 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n\u001b[0m\n",
+   "ts": "2026-11-07T00:51:45.764201+00:00"
   }
  ],
- "updated_at": "2026-11-06T23:21:37.240009+00:00"
+ "updated_at": "2026-11-07T00:51:45.764201+00:00"
 }
