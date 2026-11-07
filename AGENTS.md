@@ -1,7 +1,5 @@
 # 📖 LifeLog — Session Hub
 
-<<<<<<< Updated upstream
-=======
 ## Sessão 2026-11-06 (fim de dia) — 12 commits em 5 branches (release de post + capas + pipeline); push origin ok
 
 - `origin/main` recebeu hoje `74787b2` release(post): tatuengine-os-instrumentos-que-mentiam (PT+EN + `ocultos-data`), 22:40 — o mesmo conteúdo já estava no `main` local (`daeeb20`, post oculto PT+EN, 16:13).

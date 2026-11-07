@@ -5,10 +5,10 @@
 //
 // O que este teste travа:
 //  1. as capas curadas ficam em 2100x900 (nem quadrada, nem 1376x752);
-//  2. a contagem de capas fora de 21/9 no acervo nao passa do baseline
-//     (public/covers/_aspect-baseline.json) — o build nao pode subir pior.
+//  2. nenhuma capa fora de 21/9 pode ser NOVA: o acervo legado listado em
+//     public/covers/_aspect-baseline.json nao falha, post/cover novo falha.
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -43,7 +43,7 @@ function coverOf(dir: string, fn: string): string | null {
   const line = m[1].split('\n').find((l) => l.trim().startsWith('cover:'));
   if (!line) return null;
   const v = line.split(':').slice(1).join(':').trim().replace(/^['"]|['"]$/g, '');
-  return v.startsWith('/') ? join(ROOT, v) : join(ROOT, v);
+  return v.startsWith('/') ? join(ROOT, 'public', v) : join(ROOT, v);
 }
 
 function posts(): Array<{ dir: string; fn: string }> {
@@ -102,18 +102,25 @@ describe('capas 21/9', () => {
     expect({ faltando, erradas }).toEqual({ faltando: [], erradas: [] });
   });
 
-  it('acervo nao passa do baseline de capas fora de 21/9', () => {
-    const base = JSON.parse(readFileSync(join(COVERS, '_aspect-baseline.json'), 'utf-8'));
+  it('acervo nao tem capa NOVA fora de 21/9 (legado nao falha)', () => {
+    const base = JSON.parse(readFileSync(join(COVERS, '_aspect-baseline.json'), 'utf-8')) as {
+      legacy?: string[];
+      total?: number;
+    };
+    const legado = new Set((base.legacy || []).map((p) => p.replace(/^\/+/, '')));
+    expect(legado.size).toBeGreaterThan(0);
     const vistos = new Set<string>();
     for (const p of posts()) {
       const c = coverOf(p.dir, p.fn);
       if (c) vistos.add(c);
     }
-    let fora = 0;
+    const novas: string[] = [];
     for (const abs of vistos) {
+      const rel = relative(ROOT, abs).replace(/^\/+/, '');
+      if (legado.has(rel)) continue;
       const d = dims(abs);
-      if (!d || d.h === 0 || Math.abs(d.w / d.h - 21 / 9) > 0.05) fora += 1;
+      if (!d || d.h === 0 || Math.abs(d.w / d.h - 21 / 9) > 0.05) novas.push(rel);
     }
-    expect(fora).toBeLessThanOrEqual(Number(base.fora_21x9));
+    expect(novas).toEqual([]);
   });
 });

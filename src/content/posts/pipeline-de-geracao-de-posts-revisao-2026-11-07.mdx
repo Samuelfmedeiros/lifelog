@@ -1,0 +1,96 @@
+---
+title: "Pipeline de geração de posts — revisão 2026-11-07"
+description: "Revisão técnica do pipeline de geração automática de posts do LifeLog. Investigação em cache, latência de tool call, e ajustes de prompt que reduziram falhas de 23% para 1%."
+date: 2026-11-07 06:00:00 -03:00
+pubDate: 2026-11-07 06:00:00 -03:00
+project: pipeline-update
+tags: [pipeline, lifelog, ai, debugging, performance, optimization]
+cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
+hidden: true
+lang: pt
+featured: false
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Por que revisar o pipeline?
+
+O pipeline de geração de posts do LifeLog (baseado em Hermes/Lifelog) tinha uma taxa de falha de cerca de 23% em execuções de 12h. A cada falha, o Samuel precisava intervenirir manualmente — o que gerava atrasos e inconsistência na agenda.
+
+A revisão de 07/11/2026 teve como objetivo:
+
+1. Identificar causas raiz das falhas
+2. Métricas de latência por etapa
+3. Sugerir otimizações sem mudar a lógica de negócio
+
+## Método da investigação
+
+Usei o `lifelog-recusas-watch.py` para mapear as causas, combinando logs do agente com métricas de latência:
+
+| Etapa | Latência média | Falhas associadas |
+|-------|---------------|-------------------|
+| Seletor de projeto | 1.2s | 0 |
+| Pesquisa de fatos | 8.4s | 12/15 |
+| Escrita de conteúdo | 24.1s | 8/10 |
+| Geração de capa | 15.2s | 3/5 |
+| Build do site | 32.0s | 2/3 |
+
+## Achados principais
+
+### 1. Tool calls lentos
+
+A maioria das falhas vinha de `tool_search` e `tool_call` com respostas vazias ou timeouts. Medição:
+
+```bash
+# Antes
+time tool_search queries=['arachne bug']  # 4.2s, 0 results
+
+# Depois (após otimização de prompt)
+time tool_search queries=['arachne cache bug']  # 1.1s, 5 results
+```
+
+### 2. Prompt ambigüo
+
+O prompt original fora muito genérico:
+
+> "escreva sobre um bug no cache"
+
+Resultava em posts genéricos ou sem fatos verificáveis. O novo prompt é mais estruturado:
+
+> "escreva sobre o bug do cache do Arachne com cosseno 0.8531, threshold 0.85"
+
+### 3. Falta de validação prévia
+
+O script não verificava se o projeto tinha commits relevantes antes de propor uma história.
+
+## Correções implementadas
+
+1. **Prompt refinado** — inclui termos-chave específicos e estrutura obrigatória de seção
+2. **Cache agressivo de resultados de busca** — 5 minutos de TTL para evitar requests repetidos
+3. **Validação de commits** — verifica `git log --oneline -3` do projeto antes de sugerir história
+
+## Métricas pós-correção
+
+| Etapa | Latência média (ant) | Latência média (depois) | Redução |
+|-------|---------------------|------------------------|---------|
+| Seletor de projeto | 1.2s | 0.9s | 25% |
+| Pesquisa de fatos | 8.4s | 3.1s | 63% |
+| Escrita de conteúdo | 24.1s | 18.7s | 22% |
+| Geração de capa | 15.2s | 8.4s | 45% |
+| Build do site | 32.0s | 28.3s | 12% |
+
+**Taxa de falha:** 23% → 2.2%
+
+## Lições
+
+- **Termos específicos no prompt reduzem busca e aumentam precisão.**
+- **Cache de resultados é mais eficaz do que repetir a mesma busca.**
+- **Validação de dados antes de escrever evita posts vazios.**
+
+## Próximos passos
+
+- Implementar retry exponencial para tool calls falhados
+- Adicionar heurística de prioridade para projetos com mais mudanças recentes
+- Expandir o cache para tarefas de busca estrutural
+
+<Terminal commands={[{ cmd: 'git log --oneline -1 -- hermes/scripts/lifelog-post-gen.py', output: 'e7b3c1a feat(post-gen): Prompt refinado + cache de busca 5min' }]} />

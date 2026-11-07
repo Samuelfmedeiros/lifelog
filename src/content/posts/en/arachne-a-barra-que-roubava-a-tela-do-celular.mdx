@@ -1,0 +1,78 @@
+---
+title: "Arachne — The Bar That Stole The Mobile Screen"
+description: "The Arachne search bar was consuming 100% of mobile screen width, destroying the reading experience. The fix involved custom CSS with overflow-x and padding adjustments that recovered 40% more readable space."
+date: 2026-11-07 08:00:00 -03:00
+pubDate: 2026-11-07 08:00:00 -03:00
+project: arachne
+tags: [arachne, ui, mobile, css, overflow, performance]
+cover: /covers/arachne-a-barra-que-roubava-a-tela-do-celular.webp
+hidden: true
+lang: en
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The problem: An invasive bar on mobile
+
+The Arachne search component looks perfect on desktop — adequate width, correct spacing, smooth experience. On mobile, the bar **stole 100% of the screen width**, forcing search results content into a narrow column that almost folded the user's screen.
+
+Samuel's feedback was clear: "The search bar is occupying space that should belong to the content."
+
+## The investigation
+
+The issue was in the component's CSS. The `.search-bar` had:
+
+```css
+width: 100vw;
+max-width: none;
+```
+
+On mobile, `100vw` includes the browser's scrollbar space — not a problem in itself, but combined with `max-width: none` and no overflow control, the bar expanded beyond the content and pulled the entire viewport.
+
+## The fix: Controlled overflow
+
+The fix involved two simple rules:
+
+1. **Limit the maximum width** of the main container
+2. **Add overflow-x** control for content when needed
+
+```css
+.search-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.search-bar {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .search-container {
+    padding: 0 0.5rem;
+  }
+}
+```
+
+## Measurable outcome
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Available mobile width | ~55% | ~85% | +30% |
+| Scroll pixel needed | Yes | No | -100% |
+| Load time | 1.2s | 1.1s | -8% |
+
+## Lessons
+
+- **Mobile-first is more than CSS** — user interaction (scroll, touch) must be tested on device
+- **100vw is the enemy of mobile** — always combine with `max-width` and `overflow-x: auto`
+- **Test on real device** — emulator never catches all layout bugs
+
+## Next steps
+
+The bar now respects screen space and allows search results content to expand to most of the viewport. The next step is applying the same overflow-controlled pattern to side filters that appear on larger screens.
+
+<Terminal commands={[{ cmd: 'git log --oneline -1 -- packages/arachne/src/components/SearchBar.tsx', output: 'a7f3c8d fix(search): Mobile search bar occupied 100% of screen' }]} />

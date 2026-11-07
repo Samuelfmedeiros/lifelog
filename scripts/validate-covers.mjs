@@ -177,7 +177,11 @@ for (const [prefix, dir] of [
     const body = fmBody(readFileSync(join(dir, fn), 'utf-8'));
     const cover = body ? fmGet(body, 'cover') : '';
     if (!cover) continue;
-    const abs = cover.startsWith('/') ? join(ROOT, cover) : join(ROOT, cover);
+    // `/covers/x.webp` no frontmatter = servido de public/ -> public/covers/x.webp
+    const _rel = cover.startsWith('/') ? cover.slice(1) : cover;
+    const abs = _rel.startsWith('covers/')
+      ? join(COVERS, _rel.slice('covers/'.length))
+      : join(ROOT, _rel);
     if (!vistos.has(abs)) vistos.set(abs, `${prefix}${fn.replace(/\.mdx$/, '')}`);
   }
 }
@@ -194,34 +198,54 @@ for (const [abs, label] of vistos) {
 }
 const nFora = fora.length;
 const BASELINE = join(COVERS, '_aspect-baseline.json');
-let base = null;
+const record = process.argv.includes('--record-baseline');
+// caminhos relativos (public/covers/...) fora de 21/9 nesta corrida
+const ofensores = [...new Set(
+  fora
+    .map((f) => {
+      const m = f.match(/(public\/covers\/\S+)$/);
+      return m ? m[1] : f;
+    })
+    .filter((p) => p.startsWith('public/covers/')),
+)];
+let baseSet = new Set();
 try {
-  base = JSON.parse(readFileSync(BASELINE, 'utf-8'));
+  const base = JSON.parse(readFileSync(BASELINE, 'utf-8'));
+  const list = Array.isArray(base) ? base : base.legacy || [];
+  for (const p of list) {
+    if (typeof p === 'string' && p) baseSet.add(p);
+  }
 } catch {}
-if (!base) {
-  // primeira corrida: registra o acervo atual como baseline (não bloqueia)
-  writeFileSync(
-    BASELINE,
-    JSON.stringify({ fora_21x9: nFora, atualizado: new Date().toISOString().slice(0, 10), nota: 'baseline do acervo legado; build falha se este numero crescer' }, null, 2) + '\n',
+if (record || baseSet.size === 0) {
+  const payload = {
+    nota: 'acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.',
+    atualizado: new Date().toISOString().slice(0, 10),
+    total: ofensores.length,
+    legacy: ofensores.sort(),
+  };
+  writeFileSync(BASELINE, `${JSON.stringify(payload, null, 2)}\n`);
+  console.log(
+    record
+      ? `[covers] ASPECTO: baseline regravada com ${ofensores.length} capa(s) fora de 21/9.`
+      : `[covers] ASPECTO: baseline criada com ${ofensores.length} capa(s) fora de 21/9 (nao bloqueia).`,
   );
-  console.log(`[covers] ASPECTO: baseline criada com ${nFora} capa(s) fora de 21/9.`);
 } else {
-  const antes = Number(base.fora_21x9 ?? 0);
-  if (strict && nFora > 0) {
-    console.error(`\n[covers] ASPECTO (--strict): build bloqueado — ${nFora} capa(s) fora de 21/9:`);
-    for (const f of fora.slice(0, 40)) console.error(`[covers]   - ${f}`);
+  const novos = ofensores.filter((p) => !baseSet.has(p));
+  if (strict && novos.length > 0) {
+    console.error(`\n[covers] ASPECTO (--strict): build bloqueado — ${novos.length} capa(s) fora de 21/9:`);
+    for (const f of novos.slice(0, 40)) console.error(`[covers]   - ${f}`);
     process.exit(1);
   }
-  if (nFora > antes) {
+  if (novos.length > 0) {
     console.error(
-      `\n[covers] ASPECTO: REGRESSAO — ${nFora} capa(s) fora de 21/9, baseline era ${antes}.`,
+      `\n[covers] ASPECTO: REGRESSAO — ${novos.length} capa(s) fora de 21/9 que nao estavam no acervo legado:`,
     );
-    console.error(`[covers]   corrida anterior deixou ${antes}; o build nao pode subir pior.`);
-    for (const f of fora.slice(0, 40)) console.error(`[covers]   - ${f}`);
+    console.error(`[covers]   acervo legado: ${baseSet.size} capa(s). Post/cover novo precisa ser 21/9.`);
+    for (const f of novos.slice(0, 40)) console.error(`[covers]   - ${f}`);
     process.exit(1);
   }
   console.log(
-    `[covers] ASPECTO: ${nFora} capa(s) fora de 21/9 (baseline ${antes}) — sem regressao.`,
+    `[covers] ASPECTO: ${nFora} capa(s) fora de 21/9, todas no acervo legado (${baseSet.size}) — sem regressao.`,
   );
 }
 

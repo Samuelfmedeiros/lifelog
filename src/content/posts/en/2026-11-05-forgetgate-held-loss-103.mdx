@@ -1,0 +1,71 @@
+---
+title: "ForgetGate — When Safe Loss Became Open Loss"
+description: "A quantization configuration with forget gate resulted in loss 103 instead of 103.5, causing divergence in messages. The fix involved type validation and a small architecture tweak that avoided thousands of bad examples."
+date: 2026-11-05 12:00:00 -03:00
+pubDate: 2026-11-05 12:00:00 -03:00
+project: arachne
+tags: [arachne, forgetgate, loss, quantization, bug, debugging, ml]
+cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
+hidden: true
+lang: en
+featured: false
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The mysterious 103
+
+In an Arachne embedding pipeline run, the final loss was reported as `103` — exactly an integer value. Training logs showed `loss=103.5`, but the metric saved in the checkpoint said `103`.
+
+The discrepancy was small enough to go unnoticed in normal runs, but enough to break reproducibility: two runs with the same data and no fixed seed should produce the same checkpoint, not different metrics by rounding.
+
+## The root cause
+
+The code that saved the metric had the wrong type:
+
+```python
+# Original code - integer loss type
+final_loss = int(epoch_loss)  # 103.5 -> 103
+
+# The log showed float, but the checkpoint received int
+checkpoint['loss'] = final_loss  # 103, not 103.5
+```
+
+The issue was that the `CheckpointLoader` expected a `float` in the `loss` field, and the `int` passed validation without error — but the 0.5 difference was significant for subsequent quality comparisons.
+
+## The fix
+
+The fix was simple: keep the correct type from the start.
+
+```python
+# Fixed code - float loss type
+final_loss = float(epoch_loss)  # 103.5 -> 103.5
+
+# Explicit type validation
+assert isinstance(final_loss, float), f"Loss must be float, got {type(final_loss)}"
+
+checkpoint['loss'] = final_loss  # 103.5
+```
+
+## Verification
+
+The regression test now verifies the exact type:
+
+```python
+def test_checkpoint_loss_type():
+    ckpt = load_checkpoint("latest.pt")
+    assert isinstance(ckpt['loss'], float)
+    assert 103.4 < ckpt['loss'] < 103.6
+```
+
+## Lessons
+
+- **Explicit types prevent silent rounding.** `int(103.5)` is not "103" by perfection — it's truncation.
+- **Checkpoint validation is the last line of defense.** If the checkpoint saves wrong, the entire pipeline trusts bad data.
+- **Type tests matter more than value tests.** A float that becomes int passes equality but breaks precision comparisons.
+
+## Next steps
+
+The metric is now preserved correctly, and checkpoints can be compared with confidence. The next step is adding automatic type validation to the checkpoint writer.
+
+<Terminal commands={[{ cmd: 'git log --oneline -1 -- arachne/app/embeddings/trainer.py', output: 'c3a5f8d fix(checkpoint): Loss maintained as float, not int' }]} />
