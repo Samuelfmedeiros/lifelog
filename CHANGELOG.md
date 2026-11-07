@@ -3,7 +3,7 @@
 ## [2026-11-06] - 12 commits em 5 branches: release tatuengine + capas AI + pipeline; push origin ok
 
 - **conteúdo**: `74787b2` release(post) tatuengine-os-instrumentos-que-mentiam PT+EN em `origin/main`; `daeeb20` post oculto equivalente no main local.
-- **feat/fix**: `508c05d` pipeline + posts ocultos, `3577404`/`22693fb`/`fcfe6f2` capas AI WebP, `5397cd0` fix de build de capa, `1726938` capa do forgetgate (watchdog).
+- **feat/fix**: `508c05d` pipeline + posts ocultos, `b7bdc77` (PR #86) sprite/covers pipeline improvements, `3577404`/`22693fb`/`fcfe6f2` capas AI WebP, `5397cd0` fix de build de capa, `1726938` capa do forgetgate (watchdog).
 - **campanhas**: `roger/lifelog-20261106-124030`, `-153527`, `roger/lifelog-entrega-20261106-154740` (`4da02b6`) e `roger/lifelog-20261105-212235` (`581edf1`).
 - main local 1 atrás de origin antes da rodada; doc em worktree, push FF.
 
