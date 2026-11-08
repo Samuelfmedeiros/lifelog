@@ -1,0 +1,81 @@
+---
+title: "The www host that killed every login"
+description: "A correct CSRF guard is useless at the edge if it forgets one hostname: the origin allowlist skipped www, and every signup and login POST died with a 403 before reaching the backend."
+category: samuel-projects
+date: 2026-11-08 08:20:00 -03:00
+pubDate: 2026-11-08 08:20:00 -03:00
+project: dogwalk
+tags: ["security", "csrf", "cloudflare", "testing"]
+cover: /covers/dogwalk-o-host-www-que-matava-o-login.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The symptom that looked like a database problem
+
+Signup did not work. Login did not work. The user filled the form, hit the button, and got a generic error. Nothing in the database, nothing in the API log — because the request never made it there.
+
+The culprit sat at the edge, in a three-line file that decided who was allowed to talk to the backend.
+
+The site is served on two addresses: `https://www.seu.pet` and `https://seu.pet`, without the `www`. To a browser those are different origins — and the CSRF guard in the Pages Functions treated only one of them as legitimate.
+
+```js
+// functions/_origins.js — after the fix
+export const ALLOWED_ORIGINS = [
+  'https://patapass.pages.dev',
+  'https://seu.pet',
+  'https://www.seu.pet',
+  'http://localhost:5173',
+];
+```
+
+Every request that changes state — `POST`, `PUT`, `DELETE` — carries an `Origin` header. If it is not on the list, the function returns `403 CSRF: Invalid origin` before any business logic runs. Signup never happened because the side door was closed to the address the user actually typed.
+
+## The detail that separates a guard from decoration
+
+The first version of the allowlist compared with `startsWith`. That sounds reasonable and it is a hole.
+
+With prefix matching, `https://seu.pet.atacante.com` passes the test: it begins with `https://seu.pet`, therefore it is "trusted". A third-party domain controlled by anyone walked in through the front door and CSRF stopped protecting anything.
+
+The fix was to require exact equality, accepting only a trailing slash as a variation:
+
+```js
+export function isAllowedOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  return ALLOWED_ORIGINS.some((o) => origin === o || origin === `${o}/`);
+}
+```
+
+Two lines of difference. One of them turns a guard into decoration.
+
+## The bug that only showed up in deployment
+
+There was a third problem, quieter still. `_middleware.js` kept its own inline copy of the origin list instead of importing from `_origins.js`.
+
+Result: the new file existed, the new file's tests passed, and the middleware kept using the old copy. The fix was in the repository and was not live. If the import broke, the error would be a `ReferenceError` in the middle of a user request — not at build time.
+
+The repair was to make the middleware import the tested function:
+
+```js
+// functions/_middleware.js
+import { isAllowedOrigin } from './_origins.js';
+```
+
+Now there is a single source. If the allowlist changes, it changes in one place and the test covers the same file that runs in production.
+
+## What the tests lock down
+
+The test does not check "the function returns a boolean". It checks the three boundaries that matter:
+
+- `https://www.seu.pet` is accepted — this was the address that broke in production.
+- `https://seu.pet` (apex) is accepted — both hostnames serve the same application.
+- `https://seu.pet.atacante.com` is rejected — the case prefix matching let through.
+
+Six assertions, all running against the file the middleware actually imports.
+
+## The lesson that stays
+
+A security control has two halves: the logic and the path to it. The logic was right and the path was interrupted — and the symptom was not a breach, it was a product that would not let anyone in.
+
+The useful question after writing a guard is not "is the function correct?", but "who calls this function, and do they import the version I tested?". In this case the answer was no.
