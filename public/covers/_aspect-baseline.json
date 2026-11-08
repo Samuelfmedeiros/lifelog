@@ -1,6 +1,6 @@
 {
-  "nota": "acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline. Uniao das baselines de main e da branch de cura (roger).",
-  "atualizado": "2026-11-07",
+  "nota": "acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.",
+  "atualizado": "2026-11-08",
   "total": 221,
   "legacy": [
     "public/covers/2026-07-21-dogwalk-ci-debug-spiral.webp",
@@ -120,7 +120,7 @@
     "public/covers/estudos-validacao-automatica-de-fixtures.webp",
     "public/covers/fastapi-react-por-que-escolhi-essa-stack-pro-dogwalk.webp",
     "public/covers/first-tests-with-crawl4ai-sidecar-and-docker.webp",
-    "public/covers/fts5-sqlite-vec-busca-h\u00edbrida-no-arachne.webp",
+    "public/covers/fts5-sqlite-vec-busca-híbrida-no-arachne.webp",
     "public/covers/hermes-computer-use-cua-driver.webp",
     "public/covers/inicio-dogwalk-marketplace-pets.webp",
     "public/covers/lifelog-a-chave-que-o-buscador-precisa-achar-sozinho.webp",
