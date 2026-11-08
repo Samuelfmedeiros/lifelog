@@ -108,7 +108,10 @@ describe('capas 21/9', () => {
       total?: number;
     };
     const legado = new Set((base.legacy || []).map((p) => p.replace(/^\/+/, '')));
-    expect(legado.size).toBeGreaterThan(0);
+    // Baseline VAZIA e' o estado correto quando o acervo inteiro ja foi normalizado
+    // (08/11/2026: 54 legadas -> 0). Exigir >0 aqui travava o CI exatamente quando o
+    // acervo ficava limpo. O contrato real e': nenhuma capa NOVA fora de 21/9.
+    expect(Array.isArray(base.legacy || [])).toBe(true);
     const vistos = new Set<string>();
     for (const p of posts()) {
       const c = coverOf(p.dir, p.fn);
