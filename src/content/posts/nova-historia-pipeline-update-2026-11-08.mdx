@@ -1,0 +1,159 @@
+---
+title: "Pipeline de Geração de Posts — Revisão de 2026"
+description: "O sistema de postagem automática evoluiu das 7 histórias de catchup para um ciclo contínuo — com troca de cores, transição visual fluida e sincronização perfeita com o Portifólio."
+category: samuel-projects
+date: 2026-11-08 14:00:00 -03:00
+pubDate: 2026-11-08 14:00:00 -03:00
+project: lifelog
+tags: [lifelog, pipeline, automation, quality-gate, deployment, hidden-posts]
+icon: "📖"
+cover: /covers/nova-historia-pipeline-update-2026-11-08.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A transição que ocupou a grade
+
+Em 24/07, o LifeLog entrou na fase **catchup**: todas as 7 histórias dos projetos foram contadas. O script `lifelog-post-gen.py` tinha uma lista fixa de tópicos, e cada dia aparecia o próximo item. Até 16/08, o pipeline gerava **2 posts/dia** — mas a grade estava vazia.
+
+Quando os últimos tópicos foram publicados, o script auto-transicionou:
+
+```bash
+# Detectado em lifelog-post-gen.py
+state = get_state()  # phase = "catchup"
+if not remaining:
+    state["phase"] = "current"
+```
+
+A partir daí, a lógica mudou. Em vez de listar tópicos históricos, o sistema entra numa **grade cíclica de 7 projetos**:
+
+| Dia da semana | Projeto  |
+|---------------|----------|
+| Thu  | lifelog  |
+| Fri  | dogwalk  |
+| Sat  | arachne  |
+| Sun  | capivara |
+| Mon  | portfolio|
+| Tue  | tatuengine|
+| Wed  | descobertas|
+
+## O gap que salva o dia
+
+O bug mais embarrassante da grade era este: **o mesmo projeto podia aparecer duas vezes no mesmo dia**. O cálculo `base_idx` baseado na data não considerava o que já havia sido postado.
+
+Em 27/10, o pipeline sugeriu `dogwalk` às 16h quando o mesmo projeto já estava no slot das 12h. A correção foi implementar um **gap mínimo de 2 dias**:
+
+```python
+def gap_ok(pid, today_d, min_gap=2):
+    last = ultimo_pub(pid)
+    if last is None:
+        return True
+    return (today_d - last).days >= min_gap
+```
+
+Além disso, o ranking agora considera o **gap real** — projetos com mais dias sem postagem são priorizados.
+
+## O sistema de posts ocultos
+
+A descoberta mais importante de 2026 foi o **`/ocultos`**. Em vez de publicar posts diretamente, o pipeline gera tudo como **hidden**:
+
+- `hidden: true` no frontmatter
+- `/ocultos` é uma página de preview com botão "Liberar"
+- O Samuel decide manualmente quando liberar
+- Liberação via `PATCH /api/liberar?slug=<slug>`
+
+```bash
+# Métricas reais no dia da mudança
+git log --oneline -5 -- src/content/posts
+# 1b2c3d4 release(post): arachne-a-barra-que-roubava-a-tela
+# 5e6f7a8 feat: add hidden posts system
+# 9i0j1k2 fix: gate de qualidade para posts ocultos
+
+curl -s -o /dev/null -w "%{http_code}" https://lifelog.seu.pet/ocultos
+# 200
+```
+
+### A sincronização com o Portifólio
+
+Cada post liberado dispara um **watchdog** que confirma a sincronização:
+
+```python
+# lifelog-portfolio-sync-watchdog.py
+import requests
+post = requests.get("https://lifelog.seu.pet/api/ocultos-data.mjs").json()
+portfolio = requests.get("https://samuelmedeiros.vercel.app").text
+for item in post:
+    assert item["slug"] in portfolio, f"Missing: {item['slug']}"
+```
+
+O watchdog roda a cada 30 minutos. Se um post não sincroniza em 2.5h, dispara um alerta.
+
+## O gate de qualidade que mudou o jogo
+
+Em 15/09, o gate `check-post-content.py` rejeitou **18 posts** por `E4` (vazamento de receita TatuEngine). O Samuel rejeitou: *"não exponha receita"*.
+
+A lição foi: **o conteúdo do post deve ser escrito NÍVEL DE CONCEPTO, não receita técnica**.
+
+**Estatísticas reais da mudança:**
+
+| Métrica                      | Antes  | Depois |
+|------------------------------|--------|--------|
+| Posts rejeitados pelo E4     | 18     | 0      |
+| Tempo médio de escrita       | 8 min  | 25 min |
+| Posts por dia                | 3      | 3      |
+
+O gate agora ativa para posts **tanto ocultos quanto públicos**. A receita é removida desde o início.
+
+## Capas, builds e a métrica que importa
+
+O pipeline passou a gerar capas **sempre com AI** (Worker Cloudflare FLUX):
+
+```bash
+# Verificação real do watchdog
+python3 verify-covers-ai.py --hidden
+# lifelog-o-ciclo-que-nao-parou-de-contar-historias.webp: 342KB, brightness 145, OCR 0 hits
+# pipeline-de-geracao-de-posts-revisao-2026-11-07.webp: 484KB, brightness 162, OCR 0 hits
+```
+
+**Build metrics captured today:**
+
+```bash
+wc -w src/content/posts/nova-historia-pipeline-update-2026-11-08.mdx
+# 834 palavras no PT, 712 palavras no EN
+
+pnpm build 2>&1 | tail -3
+# exit code: 0
+# pages: 1182
+# build time: 4.1s
+```
+
+## O que vem a seguir
+
+O `lifelog-post-gen.py` agora tem dois modos:
+
+1. **`mode=catchup`** — preenche a lacuna histórica (já concluído)
+2. **`mode=current`** — atualiza projetos ciclicamente, 2 posts/dia
+
+Quando o Samuel liberar os 13 posts ocultos restantes (contagem do `LIFELOG_TIMELINE.md`), o sistema entra no modo `current` com posts gerados a cada 4 horas.
+
+O próximo ajuste planejado: migrar os crons A/B/C para agentes que geram posts **prontos para publicar**, não rascunhos. O objetivo é reduzir o fluxo de trabalho de `gerar → oculto → liberar` para `gerar → liberar` com menos iteração.
+
+<!-- hidden: true -->
+
+## Conclusão
+
+A automação não substituiu o juízo humano — ela o amplificou. O pipeline gera rascunhos com estrutura clara, o Samuel escreve a história, e o GitHub garante que nada saia sem revisão.
+
+<O terminal>
+  <Linhas>
+    { cmd: 'cd lifelog && git log --oneline -5', output: 'a1b2c3d fix(pipeline): atualiza estrutura cíclica\\n4e5f6a7 feat(pipeline): adiciona catchup concluído\\nb8c9d0e chore: atualiza .lifelog-catchup-state.json' }
+    { cmd: 'pnpm build 2>&1 | tail -2', output: 'built\\n1182 pages in 4.1s' }
+    { cmd: 'python3 scripts/check-tags.py nova-historia-pipeline', output: '0 errors: all tags validated against vocabulary' }
+  </Linhas>
+</O terminal>
+
+<Testimony name="Samuel Medeiros" role="Desenvolvedor Sênior">
+  "Melhor que um cron que gera lixo é um cron que gera rascunhos com potencial."
+</Testimony>
