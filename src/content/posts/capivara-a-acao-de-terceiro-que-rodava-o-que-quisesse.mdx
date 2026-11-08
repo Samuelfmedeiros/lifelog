@@ -1,0 +1,69 @@
+---
+title: "A ação de terceiro que rodava o código que quisesse"
+description: "Fixar a versão de uma action do GitHub não protege nada: a tag v4 é um ponteiro móvel que o dono do repositório pode reescrever. Só o SHA do commit é imutável."
+category: samuel-projects
+date: 2026-11-08 12:00:00 -03:00
+pubDate: 2026-11-08 12:00:00 -03:00
+project: capivara
+tags: ["seguranca", "ci", "supply-chain", "github-actions"]
+cover: /covers/capivara-a-acao-de-terceiro-que-rodava-o-que-quisesse.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O furo que passa em toda revisão de código
+
+O workflow de segurança do Capivara rodava três scanners em runner self-hosted. Cada scanner era uma action de terceiro, referenciada pelo jeito normal:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: gitleaks/gitleaks-action@v2
+```
+
+Isso lê bem e passa em qualquer revisão. Também significa que o dono daquele repositório pode apontar a tag `v4` para outro commit quando quiser — e o próximo build do Capivara executa o código novo, dentro do runner, com o `GITHUB_TOKEN` da organização disponível no ambiente.
+
+Nada foi comprometido. O problema é de desenho: quando o código de terceiro roda com permissões suas, "a versão" precisa ser um identificador que ninguém consegue mover.
+
+## Tag é ponteiro, SHA é conteúdo
+
+Uma tag do Git é uma referência mutável. O `v4` existe hoje e pode existir apontando para outro commit amanhã, sem aviso e sem mudança visível no seu repositório.
+
+Um SHA de commit não. Ele deriva do conteúdo da árvore: se o código mudar, o hash muda. Referenciar o hash é a única forma de dizer "esta linha de código exata" e ser verdade.
+
+```yaml
+# antes: ponteiro móvel
+- uses: actions/checkout@v4
+- uses: gitleaks/gitleaks-action@v2
+
+# depois: conteúdo imutável, com a versão legível como comentário
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+- uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+```
+
+O comentário não é decoração: sem ele, daqui a seis meses ninguém sabe se aquele hash é a v4.2.2 ou um commit qualquer. Com ele, a revisão continua legível e a execução continua reprodutível.
+
+## O mesmo raciocínio no health-check
+
+O commit não mexeu só nos workflows. O `capivara-health-check.py` — o script que vigia o ecossistema e grita quando algo cai — também mudou.
+
+O script consultava um endpoint local para saber se os serviços estavam no ar. A questão é que ele agora precisa distinguir dois mundos que respondem no mesmo endereço: o serviço de verdade e um proxy de loopback que pode estar atendendo no lugar dele. Sem essa distinção, um proxy local respondendo `200` fazia o vigia declarar saúde perfeita enquanto o backend real estava morto.
+
+A allowlist de loopback existe para o script saber quando está falando com o host local legítimo e quando está falando com outra coisa que se apresentou no mesmo IP.
+
+## Por que isso rende mais que um scanner novo
+
+A tentação, ao endurecer a supply chain, é acrescentar mais uma ferramenta de análise. O ganho real deste commit é menor e mais durável: eliminar a categoria de ataque em vez de detectá-la.
+
+Depois do pin:
+
+- trocar o código de uma action exige um commit novo no seu repositório, que aparece no diff e passa por revisão;
+- o build de hoje e o de daqui a um ano executam bytes idênticos;
+- e o comentário com a versão mantém a manutenção possível — atualizar é trocar hash e comentário juntos, de propósito.
+
+## O que fica de método
+
+Todo `uses:` sem SHA é uma linha de código que alguém de fora pode reescrever no seu CI. Vale tratar como dependência de produção, não como configuração.
+
+O teste prático é simples: abra o workflow, procure `@v` e conte. Cada ocorrência é uma decisão de confiança que você delegou a um ponteiro que não controla.

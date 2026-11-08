@@ -1,0 +1,69 @@
+---
+title: "The third-party action that ran whatever code it wanted"
+description: "Pinning an action version protects nothing: the v4 tag is a moving pointer the repository owner can rewrite. Only the commit SHA is immutable."
+category: samuel-projects
+date: 2026-11-08 12:00:00 -03:00
+pubDate: 2026-11-08 12:00:00 -03:00
+project: capivara
+tags: ["security", "ci", "supply-chain", "github-actions"]
+cover: /covers/capivara-a-acao-de-terceiro-que-rodava-o-que-quisesse.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The hole that passes every code review
+
+The Capivara security workflow ran three scanners on a self-hosted runner. Each scanner was a third-party action, referenced the normal way:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: gitleaks/gitleaks-action@v2
+```
+
+It reads well and passes any review. It also means the owner of that repository can point the `v4` tag at a different commit whenever they want — and the next Capivara build executes the new code, inside the runner, with the organization's `GITHUB_TOKEN` available in the environment.
+
+Nothing was compromised. The problem is one of design: when third-party code runs with your permissions, "the version" has to be an identifier nobody can move.
+
+## A tag is a pointer, a SHA is content
+
+A Git tag is a mutable reference. `v4` exists today and can exist tomorrow pointing at another commit, with no warning and no visible change in your repository.
+
+A commit SHA does not. It derives from the content of the tree: if the code changes, the hash changes. Referencing the hash is the only way to say "this exact line of code" and be right.
+
+```yaml
+# before: moving pointer
+- uses: actions/checkout@v4
+- uses: gitleaks/gitleaks-action@v2
+
+# after: immutable content, readable version as a comment
+- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+- uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+```
+
+The comment is not decoration: without it, six months from now nobody knows whether that hash is v4.2.2 or some random commit. With it, review stays readable and the run stays reproducible.
+
+## The same reasoning in the health check
+
+The commit did not only touch workflows. `capivara-health-check.py` — the script that watches the ecosystem and shouts when something falls over — changed too.
+
+The script queried a local endpoint to learn whether services were up. The point is that it now has to distinguish two worlds answering on the same address: the real service and a loopback proxy that may be answering in its place. Without that distinction, a local proxy returning `200` made the watchdog declare perfect health while the real backend was dead.
+
+The loopback allowlist exists so the script knows when it is talking to the legitimate local host and when it is talking to something else that showed up on the same IP.
+
+## Why this pays more than another scanner
+
+The temptation, when hardening the supply chain, is to add one more analysis tool. The real gain here is smaller and more durable: eliminating the attack category instead of detecting it.
+
+After the pin:
+
+- swapping an action's code requires a new commit in your repository, which shows up in the diff and goes through review;
+- today's build and the build a year from now execute identical bytes;
+- and the version comment keeps maintenance possible — upgrading means changing hash and comment together, on purpose.
+
+## What stays as method
+
+Every `uses:` without a SHA is a line of code that someone outside can rewrite in your CI. Treat it like a production dependency, not like configuration.
+
+The practical test is simple: open the workflow, look for `@v`, and count. Each occurrence is a trust decision you delegated to a pointer you do not control.
