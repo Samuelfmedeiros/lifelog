@@ -159,11 +159,11 @@ Deploy is automatic on push to master → CI/CD → Vercel. The recent post *5 i
 
 **289 commits · 400+ tests · C++23 + CUDA · SSM × Phase Field**
 
-The most daring project: an inference engine that mixes State Space Models with phase field theory. Runs on GPU (proven 252× speedup) with 114× block-encoded compression.
+The most daring project: an inference engine that mixes State Space Models with phase field theory. Runs on GPU with block-encoded compression and speedup of orders of magnitude.
 
 ```
 TatuEngine
- ├── BlockCodec → 32×32 ternary blocks, 27 GB → 245 MB
+ ├── BlockCodec → compact ternary blocks, orders-of-magnitude compression
  ├── GPU kernel → 32 threads/CTA, warp shuffle, 252× speedup
  ├── GenerationContext → Autopoietic agent with LTM, ToolUse, GoalStack
  ├── PhaseField → O(1) potential field, SPLIT/PRUNE/EXPLORE decisions

@@ -1,5 +1,39 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-06] - 12 commits em 5 branches: release tatuengine + capas AI + pipeline; push origin ok
+
+- **conteúdo**: `74787b2` release(post) tatuengine-os-instrumentos-que-mentiam PT+EN em `origin/main`; `daeeb20` post oculto equivalente no main local.
+- **feat/fix**: `508c05d` pipeline + posts ocultos, `b7bdc77` (PR #86) sprite/covers pipeline improvements, `3577404`/`22693fb`/`fcfe6f2` capas AI WebP, `5397cd0` fix de build de capa, `1726938` capa do forgetgate (watchdog).
+- **campanhas**: `roger/lifelog-20261106-124030`, `-153527`, `roger/lifelog-entrega-20261106-154740` (`4da02b6`) e `roger/lifelog-20261105-212235` (`581edf1`).
+- main local 1 atrás de origin antes da rodada; doc em worktree, push FF.
+
+## [2026-11-05] - 13 commits em 4 branches: 3 posts liberados PT+EN, gate E2E e navbar; push origin ok
+
+- **conteúdo**: `5932c3d`/`a841296`/`2baff8e` release de posts (tatuengine, portfolio, arachne) PT+EN + ocultos-data no `origin/main`.
+- **feat/test**: `06164db` gate e2e destravado com fixture derivada do acervo; `cb21399` teste de dedupe com sessionStorage injetado; `9013d52` fix(ui) navbar.
+- **campanhas**: `roger/lifelog-20261105-084436`, `-204810` e `-212235` (HEAD `847c066`).
+- main local 1 à frente / 3 atrás do origin antes da rodada; doc em worktree, push FF e cherry-pick do `9013d52` para preservar o fix da navbar.
+
+## [2026-11-04] - 23 commits em 5 branches: evento post_depth + 2 posts liberados (capivara/dogwalk); push origin ok
+
+- **conteúdo**: `663f69f`/`4ee8a88` posts capivara e dogwalk ocultos → release PT+EN; `b02a5f8` remove post recusado; `dfad635` refaz post tatuengine sem detalhes internos; `7f8fb3a` sync ocultos-data.
+- **feat**: `61e0e8b` evento post_depth (profundidade de leitura).
+- **teste/infra**: `1178e84` capa versionada fora do git; `4de1aa0`/`a5c2dac` guard do config de e2e; `a1cc153`/`583fc69` vitest.config.ts deduplicado.
+- Campanhas roger/* e fix/e2e-ratchet-vencido PENDING merge no main. main 0/0 com origin; docs pushados.
+
+## [2026-11-03] - 17 commits em 5 branches: post Arachne oculto + release TatuEngine + scrub de revenue + e2e de ocultos; push origin ok
+
+- **conteudo**: `39c86b8` post arachne PT+EN hidden; `ae51a56` release tatuengine-case-b2b-ternario-32gb; `8f41488` scrub de revenue real; `8f12b73` remove CTA de venda; `9051fdf` remove receita residual; `b3fdaf3` cria EN ausente.
+- **infra/ci**: `1dbedd4` marcadores de conflito do merge `df361b4`; `3172c2f` contrato dos specs de ocultos + guarda do feed EN; `5549368` Fix tests (#269).
+- **entregas Roger**: `5b062f1` / `554d87f` / `ca95389` / `d103d45` / `8671e0c` / `aa9d2c5` nas 3 campanhas de 03/11.
+- Doc no `main` (8 a frente, FF-safe) com push origin verificado. Campanhas com merge/push PENDING (ordem do Samuel).
+
+## [2026-11-01] - 11 commits na campanha roger/lifelog-20261101-140559 (2 posts liberados + gate de /ocultos); push origin ok
+
+- **release**: `4540048` lifelog-o-linter-do-proprio-acervo e `065eca9` capivara-a-senha-que-o-ci-executava (PT+EN + ocultos-data); `3cfaccb` post oculto do linter.
+- **fix**: `17e3e7c`/`11452c4` fecham acesso publico ao preview de /ocultos; `99e083f` corrige falso positivo de data-project=dev; `ba40889` mascara caminho do vault; `8f275e8` remove CTA de venda.
+- Campanha pushada no origin; merge no main PENDING (ordem do Samuel). origin/main seguiu com 8 commits de outra sessao. Docs de fim de dia no main, push origin OK.
+
 ## [2026-10-31] - 15 commits: 3 posts ocultos liberados + 3 recusas refeitas + watchdog; push origin ok
 
 - **feat/release**: 3 posts ocultos (descobertas-o-308, portfolio-os-titulos, dogwalk-screenshots) publicados PT+EN com `ocultos-data` + `nova-historia-arachne-2026-10-29` republicado.

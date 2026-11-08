@@ -1,0 +1,53 @@
+---
+title: "O Reddit que derrubava a pesquisa inteira"
+description: "Um conector lento levava a rota de pesquisa social para mais de 200s e fazia a tool do agente morrer antes do tempo. A cura não foi acelerar o Reddit: foi dar um teto de 20s, isolar a thread e transformar a falha em dado honesto."
+category: samuel-projects
+date: 2026-10-31 21:44:00 -03:00
+pubDate: 2026-11-03 16:00:00 -03:00
+project: arachne
+tags: [arachne, ai, mcp, scraping, fallback, python]
+cover: /covers/arachne-o-reddit-que-derrubava-a-pesquisa-inteira.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+## O problema
+
+Uma pesquisa social que deveria levar dois segundos passou a consumir mais de 200 segundos. Não era a query, nem o volume de resultados: era uma plataforma. E o detalhe é que a ferramenta continuava respondendo — só que tarde, e depois parou de responder.
+
+O Arachne consulta várias plataformas numa mesma rota e devolve o resultado consolidado. Enquanto as outras respondiam,uma delas segurava a requisição inteira. A mesma consulta pedida sem o Reddit voltava em 1,8s com 23 itens. Com o Reddit, o tempo fugia de 200s.
+
+Medido em 31 de outubro: o endpoint JSON do Reddit respondia 403, host bloqueado. O espelho alternativo caiu com HTTP 522,e cada tentativa custava algo perto de 20s. O fallback de navegador batia num redirecionamento para tela de login, com 403 e timeout estourado. Somando as camadas, o conector sozinho passava dos 200s.
+
+A ferramenta que expõe isso pro agente tinha timeout de 120s com três tentativas internas. Morria antes de o conector terminar — e quando morria, abria o circuit breaker, que passou a barrar as chamadas seguintes. Uma plataforma instável tinha consequência para todos: o sintoma não era "o Reddit falhou", era "a pesquisa não funciona".
+
+Esse é o defeito mais caro de um coletor múltiplo. Não é a lentidão de uma fonte, é o acoplamento: a rota só termina quando a fonte mais lenta termina.
+
+## Como ficou
+
+O commit `e8d8aee5` atacou o acoplamento, não a lentidão. A coleta do Reddit passou a rodar numa thread isolada com teto de 20 segundos, e o pool usa shutdown sem espera. O conector estourou o teto, a plataforma vira uma entrada honesta de erro por plataforma, e as outras continuavam respondendo.
+
+A parte que exige cuidado é o shutdown. Montar o pool como gerenciador de contexto — o `with` que se escreve sem pensar — faz o encerramento esperar a thread pendurada, e isso anula o teto: o timeout passa a existir no papel e a rota continua presa. O shutdown sem espera é o que separa ter um teto de ter um teto que funciona.
+
+A_thread continua rodando do outro lado, sem ser cancelada no kernel. Isso é aceito como custo conhecido, não como descuido: a escolha foi entre a rota responder e o processo terminar limpo. Com teto curto e plataforma instável, responder importa mais.
+
+Depois veio a camada viva: o commit `d914a2c9` colocou o arctic-shift como fonte alternativa, transformando a consulta em subreddits, e o `4b565fb4` paralelizou a coleta com mapa normalizado e ruído zero.
+
+Paralelizar trouxe um problema novo. O commit `96eabe7c` removeu uma asserção de ordem dos testes dos GETs paralelos — flake de aproximadamente 10% das execuções. O teste presumia uma ordem de chegada que a paralelização não garante. A resposta não foi deixar a asserção com retry: era a asserção que estava errada. Teste que depende de ordem entre requisições concorentes está testando o agendamento, não o comportamento.
+
+O teste novo, `tests/test_social_research_reddit_cap.py`, com driver rodado dentro do container contra o código bind-montado, passou 5 de 5. O coletor corta em 20,0s e o pipeline completo com o Reddit pendurado termina também em 20,0s. Antes: mais de 200s.
+
+## Por que importa
+
+O número que interessa não é o speedup, é o que acontece com o adversário. Antes, a pior plataforma determinava o tempo de todas. Depois, a pior plataforma custa no máximo o teto — e o resto responde.
+
+Isso muda a conversa sobre falha. Plataforma que não responde deixa de ser motivo para a pesquisa não existir: ela vira um campo de erro, visível, com a plataforma identificada. Quem lê o resultado sabe o que faltou em vez de receber um timeout mudo.
+
+O circuit breaker também volta ao papel original. Ele existe para proteger o sistema de uma dependência doente, não para punir a requisição seguinte por causa de uma fonte que já falhou. Com teto e isolamento, a abertura dele passa a ser sinal real, não sintoma de acoplamento.
+
+A lição que fica vale pra qualquer integração com terceiro: o timeout não é configuração de performance, é decisão de arquitetura. Sem teto de verdade, uma fonte lenta não é lenta — é indisponibilidade propagada. E o teste que falha de vez em quando merece mais desconfiança que o teste que falha sempre: o determinístico esconde acoplamento, o intermitente o denuncia.
+
+## Próximo passo
+
+Estender o mesmo tratamento — thread isolada, teto, falha por plataforma — às outras fontes instáveis do coletor, medindo o tempo de cada rota antes e depois pra provar que o teto é o que manda no tempo total, e não a fonte mais lenta.

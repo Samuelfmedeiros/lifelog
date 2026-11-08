@@ -1,78 +1,84 @@
 ---
-title: "Arachne — The Bar That Stole The Mobile Screen"
-description: "The Arachne search bar was consuming 100% of mobile screen width, destroying the reading experience. The fix involved custom CSS with overflow-x and padding adjustments that recovered 40% more readable space."
-date: 2026-11-07 08:00:00 -03:00
-pubDate: 2026-11-07 08:00:00 -03:00
+title: "The Top Bar That Was Eating the Phone Screen"
+description: "Two lines where one would do: how a global CSS reset and an orphan style block made the Arachne bar eat 117 pixels on mobile — and what finally measured the difference."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-07 12:00:00 -03:00
+pubDate: 2026-11-07 12:00:00 -03:00
 project: arachne
-tags: [arachne, ui, mobile, css, overflow, performance]
-cover: /covers/arachne-a-barra-que-roubava-a-tela-do-celular.webp
-hidden: true
-lang: en
-featured: false
+tags: [arachne, ui, mobile, css, frontend, layout]
+cover: /covers/arachne-a-barra-que-roubava-a-tela-do-celular-v2.webp
+hidden: false
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
+I opened Arachne on my phone and the first thing was not the dashboard: it was the top bar, two full lines and 117 pixels tall on a six-inch screen. On desktop, none of it.
 
-## The problem: An invasive bar on mobile
+The fix turned into a small case study about two traps behind the same symptom: a CSS reset that was too generic, and a style block that never compiled.
 
-The Arachne search component looks perfect on desktop — adequate width, correct spacing, smooth experience. On mobile, the bar **stole 100% of the screen width**, forcing search results content into a narrow column that almost folded the user's screen.
+## What was going on
 
-Samuel's feedback was clear: "The search bar is occupying space that should belong to the content."
+The interface is a single-page app: a top bar with the commands button, a navigation sidebar, and a content area. On mobile, the sidebar becomes a dock pinned to the bottom and the top bar should shrink to one line.
 
-## The investigation
+The first commit that day, at 02:47, measured the damage: 117 pixels. The cause was not in the bar component, but in the reset files, where a generic rule for the `header` element forced `flex-direction: column` on every page header — including mine. That rule was written for the login screen and the public pages, and because it targets an element rather than a class, it reached everyone; on desktop it never ran, because it lived inside a media query for narrow screens.
 
-The issue was in the component's CSS. The `.search-bar` had:
-
-```css
-width: 100vw;
-max-width: none;
-```
-
-On mobile, `100vw` includes the browser's scrollbar space — not a problem in itself, but combined with `max-width: none` and no overflow control, the bar expanded beyond the content and pulled the entire viewport.
-
-## The fix: Controlled overflow
-
-The fix involved two simple rules:
-
-1. **Limit the maximum width** of the main container
-2. **Add overflow-x** control for content when needed
+The second cause was more humbling. In the Vue component, a block of CSS sat after the closing style tag:
 
 ```css
-.search-container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
+/* the component closed its style block right here */
 }
 
-.search-bar {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-@media (max-width: 480px) {
-  .search-container {
-    padding: 0 0.5rem;
+/* ──Mobile: breathing room for the bottom nav ── */
+@media (max-width: 768px) {
+  .main-content {
+    padding-bottom: 56px;
   }
 }
 ```
 
-## Measurable outcome
+Anything after that closing tag is not component CSS: it is loose text in the template, ignored silently by the compiler. The breathing room that kept the bottom dock from covering the last card never existed — and nobody complained, because the symptom was subtle: the end of the page was hidden, not missing.
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Available mobile width | ~55% | ~85% | +30% |
-| Scroll pixel needed | Yes | No | -100% |
-| Load time | 1.2s | 1.1s | -8% |
+## How it was fixed
 
-## Lessons
+First, the bar went back to one line. Instead of fighting the reset by cranking up specificity, the component started declaring its full intent inside the narrow-screen media query:
 
-- **Mobile-first is more than CSS** — user interaction (scroll, touch) must be tested on device
-- **100vw is the enemy of mobile** — always combine with `max-width` and `overflow-x: auto`
-- **Test on real device** — emulator never catches all layout bugs
+```css
+.topbar {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+}
 
-## Next steps
+.page-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+```
 
-The bar now respects screen space and allows search results content to expand to most of the viewport. The next step is applying the same overflow-controlled pattern to side filters that appear on larger screens.
+The page title came in as a new element, capped at 150 pixels and ellipsized when it overflows — instead of stacking. The commands button shrank to a 36-pixel square and the measured height dropped from 117 to 61 pixels. The orphan block moved back inside the component and the 56-pixel breathing room started working.
 
-<Terminal commands={[{ cmd: 'git log --oneline -1 -- packages/arachne/src/components/SearchBar.tsx', output: 'a7f3c8d fix(search): Mobile search bar occupied 100% of screen' }]} />
+Three small details carry most of the value: the `min-width: 0` on the title's container, without which flexbox refuses to shrink a child and the ellipsis never fires; the `flex-wrap: nowrap`, which prevents the second row instead of repairing it; and the explicit `gap`, because without it the elements jammed together once the badge disappeared.
+
+## The dock, same morning
+
+At 03:14 came the second front: the mobile navigation dock. On desktop it has 23 links and 58 pixels of height; on a phone, showing all of them was impossible. The answer was to cut the dock down to four main destinations, each 56 pixels tall with its label always visible — not only on tap, as before.
+
+Here a third problem showed up, a classic specificity one: a mobile rule hid every dock link that was not primary, so the four destinations stayed invisible. The most interesting process decision was comparing layouts without a branch: the variants became reachable through a query parameter — four labeled destinations by default, three plus a floating button in the second, the previous dock in the third.
+
+## Why it matters
+
+The lesson is not about pixels: it is about where you write the rule. An element-level CSS reset is convenient the day you write it and expensive six months later, because it reaches components that did not exist yet. When a generic reset fights a specific component, raising specificity is the wrong medicine: either the reset respects the boundary, or the component declares its whole intent inside its own media query.
+
+The second lesson is about silence. The orphan block produced no error, no warning, no failing test — only a slightly wrong layout for weeks. The project's automated checks looked at routes and rendered DOM, and none measured a component's compiled CSS at a narrow viewport — a test like that would have caught the defect in minutes.
+
+The third point is the touch target: the 36-pixel button sits below the comfortable 44-pixel minimum — a conscious choice, since the 56-pixel dock is the primary target and the commands button is a secondary shortcut.
+
+## Next step
+
+The variants are provisional: they exist for the visual audit and go away once the decision lands. The next step is to consolidate the approved variant as the code's default and keep a narrow-viewport test that measures the bar's height — so a global reset can never stack the top again without breaking a test first.

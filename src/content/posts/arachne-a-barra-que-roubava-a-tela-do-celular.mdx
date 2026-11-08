@@ -1,78 +1,84 @@
 ---
-title: "Arachne — a barra que rouabava a tela do celular"
-description: "O componente de busca do Arachne usava 100% da largura disponível mobile, destruindo a experiência de scroll. A solução envolveu CSS custom com overflow-x e ajustes de padding que recuperaram 40% mais espaço de leitura."
-date: 2026-11-07 08:00:00 -03:00
-pubDate: 2026-11-07 08:00:00 -03:00
+title: "A barra de cima que roubava a tela do celular"
+description: "Duas linhas onde cabia uma: como um reset global de CSS e um bloco de estilo órfão faziam a barra do Arachne comer 117 pixels no celular — e o que mediu a diferença."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-07 12:00:00 -03:00
+pubDate: 2026-11-07 12:00:00 -03:00
 project: arachne
-tags: [arachne, ui, mobile, css, overflow, performance]
-cover: /covers/arachne-a-barra-que-roubava-a-tela-do-celular.webp
-hidden: true
-lang: pt
-featured: false
+tags: [arachne, ui, mobile, css, frontend, layout]
+cover: /covers/arachne-a-barra-que-roubava-a-tela-do-celular-v2.webp
+hidden: false
 ---
 
-import Terminal from '../../components/TerminalWidget.astro'
+Abri o Arachne no celular e a primeira coisa não foi o painel: era a barra de cima, com duas linhas e 117 pixels de altura num aparelho de 6 polegadas. No desktop, nada disso.
 
-## O problema: barra invasiva no mobile
+A correção virou um estudo de caso sobre duas armadilhas no mesmo sintoma: um reset de CSS genérico demais e um bloco de estilo que nunca compilou.
 
-O Arachne tem um componente de busca que aparece no topo de cada página de resultados. Em desktop funciona perfeitamente — largura adequada, espaçamento correto, experiência fluida. No mobile, a barra **roubava 100% da largura da tela**, forçando o conteúdo dos resultados a carregar em uma coluna estreita que quase dobrava a tela do usuário.
+## O que estava acontecendo
 
-A crítica do Samuel foi clara: "a barra de busca está ocupando espaço que deveria ser do conteúdo".
+A interface é uma aplicação de página única: barra superior com botão de comandos, coluna lateral de navegação e área de conteúdo. No celular, a coluna vira uma doca fixa embaixo e a barra deveria encolher para uma linha.
 
-## A investigação
+O primeiro commit do dia, às 02:47, media o estrago: 117 pixels. A causa não estava no componente da barra, e sim nos arquivos de reset, onde uma regra genérica para o elemento `header` forçava `flex-direction: column` em qualquer cabeçalho — inclusive no meu. A regra nasceu para o login e as páginas públicas, e por ser de elemento, não de classe, alcançava todos; no desktop ela nunca executava, porque vivia numa consulta de mídia para telas estreitas.
 
-A causa estava no CSS do componente. O `.search-bar` tinha:
-
-```css
-width: 100vw;
-max-width: none;
-```
-
-Em mobile, `100vw` inclui a barra de rolagem do navegador — o que não é um problema em si, mas combinado com `max-width: none` e sem nenhum controle de overflow, a barra expandia-se além do conteúdo e puxava a viewport inteira.
-
-## A solução: overflow controlado
-
-A correção envolveu duas regras simples:
-
-1. **Limitar a largura máxima** do container principal
-2. **Adicionar overflow-x** para o conteúdo quando necessário
+A segunda causa era mais humilhante. No componente Vue, um bloco de CSS estava escrito depois do fechamento da tag de estilo:
 
 ```css
-.search-container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1rem;
+/* o componente fechava o bloco de estilo aqui */
 }
 
-.search-bar {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-@media (max-width: 480px) {
-  .search-container {
-    padding: 0 0.5rem;
+/* ──Mobile: respiro p/ navegação inferior ── */
+@media (max-width: 768px) {
+  .conteudo-principal {
+    padding-bottom: 56px;
   }
 }
 ```
 
-## Resultado mensurável
+Tudo depois do fechamento não é CSS do componente: é texto solto no template, ignorado em silêncio pelo compilador. O respiro que impedia a doca de baixo cobrir o último card nunca existiu — e ninguém reclamou, porque o sintoma era sutil: o fim da página ficava escondido, não ausente.
 
-| Métrica | Antes | Depois | Melhora |
-|---------|-------|--------|---------|
-| Largura disponível mobile | ~55% | ~85% | +30% |
-| Pixel de rolagem necessária | Sim | Não | -100% |
-| Tempo de carregamento | 1.2s | 1.1s | -8% |
+## Como foi resolvido
 
-## Lições
+Primeiro, a barra voltou a ser uma linha. Em vez de brigar com o reset aumentando especificidade, o próprio componente passou a declarar a intenção inteira dentro da consulta de mídia:
 
-- **Mobile-first não significa só CSS** — a interação do usuário (scroll, toque) precisa ser testada de verdade
-- **100vw é inimigo do mobile** — sempre combinar com `max-width` e `overflow-x: auto`
-- **Testar no dispositivo real** — o DevTools emulador não captura todos os bugs de layout
+```css
+.barra-superior {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+}
 
-## Próximos passos
+.titulo-pagina {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+```
 
-A barra agora respeita o espaço da tela e permite que o conteúdo dos resultados se expanda para a maior parte da viewport. O próximo passo é aplicar o mesmo padrão de overflow controlado aos filtros laterais que aparecem em telas maiores.
+O título da página entrou como elemento novo, limitado a 150 pixels e com reticências quando estoura — em vez de empilhar. O botão de comandos encolheu para um quadrado de 36 pixels e a altura medida caiu de 117 para 61 pixels. O bloco órfão voltou para dentro do componente e o respiro de 56 pixels passou a valer.
 
-<Terminal commands={[{ cmd: 'git log --oneline -1 -- packages/arachne/src/components/SearchBar.tsx', output: 'a7f3c8d fix(search): Mobile search bar ocupava 100% da tela' }]} />
+Três detalhes carregam a maior parte do valor: `min-width: 0` no contêiner do título, sem o qual o flexbox se recusa a encolher o filho e o ellipsis nunca dispara; `flex-wrap: nowrap`, que impede a segunda linha em vez de consertá-la depois; e `gap` explícito, porque sem ele os elementos colavam quando a etiqueta do atalho desaparecia.
+
+## A doca, na mesma manhã
+
+Às 03:14 veio a segunda frente: a doca de navegação do celular. No desktop ela tem 23 links e 58 pixels de altura; no celular, mostrar tudo era impossível. A solução foi reduzir a doca a quatro destinos principais, cada um com 56 pixels de altura e rótulo sempre visível — não só no toque, como era antes.
+
+Aqui aparece um terceiro problema, clássico de especificidade: uma regra de mobile escondia todo link da doca que não fosse primário, então os quatro destinos continuavam invisíveis. A decisão de processo mais interessante foi comparar layouts sem branch: as variantes ficaram acessíveis por parâmetro na URL — quatro destinos rotulados no padrão, três mais um botão flutuante na segunda, doca anterior na terceira.
+
+## O que isso muda
+
+A lição não é sobre pixel: é sobre onde escrever a regra. Um reset de CSS por elemento é conveniente no dia em que nasce e caro seis meses depois, porque atravessa componentes que ainda não existiam. Quando um reset genérico briga com um componente específico, aumentar especificidade é o remédio errado — ou o reset respeita a fronteira, ou o componente declara a intenção inteira na própria consulta de mídia.
+
+A segunda lição é sobre silêncio. O bloco órfão não gerou erro, aviso ou teste vermelho: gerou um layout levemente errado por semanas. As verificações automatizadas olhavam rotas e DOM renderizado, nenhuma media o CSS compilado num viewport estreito — um teste assim teria pego o defeito em minutos.
+
+O terceiro ponto é o alvo de toque: os 36 pixels do botão compacto ficam abaixo do mínimo confortável de 44, e isso é escolha consciente, porque a doca de 56 pixels é o alvo principal de navegação.
+
+## Próximo passo
+
+As variantes são provisórias: existem para a auditoria visual e vão embora quando a decisão for tomada. O próximo passo é consolidar a variante aprovada como padrão do código e manter um teste de viewport estreita que meça a altura da barra — para que um reset global nunca mais empilhe o topo sem quebrar um teste antes de chegar no celular.

@@ -17,7 +17,7 @@ import Terminal from '../../../components/TerminalWidget.astro'
 
 In the codec post, I left a spoiler at the end: *"the lm_head will make a comeback."* And it did.
 
-The short story: the ternary block codec shrank the model from 27GB to 245MB, but per-tensor validation flagged a divergence in the `lm_head` — the layer that maps internal states to the vocabulary. While `in_proj` came out perfect (ULP-level differences) and `out_proj` was explained by accumulation order, the lm_head stayed as an open item in the backlog.
+The short story: the ternary block codec shrank the model by orders of magnitude, but per-tensor validation flagged a divergence in the `lm_head` — the layer that maps internal states to the vocabulary. While `in_proj` came out perfect (ULP-level differences) and `out_proj` was explained by accumulation order, the lm_head stayed as an open item in the backlog.
 
 Two weeks later, I came back to it with an audit script — and what I found changed the entire project's course.
 

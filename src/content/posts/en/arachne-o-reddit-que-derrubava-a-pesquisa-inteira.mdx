@@ -1,0 +1,53 @@
+---
+title: "The Reddit That Took Down the Whole Search"
+description: "One slow connector pushed the social research route past 200 seconds and killed the agent tool before its own timeout. The fix was not to make Reddit faster: it was a 20-second ceiling, an isolated thread, and turning the failure into honest data."
+category: samuel-projects
+date: 2026-10-31 21:44:00 -03:00
+pubDate: 2026-11-03 16:00:00 -03:00
+project: arachne
+tags: [arachne, ai, mcp, scraping, fallback, python]
+cover: /covers/arachne-o-reddit-que-derrubava-a-pesquisa-inteira.webp
+featured: false
+hidden: false
+lang: 'en'
+---
+
+## The problem
+
+A social search that should have taken two seconds started taking more than two hundred. It was not the query, and it was not the result volume: it was one platform. And the strange part is that the tool kept answering — just late, and eventually it stopped answering at all.
+
+Arachne queries several platforms on the same route and returns a consolidated result. While the others answered, one of them held the entire request. The same query asked without Reddit came back in 1.8 seconds carrying 23 items. With Reddit, the time ran past 200 seconds.
+
+Measured on October 31: Reddit's JSON endpoint answered 403, host blocked. The alternate mirror fell over with HTTP 522, and each attempt cost roughly 20 seconds. The browser fallback hit a redirect to a login screen, again 403, with its hard timeout blown. Adding the layers up, the connector alone passed 200 seconds.
+
+The tool that exposes this to the agent had a 120-second timeout with three internal retries. It died before the connector finished — and when it died, it opened the circuit breaker, which then started rejecting the calls that followed. One unstable platform had consequences for everything. The symptom was no longer "Reddit failed", it was "search does not work".
+
+That is the most expensive defect a multi-source collector can have. Not the slowness of one source, but the coupling: the route only finishes when the slowest source finishes.
+
+## How it ended
+
+Commit `e8d8aee5` went after the coupling, not the slowness. Reddit collection moved into an isolated thread with a 20-second ceiling, and the pool shuts down without waiting. Once the connector blows the ceiling, the platform becomes an honest per-platform error entry and the rest carry on answering.
+
+The part that demands care is the shutdown. Using the pool as a context manager — the `with` you write without thinking — makes teardown wait for the hung thread, and that cancels the ceiling: the timeout exists on paper while the route stays stuck. Shutting down without waiting is what separates having a ceiling from having a ceiling that works.
+
+The thread keeps running on the other side, never cancelled in the kernel. That is an accepted, known cost rather than an oversight: the choice was between answering the route and finishing clean. With a short ceiling and an unstable platform, answering matters more.
+
+Then came the live layer: commit `d914a2c9` brought arctic-shift in as an alternate source, turning the query into subreddits, and `4b565fb4` parallelized collection with a normalized map and zero noise.
+
+Parallelizing introduced a new problem. Commit `96eabe7c` removed an ordering assertion from the parallel GET tests — a flake at roughly one run in ten. The test presumed an arrival order that parallelism does not guarantee. The answer was not to keep the assertion and retry: the assertion itself was wrong. A test that depends on ordering between concurrent requests is testing the scheduler, not the behavior.
+
+The new test, `tests/test_social_research_reddit_cap.py`, with a driver run inside the container against bind-mounted code, passed 5 of 5. The collector cuts off at 20.0 seconds and the full pipeline with Reddit hung also finishes at 20.0 seconds. Before: over 200 seconds.
+
+## Why it matters
+
+The number that matters is not the speedup. It is what happens to the adversary. Before, the worst platform set the time for all of them. After, the worst platform costs at most the ceiling — and everything else answers.
+
+That changes the conversation about failure. A platform that does not respond is no longer a reason for the search not to exist: it becomes an error field, visible, with the platform identified. Whoever reads the result knows what was missing instead of receiving a mute timeout.
+
+The circuit breaker also returns to its original job. It exists to protect the system from a sick dependency, not to punish the next request because of a source that already failed. With a ceiling and isolation, its opening becomes a real signal instead of a symptom of coupling.
+
+The lesson that survives applies to any third-party integration: the timeout is not a performance setting, it is an architecture decision. Without a real ceiling, a slow source is not slow — it is propagated unavailability. And a test that fails once in a while deserves more suspicion than one that fails every time: the deterministic one hides coupling, the intermittent one reports it.
+
+## Next step
+
+Extend the same treatment — isolated thread, ceiling, per-platform failure — to the other unstable sources in the collector, measuring each route's time before and after to prove that the ceiling is what governs the total, not the slowest source.

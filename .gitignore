@@ -77,8 +77,20 @@ public/test-light*.png
 # com ENOTDIR (incidente 13/09). O padrao abaixo cobre arquivo e diretorio.
 node_modules
 
-# logs de operacao (nunca versionar)
+# logs de operacao (nunca versionar). O padrao sem barra pega ARQUIVO chamado
+# 'logs' em qualquer nivel; com barra pega DIRETÓRIO. Precisamos dos dois, senao
+# uma pasta .hermes-logs/ ou logs/ na raiz entra no commit (medido 02/11/2026:
+# o .hermes-logs/ com shots do gate do Roger ia para o commit).
+logs
 logs/
+.hermes-logs/
 
 # artefato de build (contem o HTML dos previews ocultos; gerado por scripts/gen-preview-data.mjs)
 api/preview-data.mjs
+coverage/
+
+# lixo de sessao (skills/snapshots) nao vai pro repo
+.hermes/
+
+# backups das capas quadradas (rollback local, nao versionar)
+public/covers/*.bak-quadrado-*

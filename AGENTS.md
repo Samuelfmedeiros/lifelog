@@ -11,7 +11,7 @@
 ## Sessão 2026-11-05 (fim de dia) — 13 commits em 4 branches (posts PT+EN, gate E2E, navbar); push origin ok
 
 - `origin/main` recebeu hoje 3 releases de post: `5932c3d` tatuengine (PT+EN + ocultos-data), `a841296` portfolio e `2baff8e` arachne.
-- `main` local estava 1 à frente / 3 atrás de `origin/main` antes da rodada: `9013d52` fix(ui) navbar (ordem portifolio>inicio>arquivo>loja>sobre, contraste do ícone de busca, separador de data sem caps), `06164db` test(e2e) gate destravado com fixture derivada do acervo, `8519eeb` post hidden portfolio, `cb21399` test(post-depth) com sessionStorage injetado, `23b12e9` post hidden arachne.
+- `main` local estava 1 à frente / 3 atrás do `origin/main` antes da rodada: `9013d52` fix(ui) navbar (ordem portifolio>inicio>arquivo>loja>sobre, contraste do ícone de busca, separador de data sem caps), `06164db` test(e2e) gate destravado com fixture derivada do acervo, `8519eeb` post hidden portfolio, `cb21399` test(post-depth) com sessionStorage injetado, `23b12e9` post hidden arachne.
 - Campanhas Roger do dia: `roger/lifelog-20261105-084436` e `roger/lifelog-20261105-204810` (trabalho residual + UI) e `roger/lifelog-20261105-212235` (HEAD `847c066`) com `d504930` docs (template de resumo ancorado para o workflow do Yurumi) e `847c066` remoção de arquivos mortos do loop worker.
 - Rodada: 13 commits no dia em 4 branches. Doc escrito em worktree detachado sobre `origin/main`; o fix da navbar (`9013d52`) foi reentrado no `main` por cherry-pick para não regredir a UI.
 - Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
@@ -43,7 +43,6 @@
 - Working tree com 21 diffs preservados (posts .mdx, logs) — trabalho alheio intacto.
 - Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
 
->>>>>>> Stashed changes
 ## Sessão 2026-10-31 (fim de dia) — 15 commits (3 posts ocultos + 3 refazer + watchdog); push origin ok
 
 - **feat(posts ocultos)**: `6d50c26` descobertas-o-308-que-mudou-de-endereco, `1e9da19` portfolio-os-titulos-que-nao-apareciam-no-desktop, `fea2920` dogwalk-screenshots-que-mentiam-sobre-o-tamanho (todos PT+EN, hidden).

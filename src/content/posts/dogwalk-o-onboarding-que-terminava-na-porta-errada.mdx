@@ -1,0 +1,86 @@
+---
+title: "O onboarding que terminava na porta errada"
+description: "Um transporter concluía o onboarding do Stripe Connect e caía numa rota que o app bloqueava para o papel dele: o callback nunca rodava e a conta continuava sem receber — sem um único erro na tela."
+category: samuel-projects
+date: 2026-10-26 23:15:00 -03:00
+pubDate: 2026-11-04 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, stripe, payments, frontend, testing]
+cover: /covers/dogwalk-o-onboarding-que-terminava-na-porta-errada.webp
+hidden: false
+lang: 'pt'
+---
+
+O PataPass tem três papéis: tutor, walker e transporter. Tutor paga, walker e transporter recebem — e quem recebe precisa de uma conta Stripe Connect habilitada. Na noite de 26 de outubro descobri que um transporter conseguia completar todo o onboarding hospedado da Stripe, voltar para o app e terminar numa tela com cara de sucesso, sem nenhum erro visível. Só que a conta nunca ficava habilitada para receber. Falha silenciosa, que é o pior tipo: o usuário acha que fez a parte dele e vai descobrir o problema quando o primeiro pagamento não cair.
+
+### O que acontecia de verdade
+
+O fluxo do Connect é bem conhecido: o front pede um link de onboarding, o usuário preenche os dados no domínio da Stripe, a Stripe devolve o usuário para uma `return_url` com um `?code=` na query, e esse code precisa ser trocado por credenciais para que a conta passe a ter `charges_enabled` e `payouts_enabled` verdadeiros.
+
+O `return_url` que o front enviava era fixo: `/walker/payments`. Em `src/App.jsx` essa rota está registrada com `roleRequired="walker"`, e o `ProtectedRoute` a protege exatamente como deveria proteger. Resultado: o transporter era redirecionado para o dashboard dele **antes de o componente de pagamentos montar**. O `useEffect` que processa o callback nunca executava, o `code` morria na URL, e nada acontecia. Nenhum toast, nenhum log, nenhuma conta conectada.
+
+O agravante é que o caminho do walker funcionava. O caso que todo mundo testa estava verde — o do papel principal, o do teste manual de sempre. O defeito só aparecia no papel que ninguém tinha exercitado ponta a ponta.
+
+### A causa raiz era dupla
+
+A primeira parte morava no backend: o endpoint que cria o link de onboarding sobrescrevia `return_url` e `refresh_url` com o valor fixo de configuração. Ou seja, mesmo que o front mandasse outro caminho, ele era descartado.
+
+A segunda parte morava no front: a tela de pagamentos era role-agnóstica. O nome do arquivo já entregava a intenção — `WalkerPayments` — mas a tela é compartilhada entre walker e transporter. Tudo nela era fixo no caminho do walker, inclusive o botão de voltar.
+
+A correção começou por tirar a decisão de papel de dentro das telas. Hoje existe uma função única que responde qual é o papel ativo, tentando primeiro o perfil ativo do usuário (o app é multi-perfil), depois a metadata, depois o campo direto e por último o que está persistido no cliente:
+
+```javascript
+export function resolveUserRole(user, fallback = 'tutor') {
+  if (!user) return fallback;
+  const activeProfileId = user.active_profile_id;
+  if (activeProfileId && Array.isArray(user.profiles)) {
+    const active = user.profiles.find((p) => p.id === activeProfileId);
+    const profileRole = active?.role || active?.type || active?.profile_type;
+    if (profileRole) return profileRole;
+  }
+  if (user.role) return user.role;
+  return fallback;
+}
+
+export function paymentsPathForRole(role) {
+  return role === 'transporter' ? '/transporter/payments' : '/walker/payments';
+}
+```
+
+Com isso, a tela passou a calcular o próprio caminho e a mandar `return_url` e `refresh_url` coerentes com o papel do usuário logado. O botão de voltar também deixou de ser fixo no perfil do walker.
+
+### O backend não pode aceitar qualquer URL
+
+Abrir o backend para aceitar `return_url` do request tem um custo óbvio: aquilo é um redirecionamento. Aceitar qualquer coisa transformaria o endpoint num open redirect — e pior que isso, a Stripe devolve o usuário com o `code` na query. Mandar esse retorno para um domínio de terceiro é vazar o code.
+
+Por isso a aceitação passou por allowlist de host **e** de caminho, com fallback para o valor de configuração em qualquer caso duvidoso:
+
+```python
+_ALLOWED_CONNECT_HOSTS = {"seu.pet", "localhost"}
+_ALLOWED_CONNECT_PATHS = {"/walker/payments", "/transporter/payments"}
+
+host_ok = parsed.hostname in _ALLOWED_CONNECT_HOSTS
+path_ok = parsed.path in _ALLOWED_CONNECT_PATHS
+if host_ok and path_ok:
+    return url
+```
+
+A regra de host e caminho é conjuntiva de propósito. Host certo com caminho errado cai no default, e caminho certo em domínio diferente também. O caso `localhost` existe para desenvolvimento local, onde a porta varia.
+
+Os testes cobrem exatamente as fronteiras: retorno do walker aceito, retorno do transporter aceito, `https://seu.pet/outro` rejeitado, domínio diferente com caminho válido rejeitado, `/walker/profile` no domínio certo rejeitado, ausência de URLs caindo no default, localhost aceito e URL malformada não quebrando a função. Oito casos em `backend/tests/test_stripe_connect_redirect.py`. Do lado do front, treze casos em `src/utils/roles.test.js` cobrindo a ordem de resolução do papel. Build do Vite com PWA verde, e o critério de qualidade do projeto fechou em 100.
+
+### Logar a rejeição sem logar o segredo
+
+Sobrou um detalhe que virou o segundo commit, na madrugada seguinte: quando a URL é rejeitada, agora sai um `warning` com a origem (`return_url` ou `refresh_url`), o host, o caminho, e quais das duas checagens falharam. O que **não** entra no log é a URL inteira, porque a query pode carregar token ou code.
+
+Essa escolha tem consequência prática: se alguém começar a sondar a allowlist com hosts aleatórios, o padrão aparece nos logs sem que o log vire um vazamento por si. E como o comportamento não mudou para URLs válidas nem para URLs ausentes, o risco de regressão foi zero por construção.
+
+### Por que isso importa mais do que parece
+
+Um redirecionamento errado não derruba nada, não gera erro 500 e não aparece em monitoramento. Ele só deixa de fazer o trabalho. Um bug assim pode viver semanas com o funil parecendo saudável — porque a etapa que falha é justamente a que ninguém instrumentou.
+
+A segunda lição é sobre onde a decisão de papel mora. Enquanto cada tela resolvia sozinha quem era o usuário, as telas divergiam: a navbar assumia tutor no fallback, a área de pagamentos assumia walker. Centralizar a resolução numa função única não é elegância, é a diferença entre corrigir um bug em um lugar e corrigi-lo em cinco.
+
+### Próximo passo
+
+A cobertura atual prova a função pura e o cálculo de caminho. O que ainda falta é o caminho real de ponta a ponta: entrar como transporter, concluir o onboarding, voltar com `?code=` na URL e verificar que a conta saiu de "pendente" para habilitada. Esse é o teste que teria pego o bug na primeira execução — e é o próximo a entrar na suíte.

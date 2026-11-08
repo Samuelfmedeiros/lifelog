@@ -1,0 +1,131 @@
+---
+title: "Os instrumentos que mentiam — e o laboratório que aprendeu a ler o próprio relatório"
+description: "Em 48 horas, dois instrumentos de medição do projeto entregaram resposta errada. Um listava um terço do que existia por ordenar texto como texto. O outro fabricava número onde faltava dado. A cura dos dois foi a mesma."
+date: 2026-11-06 16:00:00 -03:00
+pubDate: 2026-11-06 16:00:00 -03:00
+project: tatuengine
+tags: [tatuengine, metric, testing, audit, python, lessons]
+cover: /covers/tatuengine-os-instrumentos-que-mentiam.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+## O laudo que dizia que havia dez camadas
+
+Tem uma regra que eu aprendi a duras penas nesse projeto: nenhum número merece
+confiança antes de o instrumento que o produziu ser auditado. Não é desconfiança
+de ferramenta alheia — é desconfiança metodológica. E novembro passou os dois dias
+seguintes me provando isso duas vezes, com defeitos diferentes, no mesmo lugar.
+
+Na quinta-feira, uma etapa de manutenção de modelo precisou responder a uma
+pergunta simples: o artefato que eu tenho em mão está completo? O script que
+responde isso imprime um laudo no topo da saída — uma linha com o intervalo de
+camadas encontradas e a contagem total. Eu tinha lido aquele laudo dezenas de
+vezes sem nunca ler o código que o montava. Naquela manhã ele disse que o
+artefato tinha camadas de zero a nove. O artefato tinha dezenas de camadas. Um
+terço delas aparecia no papel; o resto existia, estava lá, e ninguém via.
+
+O operador lendo o laudo não tiraria outra conclusão: modelo truncado, checkpoint
+pela metade, refazer o treino. A decisão correta com base no dado errado ainda é
+a decisão errada — só fica mais caro.
+
+## '10' vem antes de '2'
+
+A causa estava numa linha. As camadas de um modelo têm chaves que começam em
+zero, e o laudo pegava a menor e a maior chave para formatar o intervalo. As
+chaves eram texto. E comparar texto é comparar caractere por caractere:
+
+```python
+camadas = ["0", "1", "2", "10", "11", "31"]
+
+# comparando como texto
+print(min(camadas), max(camadas))
+
+# comparando como numero
+print(min(camadas, key=int), max(camadas, key=int))
+```
+
+A primeira linha imprime `0 2`. A segunda imprime `0 31`. Nenhum teste falhou,
+nenhum erro foi levantado, nenhuma cor mudou no terminal. O laudo ficou verdinho
+e errado por semanas, porque tudo o que ele afirmava era internamente
+consistente: a contagem dava o total certo e o intervalo dava errado. A
+inconsistência entre as duas metades da mesma frase era o único sintoma — e
+sintoma discreto não chama atenção.
+
+A cura foi comparar como número, não como texto. Uma linha. Mas o valor real
+da manhã não foi a linha: foi a prova isolada que a acompanhou. Antes de aceitar
+a correção, rodei o laudo no mesmo artefato e fotografei o antes e o depois. O
+antes dizia zero a nove. O depois dizia zero a trinta e um. Um diff de saída,
+não um diff de código, é o que prova a cura — o código corrigido e a saída
+ainda errada convivem mais do que eu gostaria de admitir.
+
+## O outro instrumento fabricava número
+
+O defeito seguinte era o oposto, e por isso mais perigoso. No dia seguinte eu
+estava construindo um comparador A/B para medir qualidade do motor em dois
+regimes de dado: um denso, outro esparso. A ideia é simples e qualquer um que
+já rodou benchmark reconhece: você quer saber se uma mudança ajuda no cenário
+fácil, no difícil, ou só empurra o problema de um lado para o outro. Então o
+comparador rodava os dois regimes e cruzava três métricas diferentes, mais o
+custo de execução separado, para que ganho de qualidade não ficasse disfarçado
+atrás de gasto de tempo.
+
+O buraco: quando um dos regimes não rodava — dado ausente, etapa que não
+completou, formato de resposta diferente do esperado — o comparar fazia o que
+todo comparador faz por preguiça: assumia zero. Zero é um número. Zero entra em
+média, zero vira linha numa tabela, zero vira conclusão. E a conclusão dizia
+que o regime esparso tinha degradado, quando a verdade era que ninguém tinha
+medido.
+
+A correção foi ensinar o instrumento a dizer *não sei*. Quando o braço não
+produz dado, a lacuna fica explícita no laudo, marcada como não verificável, e
+ela não entra na média como se fosse medição. Um braço ausente não fabrica
+número. Se você não pode afirmar, você não afirma — e o relatório precisa ter
+vocabulário para isso, senão o silêncio vira zero por default.
+
+```python
+def resumir(bracos):
+    laudo = {}
+    for nome, dados in bracos.items():
+        if dados:
+            laudo[nome] = calcular(dados)
+        else:
+            laudo[nome] = None   # nao verificavel, nao zero
+    return laudo
+```
+
+Essa mudança veio junto com uma rodada de robustez no próprio comparador:
+tolerar formato de expectativa diferente entre os dois regimes, serializar
+objeto que não expõe dicionário interno, ler custo de execução de onde ele
+realmente é escrito. Chato, invisível, e exatamente o tipo de trabalho que
+decide se o número de amanhã significa alguma coisa. A abrangência da mudança
+foi conferida pelo gate de qualidade do ecossistema antes de eu considerar o
+assunto fechado — o mesmo gate, diga-se, que já me barrou por entregar pytest
+verde sem teste de aceitação.
+
+## O que muda
+
+Os dois defeitos tinham a mesma raiz e eu só vi depois dos dois corrigidos: o
+instrumento foi construído para produzir resposta, não para produzir resposta
+correta. Ordenar texto em vez de número produz resposta sempre. Assumir zero
+onde falta dado produz resposta sempre. Um instrumento que nunca falha é um
+instrumento que não sabe dizer a verdade — ele só sabe dizer *algo*.
+
+A consequência prática é uma ordem de operação que eu vou levar para os
+próximos experimentos: calibrar antes de medir. Antes de confiar no laudo de
+uma etapa nova, eu rodo o laudo num caso em que já sei a resposta. Se o
+instrumento acerta o conhecido, ele tem direito de opinar sobre o desconhecido.
+Se ele erra o conhecido, não há leitura seguinte que valha.
+
+E quando o laudo mente por tipo de dado errado, ele mente Quieto. Não tem
+exceção, não tem log, não tem stack trace. O único antídoto é a suspeita
+metodológica: a frase que soa trivial — *o intervalo das camadas* — merece a
+mesma desconfiança que a métrica principal.
+
+## Próximo passo
+
+O comparador A/B agora precisa de um caso conhecido embutido: um par de
+artefatos cujo veredito eu já conheço de cor, rodando a cada execução como
+teste de sanidade do próprio instrumento. Enquanto isso não existir, cada
+número que ele produzir é uma hipótese, não uma medição.

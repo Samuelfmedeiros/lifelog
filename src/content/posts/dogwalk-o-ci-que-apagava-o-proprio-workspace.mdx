@@ -1,0 +1,61 @@
+---
+title: "O CI que apagava o próprio workspace"
+description: "A limpeza de disco do deploy do Dogwalk morava no meio do workflow. Num runner self-hosted a pasta de trabalho guarda o checkout e o cache de actions ao mesmo tempo — e o step 'inofensivo' derrubava tudo que vinha depois."
+category: samuel-projects
+date: 2026-10-28 21:47:00 -03:00
+pubDate: 2026-11-02 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, ci-cd, github-actions, self-hosted, devops, workflow]
+cover: /covers/dogwalk-o-ci-que-apagava-o-proprio-workspace.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+O deploy do Dogwalk roda num runner self-hosted. Isso é ótimo para velocidade e péssimo para disco: cada build deixa para trás `node_modules`, `dist`, `coverage`, `test-reports`, um ambiente virtual de CI. Some isso a cada push e, em algumas semanas, a máquina que builda o projeto não builda mais nada. A pendência veio de um inventário feito em 22 de outubro — a pasta de trabalho do runner era o maior ofensor da lista.
+
+A correção parecia simples: um step de limpeza no workflow. Levei pouco mais de sete horas e quatro commits para descobrir que ela não era simples, e que a minha primeira versão estava destruindo o próprio job que ela existia para servir.
+
+## O que aconteceu
+
+Em 28 de outubro, às 14:03, entra o guarda de disco (`63f17dcc`): antes do build, medir o espaço livre e abortar com pelo menos 5 GB disponíveis, senão o build morre no meio com erro de disco cheio. No mesmo commit, um step `Cleanup _work` com `if: always()` rodava `rm -rf` na pasta de trabalho do runner, inteira, com glob.
+
+Onze minutos depois (`70affd9e`) eu movi esse cleanup para depois do health check. Parecia razoável: fazer a limpeza quando o pipeline já tivesse terminado de verdade. Continuou vermelho. Às 20:11 (`4d1950eb`) a limpeza virou o último step do workflow, só depois das notificações. Aí o sintoma ficou claro e irrepreensível: o step de notificação chamava `git rev-parse` para montar a mensagem e morria com `No such file or directory`. O checkout tinha sido apagado debaixo dos pés dele.
+
+A causa era essa: num runner self-hosted, a pasta de trabalho não é uma pasta só. Ela abriga o repositório que o GitHub Actions acabou de baixar **e** o cache `_actions`, de onde os steps carregam as actions. Um `rm -rf` com glob na raiz apaga os dois. O `Post Checkout code` — que roda depois do checkout — falhava porque o cache tinha ido embora, e qualquer step que lesse o working directory depois da limpeza herdava um diretório que não existia mais.
+
+## Como ficou
+
+A solução tem três peças, e a mais importante é a que não é código.
+
+A primeira é o escopo da limpeza. Em vez de apagar a raiz, o step apaga apenas o que é volumoso e descartável, e só isso:
+
+```yaml
+- name: Cleanup _work (libera disco; preserva repo e _actions)
+  if: always()
+  working-directory: /tmp
+  run: |
+    W="${GITHUB_WORKSPACE:-/home/runner/work/dog-walk/dog-walk}"
+    for D in node_modules dist .venv-ci coverage test-reports; do
+      rm -rf "$W/$D" 2>/dev/null || true
+    done
+    df -h / | tail -1
+```
+
+O detalhe que salva o step é o `working-directory: /tmp`. O step precisa estar vivo para executar o comando, e se o diretório atual dele já foi apagado, o shell nem começa. Apontar para um diretório que existe de verdade antes de remover o resto é a diferença entre limpar e sabotar.
+
+A segunda peça é o guarda de disco, que aprendeu a lição: quando falta espaço, ele aborta o build mas não apaga mais nada no meio do caminho — só lixo efêmero do runner. Limpar no meio do job é exatamente o comportamento que quebrou a pipeline.
+
+A terceira peça é um pre-commit hook (`da3e282b`). Um script varre os workflows sempre que um deles entra num commit e barra a reintrodução de `rm -rf` com glob na pasta de trabalho, com uma mensagem que diz o que pode ser limpo. Dois commits depois, eu mesmo tentei recolocar o atalho numa limpeza de branch e o hook me parou. Foi a melhor coisa que escrevi nesse dia.
+
+## Por que importa
+
+Um step de manutenção é mais perigoso que um step de feature, porque ninguém revisa. Feature quebra, todo mundo olha. Limpeza que apaga o workspace sete passos adiante só aparece como vermelho em algo que não tem nada a ver com disco — e a tentação é culpar o runner, a rede, o cache do npm. Foram sete horas caminhando para trás a partir de um sintoma que morava longe da causa.
+
+A regra que ficou: em runner self-hosted, limpar é uma operação sobre o que você conhece, nunca sobre um glob. E nenhuma limpeza roda no meio de um job — se é para liberar disco, é o último passo, quando não há mais nada para quebrar.
+
+## Próximo passo
+
+O runner ainda enche. A próxima medida é podar o cache `_actions` por idade, com um job separado e agendado, em vez de empurrar essa responsabilidade para dentro do deploy. E o hook de workflow vai ganhar mais uma regra: barrar `rm -rf` sem `working-directory` explícito, que é a forma como o defeito volta disfarçado.

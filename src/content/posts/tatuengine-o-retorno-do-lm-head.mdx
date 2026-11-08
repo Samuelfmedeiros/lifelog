@@ -16,7 +16,7 @@ import Terminal from '../../components/TerminalWidget.astro'
 
 No post do codec, eu deixei um spoiler no final: *"o lm_head volta a aparecer"*. E voltou.
 
-A história curta: o codec de blocos ternários encolheu o modelo de 27GB em 245MB, mas a validação por tensor acusou divergência no `lm_head` — a camada que mapeia os estados internos para o vocabulário. Enquanto `in_proj` saiu perfeito (diferenças no nível de ULP) e `out_proj` foi explicado por ordem de acumulação, o lm_head ficou como pendência aberta no backlog.
+A história curta: o codec de blocos ternários encolheu o modelo em ordens de grandeza, mas a validação por tensor acusou divergência no `lm_head` — a camada que mapeia os estados internos para o vocabulário. Enquanto `in_proj` saiu perfeito (diferenças no nível de ULP) e `out_proj` foi explicado por ordem de acumulação, o lm_head ficou como pendência aberta no backlog.
 
 Duas semanas depois, eu voltei para ele com um script de auditoria — e o que eu achei mudou o rumo do projeto inteiro.
 

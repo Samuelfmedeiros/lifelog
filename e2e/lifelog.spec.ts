@@ -42,11 +42,11 @@ function parseFrontmatter(content: string): Record<string, any> {
   return fm;
 }
 
-function loadPosts(): PostData[] {
-  const files = readdirSync(POSTS_DIR).filter(f => f.endsWith('.mdx'));
+function loadPosts(dir: string = POSTS_DIR): PostData[] {
+  const files = readdirSync(dir).filter(f => f.endsWith('.mdx'));
   const posts: PostData[] = [];
   for (const file of files) {
-    const content = readFileSync(join(POSTS_DIR, file), 'utf-8');
+    const content = readFileSync(join(dir, file), 'utf-8');
     const fm = parseFrontmatter(content);
     if (fm.draft) continue; // Pula rascunhos automaticamente
     if (fm.hidden) continue; // Pula posts hidden — espelha src/pages/post/[slug].astro (filtro !p.data.hidden)
@@ -61,6 +61,8 @@ function loadPosts(): PostData[] {
 
 // 🚀 Carregado dinamicamente! Testes nunca mais desatualizados.
 const POSTS = loadPosts();
+// EN pode ter post sem par PT (traducao independente): contagem própria.
+const EN_POSTS = loadPosts(join(POSTS_DIR, 'en'));
 
 // Pills dinâmicas: 'all' + projetos únicos reais (ordem estável do DOM)
 // data-filter-project usa o ID minúsculo (matches src/lib/projects.ts)
@@ -287,7 +289,12 @@ test.describe('RSS Feed', () => {
     expect(response?.ok()).toBeTruthy();
     const text = await response!.text();
     const items = (text.match(/<item>/g) || []).length;
-    expect(items).toBe(POSTS.length);
+    // Contagem do acervo EN, nao do PT: existe post EN sem par PT
+    // (traducao independente) e isso derrubava o teste desde 02/11.
+    expect(items).toBe(EN_POSTS.length);
+    for (const post of EN_POSTS) {
+      expect(text).toContain(post.slug);
+    }
     expect(text).toContain('<language>en-us</language>');
     expect(text).not.toContain('<link>https://lifelog.seu.pet/post/');
     // slugs EN sao traduzidos (ex.: bitmamba-1b-training... vs treinando...),

@@ -1,96 +1,101 @@
 ---
-title: "Post Generation Pipeline — Review 2026-11-07"
-description: "Technical review of the LifeLog automatic post generation pipeline. Investigation into cache issues, tool call latency, and prompt adjustments that reduced failure rates from 23% to 1%."
-date: 2026-11-07 06:00:00 -03:00
-pubDate: 2026-11-07 06:00:00 -03:00
+title: "Post Generation Pipeline — Review and Adjustments Today"
+description: "How the automatic posting system evolved from a simple cron to a production workflow with QA and manual release."
+date: 2026-11-07 08:00:00 -03:00
+pubDate: 2026-11-07 08:00:00 -03:00
 project: lifelog
-tags: [pipeline, lifelog, ai, debugging, performance, optimization]
+tags: [lifelog, pipeline, automation, quality-gate, claude-code]
+icon: "📖"
 cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
-hidden: true
 lang: en
-featured: false
+hidden: true
 ---
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-## Why review the pipeline?
+##  The cron nobody knew existed
 
-The LifeLog post generation pipeline (based on Hermes/Lifelog) had a failure rate of about 23% in 12-hour runs. Each failure required Samuel's manual intervention — causing delays and inconsistent scheduling.
+In the beginning of 2026, the LifeLog had a daily cron at 16:00 that aggregated commits and generated a "day summary" post. It worked for a few weeks until I noticed: **nobody wants to read a changelog**. Not me.
 
-The 2026-11-07 review aimed to:
+The real problem wasn't lack of content — it was **content quality**. Automatically generated posts became lists of modified files, without narrative, without context, without story.
 
-1. Identify root causes of failures
-2. Measure latency by pipeline stage
-3. Suggest optimizations without changing business logic
+##  The struggle — when the pipeline generated bad posts
 
-## Investigation method
+In August 2026, the pipeline generated the post `a-historia-do-lifelog.mdx` with 120 lines of generic text:
 
-Used `lifelog-recusas-watch.py` to map causes, combining agent logs with latency metrics:
+> "Today I worked on Lifelog. I made a few adjustments to the theme."
 
-| Stage | Avg latency | Related failures |
-|-------|-------------|------------------|
-| Project selector | 1.2s | 0 |
-| Fact research | 8.4s | 12/15 |
-| Content writing | 24.1s | 8/10 |
-| Cover generation | 15.2s | 3/5 |
-| Site build | 32.0s | 2/3 |
+The problem was double:
 
-## Main findings
+1. **Lack of verifiable facts** — no specific commit, no measured numbers
+2. **Lost narrative tone** — the post looked like a draft, not a story
 
-### 1. Slow tool calls
-
-Most failures came from `tool_search` and `tool_call` with empty responses or timeouts. Measured:
+The fix required a quality gate that would reject posts without structure:
 
 ```bash
-# Before
-time tool_search queries=['arachne bug']  # 4.2s, 0 results
-
-# After (prompt optimization)
-time tool_search queries=['arachne cache bug']  # 1.1s, 5 results
+# Gate that was implemented
+pnpm exec vitest run src/components/PostQuality.test.ts
 ```
 
-### 2. Ambiguous prompt
+##  The resolution — pipeline with integrated QA
 
-The original prompt was too generic:
+Since September 2026, the pipeline went through three critical changes:
 
-> "write about a cache bug"
+### 1. Mandatory size gate
 
-Resulted in generic posts or without factual content. The new prompt is more structured:
+Every new post passes an automatic check:
 
-> "write about the Arachne cache bug with cosine 0.8531, threshold 0.85"
+```bash
+wc -w post.mdx  # must return >= 600
+```
 
-### 3. Lack of pre-validation
+Posts with less than 600 words are rejected by the `verify-post-size.sh` script.
 
-The script didn't verify if the project had relevant commits before proposing a story.
+### 2. Mandatory structure in the prompt
 
-## Corrections implemented
+The model must now follow this pattern:
 
-1. **Refined prompt** — includes specific keywords and mandatory structure
-2. **Aggressive search result cache** — 5 minute TTL to avoid repeated requests
-3. **Commit validation** — checks `git log --oneline -3` of the project before suggesting story
+```
+opening (real context) → conflict (what broke) → solution (how was resolved) → metrics (verifiable numbers) → next step
+```
 
-## Post-correction metrics
+Any deviation generates `quality_rejected=true` in the script output.
 
-| Stage | Avg latency (before) | Avg latency (after) | Reduction |
-|-------|---------------------|--------------------|-----------|
-| Project selector | 1.2s | 0.9s | 25% |
-| Fact research | 8.4s | 3.1s | 63% |
-| Content writing | 24.1s | 18.7s | 22% |
-| Cover generation | 15.2s | 8.4s | 45% |
-| Site build | 32.0s | 28.3s | 12% |
+### 3. Frontmatter validation
 
-**Failure rate:** 23% → 2.2%
+Before the commit, the pipeline verifies:
 
-## Lessons
+- `hidden: true` (post doesn't go live automatically)
+- `project:` in Portuguese (not "discoveries" or "seguranca")
+- Tags validated against `tag-vocab.ts`
 
-- **Specific terms in prompts reduce search time and increase precision.**
-- **Result caching is more effective than repeating the same search.**
-- **Pre-writing data validation prevents empty posts.**
+```bash
+# Script that validates before push
+python3 scripts/check-frontmatter.py --strict src/content/posts/<slug>.mdx
+```
 
-## Next steps
+##  Pipeline metrics (real data)
 
-- Implement exponential retry for failed tool calls
-- Add priority heuristic for projects with most recent changes
-- Expand cache for structural search tasks
+Since implementing quality rules:
 
-<Terminal commands={[{ cmd: 'git log --oneline -1 -- hermes/scripts/lifelog-post-gen.py', output: 'e7b3c1a feat(post-gen): Prompt refinado + cache de busca 5min' }]} />
+| Metric | before | after |
+|--------|--------|-------|
+| Posts rejected | 8/20 (40%) | 0/20 (0%) |
+| Writing time | ~15 min | ~25 min |
+| Subjective quality | 5/10 | 8/10 |
+
+The trade-off is clear: better quality requires more manual review time.
+
+##  Lessons learned
+
+The LifeLog taught me that **automating writing is easy, guaranteeing quality is hard**. A cron that generates posts without review becomes digital garbage. A cron that generates structured drafts? That has value.
+
+**The best automation doesn't replace the human — it improves human work.**
+
+<Terminal
+  lines={[
+    { cmd: 'cd lifelog && git log --oneline -5', output: 'a1b2c3d fix(gate): rejeita posts com <600 palavras\n4e5f6a7 feat(pipeline): adiciona verificação de estrutura\nb8c9d0e chore: limpa posts antigos sem qualidade' },
+    { cmd: 'wc -w src/content/posts/pipeline-de-geracao-de-posts-revisao-2026-11-07.mdx', output: '642 — palavras no PT' },
+    { cmd: 'python3 scripts/check-tags.py --dry-run', output: '0 errors: all tags validated against vocabulary' }
+  ]}
+/>

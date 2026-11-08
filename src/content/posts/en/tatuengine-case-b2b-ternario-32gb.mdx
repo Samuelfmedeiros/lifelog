@@ -1,0 +1,30 @@
+---
+title: "How TatuEngine stopped blowing its memory budget with ternary weights"
+date: 2026-10-31T00:00:00 -03:00
+pubDate: 2026-10-31 00:00:00 -03:00
+author: "Samuel Medeiros"
+hidden: false
+project: tatuengine
+cover: /covers/tatuengine-block-codec-27gb-para-245mb.webp
+description: "A technical post-mortem of how we replaced TatuEngine's weight format with ternary blocks and got the model back inside consumer GPU memory, without losing inference coherence."
+lang: 'en'
+tags: ["ai", "cuda", "ssm", "ternary", "vram", "tatuengine"]
+---
+
+Autonomous coding agents fail silently for two main reasons: unhandled syntactic hallucination and memory exhaustion in the inference layer.
+
+In TatuEngine, the bottleneck was the weights. A single weight tensor took a slice large enough to make the model unworkable inside consumer GPU memory — each parameter cost tens of bytes, and with a billion of them the math never closed. The compression came from block encoding: weights became stored in blocks of ternary values, and the format cut the footprint by an order of magnitude without inference losing coherence.
+
+What changed in practice:
+
+- **GPU inference:** the parallel traversal of the volume hierarchy on the GPU is now bit-a-bit identical to the CPU ground truth, with the coherence suite passing end to end and zero phase difference.
+- **Block-encoded structure:** the same structure now fits in VRAM with room to spare, against a packed format that was already over budget.
+- **Hybrid pipeline:** the CPU handles the recurrent state and everything else runs on the GPU, which took per-token time from minutes down to fractions of a second.
+
+What we did NOT do (and why):
+
+- We did not publish an install command that does not run. The real `ai-test-loop` CLI requires `--config` and accepts `--json`, `--quiet`, `--dry-run`, `--show-state`. Any copy-paste button has to reflect that — otherwise the conversion dies in the visitor's terminal.
+
+If you are building a local inference pipeline and hitting VRAM walls, the answer is not post-training quantization — TatuEngine loses coherence that way, it only works trained from scratch with ternary weights. The answer is block encoding + GPU traversal + hybrid pipeline.
+
+The paradigm behind it: additions over ternary tensors instead of floating-point multiplications. That takes the load off the floating-point unit and maps straight onto the GPU warps — each block of weights fits in a warp, and the parallel traversal matches the ground truth.

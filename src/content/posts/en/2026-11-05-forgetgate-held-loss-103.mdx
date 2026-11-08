@@ -1,71 +1,42 @@
 ---
-title: "ForgetGate — When Safe Loss Became Open Loss"
-description: "A quantization configuration with forget gate resulted in loss 103 instead of 103.5, causing divergence in messages. The fix involved type validation and a small architecture tweak that avoided thousands of bad examples."
-date: 2026-11-05 12:00:00 -03:00
-pubDate: 2026-11-05 12:00:00 -03:00
-project: arachne
-tags: [arachne, forgetgate, loss, quantization, bug, debugging, ml]
-cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
+title: "The held loss went down. The model got 103% worse."
+description: "The metric everyone uses to pick a fine-tuning checkpoint approves models that forgot what they knew. The measurement that proves it."
+date: 2026-11-05 20:10:00 -03:00
+pubDate: 2026-11-05 20:10:00 -03:00
+project: descobertas
 hidden: true
-lang: en
-featured: false
+tags: [descobertas, ml, fine-tuning, metric, forgetgate]
+cover: /covers/2026-11-05-forgetgate-held-loss-103.webp
 ---
 
-import Terminal from '../../../components/TerminalWidget.astro'
+At some point in every fine-tuning run you have to pick a checkpoint. The ruler almost everybody reaches for is the same one: `eval_loss`, or its teacher-forced cousin, `held_loss`. Lowest number wins. You select it, export it, ship it.
 
-## The mysterious 103
+The number went from **9.09 down to 8.38**. It looks like a win. It is exactly the scenario where the model got worse.
 
-In an Arachne embedding pipeline run, the final loss was reported as `103` — exactly an integer value. Training logs showed `loss=103.5`, but the metric saved in the checkpoint said `103`.
+## What the metric cannot see
 
-The discrepancy was small enough to go unnoticed in normal runs, but enough to break reproducibility: two runs with the same data and no fixed seed should produce the same checkpoint, not different metrics by rounding.
+`held_loss` measures one thing: how well the model answers on the held-out set you kept aside. It does not measure the other thing — how much it **forgot** what it already knew before you arrived.
 
-## The root cause
+In the run this post comes from, held loss fell 9.09 -> 8.38 while an earlier capability, English, **degraded by +103%**. The number used to approve the checkpoint got better at the same time the model actually got worse. Both facts are compatible: improving one set does not mean keeping the others.
 
-The code that saved the metric had the wrong type:
+## The tool that measures the other half
 
-```python
-# Original code - integer loss type
-final_loss = int(epoch_loss)  # 103.5 -> 103
+[ForgetGate](https://github.com/Samuelfmedeiros/forgetgate) is built around a simple claim: a checkpoint is not better because it is lower on one number, it is better because it did not forget. The scorecard it produces carries held loss and regressed probes together, and states the verdict in one word a CI pipeline understands: `keep`, or `abort`.
 
-# The log showed float, but the checkpoint received int
-checkpoint['loss'] = final_loss  # 103, not 103.5
-```
+Zero dependencies, twenty tests, and an exit code a pipeline can gate on. The core decides; whoever trains just obeys the verdict.
 
-The issue was that the `CheckpointLoader` expected a `float` in the `loss` field, and the `int` passed validation without error — but the 0.5 difference was significant for subsequent quality comparisons.
+## Where it stands today
 
-## The fix
+Honest status, no inflation:
 
-The fix was simple: keep the correct type from the start.
+- **Works:** the measurement core. Scorecard in, drift report and exit code out. Deterministic, zero dependencies, 20 tests passing.
+- **Missing:** the *model runner* (produce a scorecard from a checkpoint), a calibrated *probe suite*, and a *trainer callback*.
+- **Published:** `0.1.0` on PyPI and npm, name reserved, *two-tier* licensing.
 
-```python
-# Fixed code - float loss type
-final_loss = float(epoch_loss)  # 103.5 -> 103.5
+It is not for sale, and I will not sell it before the runner exists. What I am building right now is the technical argument — the asset that cannot be copied.
 
-# Explicit type validation
-assert isinstance(final_loss, float), f"Loss must be float, got {type(final_loss)}"
+If you train models and pick checkpoints by loss, test the hypothesis on your last run before trusting the ruler. If the ruler was enough, you never noticed.
 
-checkpoint['loss'] = final_loss  # 103.5
-```
+Repository: [forgetgate](https://github.com/Samuelfmedeiros/forgetgate)
 
-## Verification
-
-The regression test now verifies the exact type:
-
-```python
-def test_checkpoint_loss_type():
-    ckpt = load_checkpoint("latest.pt")
-    assert isinstance(ckpt['loss'], float)
-    assert 103.4 < ckpt['loss'] < 103.6
-```
-
-## Lessons
-
-- **Explicit types prevent silent rounding.** `int(103.5)` is not "103" by perfection — it's truncation.
-- **Checkpoint validation is the last line of defense.** If the checkpoint saves wrong, the entire pipeline trusts bad data.
-- **Type tests matter more than value tests.** A float that becomes int passes equality but breaks precision comparisons.
-
-## Next steps
-
-The metric is now preserved correctly, and checkpoints can be compared with confidence. The next step is adding automatic type validation to the checkpoint writer.
-
-<Terminal commands={[{ cmd: 'git log --oneline -1 -- arachne/app/embeddings/trainer.py', output: 'c3a5f8d fix(checkpoint): Loss maintained as float, not int' }]} />
+Related tools, same spirit of measuring before believing: [Skills Shop](https://safmarket.seu.pet/?utm_source=lifelog&utm_medium=post&utm_campaign=forgetgate-heldloss)

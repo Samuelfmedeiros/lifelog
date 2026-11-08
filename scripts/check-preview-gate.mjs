@@ -66,9 +66,17 @@ async function chamar(handler, { url, cookie, method = 'GET' }) {
   return res.st;
 }
 
-const umSlug = Object.keys(mapa)[0];
-const [lang, slug] = umSlug.split('/');
+// Painel vazio e estado legitimo (o ultimo oculto pode ter sido removido do
+// acervo). O que nao depende de post (sessao, cookie, 404, dist) continua sendo
+// cobrado; o que exige HTML de um post real entra em SKIP — sem inventar slug.
+const chaves = Object.keys(mapa);
+const umSlug = chaves[0];
+const [lang, slug] = umSlug ? umSlug.split('/') : ['pt', 'slug-inexistente'];
 const caminho = `/ocultos/preview/${lang}/${slug}/`;
+const temPost = chaves.length > 0;
+if (!temPost) {
+  console.log('SKIP  nenhum post oculto no build — testando sessao/404/dist sem HTML de preview');
+}
 
 // 1. Segredo errado nao abre sessao
 const semSessao = await chamar(session, { url: '/api/session', method: 'POST' });
@@ -78,7 +86,8 @@ process.env.__TOKEN = 'segredo-errado';
 const errado = await chamar(session, { url: '/api/session', method: 'POST' });
 ok('/api/session com segredo errado = 401', errado.status === 401, `status ${errado.status}`);
 
-// 2. Sem cookie, o preview NAO entrega o post
+// 2. Sem cookie, o preview NAO entrega o post (usa o slug fallback quando vazio:
+//    a resposta 307 acontece ANTES de existir o post — nao vaza existencia)
 const semCookie = await chamar(preview, { url: `/api/preview?lang=${lang}&slug=${slug}` });
 ok('preview sem cookie = 307', semCookie.status === 307, `status ${semCookie.status}`);
 ok(
@@ -96,7 +105,7 @@ const forjado = await chamar(preview, {
 });
 ok('preview com cookie forjado = 307', forjado.status === 307, `status ${forjado.status}`);
 
-// 4. Segredo certo abre sessao e o preview entrega
+// 4. Segredo certo abre sessao (nao depende de post)
 process.env.__TOKEN = SEGREDO;
 const login = await chamar(session, { url: '/api/session', method: 'POST' });
 const setCookie = login.headers['set-cookie'] || '';
@@ -105,10 +114,15 @@ ok('/api/session com segredo certo = 200 + cookie', login.status === 200 && cook
 ok('cookie e HttpOnly + Secure + SameSite=Strict', /HttpOnly/i.test(setCookie) && /Secure/i.test(setCookie) && /SameSite=Strict/i.test(setCookie));
 ok('cookie nao contem o segredo', !String(setCookie).includes(SEGREDO));
 
-const comCookie = await chamar(preview, { url: `/api/preview?lang=${lang}&slug=${slug}`, cookie });
-ok('preview com cookie de sessao = 200', comCookie.status === 200, `status ${comCookie.status}`);
-ok('preview entregue tem o post renderizado', String(comCookie.corpo).includes('data-project') && String(comCookie.corpo).length > 5000, `${String(comCookie.corpo).length} bytes`);
-ok('preview entregue leva noindex', /noindex/i.test(comCookie.headers['x-robots-tag'] || '') || /name="robots"[^>]*noindex/i.test(String(comCookie.corpo)));
+// 4b. Entrega do post com sessao — so da pra cobrar se existir post oculto
+if (temPost) {
+  const comCookie = await chamar(preview, { url: `/api/preview?lang=${lang}&slug=${slug}`, cookie });
+  ok('preview com cookie de sessao = 200', comCookie.status === 200, `status ${comCookie.status}`);
+  ok('preview entregue tem o post renderizado', String(comCookie.corpo).includes('data-project') && String(comCookie.corpo).length > 5000, `${String(comCookie.corpo).length} bytes`);
+  ok('preview entregue leva noindex', /noindex/i.test(comCookie.headers['x-robots-tag'] || '') || /name="robots"[^>]*noindex/i.test(String(comCookie.corpo)));
+} else {
+  console.log('SKIP  entrega do post com sessao (nenhum post oculto no build)');
+}
 
 // 5. Slug inexistente com sessao = 404 (nao vaza existencia)
 const inexistente = await chamar(preview, { url: `/api/preview?lang=${lang}&slug=nao-existe`, cookie });
@@ -116,12 +130,16 @@ ok('slug inexistente com cookie = 404', inexistente.status === 404, `status ${in
 
 // 6. Todo preview do bundle responde 200 com o cookie (nenhum quebrado)
 let ruins = [];
-for (const chave of Object.keys(mapa)) {
+for (const chave of chaves) {
   const [l, s] = chave.split('/');
   const r = await chamar(preview, { url: `/api/preview?lang=${l}&slug=${s}`, cookie });
   if (r.status !== 200 || !String(r.corpo).includes('data-project')) ruins.push(chave);
 }
-ok(`os ${Object.keys(mapa).length} previews do bundle respondem com sessao`, ruins.length === 0, ruins.join(', '));
+if (chaves.length) {
+  ok(`os ${chaves.length} previews do bundle respondem com sessao`, ruins.length === 0, ruins.join(', '));
+} else {
+  console.log('SKIP  varredura do bundle (nenhum post oculto no build)');
+}
 
 // 7. O HTML guardado nao pode existir tambem em dist/ — se existir, a Vercel
 //    serve o arquivo estatico ANTES do rewrite e o post oculto volta a ser publico.

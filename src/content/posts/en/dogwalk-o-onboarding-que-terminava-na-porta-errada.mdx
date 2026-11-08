@@ -1,0 +1,86 @@
+---
+title: "The onboarding that ended at the wrong door"
+description: "A transporter could finish the Stripe Connect onboarding and land on a route the app blocks for their role: the callback never ran and the account stayed unable to receive money — with no error shown anywhere."
+category: samuel-projects
+date: 2026-10-26 23:15:00 -03:00
+pubDate: 2026-11-04 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, stripe, payments, frontend, testing]
+cover: /covers/dogwalk-o-onboarding-que-terminava-na-porta-errada.webp
+hidden: false
+lang: 'en'
+---
+
+PataPass has three roles: tutor, walker and transporter. Tutors pay, walkers and transporters get paid — and getting paid requires an enabled Stripe Connect account. On the night of October 26 I found out that a transporter could complete the whole hosted onboarding at Stripe, come back to the app and end up on a screen that looked fine, with no visible error. Except the account was never enabled to receive. Silent failure, which is the worst kind: the user believes they did their part and only finds out when the first payout does not arrive.
+
+### What was actually happening
+
+The Connect flow is well known: the front end asks for an onboarding link, the user fills in the data on Stripe's domain, Stripe sends the user back to a `return_url` with a `?code=` in the query, and that code has to be exchanged for credentials so the account finally reports `charges_enabled` and `payouts_enabled` as true.
+
+The `return_url` sent by the front end was fixed: `/walker/payments`. In `src/App.jsx` that route is declared with `roleRequired="walker"`, and `ProtectedRoute` guards it exactly as it should. The result: the transporter was redirected to their own dashboard **before the payments component ever mounted**. The `useEffect` that processes the callback never ran, the code died in the URL, and nothing happened. No toast, no log, no connected account.
+
+The aggravating part is that the walker path worked. The case everyone tests was green — the main role, the manual smoke test that always runs. The defect only existed for the role nobody had exercised end to end.
+
+### Two root causes, not one
+
+The first half lived in the backend: the endpoint that creates the onboarding link overwrote `return_url` and `refresh_url` with a fixed configuration value. Even if the front end sent another path, it was discarded.
+
+The second half lived in the front end: the payments screen was role-agnostic. The file name already gave it away — `WalkerPayments` — but the screen is shared between walker and transporter. Everything in it was pinned to the walker path, including the back button.
+
+The fix started by taking the role decision out of the screens. There is now a single function that answers which role is active, trying the user's active profile first (the app is multi-profile), then metadata, then the plain field, and finally whatever is persisted on the client:
+
+```javascript
+export function resolveUserRole(user, fallback = 'tutor') {
+  if (!user) return fallback;
+  const activeProfileId = user.active_profile_id;
+  if (activeProfileId && Array.isArray(user.profiles)) {
+    const active = user.profiles.find((p) => p.id === activeProfileId);
+    const profileRole = active?.role || active?.type || active?.profile_type;
+    if (profileRole) return profileRole;
+  }
+  if (user.role) return user.role;
+  return fallback;
+}
+
+export function paymentsPathForRole(role) {
+  return role === 'transporter' ? '/transporter/payments' : '/walker/payments';
+}
+```
+
+With that in place the screen computes its own path and sends `return_url` and `refresh_url` that match the logged-in role. The back button stopped being hardwired to the walker profile too.
+
+### The backend cannot accept any URL
+
+Opening the backend to accept `return_url` from the request has an obvious cost: that value is a redirect. Accepting anything would turn the endpoint into an open redirect — and worse, Stripe sends the user back with the code in the query. Pointing that return at a third-party domain leaks the code.
+
+So the acceptance went through an allowlist of host **and** path, with a fallback to the configured value in every doubtful case:
+
+```python
+_ALLOWED_CONNECT_HOSTS = {"seu.pet", "localhost"}
+_ALLOWED_CONNECT_PATHS = {"/walker/payments", "/transporter/payments"}
+
+host_ok = parsed.hostname in _ALLOWED_CONNECT_HOSTS
+path_ok = parsed.path in _ALLOWED_CONNECT_PATHS
+if host_ok and path_ok:
+    return url
+```
+
+The host and path rule is conjunctive on purpose. Right host with the wrong path falls back to the default, and the right path on a different domain does the same. The `localhost` entry exists for local development, where the port varies.
+
+The tests cover exactly the boundaries: walker return accepted, transporter return accepted, `https://seu.pet/outro` rejected, a different domain with a valid path rejected, `/walker/profile` on the right domain rejected, missing URLs falling back to the default, localhost accepted, and a malformed URL not breaking the function. Eight cases in `backend/tests/test_stripe_connect_redirect.py`. On the front end, thirteen cases in `src/utils/roles.test.js` covering the resolution order. Vite build with PWA green, and the project quality gate closed at 100.
+
+### Logging the rejection without logging the secret
+
+One detail became a second commit in the early hours of the next day: when a URL is rejected, a warning now records the origin (`return_url` or `refresh_url`), the host, the path, and which of the two checks failed. What does **not** go into the log is the full URL, because the query may carry a token or the code.
+
+That choice has a practical consequence: if someone starts probing the allowlist with random hosts, the pattern shows up in the logs without the log itself becoming a leak. And since behaviour did not change for valid or missing URLs, the regression risk was zero by construction.
+
+### Why this matters more than it looks
+
+A wrong redirect does not break anything, does not produce a 500 and never shows up in monitoring. It just stops doing its job. A bug like this can live for weeks while the funnel looks healthy — because the step that fails is exactly the one nobody instrumented.
+
+The second lesson is about where the role decision lives. While each screen resolved on its own who the user was, the screens diverged: the navbar assumed tutor as a fallback, the payments area assumed walker. Centralising the resolution in one function is not elegance, it is the difference between fixing a bug in one place and fixing it in five.
+
+### Next step
+
+The current coverage proves the pure function and the path calculation. What is still missing is the real end-to-end path: sign in as a transporter, complete the onboarding, come back with `?code=` in the URL and check that the account moved from pending to enabled. That is the test that would have caught this bug on the first run — and it is the next one going into the suite.

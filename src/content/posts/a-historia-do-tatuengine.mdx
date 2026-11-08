@@ -41,9 +41,9 @@ optixInit() → OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND
 
 Duas semanas tentando contornar. O que salvou: **CUDA funciona nativamente no WSL** (ioctl NVIDIA direto). RT Cores não — mas CUDA Cores, sim. Foi a primeira lição: *não force uma tecnologia onde ela não encaixa*.
 
-### O segundo muro: 27 GB de lentes
+### O segundo muro: a estrutura que não cabia
 
-Converter a rede de 1B parâmetros pra BVH como lentes individuais custaria **27 GB** — impossível pra VRAM de 12 GB. A solução foi o pipeline híbrido: as matmuls pesadas (in_proj, out_proj, lm_head) rodam em CUDA lendo os tensores originais, e o estado SSM (conv1d, RMSNorm, step) fica na CPU:
+Converter a rede de 1B parâmetros pra BVH como lentes individuais custaria uma estrutura ordens de grandeza maior que o modelo — impossível pra VRAM. A solução foi o pipeline híbrido: as matmuls pesadas (in_proj, out_proj, lm_head) rodam em CUDA lendo os tensores originais, e o estado SSM (conv1d, RMSNorm, step) fica na CPU:
 
 ```
 CPU: embedding → RMSNorm → conv1d+SiLU → SSM step → residual
@@ -62,7 +62,7 @@ A validação que provou que o híbrido funcionava: **50257 logits idênticos** 
 
 ### Block Codec: compressão radical
 
-A descoberta que mudou o jogo: em vez de 1 lente por peso, **blocos ternários compactados** — 245 MB no total vs 27.26 GB float32 — mais de 100× de compressão, com tolerância ULP.
+A descoberta que mudou o jogo: em vez de 1 lente por peso, **blocos ternários compactados** — uma estrutura ordens de grandeza menor que o float32, com tolerância ULP.
 
 ### GPU Block-Traversal
 
@@ -86,8 +86,8 @@ E o **Sandbox Híbrido** pra proteger as tools de arquivo — path validation, s
 |---------|--------------------|------|
 | Commits | 1 | 302 |
 | Testes | 0 | 400+ C++ (30 suites) + 51 sandbox |
-| Speedup GPU |  (OptiX não funcionava) | 252× block-traversal |
-| Compressão | 27.26 GB (float32) | 245 MB (block codec, 114×) |
+| Speedup GPU |  (OptiX não funcionava) | ordens de magnitude em block-traversal |
+| Compressão | inviável em float32 1:1 | ordens de grandeza menor (block codec) |
 | Pipeline | Conceitual | Híbrido CPU/GPU bit-a-bit |
 | Agente | 0 subsistemas | 8 subsistemas |
 | Modelo | Mamba 2.8B (planejado) | BitMamba-2 1B (funcional) |

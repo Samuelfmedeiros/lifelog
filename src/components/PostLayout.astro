@@ -87,7 +87,7 @@ const breadcrumbSchema = {
 ---
 
 <BaseLayout title={post.data.title} description={post.data.description} theme={post.data.project} image={coverImage} type="article" locale={locale} noindex={noindex} alternatePath={alternatePath} schema={noindex ? null : postSchema} schemaExtra={noindex ? null : breadcrumbSchema}>
-  <article data-project={post.data.project}>
+  <article data-project={post.data.project} data-post-slug={post.id} data-post-title={post.data.title} data-locale={locale}>
     <div class="max-w-3xl mx-auto px-4 py-8">
       <!-- Cover Image -->
       <div class="relative w-full aspect-[21/9] mb-10 rounded-2xl overflow-hidden border" style="border-color: var(--color-accent); box-shadow: var(--color-glow);">
@@ -203,6 +203,62 @@ const breadcrumbSchema = {
           <a href={portfolioHref} style="color: var(--color-accent);">{locale === 'en' ? 'Portfolio' : 'Portfólio'}</a>
         </p>
       </section>
+
+      <script>
+        // Profundidade de leitura (métrica pedida em 04/11).
+        // Medido antes: TODO post saía "sem evento" no relatório porque o evento
+        // post_depth não existia — a coluna de profundidade ficava vazia com dado
+        // na tabela. Aqui ele passa a existir. A lógica pura (computePct, payload,
+        // dedupe) vive em src/lib/post-depth.ts e tem teste próprio.
+        import { computePct, buildPayload, depthKey, alreadySent, markSent } from '../lib/post-depth';
+
+        const art = document.querySelector('article[data-post-slug]');
+        if (art) {
+          const path = location.pathname;
+          const slug = art.getAttribute('data-post-slug') || '';
+          const title = art.getAttribute('data-post-title') || document.title;
+          const locale = art.getAttribute('data-locale') || 'pt-BR';
+          const key = depthKey(path);
+          const t0 = Date.now();
+
+          let maxPct = 0;
+          let sent = alreadySent(key) === true;
+
+          // Contrato do SDK do OpenPanel: global `op("track", name, props)`.
+          // Fora isso, a fila do stub (`window.openpanel`) — em dev o evento é
+          // descartado, o que é honesto: melhor perder em dev que inventar dado.
+          function track(name: string, props: Record<string, unknown>): boolean {
+            const op = (window as unknown as { op?: (...a: unknown[]) => void }).op;
+            if (typeof op === 'function') { op('track', name, props); return true; }
+            const q = (window as unknown as { openpanel?: unknown[] }).openpanel;
+            if (Array.isArray(q)) { q.push(['track', name, props]); return true; }
+            return false;
+          }
+
+          function flush(): void {
+            if (sent) return;
+            if (track(buildPayload({ path, title, slug, locale, pct: maxPct, ms: Date.now() - t0 }).name,
+                      buildPayload({ path, title, slug, locale, pct: maxPct, ms: Date.now() - t0 }).properties)) {
+              sent = true;
+              markSent(key);
+            }
+          }
+
+          function onScroll(): void {
+            maxPct = Math.max(maxPct, computePct(
+              window.scrollY, document.documentElement.scrollHeight, window.innerHeight));
+          }
+          window.addEventListener('scroll', onScroll, { passive: true });
+          onScroll();
+
+          // Sai quando a aba perde o foco ou a página é fechada — pagehide pega o
+          // caso do navegador simplesmente matar a aba.
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') flush();
+          });
+          window.addEventListener('pagehide', flush);
+        }
+      </script>
 
       <script>
         // Form de inscrição — feedback de estado (progressive enhancement).
