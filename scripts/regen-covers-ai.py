@@ -23,6 +23,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # Repo físico: trocar para \\\\wsl$\\kali-linux\\home\\samuel\\projetos\\lifelog no Windows nativo
@@ -187,9 +188,14 @@ def generate(slug, force=True):
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}",
                  "User-Agent": "LifeLog-Cover-Generator/1.0"},
     )
+    # Guarda de esquema (B310): so http/https entram no urlopen.
+    if urllib.parse.urlparse(worker_url).scheme not in ("http", "https"):
+        print(f"[{slug}] ESQUEMA NAO PERMITIDO em worker_url: {worker_url!r}")
+        return False
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:  # nosec B310 - esquema validado acima
+
                 img = resp.read()
                 with open(output_path, "wb") as f:
                     f.write(img)
