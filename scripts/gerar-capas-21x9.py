@@ -48,7 +48,9 @@ DEFAULT_PROJECT = "lifelog"
 
 
 def rnd(slug):
-    return np.random.default_rng(int(hashlib.sha1(slug.encode("utf-8")).hexdigest()[:12], 16))
+    # sha1 aqui e' semente deterministica de composicao visual, nao hash de seguranca.
+    digest = hashlib.sha1(slug.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+    return np.random.default_rng(int(digest, 16))
 
 
 def radial(w, h, base, accent, strength=0.55):

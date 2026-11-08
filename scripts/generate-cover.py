@@ -14,6 +14,7 @@ import sys
 import re
 import urllib.request
 import urllib.error
+import urllib.parse
 from pathlib import Path
 
 LIFELOG_DIR = os.path.expanduser("~/projetos/lifelog")
@@ -219,8 +220,15 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         },
     )
 
+    # Guarda de esquema: so http/https (B310 do bandit). Sem isto, uma URL vinda de
+    # ambiente poderia pedir file:// ou esquema custom no urlopen.
+    if urllib.parse.urlparse(WORKER_URL).scheme not in ("http", "https"):
+        log(f"❌ Esquema nao permitido em LIFELOG_COVER_WORKER_URL: {WORKER_URL!r}")
+        return False
+
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310 - esquema validado acima
+
             image_data = resp.read()
             with open(output_path, "wb") as f:
                 f.write(image_data)
