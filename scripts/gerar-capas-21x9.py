@@ -36,7 +36,10 @@ W, H = 2100, 900  # 21/9 exato, igual ao aspect do hero
 # base/accent/glow medidos; ink derivado do contraste medido frente a base.
 PALETTE = {
     "lifelog":     dict(base=(19, 12, 30),  accent=(168, 85, 247),  glow=(216, 180, 254), ink=(237, 233, 254)),
-    "yurumi":      dict(base=(255, 245, 223), accent=(104, 1, 204),  glow=(234, 179, 8),   ink=(59, 7, 100)),
+    # yurumi: acervo medido e escuro (base ~(21,17,32), brilho 33.3 em 6 capas).
+    # A paleta antiga era creme (255,245,223) e gerava capa 5x mais clara que
+    # o padrao — corrigido 09/11/2026 medindo as capas reais em public/covers.
+    "yurumi":      dict(base=(21, 17, 32),  accent=(104, 1, 204),  glow=(234, 179, 8),   ink=(237, 233, 254)),
     "arachne":     dict(base=(19, 10, 11),  accent=(220, 38, 38),   glow=(252, 165, 165), ink=(254, 242, 242)),
     "tatuengine":  dict(base=(7, 23, 23),   accent=(45, 212, 191),  glow=(153, 246, 228), ink=(236, 254, 255)),
     "descobertas": dict(base=(25, 26, 45),  accent=(129, 140, 248), glow=(199, 210, 254), ink=(238, 242, 255)),
