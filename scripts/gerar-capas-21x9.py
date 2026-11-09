@@ -119,23 +119,28 @@ def frontmatter_cover(slug):
 # ---------- composicoes (todas 2100x900, sem texto, sem emoji) ----------
 
 def comp_orbita(r, pal, dark):
-    """Planeta + orbita: inspirado na capa creme do Yurumi ja aprovada."""
+    """Planeta + orbita: fallback abstrato para post sem tag de assunto."""
     w, h = W, H
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.5 if dark else 0.35))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
-    cx, cy, rad = int(w * 0.30), int(h * 0.68), int(h * 0.40)
+    # posicao, raio e inclinacao variam por slug: todo fallback saia identico
+    cx = int(w * (0.22 + 0.16 * float(r.uniform(0, 1))))
+    cy = int(h * (0.58 + 0.20 * float(r.uniform(0, 1))))
+    rad = int(h * (0.28 + 0.16 * float(r.uniform(0, 1))))
     d.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=pal["accent"] + (255,), outline=pal["ink"] + (90,), width=6)
     # anel em volta do planeta (traco accent claro)
+    incl = float(r.uniform(0.55, 1.05))
     for k, rr in enumerate([int(rad * 1.45), int(rad * 1.75)]):
-        bbox = [cx - rr, cy - rr, cx + rr, cy + rr]
+        bbox = [cx - rr, cy - int(rr * incl), cx + rr, cy + int(rr * incl)]
         d.arc(bbox, 200, 340, fill=pal["glow"] + (150 - k * 45,), width=5)
     # arco dourado saindo do topo do planeta (assinatura da capa aprovada)
+    alt = float(r.uniform(0.22, 0.40))
     pts = 220
     for i in range(pts):
         t = i / pts
         x = cx + rad * 0.72 + (w * 0.42) * t
-        y = cy - rad * 0.92 - (h * 0.30) * (1 - (2 * t - 1) ** 2)
+        y = cy - rad * 0.92 - (h * alt) * (1 - (2 * t - 1) ** 2)
         d.ellipse([x - 7, y - 7, x + 7, y + 7], fill=pal["glow"] + (215,))
     lay = lay.filter(ImageFilter.GaussianBlur(0.6))
     img = blend(img, lay)
@@ -372,6 +377,15 @@ def _comp_alvo(r, pal, dark):
         d.line([(0, y), (w, y)], fill=pal["ink"] + (16,), width=2)
 
     niveis = (0.82, 0.28, 0.58)      # as tres leituras
+    # variacao deterministica por slug: dois posts do mesmo motivo NAO podem
+    # sair identicos (defeito medido: grupo 7 do acervo com 2 fallbacks e
+    # grupo 4 com 2 escudos davam a mesma imagem). r e' seed de sha1(slug).
+    n_niv = r.integers(0, 3)
+    if n_niv == 1:
+        niveis = (0.62, 0.86, 0.34)
+    elif n_niv == 2:
+        niveis = (0.34, 0.70, 0.90)
+    espelhar = bool(r.integers(0, 2))
     n = len(niveis)
     base_y = int(h * 0.82)           # base comum
     topo_y = int(h * 0.20)           # topo comum
@@ -392,22 +406,32 @@ def _comp_alvo(r, pal, dark):
         ytop = base_y - int(altura * niv)
         d.rounded_rectangle([x + 5, ytop, x + larg - 5, base_y - 5],
                             radius=larg // 4, fill=pal["glow"] + (235,))
-        # veredito: base escura + simbolo, para nao sumir no dourado
-        mr = int(larg * 0.40)
-        mx, my = x + larg // 2, ytop - mr - 10
-        d.ellipse([mx - mr - 6, my - mr - 6, mx + mr + 6, my + mr + 6],
-                  fill=pal["base"] + (250,))
-        if ytop < limiar_y:          # passou do limiar
-            d.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=pal["glow"] + (250,))
-        else:                        # nao passou
+        # veredito DENTRO da barra, na altura da leitura: le como parte do
+        # medidor, nao como "cabeca" de um icone (critica de arte 09/11)
+        mr = int(larg * 0.26)
+        mx, my = x + larg // 2, ytop + int(mr * 1.6)
+        if ytop < limiar_y:          # passou do limiar: disco cheio
+            d.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=pal["base"] + (250,))
+        else:                        # nao passou: anel vazado
             d.ellipse([mx - mr, my - mr, mx + mr, my + mr],
-                      outline=pal["glow"] + (250,), width=7)
+                      outline=pal["base"] + (250,), width=6)
 
-    # limiar comum, sobre as tres colunas
-    for x in range(int(w * 0.06), int(w * 0.94), 34):
-        d.line([(x, limiar_y), (x + 18, limiar_y)], fill=pal["ink"] + (135,), width=5)
+    # limiar: linha SOLIDA fina com halo — tracejado lia como marca de corte
+    # de software de design (critica de arte 09/11), nao como criterio
+    gl = layer_for(img)
+    dg = ImageDraw.Draw(gl)
+    dg.line([(int(w * 0.05), limiar_y), (int(w * 0.95), limiar_y)],
+            fill=pal["glow"] + (120,), width=9)
+    img = blend(img, gl.filter(ImageFilter.GaussianBlur(7)))
+    lay2 = layer_for(img)
+    d2 = ImageDraw.Draw(lay2)
+    d2.line([(int(w * 0.05), limiar_y), (int(w * 0.95), limiar_y)],
+            fill=pal["glow"] + (205,), width=3)
+    img = blend(img, lay2.filter(ImageFilter.GaussianBlur(0.4)))
 
     img = blend(img, lay.filter(ImageFilter.GaussianBlur(0.5)))
+    if espelhar:
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
     return vignette(img, 0.32 if dark else 0.14)
 
 
@@ -418,12 +442,15 @@ def _comp_escudo(r, pal, dark):
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
     cx, cy = int(w * 0.50), int(h * 0.50)
-    # contorno hexagonal (defesa) em 2 escalas
+    # contorno poligonal (defesa): lados e escala variam por slug, senao todo
+    # post de seguranca sai com o mesmo hexagono
+    lados = (5, 6, 8)[int(r.integers(0, 3))]
+    rot = float(r.uniform(0, 1.0))
     for k, esc in enumerate((1.0, 0.72)):
         Rx, Ry = int(h * 0.66 * esc), int(h * 0.74 * esc)
         pts = []
-        for i in range(6):
-            a = -1.5708 + i * 1.0472
+        for i in range(lados):
+            a = -1.5708 + rot + i * (6.2832 / lados)
             pts.append((cx + Rx * np.cos(a), cy + Ry * np.sin(a)))
         d.polygon(pts, outline=pal["glow"] + (200 - k * 60,), width=7)
     # nucleo
@@ -454,8 +481,8 @@ def _comp_ruptura(r, pal, dark):
              for t in range(61)]
     for pts, col, wid in ((pts_a, pal["glow"] + (225,), 9), (pts_b, pal["accent"] + (235,), 9)):
         d.line(pts, fill=col, width=wid, joint="curve")
-    # o vao: onde a linha morre
-    gx = int(w * 0.45)
+    # o vao: onde a linha morre (posicao varia por slug)
+    gx = int(w * (0.34 + 0.22 * float(r.uniform(0, 1))))
     for i in range(9):
         a = i * 0.7
         rr = int(h * 0.12) + i * 9
@@ -476,9 +503,10 @@ def _comp_fluxo(r, pal, dark):
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.40))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
-    n = 5
+    n = (4, 5, 6)[int(r.integers(0, 3))]
     y = int(h * 0.52)
-    xs = [int(w * (0.12 + 0.19 * i)) for i in range(n)]
+    passo = 0.78 / (n - 1)
+    xs = [int(w * (0.12 + passo * i)) for i in range(n)]
     rad = int(h * 0.085)
     for i, x in enumerate(xs):
         # seta entre as etapas
@@ -513,12 +541,14 @@ def _comp_pulso(r, pal, dark):
     for x in range(int(w * 0.06), int(w * 0.95), 34):
         d.line([(x, lim), (x + 18, lim)], fill=pal["glow"] + (170,), width=4)
     # serie: seno com um pico que cruza o limiar
+    freq = float(r.uniform(8.0, 15.0))
+    t0 = float(r.uniform(0.50, 0.74))
     pts = []
-    for i in range(140):
-        t = i / 139
+    for i in range(160):
+        t = i / 159
         x = int(w * (0.06 + 0.89 * t))
         amp = h * 0.16
-        y = base_y - int(amp * (0.45 + 0.55 * np.sin(t * 11)) + (h * 0.30 if 0.62 < t < 0.72 else 0))
+        y = base_y - int(amp * (0.45 + 0.55 * np.sin(t * freq)) + (h * 0.30 if t0 < t < t0 + 0.10 else 0))
         pts.append((x, y))
     d.line(pts, fill=pal["accent"] + (235,), width=8, joint="curve")
     # o ponto do pico
@@ -534,8 +564,9 @@ def _comp_rede(r, pal, dark):
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.44))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
+    qtd = (8, 11, 14)[int(r.integers(0, 3))]
     nos = [(int(w * (0.18 + 0.64 * r.random())), int(h * (0.18 + 0.62 * r.random())))
-           for _ in range(11)]
+           for _ in range(qtd)]
     # arestas entre nos proximos
     for i in range(len(nos)):
         for j in range(i + 1, len(nos)):
@@ -558,11 +589,12 @@ def _comp_camadas(r, pal, dark):
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
     cx = int(w * 0.50)
-    n = 4
+    n = (3, 4, 5)[int(r.integers(0, 3))]
+    passo_y = 0.48 / n
     for i in range(n):
-        yb = int(h * (0.30 + i * 0.12))
-        half = int(w * (0.30 - i * 0.045))
-        skew = int(h * 0.075)
+        yb = int(h * (0.30 + i * passo_y))
+        half = int(w * (0.30 - i * (0.10 / n)))
+        skew = int(h * (0.055 + 0.03 * float(r.uniform(0, 1))))
         pts = [(cx - half, yb), (cx + half, yb),
                (cx + half, yb + skew), (cx - half, yb + skew)]
         cor = pal["accent"] if i == 0 else pal["glow"]
