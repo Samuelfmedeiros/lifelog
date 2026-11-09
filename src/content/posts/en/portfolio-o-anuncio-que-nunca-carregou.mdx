@@ -1,0 +1,75 @@
+---
+title: "The ad that never loaded — two months of a gate that said no"
+description: "The production HTML was 268,832 bytes with zero occurrences of adsbygoogle. Three independent gates were closed at once: an env var resolved at build time, a slot holding text instead of a number, and a consent button that recorded the opposite of what it promised."
+category: samuel-projects
+date: 2026-11-09 08:00:00 -03:00
+pubDate: 2026-11-09 08:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "nextjs", "privacy", "vercel", "frontend"]
+cover: /covers/portfolio-o-anuncio-que-nunca-carregou.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The site was up and the ad did not exist
+
+The portfolio has carried an implemented monetization feature since September: an ad block in the footer, a consent provider, affiliate links, a coffee button. All typed, all tested. And for roughly two months, none of it appeared to a single visitor.
+
+The number that opened the investigation: the production HTML was 268,832 bytes and carried **zero** occurrences of the string `adsbygoogle` and zero of `ca-pub-`. This was not an ad that rendered badly or a block with the wrong height — it was the complete absence of the script Google requires to serve anything at all. The repository's own architecture decision record, written on 15 September, already stated the situation: the feature was dormant in production. The record was right and nobody had gone to look.
+
+## Three gates, all closed, none of them loud
+
+What made this bug long-lived was not the difficulty of the fix. It was how many independent gates had to be open simultaneously — and the fact that every one of them failed in silence.
+
+**The first gate was the build.** The ad client identifier came from a variable with a public prefix, which the framework resolves at compile time, not at request time. That variable existed only in the local environment file. The hosted build, which has no such file, compiled the configuration with the field switched off, and the output was an HTML document with no script. From the deployment's point of view, everything was green.
+
+**The second gate was slot validation.** The environment file carried the words `footer` and `sidebar` in the slot fields instead of the numeric identifiers the ad service requires. The correct validation — demanding six digits or more — rejected both. And here the architecture did the rest: the Google script was only injected from inside the ad component, and that component only mounted with a valid slot. No valid slot meant no component; no component meant no script. The gate meant to prevent an empty rectangle ended up preventing the entire account from existing.
+
+There was also a cosmetic detail that betrayed the hack: a fallback that pushed the literal text `footer` into the slot attribute, reserving some ninety pixels of blank space in the footer. The visitor saw a hole, not an ad.
+
+**The third gate was consent — and this one was the worst.** The "Accept all" button called the acceptance function passing `"none"` as the ad level. The stored effect was `{ analytics: true, ads: false, nonPersonalizedAds: false }`. The function that decides whether ads may be shown returns false in that state. In other words: the visitor said "I accept everything", the site recorded "no ads", and the answer was the exact opposite of the stated intent.
+
+```ts
+export function canShowAds(consent: MonetizationConsent | null): boolean {
+  if (!consent) return false;
+  return consent.nonPersonalizedAds || (consent.analytics && consent.ads);
+}
+```
+
+With acceptance storing `ads: false` and `nonPersonalizedAds: false`, that function never returned true. No ad loaded — not with a correct client identifier, not with a valid slot, not even with the script already in the head. The consent bug alone cancelled the other two fixes.
+
+## Four commits to open the gates
+
+Order mattered. First the diagnosis became diagnostic code: commit `f315cc9`, on 8 November, introduced slot validation by regular expression, exposed a status object that explains why the ad is not showing, and — perhaps most importantly — stopped swallowing the error from the queue push. Before that, the exception was caught by a broad handler and died quietly. Now, in development, a warning appears, and the node receives an attribute carrying the failure reason.
+
+Then came the separation of concerns, in commit `8b71f8d`, at 00:26 today. The global ad script got a component of its own, mounted in the layout and independent of any manual slot. Alongside it, the ownership verification meta tag in the head — without it, Google does not confirm the domain belongs to the account and automatic ads never activate. And as a third piece, a fallback to the public client identifier embedded in code. That deserves an explanation, because it looks like a security violation and is not: the ad client identifier is public by definition. It sits in the site's `ads.txt`, it appears in the script URL on any page using the service, and it grants access to nothing. What it cannot do is depend on a variable that only exists on a development machine.
+
+The pattern became this, with the environment variable taking precedence and the public value acting as a net:
+
+```ts
+get clientId(): string {
+  const value = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+  return value || PUBLIC_ADSENSE_CLIENT_ID;
+}
+```
+
+The third commit, `5cdc897`, at 00:38, attacked the consent contradiction: "Accept all" began storing personalised ads, and an explicit "No tracking" button was born for whoever wants the opposite. The choice stopped being ambiguous — someone who does not want tracking now has a path with its own name, instead of an "accept all" that lied.
+
+## The banner that pushed past the screen
+
+With three buttons in place, the problem the desktop hid appeared: at a 390-pixel viewport — iPhone 12 and later, the most common case — the "Decline" button ended at position 398. Eight pixels off screen. This was not a cosmetic detail: an unreachable decline button is a compliance problem, not a layout one.
+
+Commit `2f4cf71` replaced the forced single line with conditional wrapping: two lines on mobile, one line on desktop. Samuel looked at the result and asked for something else — a smaller, tidier banner, and only two buttons, on the argument that whoever accepts everything is accepting tracking along with it. Commit `76d688e`, at 01:12, did exactly that: the card dropped from 154 to 94 pixels of height on mobile, a 39 percent reduction, with a two-column grid, 11-pixel type and reduced padding. The touch target stayed at 34 pixels, above the 24-pixel minimum that WCAG 2.5.8 requires.
+
+## What this changes
+
+The current verification, taken against the production domain: the page answers 200 with 269,371 bytes, and the client identifier mark appears twice in the HTML — the verification meta tag is there. The string `adsbygoogle` remains at zero in the static HTML, and that is the correct behaviour: the script is injected on the client, after consent. It used to be zero because nothing was injected at all; now it is zero because injection depends on a visitor action.
+
+The lesson I take is not about advertising. It is about **gates that fail silently**. Three independent checks — a variable resolved at build time, a slot validated by shape, a consent default set to denied — were all closed, and none of them produced an error, a log line, or a red test. The build passed, the 569-test suite passed, the site loaded fast. A system can be completely broken and still look healthy, as long as every failure is the kind that returns false.
+
+And there is an immediate documentation consequence: the architecture record noted that the content-security-policy exception for inline scripts should be revisited if the project ever enabled advertising in production. That trigger fired today.
+
+## Next step
+
+Measure in a browser with consent granted: confirm the request to the ad domain, the script present in the head, and automatic ads active in the account dashboard. In parallel, reopen the security-policy record to review the inline-script exception now that Google is effectively loading scripts on the page — an exception that existed for a dormant feature now has to justify real traffic.
