@@ -1,0 +1,75 @@
+---
+title: "The HIGH that was not a risk — when the scanner gets the shape right and the context wrong"
+description: "A maximum-severity alert pointed at an MD5 hash that never protected anything. A week later, the medium-severity finding — that one — was the real attack path. What became clear: severity is a hint, not a verdict, and silencing a scanner requires a justification in the code, not a throwaway comment."
+date: 2026-11-08 13:37:00 -03:00
+pubDate: 2026-11-09 08:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "bandit", "hash", "monitoring", "false-positive"]
+cover: /covers/seguranca-o-high-que-nao-era-risco.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The monitor that signs the skeleton of a page
+
+Arachne lives by collecting pages it does not own. A target site can change its layout on a Saturday night without warning, and on Sunday the extractor returns zero items because the selector that used to work pointed at a `div` that no longer exists. When that happens silently, the database simply stops receiving data and nobody notices.
+
+The defence I built for that scenario does not look at content: it looks at the **skeleton**. The collector reduces the HTML to a sequence of relevant tags and attributes, throws away text and values, and turns the result into a short hash. That hash becomes the page's signature; on the next collection it is recomputed and compared with the previous one. Skeleton changed, site changed — and only then an alert fires, with before and after side by side.
+
+Choosing the algorithm was not ceremonial: MD5. The goal was never collision resistance — it was detecting differences between HTML skeletons, not preventing forgery. The monitoring suite has 30 tests covering that path.
+
+## What the scanner saw
+
+In the weekend static review, bandit — the insecure-pattern analyser for Python — flagged one line: `Use of weak SHA1 hash for security. Consider usedforsecurity=False`. Rule B324, severity **high**. A HIGH in a report nobody audits daily produces a predictable effect: either you stop everything, or you learn to ignore the report.
+
+The finding is right in shape and wrong in context. That MD5 authenticates nothing, signs nothing, stores no secret — it is a checksum in spirit: structural identity. The tool cannot know that from reading the code; it sees a historically broken algorithm being called and complains. It should complain: a false positive here costs little, a false negative would cost a lot.
+
+The detail that made this case worth writing: **in the same week, the medium-severity finding was the real risk**. In two cover scripts, bandit flagged B310 — `urlopen` with no scheme restriction. The code received a URL from the environment, downloaded it and wrote the result to disk. With `file://` or an exotic scheme, the download function turned into a local file reader. No HIGH there: a Medium, filed as "audit permitted schemes".
+
+The HIGH was cosmetic; the Medium was an attack path. Anyone reading a security report in severity order — which is everyone — looks in the wrong place first.
+
+## Three exits, one honest
+
+For the hash there were three paths, and only one of them is honest:
+
+- **Switch to SHA-256.** Real cost: every stored signature becomes incompatible. On the first collection, every site would look like a redesign and the detector would become a festival of false alerts. Paying a data migration to calm a report is trading one problem for another.
+- **Add a suppression comment and move on.** Fastest and worst. A `# nosec` without an explanation is debt: the next reader — including me in three months — sees a silenced line and cannot tell a decision from laziness.
+- **Declare the intent in the call itself.** The Python standard library settles this with the `usedforsecurity` parameter. It does not change the algorithm: it changes what the code claims about the use. That is the difference between hiding a finding and answering it.
+
+I took the third. One changed line, one file, commit `743720e9`. Production behaviour did not change by a single byte.
+
+```python
+import hashlib
+
+payload = "<div class=x><span></span></div>"
+
+# structural identity hash: protects nothing, only compares versions
+signature = hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()
+```
+
+The comment is not decoration: it exists for the next scanner, the next reviewer and the next me.
+
+## The Medium was the real risk
+
+The cover fix was different because the risk was different: validate the URL scheme before downloading and reject anything that is not HTTP or HTTPS. Only after that does suppressing B310 document a guard instead of replacing one.
+
+```python
+from urllib.parse import urlparse
+
+url = "https://example.invalid/image.webp"
+if urlparse(url).scheme not in ("http", "https"):
+    raise ValueError(f"scheme not allowed: {url!r}")
+```
+
+Measured across the three affected files: before, bandit reported 1 high, 2 medium and 3 low findings. After, 0 high, 0 medium, the same 3 low, and exactly 2 documented suppressions. The number that matters is not "zero findings" — it is **two findings with a written decision**.
+
+## What this changes
+
+None of it is worth anything if the scanner is not read. Arachne's audit flow runs bandit with a medium-severity cutoff, but the step ends green either way: the report is advisory, not a gate. Defensible while someone reads it every week — and exactly the kind of choice that rots when the week gets full. The symptom is always the same: the count of open findings climbs and nobody can say how many were decided.
+
+The lesson is not about MD5. It is about the difference between **a count of findings** and **a count of decisions**. A repository with twelve findings and twelve written decisions is healthier than one with zero findings and no review at all.
+
+## Next step
+
+The next step is to turn the advisory report into a gate with visible debt: a declared ceiling of findings per severity that fails when the number rises and requires every new finding to arrive with its reason — guard applied, false positive justified, or fix pending. As long as the scanner can go green without anyone deciding anything, it measures my reading discipline, not the security of the code.
