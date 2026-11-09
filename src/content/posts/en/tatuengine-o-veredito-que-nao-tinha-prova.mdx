@@ -1,0 +1,77 @@
+---
+title: "The verdict that had no proof — the gate that approved without measuring anything"
+description: "Every check came out approved. Not because the system was right, but because the runner wrote PASS on the report before looking at the result. The defect stayed invisible for weeks: a gate that always agrees is not a gate, it is a rubber stamp."
+date: 2026-11-09 16:00:00 -03:00
+pubDate: 2026-11-09 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "quality-gate", "testing", "pytest", "lessons"]
+cover: /covers/tatuengine-o-veredito-que-nao-tinha-prova.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The check that never failed
+
+A quality gate has a single job: to say no. If it never says no, it does not matter how nice its report looks, how many fields it carries, how much it resembles a system — it is decoration with JSON output.
+
+That is what I found in TatuEngine in November. The gate existed, it ran, it produced structure: check identifier, verdict, reason code, attempt, duration, evidence, tool version, prompt hash. A complete record with nine fields, exactly what you would expect from an auditable verification system. And on every run it returned approved. Every one. Without exception, without variation, without depending on anything.
+
+The code explained why. The function that executed the check took an identifier and returned an object with the verdict pinned to approved. There was no path that read the actual result, no call to the test that was supposed to run, not even a rejection branch in the flow. The verdict was written before the measurement — and since there was no measurement, nothing could contradict it.
+
+Roughly, the shape of the defect was this:
+
+```python
+def evaluate(check_id):
+    # any check_id turned into an approval
+    return {"check_id": check_id, "verdict": "PASS"}
+```
+
+This is not a typo bug. It is a contract bug: the function promised to evaluate and delivered a stamp. And the worst kind of defect in verification infrastructure is exactly this one, because it breaks nothing visibly. It produces the same signal that success produces.
+
+## The cost of a fake green
+
+The damage is not the check that passes wrongly. The damage is what comes after it.
+
+A gate that always approves contaminates every downstream decision. You use its output to close a delivery, to authorise a merge, to declare a cycle finished. Each of those decisions inherits the lie. And because the signal is green, nobody investigates — the green is precisely what makes you stop investigating.
+
+What made me look was the asymmetry. The gate approved things I knew were wrong. When an instrument disagrees with reality systematically and always in the same direction, the problem is not reality.
+
+## Four states, and none of them by omission
+
+The fix was rewriting the output contract. Instead of a boolean disguised as a report, the gate gained four states with distinct meanings: approved, rejected, not verifiable, and error. The difference between the last two is what separates "I measured and could not conclude" from "the measurement itself failed".
+
+The central rule is a single one: without explicit evidence, the result is not verifiable — never approved. And a verdict outside the vocabulary becomes an error, never something that slips through.
+
+```python
+STATES = {"PASS", "FAIL", "NOT_VERIFIABLE", "ERROR"}
+
+def evaluate(check):
+    if check.evidence is None:
+        return "NOT_VERIFIABLE"   # absence of proof is not proof of success
+    if check.verdict not in STATES:
+        return "ERROR"            # verdict outside the vocabulary is a defect
+    return check.verdict
+```
+
+Three decision lines, and the most important one is the first. It says the default state of the universe is doubt, not approval. Anyone who wants an approval has to bring the proof with it — the evidence field stopped being decorative and became a condition for the verdict to exist at all.
+
+Commit `e99c12e` closed this. The proof came in three layers: a dedicated test for the gate behaviour, seven cases, all passing, running both under pytest and as a direct execution; the full suite at 1022 tests approved with one skipped; and the ecosystem critic returning a top score on the round following the edit. It was not a single number claiming things were fine — it was three independent measurements agreeing.
+
+## The gate learned to say I don't know
+
+Two weeks earlier, in the same project, I had been through the same problem through the back door. An A/B comparator crossed two execution regimes and needed to cross quality metrics with cost. When one of the arms did not produce the expected data, the comparator did what every comparator does out of laziness: it assumed zero. Zero enters an average, the average becomes a table, the table becomes a conclusion.
+
+The round that closed the cycle delivered, instead of a number, an explicit line: the perplexity cross-check was not verifiable, because one arm measured geometry cost and the other measured language quality. Different quantities. The perplexity gate would only close with a sparse arm that also generated text — and that arm did not exist at that moment.
+
+The round's verdict was approved anyway, and that is the point: what was measured was measured, and what was not showed up as absent. Approving with a declared gap is different from approving while hiding the gap. The first is engineering; the second is the definition of the defect I had just fixed on the other side.
+
+## What changes
+
+The practical change is that any automation consuming the gate result now has to handle three cases beyond green. If it only knows how to read approved and rejected, it will break — and it will break at the right moment, which is when the data is missing, not months later.
+
+There is a side effect I did not expect and that is worth more than the fix itself: the gate started producing information about its own coverage. A list of not-verifiable checks is a map of what the system does not know how to measure. Before, that list always came back empty — not because coverage was total, but because the instrument had no vocabulary to record its own blindness.
+
+## Next step
+
+The next target is the consumer, not the producer. The reports that read the gate were still written back when only two states existed, and treating not-verifiable as either failure or approval is the same class of error I just fixed on the other side. Until that mapping is explicit in every consumer, the gate is correct and the system around it keeps translating the answer wrong.

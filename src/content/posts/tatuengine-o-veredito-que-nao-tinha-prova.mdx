@@ -1,0 +1,77 @@
+---
+title: "O veredito que não tinha prova — o gate que aprovava sem medir nada"
+description: "Todo check saía aprovado. Não porque o sistema estivesse certo, mas porque o runner escrevia PASS no papel antes de olhar o resultado. O defeito ficou invisível por semanas: um gate que sempre concorda não é um gate, é um carimbo."
+date: 2026-11-09 16:00:00 -03:00
+pubDate: 2026-11-09 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "quality-gate", "testing", "pytest", "lessons"]
+cover: /covers/tatuengine-o-veredito-que-nao-tinha-prova.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O check que nunca reprovava
+
+Um gate de qualidade tem uma única função: dizer não. Se ele nunca diz não, não importa o quanto o relatório dele seja bonito, o quanto ele tenha de campo, o quanto ele pareça um sistema — ele é decoração com saída em JSON.
+
+Foi isso que eu encontrei no TatuEngine em novembro. O gate existia, rodava, produzia estrutura: identificador do check, veredito, código de razão, tentativa, duração, evidência, versão da ferramenta, hash do prompt. Um registro completo, com nove campos, exatamente o que se espera de um sistema de verificação auditável. E em cada execução ele devolvia aprovado. Em todas. Sem exceção, sem variação, sem depender de nada.
+
+O código explicava por quê. A função que executava o check recebia um identificador e devolvia um objeto com o veredito fixo em aprovado. Não havia caminho de leitura do resultado real, não havia chamada ao teste que deveria ser executado, não havia sequer um ramo de reprovação no fluxo. O veredito era escrito antes da medição — e como não havia medição, nada podia contradizê-lo.
+
+A forma do defeito era essa, mais ou menos:
+
+```python
+def avalia(check_id):
+    # qualquer check_id virava aprovacao
+    return {"check_id": check_id, "verdict": "PASS"}
+```
+
+Não é um bug de digitação. É um bug de contrato: a função prometia avaliar e entregava um carimbo. E o pior tipo de defeito em infraestrutura de verificação é esse, porque ele não quebra nada visivelmente. Ele produz o mesmo sinal que o sucesso produz.
+
+## O custo de um verde falso
+
+O dano não é o check que passa errado. O dano é o que vem depois dele.
+
+Um gate que sempre aprova contamina toda decisão a jusante. Você usa o resultado dele para fechar uma entrega, para autorizar um merge, para declarar que um ciclo terminou. Cada uma dessas decisões herda a mentira. E como o sinal é verde, ninguém investiga — o verde é justamente o que faz parar de investigar.
+
+O que me fez olhar foi a assimetria. O gate aprovava coisas que eu sabia que estavam erradas. Quando um instrumento discorda da realidade de forma sistemática e sempre no mesmo sentido, o problema não é a realidade.
+
+## Quatro estados, e nenhum deles por omissão
+
+A cura foi reescrever o contrato de saída. Em vez de um booleano disfarçado de relatório, o gate passou a ter quatro estados com significado distinto: aprovado, reprovado, não verificável e erro. A diferença entre os dois últimos é o que separa "medi e não deu para concluir" de "a medição em si falhou".
+
+A regra central é uma só: sem evidência explícita, o resultado é não verificável — nunca aprovado. E veredito fora do vocabulário vira erro, não passa despercebido.
+
+```python
+ESTADOS = {"PASS", "FAIL", "NOT_VERIFIABLE", "ERROR"}
+
+def avalia(check):
+    if check.evidencia is None:
+        return "NOT_VERIFIABLE"   # ausencia de prova nao e prova de sucesso
+    if check.veredito not in ESTADOS:
+        return "ERROR"            # veredito fora do vocabulario e defeito
+    return check.veredito
+```
+
+Três linhas de decisão, e a mais importante é a primeira. Ela diz que o estado default do universo é a dúvida, não a aprovação. Quem quiser um aprovado precisa trazer a prova junto — o campo de evidência deixou de ser decorativo e virou condição de existência do veredito.
+
+O commit `e99c12e` fechou isso. A prova veio em três camadas: um teste dedicado ao comportamento do gate, sete casos, todos passando, rodando tanto por pytest quanto em execução direta; a suíte completa em 1022 testes aprovados com um ignorado; e o crítico do ecossistema devolvendo nota máxima na rodada seguinte à edição. Não foi um número só dizendo que estava bom — foram três medições independentes concordando.
+
+## O gate aprendeu a dizer não sei
+
+Duas semanas antes, no mesmo projeto, eu tinha passado pelo mesmo problema pela porta dos fundos. Um comparador A/B cruzava dois regimes de execução e precisava cruzar métricas de qualidade com custo. Quando um dos braços não produzia o dado esperado, o comparador fazia o que todo comparador faz por preguiça: assumia zero. Zero entra em média, média vira tabela, tabela vira conclusão.
+
+A rodada que fechou o ciclo entregou, no lugar de um número, uma linha explícita: o cruzamento de perplexidade não era verificável, porque um dos braços media custo de geometria e o outro media qualidade de linguagem. Eram grandezas diferentes. O gate de perplexidade só fecharia com um braço esparso que também gerasse texto — e esse braço não existia naquele momento.
+
+O veredito da rodada foi aprovado mesmo assim, e isso é o ponto: o que estava medido estava medido, o que não estava aparecia como ausente. Aprovar com uma lacuna declarada é diferente de aprovar escondendo a lacuna. A primeira é engenharia; a segunda é a definição do defeito que eu tinha acabado de corrigir no gate.
+
+## O que muda
+
+A mudança prática é que qualquer automação que consome o resultado do gate agora precisa tratar três casos além do verde. Se ela só sabe ler aprovado e reprovado, ela vai quebrar — e vai quebrar na hora certa, que é quando o dado falta, não meses depois.
+
+Tem um efeito colateral que eu não esperava e que vale mais que a correção: o gate passou a produzir informação sobre a própria cobertura. Uma lista de checks não verificáveis é um mapa do que o sistema não sabe medir. Antes, essa lista vinha vazia sempre — não porque a cobertura fosse total, mas porque o instrumento não tinha vocabulário para registrar a própria cegueira.
+
+## Próximo passo
+
+O próximo alvo é o consumidor, não o produtor. Os relatórios que leem o gate ainda foram escritos na época em que existiam dois estados, e tratar não verificável como falha ou como aprovação é a mesma classe de erro que eu acabei de consertar do outro lado. Enquanto esse mapeamento não estiver explícito em cada consumidor, o gate está correto e o sistema em volta continua traduzindo a resposta errada.
