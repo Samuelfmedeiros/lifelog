@@ -1,0 +1,79 @@
+---
+title: "Os testes que mediam a máquina — o verde que dependia de qual computador rodava"
+description: "Oito testes falhavam e nenhum deles era um bug de produto: cada um media o estado da máquina em vez do contrato. Um deles passava sozinho, passava com filtro por nome, e só falhava na suíte completa — porque um arquivo deixava uma variável de ambiente alterada no import e ninguém desfazia."
+date: 2026-11-09 12:00:00 -03:00
+pubDate: 2026-11-09 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "testing", "pytest", "quality-gate", "lessons"]
+cover: /covers/descobertas-os-testes-que-mediam-a-maquina.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Um teste que passava sozinho e falhava acompanhado
+
+O sintoma era específico e humilhante: o mesmo teste, sem uma linha alterada, dava três respostas diferentes dependendo de como era executado. Isolado, verde. Filtrado pelo nome, verde. Na suíte completa, vermelho — sempre o mesmo, sempre na mesma posição.
+
+Esse padrão tem nome antigo em teste de software: dependência de ordem. Mas o rótulo não explica nada sozinho, e a investigação leviana para no "roda em paralelo que resolve". O custo real apareceu num lugar improvável: o crítico automático que fecha a nota de entrega travou em 60 por três rodadas consecutivas, sempre barrado por um único teste vermelho. A nota não subia porque o resultado não era reprodutível — não porque o produto estivesse quebrado.
+
+O commit `afca95a` fechou esse ciclo com uma prova simples: suíte completa, 4.132 testes, zero falhas. Antes disso, o mesmo comando devolvia exatamente um erro, e só na execução completa.
+
+## A causa morava no import, não no teste
+
+O teste que falhava verificava uma coisa razoável: que a escrita nunca toca o diretório de dados real do usuário, e sim um diretório temporário do próprio teste. Ele fazia isso comparando o caminho resolvido com o diretório temporário daquele caso.
+
+O problema é que outro arquivo de teste, ao ser importado, apontava a variável de ambiente que define o diretório de dados para um diretório temporário qualquer — criado no momento do import, no escopo do módulo — e nunca restaurava o valor anterior. Na suíte completa, esse arquivo era importado antes, e todos os testes seguintes herdavam um diretório temporário de outro teste. O teste de isolamento via um caminho que não era o dele e reprovava com razão.
+
+Rodando sozinho, o arquivo contaminante nem entrava na coleta. Aí o teste passava. Ou seja: o vermelho era verdadeiro, e o verde era mentira.
+
+```python
+_antes = os.environ.get("APP_HOME")
+os.environ["APP_HOME"] = tempfile.mkdtemp(prefix="worker-")
+
+import worker  # o import só precisa do diretório; a suíte não
+
+if _antes is None:
+    os.environ.pop("APP_HOME", None)
+else:
+    os.environ["APP_HOME"] = _antes
+```
+
+A cura não foi isolar mais — foi desfazer. Guardar o valor anterior, alterar só a janela necessária e restaurar imediatamente depois. Isolamento de ambiente é trabalho de fixture com desfazimento automático; o import não precisa de mais do que isso.
+
+## Sete jeitos de medir a máquina
+
+O commit `daf693f`, no mesmo dia, fechou oito falhas. Nenhuma delas era defeito de produto — todas eram o teste perguntando para o ambiente errado.
+
+**O guarda de portabilidade varria comentário como se fosse código.** Ele caçava caminho absoluto de máquina no código executável, mas a varredura pegava também comentário e docstring. Três de três "vazamentos" encontrados eram registro histórico de migração, não caminho em uso. O filtro passou a varrer só o código executável.
+
+**Um plugin carregava caminho absoluto de um sistema operacional que não existe mais.** Eram duas inserções de caminho de um ambiente antigo, mantidas depois da migração: código morto e, pior, registro de estrutura privada dentro de um arquivo público. Passaram a derivar do diretório do usuário com verificação de existência.
+
+**O detector de chamadas de rede pulava a linha quando via o nome da função em qualquer lugar.** Bastava um parâmetro chamado igual para o detector ignorar uma chamada real logo depois de um import. A comparação passou a exigir atribuição iniciando a linha — rebinding de verdade. Com isso, oito pontos de chamada entraram na superfície e receberam justificativa explícita com marcação de supressão, em vez de ficarem invisíveis.
+
+**Um teste indexava a lista de provedores por posição fixa.** A lista tinha cinco entradas quando o teste foi escrito; em 24 de outubro duas saíram e sobraram quatro. O índice virou acesso fora de faixa e o teste morreu por posição, não por comportamento. A resolução passou a ser por nome:
+
+```python
+por_nome = {p["name"]: p for p in provedores}
+primeiro = por_nome["local"]
+```
+
+**Um teste de autonomia media a máquina em vez da cadeia.** Ele zerava o dicionário de chaves e esperava que a chamada caísse no próximo provedor. Só que existe um servidor de modelo local que responde sem chave nenhuma — então a cadeia "funcionava" por um motivo que o teste não controlava. Com dublê da chamada e triagem desligada, o teste passou a medir a política, não a disponibilidade da máquina.
+
+**Três guardas de segurança devolviam sucesso sem ter o que executar.** O analisador estático que eles chamam não estava instalado no ambiente virtual, e a ausência virava estado de pulo — não de falha. Resultado: um achado real de algoritmo de hash fraco ficou mascarado. Instalar a ferramenta fez os três acenderem de uma vez, e o uso de hash como assinatura estrutural passou a declarar explicitamente que não serve para segurança.
+
+## Por que pular não é passar
+
+O ponto que amarra a história toda: existe diferença entre "verifiquei e está certo" e "não deu para verificar". Em relatório de saúde isso é a diferença entre verde e cinza. Em suíte de teste, é a diferença entre cobertura e teatro.
+
+O guarda que não consegue rodar precisa falhar alto. O teste que depende de estado externo precisa declarar a dependência e controlá-la. O teste que indexa por posição precisa indexar por identidade. E o teste que mede o ambiente precisa ser reescrito para medir o contrato — porque um verde que só aparece no seu computador não é informação, é coincidência.
+
+## O que isso muda
+
+A suíte deixou de ter resultado dependente de ordem: 4.132 testes passando, zero falhas, na execução completa. Os 108 testes dos arquivos corrigidos ficaram verdes sem exceção. E os três guardas de segurança que viviam pulando agora rodam de fato.
+
+Mais relevante que o número: o vermelho voltou a significar alguma coisa. Quando tudo passa por motivos diferentes de "o código está certo", o verde deixa de ser sinal.
+
+## Próximo passo
+
+Repetir a varredura em busca de outros pontos onde a ausência de uma ferramenta vira pulo em vez de falha: qualquer guarda que dependa de binário externo precisa declarar, no próprio resultado, que rodou — e reprovar quando não rodou.
