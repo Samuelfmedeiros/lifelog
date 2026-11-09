@@ -15,6 +15,7 @@ A saída é WEBP 1024x1024 gravada em public/covers/<slug>.webp (force=True sobr
 Baseado na sessão 14/08/2026: capas PIL regeneradas com draw_project_icon ficaram
 com brightness ~28 (parecem "sem imagem"); capas AI do Worker ficam ~130+.
 """
+import hashlib
 import json
 import os
 import re
@@ -127,7 +128,11 @@ def build_prompt(slug, project, title):
                   "and", "the", "for", "with", "from", "that", "this", "was", "were")][:8]
         if words:
             title_context = f"Visual metaphor for: {' '.join(words)}. "
-    comp_idx = hash(slug) % len(COMPOSITIONS)
+    # hash() do Python e' randomizado por processo (PYTHONHASHSEED aleatorio):
+    # a mesma slug escolhia composicao DIFERENTE a cada execucao, entao regerar
+    # uma capa nunca devolvia a mesma imagem. sha1 e' estavel entre maquinas e
+    # rodadas — determinismo e' requisito do repo (capas versionadas no git).
+    comp_idx = int(hashlib.sha1(slug.encode("utf-8")).hexdigest()[:8], 16) % len(COMPOSITIONS)
     composition = COMPOSITIONS[comp_idx]
     mood = PROJECT_MOODS.get(project, "atmospheric, immersive, cinematic")
     return (
