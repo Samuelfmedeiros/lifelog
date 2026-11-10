@@ -1,0 +1,93 @@
+---
+title: "Yurumi: os 56 segundos que ninguém estava medindo"
+description: "O endpoint de perguntas respondia em 56 segundos e ainda assim dizia NÃO ENCONTRADO, enquanto o caminho determinístico respondia em 3 segundos com a fonte certa. Quatro causas independentes, cada uma medida antes de ser cortada."
+date: 2026-11-10 08:00:00 -03:00
+pubDate: 2026-11-10 08:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "performance", "latency", "rag", "python", "observability"]
+cover: /covers/yurumi-a-resposta-que-levava-56-segundos.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A resposta certa chegando tarde demais
+
+O Yurumi tem um endpoint de perguntas: você manda uma pergunta em linguagem natural, ele busca na memória do projeto e responde só com o que está nas fontes. Quando não sabe, responde `NÃO ENCONTRADO` — não inventa.
+
+Na segunda-feira eu medi esse endpoint em produção e o número era 56 segundos. Depois 53. Antes disso, 40 e 48. A resposta, quando chegava, era frequentemente `NÃO ENCONTRADO`.
+
+O detalhe que doeu: existe um modo determinístico, sem LLM, que responde a mesma pergunta em **1,8s e 6,1s** — e acertava mais. Ou seja: a versão cara, lenta e cheia de camadas estava perdendo para a versão burra. Isso não é problema de modelo. É problema de arquitetura de tempo.
+
+## O que o relógio mostrava
+
+Medi as duas rotas lado a lado, mesma pergunta, mesma base:
+
+- online, com LLM no circuito: 40s, 48s, depois 56s e 53s
+- determinístico, sem LLM: 1,8s e 6,1s, com resposta correta
+
+Quatro causas independentes apareceram. Nenhuma delas era "o modelo é lento". Todas eram trabalho jogado fora — e todas podiam ser medidas isoladamente, o que é exatamente o que tornou o conserto possível.
+
+## Causa 1: baixar o grafo inteiro para achar uma agulha
+
+A busca de relações do grafo precisava encontrar as arestas que tocavam uma entidade. A implementação baixava a coleção de arestas **inteira** — 143.624 pontos, 864 chamadas de paginação, 16,4 segundos por busca — e filtrava em Python depois.
+
+Filtrar no cliente o que o servidor sabe filtrar. Esse padrão não parece errado enquanto a coleção é pequena; ele só aparece quando os dados crescem. E quando aparece, aparece como "o endpoint está lento", não como "essa consulta está errada".
+
+O conserto foi mover o filtro para o servidor, por correspondência exata nos dois campos que interessam, com índice de palavra-chave criado nesses campos. A varredura completa ficou como fallback, usada só quando o filtro não encontra nada.
+
+```python
+# antes: traz tudo, filtra em memoria
+pontos = baixar_colecao_inteira(arestas)
+relacionadas = [p for p in pontos if entidade in (p["source"], p["target"])]
+
+# depois: o servidor filtra; o cliente recebe so o que interessa
+filtro = Filter(must=[FieldCondition(key="source", match=MatchValue(value=entidade))])
+pontos, _ = cliente.scroll(colecao, scroll_filter=filtro, limit=20, with_payload=True)
+```
+
+Resultado medido: 16,4s viraram **0,09 a 0,37s**. Não é otimização incremental, é a diferença entre uma consulta e um download.
+
+## Causa 2: sucesso vazio sendo tratado como resposta
+
+A cadeia de provedores de LLM tinha um contrato implícito errado: se o provedor respondeu, a resposta existe. Só que modelos de raciocínio devolvem `content` nulo e o texto no campo de raciocínio, principalmente quando o teto de tokens é baixo.
+
+O código recebia conteúdo vazio e tratava como resposta final. Isso abortava a cadeia no primeiro provedor — e o endpoint caía no fallback determinístico **em silêncio**, gastando todo o tempo da chamada para descartar o resultado.
+
+A correção é pequena e óbvia depois de vista: conteúdo vazio não é sucesso, é falha daquele provedor. Segue para o próximo.
+
+Medição antes e depois: a chamada devolvia string vazia em 1,07s; passou a devolver resposta real em 2,5s. Um segundo e meio mais lenta, e infinitamente mais útil.
+
+## Causa 3: duas chamadas de LLM para confirmar o óbvio
+
+O laço de raciocínio gastava duas chamadas de LLM por iteração — um juiz avaliando o resultado e um validador conferindo o juiz. Juntas: 10,9 segundos. Para confirmar um resultado que já tinha pontuação alta e sobreposição real de palavras com a pergunta.
+
+Existia um caminho rápido disponível e não usado: quando o melhor resultado já satisfaz os dois critérios, responder direto. A segunda pergunta do teste caiu de **93s para 3,5s** só com isso.
+
+Vale a distinção: não é remover validação. É não pagar validação para o caso que já está provado. O caminho lento continua existindo para quando a confiança é baixa.
+
+## Causa 4: três reformulações para terminar no mesmo vazio
+
+Quando a primeira iteração não retornava nada, o laço disparava três reformulações de query feitas por LLM — cerca de 93 segundos — para, no fim, devolver o mesmo `NÃO ENCONTRADO` da primeira tentativa.
+
+Três chamadas de modelo para confirmar ausência. A correção foi tentar uma query reduzida, sem LLM, antes de qualquer reformulação cara. A primeira pergunta do teste foi de 93s para **12s**.
+
+## O teto de tempo que só era checado onde não importava
+
+Havia um orçamento de tempo configurado — 12 segundos por padrão. Ele era verificado no topo de cada iteração do laço. O problema é que a primeira iteração sozinha levava mais de 40 segundos: o teto era conferido depois que já tinha estourado, então nunca cortava nada.
+
+Um limite checado no lugar errado é decoração. Passou a ser um prazo absoluto, consultado dentro da chamada do modelo, que encolhe o timeout de cada provedor para o que resta do orçamento. Estourou: devolve o melhor resultado que já tem, com o score que ele tem — e nunca alega estar fundamentado sem fonte real.
+
+## O que muda
+
+Medição final em produção: **11,9s e 3,5s**, contra 56s e 53s antes. A suíte de busca, resposta, recuperação e grafo ficou verde — 458 testes.
+
+Uma decisão ficou de fora de propósito: o reranker continua desligado. Ligá-lo com o runtime de GPU do ambiente levou as mesmas perguntas para 200s e 156s. Não é ganho de qualidade que justifique perder dois minutos; fica para uma análise separada, fora do caminho crítico.
+
+A lição transferível não é sobre este projeto. É sobre método: quatro causas, todas independentes, todas mensuráveis em isolamento. Se eu tivesse tratado "o endpoint está lento" como um problema único e mexido no que parecia mais provável, teria trocado o modelo — e continuaria em 50 segundos, com uma conta maior.
+
+Latência é uma soma, não um sintoma. Só se corta o que se mede por etapa.
+
+## Próximo passo
+
+Reavaliar o reranker fora do caminho crítico — em lote, offline, com medição própria — e passar a acompanhar o p95 do endpoint de forma contínua. A próxima lentidão não deve ser descoberta por reclamação.
