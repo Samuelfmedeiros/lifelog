@@ -1,0 +1,91 @@
+---
+title: "Os três alarmes que reportavam verde sem medir nada"
+description: "Backup offsite parado há 12 dias, scanner de segurança apontando para um diretório que não existe e endpoint de saúde respondendo 429 para o próprio monitor. Três instrumentos do mesmo painel, três formas diferentes do mesmo defeito: a métrica não media o que dizia medir."
+date: 2026-11-10 12:00:00 -03:00
+pubDate: 2026-11-10 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "observabilidade", "backup", "sqlite", "seguranca", "fastapi"]
+cover: /covers/capivara-os-tres-alarmes-que-reportavam-verde.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O painel estava todo verde
+
+O Capivara é o hub pessoal que roda a maior parte da minha infraestrutura. Ele tem um painel de saúde, um backup automático do banco principal e um scanner de segurança que passa semanalmente. Na segunda-feira, os três estavam verdes.
+
+Nenhum dos três estava medindo o que eu achava que estava.
+
+O primeiro sinal foi o mais constrangedor: fui conferir o backup offsite e não havia nada além de duas semanas de nada. Não era um backup velho — era a ausência dele. O segundo foi o scanner de segurança, que reportava zero achados sobre código que eu sabia ter achados. O terceiro veio de um alarme de "serviço fora do ar" que durou minutos e não tinha nada fora do ar.
+
+Três defeitos independentes, no mesmo dia, com a mesma assinatura: **o instrumento respondia com sucesso sobre uma medição que ele não fez**.
+
+## O backup que abortava sem dizer nada
+
+O script de backup do banco tinha sido escrito na era anterior do projeto, quando o repositório morava em outro caminho. Depois da migração de ambiente, o caminho do banco simplesmente deixou de existir — e o script continuou apontando para ele.
+
+Sozinho, isso já quebraria o backup. O agravante é que o script rodava com a política de abortar no primeiro erro. Sem caminho válido, ele morria na primeira linha útil. E morria **sem imprimir nada**: o erro era de um comando que não estava sob o meu tratamento de mensagem, então o processo saía com código diferente de zero, o agendador registrava a falha, e ninguém lia o registro porque o registro não falava nada.
+
+Doze dias de silêncio.
+
+A correção não foi só arrumar o caminho. Foi trocar a premissa: em vez de um caminho fixo, uma lista de candidatos, e o primeiro que existir vence. Isso não é elegância — é o reconhecimento de que caminho absoluto envelhece. Caminho de máquina é estado, não constante.
+
+O segundo erro do mesmo script era mais sutil e mais perigoso: a cópia era feita com `cp`. Um banco SQLite em modo WAL tem escritas acontecendo em arquivos auxiliares; copiar o arquivo principal no meio de uma transação produz um arquivo que abre, responde consultas simples e está inconsistente. O tipo de backup que só revela o problema no dia em que você precisa dele.
+
+```python
+# em vez de copiar bytes, pedir a cópia ao próprio engine do banco
+origem = sqlite3.connect(db_path)
+destino = sqlite3.connect(backup_path)
+
+with destino:
+    origem.backup(destino)   # respeita o journal e as transações em curso
+
+# e antes de considerar o backup bom, abrir e contar as tabelas
+tabelas = destino.execute(
+    "select count(*) from sqlite_master where type='table'"
+).fetchone()[0]
+assert tabelas >= 5, "backup sem as tabelas esperadas"
+```
+
+A regra que ficou: um arquivo de backup só é backup depois de aberto e conferido. Antes disso é só um arquivo com nome convincente.
+
+E o terceiro erro: o destino remoto configurado no script nunca existiu neste host. O upload tentava um remote inexistente, falhava, e o fallback nunca era tentado. Hoje o script escolhe o primeiro remote que de fato responde e, se não houver nenhum, sai com código 3 — um código separado, que significa "não verificável", distinto do código de "falha real". Essa distinção parece burocracia até o dia em que você precisa saber se o backup quebrou ou se você não conseguiu olhar.
+
+## O scanner que varria um diretório inexistente
+
+O scanner de segurança semanal tinha o mesmo vício em outra roupa. Ele apontava para um diretório do projeto que também morreu na migração. A ferramenta de detecção de segredos foi executada sobre um caminho que não existe, encontrou zero arquivos, e reportou zero segredos. Zero achados num diretório vazio é tecnicamente correto e completamente inútil.
+
+Pior: a mesma ferramenta, quando não recebe uma instrução explícita de gravar o relatório, imprime o resultado num fluxo diferente do que o meu parser lia. O parser lia vazio. Vazio virava a string "0". E "0" virava verde. Quando apontei o scanner para o diretório certo e passei a capturar o relatório de verdade, apareceram achados reais — todos em arquivos locais que nunca foram versionados, o que é uma boa notícia, mas que eu não sabia na semana anterior.
+
+O outro check do mesmo scanner tinha um problema de identidade: verificava vulnerabilidade de dependências executando um comando que lista pacotes desatualizados. Desatualizado não é vulnerável. São coisas diferentes, com fontes de dados diferentes, e uma delas não respondia a pergunta nenhuma.
+
+A regra que saiu disso é curta: **quando um check não roda, o resultado é "não verificável", nunca "limpo"**. Um scanner que devolve zero porque não conseguiu olhar é mais perigoso que um scanner desligado, porque o desligado você sabe que está desligado.
+
+Aproveitei para tratar um risco que estava aceito por escrito e sem guarda. Uma das bibliotecas de JWT da stack carrega um aviso de confusão de algoritmo: se o código aceitar o algoritmo declarado no próprio token, é possível forjar um token válido assinando com outro algoritmo. O projeto não é vulnerável porque todo ponto de verificação restringe explicitamente o algoritmo aceito — mas isso era uma promessa em comentário, e comentário não impede ninguém de escrever código novo. Virou teste: o código de produção é lido como árvore sintática, cada chamada de verificação de token é localizada, e o teste falha se alguma aparecer sem a restrição. Se o teste passar a falhar, o risco aceito deixou de valer e a decisão precisa ser revista.
+
+## O monitor que tomava bloqueio por ser monitor
+
+O terceiro defeito é o meu favorito, porque é o único que o sistema inventou sozinho. O limitador de requisições do backend é por IP: uma cota por minuto, generosa para uso humano. Os endpoints de saúde e prontidão ficavam dentro dessa cota, junto com todo o resto.
+
+Com vários verificadores de saúde rodando em paralelo, todos do mesmo host, a cota do endereço único se esgotava. O endpoint de saúde, feito para ser barato e idempotente, passou a responder "bloqueado por excesso de requisições". O watchdog viu status diferente de sucesso e concluiu o que qualquer watchdog concluiria: serviço fora do ar. Alarme falso, gerado por monitoramento, sobre um serviço saudável.
+
+A cura foi tirar saúde, ping e prontidão do balde. Endpoint de saúde é read-only, custa microssegundos e existe justamente para ser chamado com frequência — cobrá-lo é punir o termômetro por medir.
+
+## O que muda
+
+Nenhum desses três defeitos estava no código de negócio. Todos estavam na camada que responde "está tudo bem?" — e é exatamente por isso que passaram tanto tempo sem ser vistos: quem reporta verde não é questionado.
+
+O que passou a valer no projeto:
+
+Um check que não conseguiu medir não pode terminar com sucesso. Ou ele mede e diz o resultado, ou diz que não mediu — e a segunda opção nunca é verde.
+
+Caminho de máquina não é constante. Se o script depende de um diretório, ele descobre, não assume.
+
+Instrumento que divide recurso com o que ele vigia vai falsear. Monitoramento precisa de canal próprio.
+
+Verde é uma afirmação sobre o mundo, e afirmação precisa de prova. Backups agora são validados abrindo o arquivo e contando tabelas antes de publicar; o scanner só reporta limpo quando os checks efetivamente rodaram; o teste de JWT trava a premissa do risco aceito.
+
+## Próximo passo
+
+O que ainda não está resolvido é o tempo de detecção. Os três defeitos foram encontrados por insistência minha, não por alarme. O próximo passo é um veredito de saúde que teste o resultado dos instrumentos — um backup que não gerou arquivo novo na janela esperada deveria ser falha própria, não ausência de evento.

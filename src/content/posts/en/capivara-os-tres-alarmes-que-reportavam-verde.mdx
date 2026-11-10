@@ -1,0 +1,91 @@
+---
+title: "Three alarms reporting green without measuring anything"
+description: "Offsite backups stopped twelve days ago, the security scanner pointed at a directory that no longer exists, and the health endpoint returned rate-limit errors to its own monitor. Three instruments on the same panel, three shapes of the same defect: the metric was not measuring what it claimed to measure."
+date: 2026-11-10 12:00:00 -03:00
+pubDate: 2026-11-10 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "observability", "backup", "sqlite", "security", "fastapi"]
+cover: /covers/capivara-os-tres-alarmes-que-reportavam-verde.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The panel was all green
+
+Capivara is the personal hub that runs most of my infrastructure. It has a health panel, an automatic backup of the main database, and a weekly security scanner. On Monday, all three were green.
+
+Not one of them was measuring what I thought it was.
+
+The first signal was the embarrassing one: I went to check the offsite backup and found nothing beyond two weeks of nothing. Not an old backup — the absence of one. The second was the security scanner, reporting zero findings on code I knew had findings. The third came from a "service down" alert that lasted several minutes while nothing was down.
+
+Three independent defects, same day, same signature: **the instrument answered successfully about a measurement it never performed**.
+
+## The backup that aborted in silence
+
+The database backup script had been written in the project's previous era, when the repository lived somewhere else. After the environment migration, the database path simply ceased to exist — and the script kept pointing at it.
+
+On its own, that would already break the backup. The aggravating factor is that the script ran under a fail-fast policy. With no valid path, it died on the first meaningful line. And it died **printing nothing**: the failure came from a command outside my error handling, so the process exited non-zero, the scheduler recorded the failure, and nobody read the record because the record said nothing.
+
+Twelve days of silence.
+
+The fix was not just correcting the path. It was replacing the premise: instead of one hardcoded path, a list of candidates where the first existing one wins. That is not elegance — it is acknowledging that absolute paths age. A machine path is state, not a constant.
+
+The second flaw in the same script was subtler and worse: the copy used `cp`. A SQLite database in WAL mode has writes landing in sidecar files; copying the main file mid-transaction yields a file that opens, answers simple queries, and is inconsistent. The kind of backup that only reveals the problem on the day you need it.
+
+```python
+# instead of copying bytes, ask the database engine for the copy
+source = sqlite3.connect(db_path)
+target = sqlite3.connect(backup_path)
+
+with target:
+    source.backup(target)   # honors the journal and in-flight transactions
+
+# and before calling the backup good, open it and count tables
+tables = target.execute(
+    "select count(*) from sqlite_master where type='table'"
+).fetchone()[0]
+assert tables >= 5, "backup is missing the expected tables"
+```
+
+The rule that stuck: a backup file only becomes a backup after being opened and checked. Before that it is just a file with a convincing name.
+
+The third flaw: the remote target configured in the script never existed on this host. The upload attempted a nonexistent remote, failed, and the fallback was never tried. Today the script picks the first remote that actually responds, and when none exists it exits with code 3 — a separate code meaning "not verifiable", distinct from the "real failure" code. That distinction sounds like bureaucracy until the day you need to know whether the backup broke or you simply could not look.
+
+## The scanner sweeping a directory that does not exist
+
+The weekly security scanner had the same vice in different clothes. It pointed at a project directory that also died in the migration. The secret-detection tool ran against a path that does not exist, found zero files, and reported zero secrets. Zero findings in an empty directory is technically correct and entirely useless.
+
+Worse: the same tool, when not given an explicit instruction to write its report, prints results on a stream my parser was not reading. The parser read emptiness. Emptiness became the string "0". And "0" became green. Once I aimed the scanner at the right directory and captured the report properly, real findings appeared — all inside local files that were never versioned, which is good news, but news I did not have the week before.
+
+The other check in the same scanner had an identity problem: it verified dependency vulnerabilities by running a command that lists outdated packages. Outdated is not vulnerable. Different things, different data sources, and one of them answered no question at all.
+
+The rule that came out is short: **when a check does not run, the result is "not verifiable", never "clean"**. A scanner returning zero because it could not look is more dangerous than a scanner that is off, because the one that is off you know is off.
+
+I also took the chance to handle a risk that had been accepted in writing and with no guard. One of the stack's JWT libraries carries an algorithm-confusion advisory: if the code accepts the algorithm declared inside the token itself, an attacker can forge a valid token by signing with a different algorithm. The project is not vulnerable because every verification point explicitly restricts the accepted algorithm — but that was a promise in a comment, and a comment stops nobody from writing new code. It became a test: production code is parsed as a syntax tree, every token-verification call is located, and the test fails if any appears without the restriction. If that test ever fails, the accepted risk stops being valid and the decision must be revisited.
+
+## The monitor that got rate-limited for being a monitor
+
+The third defect is my favorite, because it is the only one the system invented on its own. The backend rate limiter is per IP: a generous per-minute quota sized for human use. Health and readiness endpoints sat inside that quota, along with everything else.
+
+With several health checkers running in parallel from the same host, the single-address quota drained. The health endpoint — built to be cheap and idempotent — started answering "blocked for excessive requests". The watchdog saw a non-success status and concluded what any watchdog would conclude: service down. A false alarm, generated by monitoring, about a healthy service.
+
+The cure was to pull health, ping and readiness out of the bucket. A health endpoint is read-only, costs microseconds, and exists precisely to be called often — charging it is punishing the thermometer for measuring.
+
+## What changes
+
+None of these three defects lived in business code. All of them lived in the layer that answers "is everything fine?" — which is exactly why they survived so long: whoever reports green does not get questioned.
+
+What now holds in the project:
+
+A check that failed to measure cannot end in success. It either measures and reports, or says it did not measure — and the second option is never green.
+
+A machine path is not a constant. If the script depends on a directory, it discovers it, it does not assume it.
+
+An instrument sharing a resource with what it watches will lie. Monitoring needs its own channel.
+
+Green is a claim about the world, and a claim needs proof. Backups are now validated by opening the file and counting tables before publication; the scanner only reports clean when the checks actually ran; the JWT test locks in the premise behind the accepted risk.
+
+## Next step
+
+What is still unresolved is detection time. All three defects were found by my own stubbornness, not by an alarm. The next step is a health verdict that tests the output of the instruments — a backup that produced no new file within the expected window should be its own failure, not an absent event.

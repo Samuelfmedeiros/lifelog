@@ -161,14 +161,26 @@ def normalize_to_webp(path):
         print("  AVISO: arquivo nao e WEBP real e ffmpeg esta ausente")
         return False
     tmp = path + ".tmp.webp"
+    origem_bytes = os.path.getsize(path)
+    # libwebp NAO usa -q:v (qscale do encoder de video): no libwebp a opcao de
+    # qualidade e' -quality (0-100). Com -q:v 90 o resultado saiu 8 KB a partir
+    # de uma arte de 135 KB — reencode destrutivo que depois fazia o
+    # normalizar-capas-21x9.py classificar a capa como "arte fraca" (heuristica
+    # de tamanho) e trocar a arte AI por um desenho PIL.
     rc = subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-c:v", "libwebp", "-q:v", "90", tmp]
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", path,
+         "-c:v", "libwebp", "-quality", "92", "-compression_level", "4", tmp]
     ).returncode
     if rc != 0 or not os.path.exists(tmp):
         print("  AVISO: reencode WEBP falhou, mantendo o original")
         return False
+    novo_bytes = os.path.getsize(tmp)
+    if origem_bytes and novo_bytes < origem_bytes * 0.35:
+        print(f"  AVISO: reencode suspeito ({origem_bytes} -> {novo_bytes} bytes), mantendo original")
+        os.unlink(tmp)
+        return False
     os.replace(tmp, path)
-    print(f"  reencode WEBP real: {os.path.getsize(path)} bytes")
+    print(f"  reencode WEBP real: {novo_bytes} bytes")
     return True
 
 
@@ -220,8 +232,9 @@ def generate(slug, force=True):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        slugs = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if args:
+        slugs = args
     else:
         slugs = [
             "a-historia-do-seguranca",
