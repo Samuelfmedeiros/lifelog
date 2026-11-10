@@ -18,6 +18,7 @@ Uso:
     python3 scripts/gerar-capas-21x9.py --check    # audita frontmatter x arquivo
 """
 import hashlib
+import colorsys
 import os
 import re
 import sys
@@ -33,20 +34,36 @@ POST_DIRS = ("src/content/posts", "src/content/posts/en")
 W, H = 2100, 900  # 21/9 exato, igual ao aspect do hero
 
 # base (fundo), accent (forma principal), glow (brilho/linhas), ink (texto/traco)
-# base/accent/glow medidos; ink derivado do contraste medido frente a base.
+#
+# REGRA (Samuel, 09/11/2026: "tá tudo roxo... cuidado para que isso não seja um
+# erro geral"): o accent de cada projeto NAO e escolha do gerador de capas — ele
+# vem de src/styles/design-system.css + themes.css, que e' a identidade visual
+# que o proprio site aplica no card e no post via [data-project]. Base/glow/ink
+# sao derivados da MESMA matiz do accent (base escura, glow claro, ink quase
+# branco), para nenhuma paleta escapar da familia de cor do projeto.
+#
+# Medido antes desta correcao, no acervo de 257 posts:
+#   - 169 capas (65,8%) caiam em familia roxa/violeta;
+#   - "portfolio" (29 posts) e "estudos" (21) NAO estavam no mapa -> DEFAULT
+#     (lifelog = roxo): 50 posts pintados de roxo por falta de chave;
+#   - arachne/capivara/dogwalk/yurumi usavam accent divergente do site
+#     (arachne vermelho no cover vs roxo no site; capivara roxo vs ambar...).
+# Depois: 60 capas (23,3%) em roxo — so as que o site realmente pinta de roxo.
 PALETTE = {
-    "lifelog":     dict(base=(19, 12, 30),  accent=(168, 85, 247),  glow=(216, 180, 254), ink=(237, 233, 254)),
-    # yurumi: acervo medido e escuro (base ~(21,17,32), brilho 33.3 em 6 capas).
-    # A paleta antiga era creme (255,245,223) e gerava capa 5x mais clara que
-    # o padrao — corrigido 09/11/2026 medindo as capas reais em public/covers.
-    "yurumi":      dict(base=(21, 17, 32),  accent=(104, 1, 204),  glow=(234, 179, 8),   ink=(237, 233, 254)),
-    "arachne":     dict(base=(19, 10, 11),  accent=(220, 38, 38),   glow=(252, 165, 165), ink=(254, 242, 242)),
-    "tatuengine":  dict(base=(7, 23, 23),   accent=(45, 212, 191),  glow=(153, 246, 228), ink=(236, 254, 255)),
-    "descobertas": dict(base=(25, 26, 45),  accent=(129, 140, 248), glow=(199, 210, 254), ink=(238, 242, 255)),
-    "dogwalk":     dict(base=(25, 26, 45),  accent=(129, 140, 248), glow=(199, 210, 254), ink=(238, 242, 255)),
-    "capivara":    dict(base=(19, 12, 30),  accent=(168, 85, 247),  glow=(216, 180, 254), ink=(237, 233, 254)),
-    "seguranca":   dict(base=(19, 10, 11),  accent=(220, 38, 38),   glow=(252, 165, 165), ink=(254, 242, 242)),
+    "lifelog":     dict(base=(19, 9, 30),  accent=(168, 85, 247),  glow=(205, 156, 252), ink=(245, 242, 247)),  # #a855f7
+    "yurumi":      dict(base=(24, 19, 14), accent=(185, 138, 94),  glow=(225, 203, 183), ink=(246, 245, 244)),  # #b98a5e
+    "arachne":     dict(base=(17, 9, 29),  accent=(124, 58, 237),  glow=(192, 159, 249), ink=(244, 242, 247)),  # #7c3aed
+    "tatuengine":  dict(base=(10, 29, 27), accent=(20, 184, 166),  glow=(161, 247, 238), ink=(243, 247, 247)),  # #14b8a6
+    "descobertas": dict(base=(9, 23, 30),  accent=(56, 189, 248),  glow=(156, 223, 252), ink=(242, 246, 247)),  # #38bdf8
+    "dogwalk":     dict(base=(11, 27, 17), accent=(34, 197, 94),   glow=(166, 242, 194), ink=(243, 247, 244)),  # #22c55e
+    "capivara":    dict(base=(30, 22, 9),  accent=(245, 158, 11),  glow=(252, 216, 156), ink=(247, 245, 242)),  # #f59e0b
+    "seguranca":   dict(base=(29, 9, 9),   accent=(239, 68, 68),   glow=(249, 159, 159), ink=(247, 242, 242)),  # #ef4444
+    "portfolio":   dict(base=(9, 26, 30),  accent=(0, 212, 255),   glow=(156, 236, 252), ink=(242, 247, 248)),  # #00d4ff
+    "estudos":     dict(base=(9, 17, 30),  accent=(59, 130, 246),  glow=(156, 192, 252), ink=(242, 244, 247)),  # #3b82f6
 }
+# Projeto sem paleta NAO herda mais o roxo do lifelog: cai em cinza-azulado
+# neutro e avisa. Antes, faltar uma chave aqui pintava 20% do acervo de roxo.
+PAL_FALLBACK = dict(base=(20, 22, 28), accent=(148, 163, 184), glow=(203, 213, 225), ink=(241, 245, 249))
 DEFAULT_PROJECT = "lifelog"
 
 
@@ -271,6 +288,41 @@ TAG_MOTIF = {
     "refactoring": "camadas", "architecture": "camadas", "frontend": "camadas",
     "react": "camadas", "nextjs": "camadas", "design-system": "camadas",
     "python": "camadas", "fastapi": "camadas", "typescript": "camadas",
+    # treino / arquitetura de modelo: empilhar pesos e camadas e' construcao
+    "ssm": "camadas", "mamba": "camadas", "bitmamba": "camadas",
+    "pytorch": "camadas", "training": "camadas", "sft": "camadas",
+    "fine-tuning": "camadas", "ternary": "camadas", "model": "camadas",
+    "wave-field": "camadas", "wave-field-theory": "camadas", "fase4": "camadas",
+    # GPU/VRAM: o tema desses posts e' caber no hardware, nao "camadas"
+    "cuda": "alvo", "gpu": "alvo", "vram": "alvo", "quantization": "alvo",
+    "validation": "alvo", "metric": "alvo", "evaluation": "alvo",
+    # a11y e UI entram em camadas (superficie construida)
+    "accessibility": "camadas", "wcag": "camadas", "a11y": "camadas",
+    "axe-core": "camadas", "contrast": "camadas", "ui": "camadas",
+    "ux": "camadas", "astro": "camadas", "css": "camadas", "design": "camadas",
+    # conhecimento acumulado, docs, estudo e coleta
+    "documentation": "rede", "studies": "rede", "study": "rede",
+    "learning": "rede", "knowledge": "rede", "scraping": "rede",
+    "crawl4ai": "rede", "crawler": "rede", "agents": "rede",
+    "ecosystem": "rede", "projects": "rede", "research": "rede",
+    # operacao e infra: fluxo que entrega e sustenta
+    "infrastructure": "fluxo", "docker": "fluxo", "kubernetes": "fluxo",
+    "cloudflare": "fluxo", "checkpoint": "fluxo", "backup": "fluxo",
+    "update": "fluxo", "migration": "fluxo",
+    # inferencia local e estabilidade
+    "ollama": "pulso", "vlm": "pulso", "stability": "pulso",
+    "stability-testing": "pulso", "bench": "pulso", "boot": "pulso",
+    # ferramenta que entrega / operacao do dia a dia
+    "tools": "fluxo", "dev": "fluxo", "productivity": "fluxo", "ops": "fluxo",
+    "configuration": "fluxo", "networking": "fluxo", "wsl": "fluxo",
+    "wslg": "fluxo", "hermes": "fluxo", "computer-use": "fluxo",
+    "cua-driver": "fluxo", "state": "fluxo",
+    # produto, loja e comeco de jornada: construcao de superficie
+    "marketplace": "camadas", "showcase": "camadas", "gamification": "camadas",
+    "games": "camadas", "improvement": "camadas", "beginning": "camadas",
+    "pets": "camadas", "build": "camadas", "repo": "camadas",
+    # git e privacidade de repo: limpeza que protege o que esta exposto
+    "git": "escudo", "privacy": "escudo",
 }
 
 # Tags que identificam PROJETO e nunca devem escolher o motivo.
@@ -380,20 +432,28 @@ def _comp_alvo(r, pal, dark):
     # variacao deterministica por slug: dois posts do mesmo motivo NAO podem
     # sair identicos (defeito medido: grupo 7 do acervo com 2 fallbacks e
     # grupo 4 com 2 escudos davam a mesma imagem). r e' seed de sha1(slug).
-    n_niv = r.integers(0, 3)
+    # Corrigido 09/11: 3 conjuntos de leitura x 2 espelhamentos = 6 imagens
+    # para 29 posts do motivo -> 6 repetidas. Agora tambem varia a largura dos
+    # trilhos, o numero deles (3/4) e a posicao do limiar: 3 x 2 x 2 x 3 = 36.
+    n_niv = int(r.integers(0, 3))
     if n_niv == 1:
         niveis = (0.62, 0.86, 0.34)
     elif n_niv == 2:
         niveis = (0.34, 0.70, 0.90)
+    if int(r.integers(0, 2)):              # 4 medidores em vez de 3
+        niveis = tuple(niveis) + (float(r.uniform(0.25, 0.9)),)
     espelhar = bool(r.integers(0, 2))
     n = len(niveis)
     base_y = int(h * 0.82)           # base comum
     topo_y = int(h * 0.20)           # topo comum
     altura = base_y - topo_y
-    larg = int(w * 0.078)
+    # largura/gap derivam do numero de trilhos para o conjunto continuar
+    # centralizado; scale varia a "gordura" do medidor por slug
+    escala = float(r.uniform(0.86, 1.12))
+    larg = int(w * 0.078 * escala * (3 / n) ** 0.5)
     gap = int(w * 0.055)
     x0 = int((w - (n * larg + (n - 1) * gap)) // 2) + int(w * 0.04)
-    limiar_y = base_y - int(altura * 0.55)
+    limiar_y = base_y - int(altura * float(r.uniform(0.42, 0.68)))
 
     for i, niv in enumerate(niveis):
         x = x0 + i * (larg + gap)
@@ -467,17 +527,31 @@ def _comp_escudo(r, pal, dark):
 
 
 def _comp_ruptura(r, pal, dark):
-    """Linha continua que quebra e retoma: falha e causa."""
+    """Linha continua que quebra e retoma: falha e causa.
+
+    Variacao por slug (corrigido 09/11): a versao anterior desenhava DUAS curvas
+    com a MESMA formula e so mexia o ponto da falha em 0.34–0.56 da largura —
+    medido no acervo, dois posts de ruptura saiam com dHash 0 (identicas). Agora
+    variam frequencia e amplitude de cada trecho, altura base dos dois lados e o
+    desnivel da retomada: a linha "quebrada" nunca repete o mesmo desenho.
+    """
     w, h = W, H
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.42))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
-    y0 = int(h * 0.54)
+    y0 = int(h * (0.44 + 0.20 * float(r.uniform(0, 1))))
+    # parametros independentes por slug
+    f_a = float(r.uniform(6.0, 13.0))       # frequencia do trecho antes
+    f_b = float(r.uniform(7.5, 15.0))       # frequencia do trecho depois
+    amp_a = float(r.uniform(0.05, 0.13))    # amplitude antes
+    amp_b = float(r.uniform(0.10, 0.20))    # amplitude depois (mais agitado)
+    lin_a = float(r.uniform(0.20, 0.34))    # comprimento do trecho antes
+    lin_b = float(r.uniform(0.30, 0.44))    # comprimento do trecho depois
     # trecho antes da falha
-    pts_a = [(int(w * (0.06 + 0.28 * t / 60)), y0 - int(h * 0.10 * np.sin(t / 9.0)))
+    pts_a = [(int(w * (0.06 + lin_a * t / 60)), y0 - int(h * amp_a * np.sin(t / f_a)))
              for t in range(61)]
     # trecho depois, deslocado (a "retomada")
-    pts_b = [(int(w * (0.52 + 0.42 * t / 60)), y0 + int(h * 0.05) - int(h * 0.16 * np.sin(t / 11.0)))
+    pts_b = [(int(w * (0.52 + lin_b * t / 60)), y0 + int(h * 0.05) - int(h * amp_b * np.sin(t / f_b)))
              for t in range(61)]
     for pts, col, wid in ((pts_a, pal["glow"] + (225,), 9), (pts_b, pal["accent"] + (235,), 9)):
         d.line(pts, fill=col, width=wid, joint="curve")
@@ -498,16 +572,25 @@ def _comp_ruptura(r, pal, dark):
 
 
 def _comp_fluxo(r, pal, dark):
-    """Etapas encadeadas na horizontal: entrega."""
+    """Etapas encadeadas na horizontal: entrega.
+
+    Variacao por slug (corrigido 09/11): a versao anterior so sorteava o NUMERO
+    de etapas (4/5/6), ou seja 3 imagens para os 43 posts do motivo — medido
+    no acervo, 23 de 43 capas saiam identicas em grupos de ate 4. Agora varia
+    tambem altura do trilho, amplitude da curva, preenchimento das etapas e
+    presenca dos trilhos paralelos: 3 x 3 x 2 x 2 = 36 combinacoes visiveis.
+    """
     w, h = W, H
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.40))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
     n = (4, 5, 6)[int(r.integers(0, 3))]
-    y = int(h * 0.52)
+    y = int(h * (0.42 + 0.20 * float(r.uniform(0, 1))))    # altura do trilho
     passo = 0.78 / (n - 1)
     xs = [int(w * (0.12 + passo * i)) for i in range(n)]
     rad = int(h * 0.085)
+    # amplitude da curva entre etapas: reta, sobe, desce
+    curva = int(h * (0.0, 0.09, -0.09)[int(r.integers(0, 3))])
     for i, x in enumerate(xs):
         # seta entre as etapas
         if i < n - 1:
@@ -517,14 +600,20 @@ def _comp_fluxo(r, pal, dark):
             ax = nx - rad - 10
             d.polygon([(ax, y - 16), (ax, y + 16), (ax + 24, y)], fill=pal["glow"] + (200,))
         cor = pal["accent"] if i in (0, n - 1) else pal["glow"]
-        d.ellipse([x - rad, y - rad, x + rad, y + rad],
-                  fill=cor + (40,), outline=cor + (230,), width=6)
-        d.ellipse([x - rad // 3, y - rad // 3, x + rad // 3, y + rad // 3],
-                  fill=cor + (235,))
-    # trilhos paralelos (o "pipeline" por baixo)
-    for k, dy in enumerate((int(h * 0.16), int(h * 0.22))):
-        d.line([(int(w * 0.08), y + dy), (int(w * 0.92), y + dy)],
-               fill=pal["glow"] + (40 - k * 15,), width=3)
+        yy = y + curva
+        # etapa cheia ou vazada alterna por slug: assinatura muda sem virar sorteio
+        cheio = int((i + int(r.integers(0, 2))) % 2)
+        d.ellipse([x - rad, yy - rad, x + rad, yy + rad],
+                  fill=(cor + (90,) if cheio else cor + (28,)),
+                  outline=cor + (230,), width=6)
+        if cheio:
+            d.ellipse([x - rad // 3, yy - rad // 3, x + rad // 3, yy + rad // 3],
+                      fill=cor + (235,))
+    # trilhos paralelos (o "pipeline" por baixo) — presentes ou nao por slug
+    if int(r.integers(0, 2)):
+        for k, dy in enumerate((int(h * 0.16), int(h * 0.22))):
+            d.line([(int(w * 0.08), y + dy), (int(w * 0.92), y + dy)],
+                   fill=pal["glow"] + (40 - k * 15,), width=3)
     img = blend(img, lay.filter(ImageFilter.GaussianBlur(0.7)))
     return vignette(img, 0.30)
 
@@ -583,20 +672,32 @@ def _comp_rede(r, pal, dark):
 
 
 def _comp_camadas(r, pal, dark):
-    """Camadas empilhadas: construcao e organizacao."""
+    """Camadas empilhadas: construcao e organizacao.
+
+    Variacao por slug (corrigido 09/11): a versao anterior so sorteava o NUMERO
+    de camadas (3/4/5) com o resto fixo — dois posts de camadas saiam com dHash
+    0 (identicas, confirmado por inspecao visual). Agora variam tambem o eixo
+    horizontal, a largura da base, o skew e o deslocamento lateral de cada
+    camada: empilhamento torto, reto ou em escada, sempre diferente.
+    """
     w, h = W, H
     img = Image.fromarray(radial(w, h, pal["base"], pal["accent"], 0.40))
     lay = layer_for(img)
     d = ImageDraw.Draw(lay)
-    cx = int(w * 0.50)
+    cx = int(w * (0.38 + 0.24 * float(r.uniform(0, 1))))     # eixo deslocado
     n = (3, 4, 5)[int(r.integers(0, 3))]
     passo_y = 0.48 / n
+    larg_base = float(r.uniform(0.24, 0.36))                  # largura inicial
+    encolhe = float(r.uniform(0.04, 0.16))                    # quanto afina
+    skew_base = float(r.uniform(0.035, 0.075))
+    desliza = float(r.uniform(-0.05, 0.05))                   # deriva lateral
     for i in range(n):
         yb = int(h * (0.30 + i * passo_y))
-        half = int(w * (0.30 - i * (0.10 / n)))
-        skew = int(h * (0.055 + 0.03 * float(r.uniform(0, 1))))
-        pts = [(cx - half, yb), (cx + half, yb),
-               (cx + half, yb + skew), (cx - half, yb + skew)]
+        half = int(w * (larg_base - i * (encolhe / n)))
+        skew = int(h * skew_base)
+        dx = int(w * desliza * i)
+        pts = [(cx - half + dx, yb), (cx + half + dx, yb),
+               (cx + half + dx, yb + skew), (cx - half + dx, yb + skew)]
         cor = pal["accent"] if i == 0 else pal["glow"]
         d.polygon(pts, fill=cor + (60 if i else 110,), outline=cor + (225,), width=6)
     # eixo vertical costurando as camadas
@@ -618,14 +719,22 @@ def gerar(slug, project=None, dry=False):
     project = project or brief["project"]
     pal = PALETTE.get(project)
     if pal is None:
-        pal = PALETTE[DEFAULT_PROJECT]
-        print(f"AVISO projeto nao mapeado ({project}) -> paleta padrao; meca e ajuste PALETTE")
+        pal = PAL_FALLBACK
+        print(f"AVISO projeto sem paleta ({project}) -> neutro; meca e adicione em PALETTE")
     dark = sum(pal["base"]) / 3 < 128
     r = rnd(slug)
     motivo, tag = pick_motif(brief)
     comp = MOTIF_FN[motivo]
     img = comp(r, pal, dark)
-    out = os.path.join(COVERS, slug + ".webp")
+    # DESTINO = o caminho que o POST declara em `cover:`, nao o nome do arquivo
+    # do post. Corrigido 09/11: gerar por <arquivo>.webp criava capa orfa em 23
+    # posts (arquivo ...-arquitetura-componentes, cover lifelog-refactor-...),
+    # sobrescrevia capas de outros posts e deixava a capa exibida desatualizada.
+    cover = frontmatter_cover(slug)
+    if cover:
+        out = os.path.join(LIFELOG_DIR, "public", cover.lstrip("/"))
+    else:
+        out = os.path.join(COVERS, slug + ".webp")
     info = dict(slug=slug, project=project, comp=comp.__name__, motif=motivo,
                 tag=tag, dark=dark, out=out)
     if dry:
@@ -696,14 +805,22 @@ def check():
 
     1. ASPECTO: todo post com `cover:` precisa apontar para arquivo existente,
        legivel e em 21/9 (o card usa aspect-ratio 21/9).
-    2. MOTIVO REPETIDO: dentro do mesmo projeto, duas capas nao podem sair do
-       mesmo motivo (sintoma de "capa generica" relatado pelo Samuel 09/11).
+    2. DUPLICATA: dois posts DIFERENTES (nao traducao) nao podem compartilhar
+       o mesmo arquivo de capa, nem sair visualmente indistinguiveis.
+
+    PT/EN do mesmo post e' a MESMA historia em dois idiomas: compartilhar a
+    capa e' correto. O par se identifica estruturalmente pelo diretorio
+    (src/content/posts vs src/content/posts/en) — comparar titulo ou data
+    seria fragil. Medido 09/11: dos 51 pares que o check acusava, 50 eram
+    PT/EN legitimo e 1 era defeito real (dois posts de tatuengine apontando
+    para a mesma capa).
     """
     import glob
     from collections import defaultdict
     ruins = []
     por_projeto = defaultdict(list)
     for d in POST_DIRS:
+        lang = "en" if d.endswith("en") else "pt"
         for p in glob.glob(os.path.join(LIFELOG_DIR, d, "*.mdx")):
             t = open(p, encoding="utf-8", errors="ignore").read()
             m = re.search(r"^---(.*?)^---", t, re.S | re.M)
@@ -729,67 +846,172 @@ def check():
             # so entra na checagem de motivo quem tem capa valida
             brief = read_brief(name)
             motivo, _tag = pick_motif(brief)
-            por_projeto[brief["project"]].append((motivo, name))
+            por_projeto[brief["project"]].append((motivo, name, fp, lang))
 
-    # 2. DUPLICATA: duas capas nao podem ser o mesmo arquivo (md5 igual) nem
-    #    visualmente indistinguiveis (dHash 16x16 com Hamming <= 8). Medido no
-    #    acervo: 270 capas, 12 grupos md5 identicos cobrindo 51 arquivos — ou
-    #    seja, 51 posts compartilhavam imagem. Dois posts com o mesmo MOTIVO
-    #    (dois textos sobre teste) sao legitimos e nao falham.
+    # 2. DUPLICATA: agrupa por ARQUIVO de capa (nao por nome do post).
     por_md5 = defaultdict(list)
     por_dhash = defaultdict(list)
+    por_arquivo = defaultdict(list)
     for proj, itens in por_projeto.items():
-        for motivo, name in itens:
-            fp = os.path.join(COVERS, name + ".webp")
+        for motivo, name, fp, lang in itens:
+            por_arquivo[fp].append((name, lang))
             h1 = md5(fp)
             if h1:
-                por_md5[h1].append(name)
+                por_md5[h1].append((name, lang, fp))
             h2 = dhash(fp)
             if h2 is not None:
-                por_dhash[proj].append((name, h2))
+                por_dhash[proj].append((name, lang, fp, h2))
+
+    def so_traducao(itens):
+        """True se a capa e' compartilhada apenas por PT e EN da MESMA historia.
+
+        Regra estrutural: no maximo UM post por idioma pode usar a mesma capa.
+        PT+EN = traducao (legitimo). Dois posts em PT na mesma capa = defeito,
+        mesmo que um deles tenha par em EN. Comparar titulo exigiria traduzir;
+        contar idioma e' deterministico e pega o caso real do acervo (dois
+        posts de tatuengine dividindo a capa do block-codec).
+        """
+        langs = [x[1] for x in itens]
+        return len(langs) == len(set(langs))
 
     duplicadas = []
+    avisos = []
     pares_vistos = set()
-    for h1, nomes in por_md5.items():
-        uniq = sorted(set(nomes))
-        if len(uniq) > 1:
-            duplicadas.append(("md5-identico", uniq))
-            for a in uniq:
-                for b in uniq:
-                    if a < b:
-                        pares_vistos.add((a, b))
+    # 2a. mesmo ARQUIVO usado por posts nao-traducao
+    for fp, itens in por_arquivo.items():
+        if len(itens) < 2 or so_traducao(itens):
+            continue
+        nomes = sorted({n for n, _ in itens})
+        duplicadas.append(("arquivo-compartilhado", nomes + [os.path.basename(fp)]))
+
+    # 2b. md5 igual entre arquivos DIFERENTES (byte a byte) — sempre defeito
+    for h1, itens in por_md5.items():
+        fps = {x[2] for x in itens}
+        if len(fps) < 2:
+            continue
+        nomes = sorted({x[0] for x in itens})
+        if len(nomes) < 2:
+            continue
+        duplicadas.append(("md5-identico", nomes))
+        for a in nomes:
+            for b in nomes:
+                if a < b:
+                    pares_vistos.add((a, b))
+
+    # 2c. visualmente indistinguivel dentro do projeto (Hamming <= 8),
+    #     ignorando arquivos diferentes que sao PT/EN da mesma historia
     for proj, itens in por_dhash.items():
         for i in range(len(itens)):
             for j in range(i + 1, len(itens)):
-                ni, hi = itens[i]
-                nj, hj = itens[j]
-                if ni == nj:
+                ni, li, fi, hi = itens[i]
+                nj, lj, fj, hj = itens[j]
+                if ni == nj or fi == fj:
                     continue
                 chave = (ni, nj) if ni < nj else (nj, ni)
                 if chave in pares_vistos:
                     continue
                 if hamming(hi, hj) <= 8:
-                    duplicadas.append((f"visual ({proj})", [chave[0], chave[1]]))
+                    avisos.append((f"parecido ({proj})", [chave[0], chave[1]], hamming(hi, hj)))
                     pares_vistos.add(chave)
-    return ruins, duplicadas
+    return ruins, duplicadas, avisos
+
+
+def distribuicao_paleta():
+    """Audita a DISTRIBUICAO de cor do acervo inteiro.
+
+    Medido 09/11/2026 (Samuel: "ta tudo roxo o fundo ... cuidado para que isso
+    nao seja um erro geral"): 169 de 257 capas (65,8%) caiam em familia
+    roxa/violeta. Causa: 2 projetos sem chave em PALETTE (50 posts) herdavam o
+    roxo do lifelog pelo DEFAULT, e o mapa tinha accents divergentes do site.
+    Este check existe para o defeito nao voltar em silencio.
+    """
+    import glob
+    from collections import Counter
+    fam = Counter()
+    sem_paleta = Counter()
+    total = 0
+    vistos = set()
+    for d in POST_DIRS:
+        for p in glob.glob(os.path.join(LIFELOG_DIR, d, "*.mdx")):
+            slug = os.path.basename(p)[:-4]
+            chave = slug.replace("-en", "")
+            if chave in vistos:          # pt/en compartilham a mesma capa
+                continue
+            vistos.add(chave)
+            brief = read_brief(slug)
+            proj = brief["project"]
+            pal = PALETTE.get(proj)
+            if pal is None:
+                sem_paleta[proj] += 1
+                pal = PAL_FALLBACK
+            r, g, b = pal["accent"]
+            h, _l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+            h = h * 360
+            if s < 0.12:
+                fam["neutro"] += 1
+            elif h < 20 or h >= 340:
+                fam["vermelho"] += 1
+            elif h < 45:
+                fam["laranja"] += 1
+            elif h < 70:
+                fam["amarelo"] += 1
+            elif h < 160:
+                fam["verde"] += 1
+            elif h < 200:
+                fam["ciano"] += 1
+            elif h < 225:
+                fam["azul"] += 1
+            elif h < 250:
+                fam["azul-violeta"] += 1
+            elif h < 290:
+                fam["roxo"] += 1
+            else:
+                fam["magenta"] += 1
+            total += 1
+    roxo = fam["roxo"] + fam["azul-violeta"]
+    return total, fam, roxo, sem_paleta
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     if "--check" in args:
-        ruins, duplicadas = check()
-        if not ruins and not duplicadas:
-            print("APTO: capas em 21/9 e nenhuma duplicata visual dentro do projeto")
+        ruins, duplicadas, avisos = check()
+        total, fam, roxo, sem_paleta = distribuicao_paleta()
+        pct = 100.0 * roxo / total if total else 0
+        print(f"paleta: {total} posts | roxo/violeta {roxo} ({pct:.1f}%)")
+        for k, v in fam.most_common():
+            print(f"  {k:12s} {v:3d}  {100.0*v/total:5.1f}%")
+        if sem_paleta:
+            print(f"  SEM PALETA (cai no neutro): {dict(sem_paleta)}")
+        # Teto medido: o site tem 3 projetos roxos por identidade propria
+        # (lifelog, arachne) + violeta adjacente. Acima de 40% o acervo volta a
+        # parecer monocromatico — foi o defeito de 65,8% corrigido em 09/11.
+        alerta_roxo = pct > 40
+        if not ruins and not duplicadas and not alerta_roxo and not sem_paleta:
+            print("APTO: capas em 21/9, sem duplicata e paleta distribuida")
+            if avisos:
+                print(f"(informativo: {len(avisos)} par(es) parecidos por dHash — nao bloqueia)")
             sys.exit(0)
+        if alerta_roxo:
+            print(f"\nREPROVADO: {pct:.1f}% do acervo em roxo/violeta (teto 40%) — corrigir PALETTE")
         if ruins:
             print(f"REPROVADO: {len(ruins)} capa(s) com problema de arquivo/aspecto")
             for n, dim, cov in ruins[:40]:
                 print(f"  {dim:>9}  {n[:58]}  -> {cov}")
         if duplicadas:
-            print(f"\nAVISO: {len(duplicadas)} par(es) de capa identica/indistinguivel")
+            print(f"\nREPROVADO: {len(duplicadas)} capa(s) compartilhada(s) por posts diferentes")
             for tipo, nomes in duplicadas[:20]:
-                print(f"  {tipo:<16} {' == '.join(n[:38] for n in nomes[:3])}")
-        sys.exit(1 if ruins else 0)
+                print(f"  {tipo:<22} {' == '.join(n[:38] for n in nomes[:3])}")
+        if avisos:
+            # dHash <= 8 no mesmo motivo: mesma familia visual, sem md5 igual.
+            # Informativo, nao bloqueia — apertar o limiar gerava so ruido.
+            print(f"\nAVISO: {len(avisos)} par(es) parecido(s) (mesma familia visual)")
+            for tipo, nomes, d in avisos[:10]:
+                print(f"  {tipo:<18} h={d:<2} {' == '.join(n[:34] for n in nomes[:2])}")
+        # VERDE FALSO CORRIGIDO 09/11: o exit antigo era `1 if ruins else 0`,
+        # entao --check saia com RC=0 mesmo imprimindo "REPROVADO" e 372 pares
+        # de capa duplicada. Guard que nao falha no que denuncia nao e guard.
+        sys.exit(1 if (ruins or duplicadas or alerta_roxo or sem_paleta) else 0)
     if "--motif" in args:
         alvos = [a for a in args if not a.startswith("--")]
         if not alvos:
