@@ -1,5 +1,12 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-09 (fim de dia) — 1 commit em `main` (ordem de importação do build); push `origin` ok
+
+- 1 commit hoje em `main`: `5e804e51` fix(build) ordem de importação (12:24).
+- HEAD `main` `ff2d161`, 0/0 com `origin` antes e depois da rodada — doc em worktree detachado sobre `origin/main`, push fast-forward e `main` local avançado por `update-ref`.
+- 7 arquivos sujos preservados: `scripts/cover-cache.json`, `scripts/cover-jobs-old.json` e `scripts/ortografia.json` modificados + 4 backups untracked (`.loop-*`, `output/`).
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-11-06 (fim de dia) — 12 commits em 5 branches (release de post + capas + pipeline); push origin ok
 
 - `origin/main` recebeu hoje `74787b2` release(post): tatuengine-os-instrumentos-que-mentiam (PT+EN + `ocultos-data`), 22:40 — o mesmo conteúdo já estava no `main` local (`daeeb20`, post oculto PT+EN, 16:13).

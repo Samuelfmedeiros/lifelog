@@ -1,5 +1,10 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-09] - 1 commit em main (ordem de importação do build); push origin ok
+
+- `5e804e51` fix(build), 12:24.
+- 7 sujos preservados (cover-cache, cover-jobs-old, ortografia + 4 backups).
+
 ## [2026-11-06] - 12 commits em 5 branches: release tatuengine + capas AI + pipeline; push origin ok
 
 - **conteúdo**: `74787b2` release(post) tatuengine-os-instrumentos-que-mentiam PT+EN em `origin/main`; `daeeb20` post oculto equivalente no main local.
