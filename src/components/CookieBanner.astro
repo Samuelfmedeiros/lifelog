@@ -1,0 +1,202 @@
+---
+// ═══════════════════════════════════════════════
+// CookieBanner — gate de consentimento LGPD
+// Aparece só pós-mount (sem flash no SSR / sem mismatch).
+// Nenhum analytics carrega antes do "Aceitar".
+// ═══════════════════════════════════════════════
+import { getTranslations } from '../lib/i18n';
+
+export interface Props {
+  locale?: string;
+}
+
+const { locale } = Astro.props;
+const dataLocale = locale === 'en' ? 'en' : 'pt';
+const t = getTranslations(dataLocale);
+const c = t.cookie.banner;
+const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
+---
+
+<div
+  id="lgpd-banner"
+  class="lgpd-banner"
+  role="dialog"
+  aria-modal="false"
+  aria-labelledby="lgpd-banner-title"
+  aria-describedby="lgpd-banner-text"
+  hidden
+>
+  <div class="lgpd-banner__inner">
+    <div class="lgpd-banner__copy">
+      <p id="lgpd-banner-title" class="lgpd-banner__title">{t.footer.lgpd.title}</p>
+      <p id="lgpd-banner-text" class="lgpd-banner__text">
+        {c.text}{' '}
+        <a href={privacyHref} class="lgpd-banner__link">{c.privacy}</a>
+      </p>
+    </div>
+    <div class="lgpd-banner__actions">
+      <button type="button" id="lgpd-decline" class="lgpd-btn lgpd-btn--ghost">{c.decline}</button>
+      <button type="button" id="lgpd-accept" class="lgpd-btn lgpd-btn--primary">{c.accept}</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .lgpd-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9000;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    /* Fundo SÓLIDO de propósito: o lightningcss dropa o `backdrop-filter` sem
+       prefixo, e sem blur os 8% de transparência deixavam o texto do post
+       aparecer atrás do banner. Legibilidade > vidro. */
+    background: var(--color-bg-card);
+    border-top: 1px solid var(--color-border);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.28);
+    animation: lgpd-rise 0.28s ease-out both;
+  }
+  .lgpd-banner[hidden] { display: none; }
+
+  @keyframes lgpd-rise {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lgpd-banner { animation: none; }
+  }
+
+  .lgpd-banner__inner {
+    max-width: 72rem;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .lgpd-banner__copy { flex: 1 1 22rem; min-width: 0; }
+  .lgpd-banner__title {
+    margin: 0 0 0.15rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--color-heading);
+  }
+  .lgpd-banner__text {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+  }
+  .lgpd-banner__link {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+  .lgpd-banner__actions {
+    display: flex;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+  }
+  .lgpd-btn {
+    min-height: 38px;
+    min-width: 88px;
+    padding: 0 1rem;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  }
+  .lgpd-btn:active { transform: scale(0.97); }
+  .lgpd-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .lgpd-btn--ghost {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+  .lgpd-btn--ghost:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .lgpd-btn--primary {
+    /* Fundo fixo, não var(--color-accent): o accent muda por tema e nenhuma
+       cor de texto única passa nos dois (branco sobre #a78bfa = 2.72:1 no dark;
+       escuro sobre #7c3aed = 3.22:1 no light). #fff sobre #7c3aed = 5.7:1 nos
+       dois temas, e o botão segue reconhecível como ação primária. */
+    background: #7c3aed;
+    border: 1px solid #7c3aed;
+    color: #ffffff;
+  }
+  .lgpd-btn--primary:hover { background: #6d28d9; border-color: #6d28d9; }
+
+  @media (max-width: 640px) {
+    .lgpd-banner { padding: 0.7rem 0.85rem calc(0.7rem + env(safe-area-inset-bottom, 0px)); }
+    .lgpd-banner__inner { gap: 0.6rem; }
+    .lgpd-banner__copy { flex-basis: 100%; }
+    .lgpd-banner__actions { width: 100%; }
+    .lgpd-btn { flex: 1 1 0; min-width: 0; }
+  }
+</style>
+
+<script>
+  import { CONSENT_EVENT, CONSENT_KEY, readConsent, writeConsent } from '../lib/consent';
+
+  const banner = document.getElementById('lgpd-banner') as HTMLElement | null;
+  const acceptBtn = document.getElementById('lgpd-accept');
+  const declineBtn = document.getElementById('lgpd-decline');
+
+  function safeStorage(): Storage | null {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  function choice(value: 'accepted' | 'declined'): void {
+    const storage = safeStorage();
+    writeConsent(storage, value);
+    banner?.setAttribute('hidden', '');
+    window.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: { value } }));
+  }
+
+  if (banner) {
+    // Só aparece se ainda não houver escolha — pós-mount, sem flash.
+    if (readConsent(safeStorage()) === null) banner.removeAttribute('hidden');
+
+    acceptBtn?.addEventListener('click', () => choice('accepted'));
+    declineBtn?.addEventListener('click', () => choice('declined'));
+
+    // "Rever preferências" no footer: limpa a escolha e reabre o banner.
+    window.addEventListener(CONSENT_EVENT, (ev) => {
+      const detail = (ev as CustomEvent<{ value?: string }>).detail;
+      if (detail?.value === 'reset') {
+        banner.removeAttribute('hidden');
+      }
+    });
+
+    document.querySelectorAll('[data-lgpd-reopen]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        try {
+          safeStorage()?.removeItem(CONSENT_KEY);
+        } catch {
+          /* modo restritivo */
+        }
+        banner.removeAttribute('hidden');
+        acceptBtn?.focus();
+      });
+    });
+
+    // Esc = mesma ação do recusar (LGPD: silêncio não é consentimento).
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !banner.hasAttribute('hidden')) choice('declined');
+    });
+  }
+</script>

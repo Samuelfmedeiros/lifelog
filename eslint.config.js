@@ -51,6 +51,25 @@ export default tseslint.config(
     },
   },
   {
+    // Módulos Node em src/**/*.mjs (plugins de build de remark/rehype):
+    // rodam no processo do Astro, não no browser — precisam dos globals Node.
+    files: ['src/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+    },
+  },
+  {
     files: ['e2e/**/*.spec.ts'],
     rules: {
       // Helpers evaluateAll usam `any` intencionalmente

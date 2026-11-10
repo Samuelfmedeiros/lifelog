@@ -49,11 +49,11 @@ function coverOf(dir: string, fn: string): string | null {
 function posts(): Array<{ dir: string; fn: string }> {
   const out: Array<{ dir: string; fn: string }> = [];
   for (const dir of [POSTS, join(POSTS, 'en')]) {
-    let entries: string[] = [];
+    let entries: string[];
     try {
-      entries = readdirSync(dir);
+      entries = readdirSync(dir) as string[];
     } catch {
-      continue;
+      continue; // diretório en/ pode não existir
     }
     for (const fn of entries.filter((f) => f.endsWith('.mdx'))) out.push({ dir, fn });
   }

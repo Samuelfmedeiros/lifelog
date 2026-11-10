@@ -132,7 +132,11 @@ def build_prompt(slug, project, title):
     # a mesma slug escolhia composicao DIFERENTE a cada execucao, entao regerar
     # uma capa nunca devolvia a mesma imagem. sha1 e' estavel entre maquinas e
     # rodadas — determinismo e' requisito do repo (capas versionadas no git).
-    comp_idx = int(hashlib.sha1(slug.encode("utf-8")).hexdigest()[:8], 16) % len(COMPOSITIONS)
+    # usado só para escolher a composição da capa, não para segurança —
+    # usedforsecurity=False evita o HIGH falso do bandit (B324).
+    comp_idx = int(
+        hashlib.sha1(slug.encode("utf-8"), usedforsecurity=False).hexdigest()[:8], 16
+    ) % len(COMPOSITIONS)
     composition = COMPOSITIONS[comp_idx]
     mood = PROJECT_MOODS.get(project, "atmospheric, immersive, cinematic")
     return (

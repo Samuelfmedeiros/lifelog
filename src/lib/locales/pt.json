@@ -89,5 +89,106 @@
     "lifelog": "LifeLog",
     "estudos": "Estudos",
     "descobertas": "Descobertas"
+  },
+  "legal": {
+    "page": {
+      "privacyTitle": "Política de Privacidade",
+      "termsTitle": "Termos de Uso",
+      "updated": "Última atualização",
+      "back": "Voltar ao início"
+    }
+  },
+  "cookie": {
+    "banner": {
+      "text": "Uso analytics para saber quais posts são lidos. Nenhum cookie de rastreamento, nenhum dado vendido.",
+      "accept": "Aceitar",
+      "decline": "Recusar",
+      "privacy": "Política de Privacidade",
+      "close": "Fechar banner de cookies"
+    }
+  },
+  "footer": {
+    "lgpd": {
+      "title": "Proteção de Dados (LGPD)",
+      "text": "Seus dados são tratados conforme a LGPD (Lei 13.709/2018). Nada é vendido ou compartilhado para fins comerciais. Você pode pedir acesso, correção ou exclusão a qualquer momento.",
+      "link": "Leia a Política de Privacidade completa →",
+      "privacy": "Privacidade",
+      "terms": "Termos",
+      "preferences": "Rever preferências"
+    }
+  },
+  "privacy": {
+    "title": "Política de Privacidade",
+    "description": "Como o LifeLog trata seus dados pessoais conforme a LGPD.",
+    "updated": "Última atualização: 10 de novembro de 2026",
+    "intro": "Esta política explica quais dados o LifeLog coleta, por quê, onde ficam e como você pode exercer seus direitos previstos na Lei Geral de Proteção de Dados (Lei 13.709/2018).",
+    "section1": {
+      "title": "1. Quais dados são coletados",
+      "text": "O LifeLog coleta apenas dois tipos de dado: (a) dados de navegação anônimos — página visitada, referenciador e tipo de dispositivo — e somente depois que você clica em \"Aceitar\" no banner de cookies; (b) o e-mail que você digita voluntariamente no formulário de inscrição exibido ao final dos posts."
+    },
+    "section2": {
+      "title": "2. Para que os dados são usados",
+      "text": "Os dados de navegação servem para entender quais posts são mais lidos e melhorar o conteúdo. O e-mail é usado exclusivamente para enviar os posts novos e avisos do LifeLog. Não há uso para publicidade, perfilamento comercial ou decisões automatizadas."
+    },
+    "section3": {
+      "title": "3. Base legal",
+      "text": "Analytics: consentimento (art. 7º, I da LGPD), revogável a qualquer momento pelo link \"Rever preferências\" no rodapé. E-mail de inscrição: consentimento manifestado no envio do formulário (art. 7º, I), com descadastro de um clique em toda mensagem."
+    },
+    "section4": {
+      "title": "4. Onde os dados ficam",
+      "text": "Os dados de navegação ficam no OpenPanel, instância self-hosted sob meu controle, sem cookies e sem identificação individual. O e-mail de inscrição fica na plataforma de envio de e-mails do LifeLog. Nenhum dos dois é vendido, alugado ou cedido a terceiros para fins comerciais."
+    },
+    "section5": {
+      "title": "5. Cookies e armazenamento local",
+      "text": "O LifeLog não usa cookies de rastreamento. O armazenamento local do seu navegador guarda apenas preferências: tema, paleta de cores, idioma, se você já fechou o aviso de RSS e sua escolha de consentimento. Nada disso é enviado para servidor."
+    },
+    "section6": {
+      "title": "6. Seus direitos (LGPD)",
+      "text": "Conforme a Lei 13.709/2018, você tem direito a:",
+      "rights": {
+        "access": "Acesso aos seus dados pessoais",
+        "correction": "Correção de dados incompletos, inexatos ou desatualizados",
+        "deletion": "Eliminação dos dados tratados com consentimento",
+        "revocation": "Revogação do consentimento a qualquer momento",
+        "portability": "Portabilidade dos dados a outro fornecedor de serviço"
+      }
+    },
+    "section7": {
+      "title": "7. Contato do controlador",
+      "text": "Controlador: Samuel Medeiros. Para exercer qualquer direito ou esclarecer dúvidas sobre privacidade, escreva para"
+    }
+  },
+  "terms": {
+    "title": "Termos de Uso",
+    "description": "Termos de uso do LifeLog.",
+    "updated": "Última atualização: 10 de novembro de 2026",
+    "section1": {
+      "title": "1. Aceitação dos Termos",
+      "text": "Ao acessar e usar o LifeLog, você concorda com estes Termos de Uso. Se não concordar com qualquer parte deles, não utilize o site."
+    },
+    "section2": {
+      "title": "2. Uso do Site",
+      "text": "O LifeLog é um blog pessoal e técnico de Samuel Medeiros. Você pode ler, citar e compartilhar o conteúdo com atribuição e link para o original. Não é permitido reproduzir integralmente, distribuir comercialmente ou criar obras derivadas sem autorização explícita."
+    },
+    "section3": {
+      "title": "3. Propriedade Intelectual",
+      "text": "Todo o conteúdo deste site — textos, imagens, gráficos, ilustrações, logotipos e código-fonte — pertence a Samuel Medeiros, exceto quando indicado de outra forma. Todos os direitos reservados."
+    },
+    "section4": {
+      "title": "4. Limitação de Responsabilidade",
+      "text": "O conteúdo é publicado com fins informativos e de registro pessoal. Samuel Medeiros não se responsabiliza por danos diretos ou indiretos decorrentes do uso das informações aqui publicadas. Trechos de código são exemplos e devem ser avaliados antes de uso em produção."
+    },
+    "section5": {
+      "title": "5. Links Externos",
+      "text": "Este site contém links para sites de terceiros que não são controlados por Samuel Medeiros. Não há responsabilidade sobre o conteúdo, políticas de privacidade ou práticas desses sites."
+    },
+    "section6": {
+      "title": "6. Alterações nos Termos",
+      "text": "Estes termos podem ser modificados a qualquer momento. A data de última atualização no topo da página indica a versão vigente. O uso continuado após alterações constitui aceitação dos novos termos."
+    },
+    "section7": {
+      "title": "7. Contato",
+      "text": "Para dúvidas sobre estes Termos de Uso, escreva para"
+    }
   }
 }

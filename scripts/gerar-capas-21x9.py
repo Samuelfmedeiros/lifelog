@@ -793,9 +793,13 @@ def hamming(a, b):
 
 
 def md5(path):
-    """Hash do arquivo: pega duplicata byte-a-byte (o defeito mais grave)."""
+    """Hash do arquivo: pega duplicata byte-a-byte (o defeito mais grave).
+
+    usedforsecurity=False: é hash de comparação de bytes, não de segurança —
+    sem isso o bandit (B324) sinaliza HIGH e reprova o gate.
+    """
     try:
-        return hashlib.md5(open(path, "rb").read()).hexdigest()
+        return hashlib.md5(open(path, "rb").read(), usedforsecurity=False).hexdigest()
     except OSError:
         return None
 
