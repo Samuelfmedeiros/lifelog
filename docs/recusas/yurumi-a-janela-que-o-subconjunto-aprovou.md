@@ -1,10 +1,10 @@
 # Recusa: yurumi-a-janela-que-o-subconjunto-aprovou
 
-**Data:** 2026-11-10T22:07:33.017Z
+**Data:** 2026-11-10T22:08:31.279Z
 
 **Nota:**
 
-Mudar capa, deixar sem o personagem
+Troca a capa, coloca sem o personagem
 
 ---
 _Gerado automaticamente pelo /api/recusar_
