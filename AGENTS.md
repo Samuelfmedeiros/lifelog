@@ -1,5 +1,14 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-11 (fim de dia) — 12 commits em 4 branches (LGPD, release de post, capas); `main` local 2 à frente / 5 atrás do `origin` → doc em `fdfd/2026-11-11`; push da lateral ok
+
+- 12 commits hoje, espalhados: `7cc77fb` fix(lgpd): liga o banner ao layout e mergeia as chaves i18n (`feat/lgpd-consent`, o checkout), `9d11175` release(post): arachne-os-arquivos-que-nunca-entraram-no-repo (PT+EN + ocultos-data, topo de `origin/main`), `9a4438e`/`005808a` fix(covers): reencode JPEG aceito + recorte 21:9 automático, `cb4de6f`/`acd647e` post(arachne) hidden, `5ae1f10` chore(ocultos): sync ocultos-data, `12cada7` verify: consent.ts com DECLINE_CLICKS=6, `de6e3b3` refazer: troca de capa, `eb1c3dd`/`f2d6016` WIP/index on `roger/lifelog-entrega-20261110-224327` e `cefcaae` docs(expediente) — stub do expediente substituído por esta seção.
+- `main` local (`9a4438e`) está **2 à frente / 5 atrás** de `origin/main` (`9d11175`) e esses 2 commits locais não existem em nenhuma outra branch → push na principal recusado por non-fast-forward; **nada de force** e a `main` local NÃO foi movida (os 2 commits únicos ficam preservados).
+- Doc escrito em worktree detachado sobre `main` e preservado na lateral `fdfd/2026-11-11`, empurrada para o `origin` — sincronização de código (pull --rebase/merge) é decisão do Samuel.
+- HEAD do checkout em `feat/lgpd-consent` com 2 alterações preservadas (`src/components/CookieBanner.astro`, um MDX) e `coverage/` deletado.
+- Release de post segue em `ocultos-data` aguardando liberação — nenhum publish automático.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessao 2026-11-11 (fim de dia) — 13 commits em 3+ branches (lgpd, posts ocultos, capas); sincronia paralela ativa durante a rodada
 
 - Commits hoje (git log --all --since='2026-11-11 00:00'): `9c4e3bc` fix(lgpd): card desktop encolhe e botoes colam no link (11:24, `feat/lgpd-consent`), `7cc77fb` fix(lgpd): liga o banner ao layout e mergeia chaves i18n (10:50, `origin/feat/lgpd-consent`), `cefcaae` docs(expediente): fim de dia 2026-11-11 (10:42), `9d11175` release(post): arachne-os-arquivos-que-nunca-entraram-no-repo (PT+EN + ocultos-data, 09:10, `origin/main`), `005808a`+`9a4438e` fix(covers): reencode JPEG + recorte 21:9 (08:39), `5ae1f10` chore(ocultos): sync ocultos-data [skip ci] (11:35), `acd647e`/`cb4de6f` post(arachne): dois arquivos que nunca entraram no repo [hidden] (08:34), `12cada7` verify consent.ts (DECLINE_CLICKS=6, 01:06), `de6e3b3` refazer: troca de capa yurumi (00:27).
@@ -102,14 +111,11 @@
 - Os 2 commits ja estavam no `origin`: o `fetch` mostou que `origin/main` (`2866d9d`) é descendente direto do HEAD local - `git pull --rebase origin main` fez fast-forward sem reescrever nada. Nada de divergência a resolver.
 - 7 diffs nao commitados preservados (`.auto-pipeline.log`, `src/components/PalettePicker.astro` modificados + estados de loop `.loop-*`). Push `origin` OK apos o doc desta rodada.
 
-
-
 ## Sessao 2026-10-25 (fim de dia) - 18 commits (3 posts + amarracao da loja no corpo do post + suite e2e/vrt); push origin OK
 - **posts**: `yurumi-a-mensagem-que-saiu-sem-recibo` (`ed122d3` hidden -> recusa `4f95447` -> capa refeita com personagens Yurumi `197451f`, issue #88); `lifelog-o-guard-que-lia-a-flag-como-diretorio` (`7f50333` feat -> release `329cfbb`); `descobertas-o-erro-do-vizinho-que-virava-meu-500` (`1c2755c` feat -> release `11d1765` -> links internos `8f0eec8`).
 - **feat(amarracao)**: `dec6b1a` saida para a loja no CORPO do post + UTM canonico; `3f39e4e` guard de link sem UTM no build + `/sobre` e `/en/about`; `d103b29` saida no corpo do post + gate da navbar com 2 CTAs; `c1469dd` guard de saidas entende `--outDir` (recebia a flag como diretorio); `796f4a7` loja sai da navbar abaixo de 400px + locators do gate fixos.
 - **test**: `902bba8` baselines VRT regenerados na CI ubuntu + ratchet pago (#87); `13fe920` stub do analytics `op1.js` no preview local; `a4af1e5` unit test do bootstrap do playwright config; `656701b` canary de servidor same-origin nos diagnosticos.
 - 18 commits na main - push `origin` OK (HEAD `8f0eec8` + doc). Diffs de estado de loop (`cache/`, `coverage/`, `logs/`, `.loop-*.json`) nao commitados - intactos.
-
 
 ## Sessao 2026-10-24 (fim de dia) - 1 commit (amarracao home/navbar -> loja com UTM) na branch do Roger; push origin OK
 - **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar (antes: **zero** link para `skills.seu.pet` fora dos posts); novo e2e `e2e/amarracao` cobrindo home, `/en/`, `/arquivo` e `/en/archive`; baselines VRT regeradas de proposito.
@@ -161,8 +167,6 @@ ISSO DEVE SER FEITO ANTES da entrega — nunca entregar deixando áreas sem cobe
 dá pra cobrir.
 
 Sem evidência real (testes + screenshot + nota + PDF entregue) NÃO é entrega completa.
-
-
 
 ## Sessão 2026-09-15 (fim de dia) - 2 posts liberados (350 links + CI por indulgencia); OG-default e resgate a11y pendentes em branch
 
@@ -585,7 +589,6 @@ NESTE projeto DEVE ser registrada no MESMO MOMENTO em que é criada — neste AG
 (arquivos, rotas, commands, endpoints novos), em skill (`skill_manage`) se repetível,
 e em memory se infra/pitfall. "Feito" sem registro no ato = INCOMPLETO.
 
-
 ## Sessão 2026-09-03 — Fim de dia (docs)
 - **3 posts novos (hidden, PT+EN):** seguranca — a fila que ninguem atende (supply chain, capa AI) (`1702214`); tatuengine — o step 322 (morte silenciosa + VRAM fantasma, capa NIM) (`57b86ef`); capivara — o CI que morria no meio do step (CI self-hosted + keepalive) (`3dd9933`).
 - **Pipeline recusa→refazer:** 3 recusas com nota funcionando — tatuengine ×2 (capa alinhada ao texto "onda que flatline", issue #31, `bff8035`), capivara ×1 (tema trocado p/ seguranca path traversal, issue #32, `67234de`).
@@ -693,7 +696,3 @@ Guard rodado no dia: "PARCIAL 1/3" (o slot C foi rodado manualmente) — alerta
 honesto em vez de silêncio.
 
 Plano: `~/.hermes/plans/2026-10-18-lifelog-pipeline-slots-falhando.md`.
-
-
-## Sessão 2026-11-11
-- Fim de dia sync: rotina de fechamento automatizada.

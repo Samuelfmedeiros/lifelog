@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-11] - 12 commits em 4 branches (LGPD, release de post PT+EN, capas); doc em fdfd/2026-11-11; push da lateral ok
+
+- `7cc77fb` banner de consentimento ligado ao layout + chaves i18n mergeadas (`feat/lgpd-consent`).
+- `9d11175` release do post arachne PT+EN com ocultos-data; `9a4438e`/`005808a` reencode de JPEG e recorte 21:9 nas capas.
+- `main` local 2 à frente / 5 atrás de `origin/main` → doc na lateral `fdfd/2026-11-11`, push da lateral ok; sync de código pendente.
+
 ## [2026-11-11] - 13 commits: lgpd, posts ocultos (PT+EN), capas; push origin ok
 
 - `cefcaae` doc fim de dia 2026-11-11; `9c4e3bc`+`7cc77fb` fix(lgpd); `9d11175` release post arachne PT+EN + ocultos-data; `005808a`/`9a4438e` fix(covers) JPEG 21:9; `5ae1f10` sync ocultos-data; `12cada7` verify consent.ts.
@@ -88,7 +94,6 @@
 - **test** (`902bba8`, `13fe920`, `a4af1e5`, `656701b`): baselines VRT na CI ubuntu + ratchet pago (#87); stub de analytics no preview; unit do bootstrap do playwright config; canary same-origin.
 - 18 commits na main - push `origin` OK - HEAD main: `8f0eec8` + doc.
 
-
 ## [2026-10-24] - 1 commit: amarracao home/navbar -> loja com UTM; baselines VRT regeradas
 - **feat(amarracao)** (`60eb803`): `StoreExitBlock` na home PT/EN + link Loja/Store na navbar + e2e `amarracao` (home, `/en/`, `/arquivo`, `/en/archive`).
 - Medido antes: `lifelog.seu.pet` e `/arquivo` com 0 links para `skills.seu.pet`.
@@ -159,7 +164,6 @@
 - **chore(ocultos)**: sync ocultos-data (`16a9fce`, `c4c84a2`, `c067650`)
 - 10 commits no dia · HEAD: `5b2d202`
 
-
 ## [2026-09-09] - 3 posts no pipeline + 3 releases
 - **post(a)** (ff185ac): seguranca-toda-janela-e-uma-porta (PT+EN, hidden) — /tag vazava post oculto; Roger nota máxima no gate
 - **post(b)** (0afb19d): arachne-tres-facas-do-flake — 3 flakes reais (RNG sem semente, offline_net opt-in, asserts tautológicos)
@@ -189,14 +193,10 @@
 - **refazer(#37)** (`bb01cbc`, `52d69f3`): recusa do post dogwalk-o-link — remoção total
 - 12 commits no dia · push origin OK · HEAD: `8b51a11`
 
-
-
 ## [2026-09-06] — posts tatuengine/capivara revisor + releases
 - **post(tatuengine)**: o treino que acordou lento — fix base_lrs pós-ckpt, PT+EN hidden + capa NIM (85c2d29) · releases PT+EN (9b861e2, 64f1788)
 - **post(capivara)**: o revisor que não lia código — VLM audit tema claro, PT+EN hidden + capa NIM (f60f7e6)
 - 4 commits no dia · push origin OK · HEAD: `f60f7e6`
-
-
 
 ## [2026-09-06] — post capivara revisor + release tatuengine treino lento
 - **post(hidden)**: capivara-o-revisor-que-nao-le-codigo PT+EN — tema claro auditado por VLM (tokens vs rgba, email truncado no header); capa NIM seed 2028, OCR zero (`f60f7e6`)
@@ -216,17 +216,12 @@
 - **feat(covers)**: capas Yurumi aprovadas — heroico no post memoria-agente + 2 fogueiras (578d065)
 - 8 commits no dia · push origin OK · HEAD: e4f03ae
 
-
-
 ## [2026-09-03] — 3 posts novos (seguranca/tatuengine/capivara CI) + recusa->refazer + capas watchdog
 - **feat(post)**: seguranca — a fila que ninguem atende, supply chain, hidden PT+EN + capa AI (`1702214`); releases (`377fe57`, `516b85c`)
 - **feat(post)**: tatuengine — o-step-322, morte silenciosa + VRAM fantasma, hidden PT+EN, capa NIM (`57b86ef`); fix capa flatline issue #31 (`bff8035`); releases (`6fce316`, `c2ddc3f`)
 - **feat(post)**: capivara — o-ci-que-morria-no-meio-do-step, CI self-hosted, hidden PT+EN (`3dd9933`) + capa watchdog (`5617ce4`); recusa com nota (`f86784d`) -> refaz com tema trocado p/ seguranca path traversal issue #32 (`67234de`)
 - **chore(covers)**: regenera capas estudos (Worker FLUX) (`9567589`, `c41b79b`) + dogwalk/portfolio (watchdog) (`20866f5`, `79ac99b`, `9752717`)
 - 19 commits no dia · push origin OK · HEAD: `67234de`
-
-
-
 
 ## [2026-08-30] — Posts yurumi + lm_head + portão de segurança (PT+EN, hidden) + capas AI
 - **feat(post)**: yurumi — a memória que aprendeu a ser agente (PT+EN, hidden, capa AI) (`ae6b3d0`); projeto yurumi no schema + tema violeta + pattern brain (`692de59`); capa Gemini fiel ao personagem com cerrado de Brasília 16:9 (`217a625`); test 9→10 projetos (`486dafa`)
@@ -405,6 +400,3 @@
 ## 2026-10-16 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
 
 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
-
-## [2026-11-11]
-- Sincronização e fechamento de expediente.
