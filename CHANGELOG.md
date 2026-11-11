@@ -1,5 +1,10 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-11] - 13 commits: lgpd, posts ocultos (PT+EN), capas; push origin ok
+
+- `cefcaae` doc fim de dia 2026-11-11; `9c4e3bc`+`7cc77fb` fix(lgpd); `9d11175` release post arachne PT+EN + ocultos-data; `005808a`/`9a4438e` fix(covers) JPEG 21:9; `5ae1f10` sync ocultos-data; `12cada7` verify consent.ts.
+- `main` 2 à frente / 5 atrás de `origin/main`; locals-only são duplicatas de conteúdos já remotos. Doc em worktree sobre `origin/main`, push FF e `main` avançada.
+
 ## [2026-11-10] - 16 commits em 5 branches: 2 releases de post PT+EN, refações do pipeline e capas; push origin ok
 
 - **conteúdo**: `0d9f751` post capivara (três alarmes que reportavam verde) e `85bd54d` post tatuengine (veredito sem prova), ambos PT+EN com `ocultos-data`.
