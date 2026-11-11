@@ -146,7 +146,8 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
     background: transparent;
     border: 0;
     color: var(--color-text-muted);
-    opacity: 0.8;
+    /* Sem `opacity`: #8b949e a 0.8 sobre o card #13131a cai para 4.26:1 e o
+       axe reprova (mínimo 4.5:1). A cor já é discreta o bastante. */
   }
   .lgpd-btn:active { transform: scale(0.98); }
   .lgpd-btn:focus-visible {
