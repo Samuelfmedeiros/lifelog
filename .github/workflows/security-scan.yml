@@ -10,7 +10,7 @@ on:
 
 jobs:
   gitleaks:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +22,7 @@ jobs:
         continue-on-error: true
 
   bandit-opengrep:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.11

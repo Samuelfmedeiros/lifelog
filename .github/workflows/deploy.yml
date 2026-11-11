@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   validate-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write
       deployments: write
@@ -82,7 +82,7 @@ jobs:
 
     - name: Install Playwright browsers
       if: steps.cache-playwright.outputs.cache-hit != 'true'
-      run: npx playwright install --with-deps chromium
+      run: npx playwright install chromium
 
     # ── Quality Gates ──────────────────────────────────────────
     - name: SCA — Auditoria de dependências (pnpm audit)
