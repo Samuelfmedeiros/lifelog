@@ -1,0 +1,74 @@
+---
+title: "Os dois arquivos que existiam na máquina e nunca entraram no repositório"
+description: "No mesmo dia, dois commits consertaram a mesma classe de falha no Arachne: código que funcionava aqui e quebrava em qualquer checkout limpo, porque o arquivo nunca tinha sido versionado. Um congelou o artefato do frontend por dias; o outro derrubou nove rotas de upload no CI."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-11 08:00:00 -03:00
+pubDate: 2026-11-11 08:00:00 -03:00
+project: arachne
+tags: [arachne, git, ci, build, debugging, python]
+cover: /covers/arachne-os-arquivos-que-nunca-entraram-no-repo.webp
+featured: false
+hidden: true
+---
+
+O build falhou numa máquina onde nunca falhava antes — e o erro não apontava para o código escrito naquele dia, apontava para um arquivo que existia no disco havia semanas e que o git nunca soube que existia.
+
+No dia 9 de novembro, o Arachne teve dois commits com a mesma assinatura, separados por três horas. Os dois consertaram a mesma coisa em lugares diferentes: um arquivo presente no disco de desenvolvimento, funcionando, importado pelo código de produção — e ausente do repositório. Enquanto ninguém fazia um checkout limpo, tudo parecia normal.
+
+## O sintoma que apareceu no lugar errado
+
+O primeiro sinal veio do painel. Um componente importava a lista de destinos de navegação de um módulo de dados. O arquivo tinha 59 linhas, estava na máquina, e o projeto compilava sem reclamar em local.
+
+Aí o build rodou num checkout limpo e cuspiu:
+
+```text
+UNLOADABLE_DEPENDENCY: Could not load src/data/navLinks
+```
+
+O componente quebrado era só a superfície. Como o artefato do frontend é versionado dentro do backend — o build gera os bundles estáticos que o servidor entrega —, um build que não roda significa artefato congelado no estado anterior. E esse estado anterior não tinha o domínio de analytics na meta de política de conteúdo.
+
+A prova veio de fora: a suíte E2E do master terminou com 35 falhas em 56 testes, todas com a mesma violação de CSP ao carregar o script de analytics. Trinta e cinco vermelhos por um arquivo de 59 linhas que ninguém commitou. O commit `366cfa3c` versionou o arquivo; a lista que ele guarda é fonte única para o dock inferior e para o painel de ações do Hub — duas telas que precisam mostrar os mesmos destinos, para nunca existir um link no dock que falte no card.
+
+## O segundo, três horas depois, no CI
+
+O segundo veio no mesmo formato, com mensagem diferente:
+
+```text
+ModuleNotFoundError: No module named 'app.security.upload_gate'
+```
+
+O módulo existia no disco desde o dia anterior — 207 linhas escritas, testadas, importadas por nove rotas de upload. Nunca foi adicionado ao git. Localmente os 12 testes passavam porque o import resolvia. No runner do CI, que faz checkout do repositório, não resolvia.
+
+Aqui a classe de falha tem agravante: nove rotas dependiam dele. Exportação automática, extração, base de conhecimento, podcast, RAG, transcrição, API pública, scrape, extração universal. Todas quebravam em cadeia com o mesmo erro. O commit `7ed3741b` versionou o módulo e, no mesmo movimento, corrigiu um segundo problema que só existia por causa do primeiro: o runner não tem antivírus instalado, e o gate é conservador por padrão — "não consegui verificar" não pode virar "está limpo". Sem antivírus, todo upload era rejeitado como não verificável e a suíte falhava por ambiente, não por código.
+
+A correção separou os dois casos. O CI passou a declarar explicitamente que não tem antivírus, e produção manteve o comportamento estrito, porque lá existe. O teste de assinatura ganhou skip quando não há antivírus: sem assinatura não existe detecção, e o comportamento correto naquele ambiente é "indisponível", não "bloqueado". Cobrar do teste algo impossível é fabricar um vermelho.
+
+## O que o gate fazia quando finalmente entrou
+
+O módulo decide o tipo real do arquivo pelos primeiros bytes, nunca pela extensão:
+
+```python
+_MAGIC = [
+    (0, b"%PDF-", "application/pdf", (".pdf",)),
+    (0, b"PK\x03\x04", "application/zip", (".zip", ".docx", ".xlsx")),
+    (0, b"MZ", "application/x-msdownload", ()),      # executável Windows
+    (0, b"\x7fELF", "application/x-executable", ()), # executável Linux
+]
+```
+
+A ordem importa: tamanho primeiro, depois magic bytes, depois allowlist de tipo, e só então o antivírus — do mais barato para o mais caro. Renomear um executável para `.pdf` não passa, porque a decisão olha o conteúdo. E a política de falha é explícita: antivírus ausente ou fora do tempo, o scan é registrado como indisponível e bloqueia por padrão.
+
+Esse módulo protegia nove rotas de upload em produção. Ele simplesmente não existia no repositório.
+
+## O que isso muda
+
+A lição não é "não esqueça o `git add`". É que o ambiente de desenvolvimento completo esconde a ausência de arquivo. O import funciona porque o arquivo está lá. O build funciona porque está lá. O teste passa porque está lá. Três camadas de verificação concordando entre si e todas cegas para o mesmo fato.
+
+O que pega isso é um checkout limpo — CI, container novo, outra máquina. É caro rodar a cada minuto e barato rodar uma vez por pull request. E é o único que reproduz a pergunta certa: o que este repositório, sozinho, é capaz de construir?
+
+Os dois arquivos apareceram no mesmo dia, com três horas de distância. Isso não é azar: é sinal de que a branch acumulou pendências por tempo suficiente para que a diferença entre "meu disco" e "o repositório" deixasse de ser visível. Com centenas de modificações em aberto, um arquivo novo deixa de ser evento — vira mais um item numa lista que ninguém lê.
+
+## Próximo passo
+
+O que falta é automatizar a pergunta que o checkout limpo faz, antes do checkout limpo: uma verificação que cruze os arquivos importados pelo código com o índice do git e liste o que está num lado e não no outro, rodando junto com o lint. Enquanto isso não existe, o único detector confiável continua sendo o CI vermelho — e ele só avisa depois que o artefato já congelou.

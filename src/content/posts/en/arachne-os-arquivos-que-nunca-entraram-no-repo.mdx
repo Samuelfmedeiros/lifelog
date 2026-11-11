@@ -1,0 +1,74 @@
+---
+title: "The Two Files That Lived on the Machine and Never Made It Into the Repository"
+description: "On the same day, two commits fixed the same class of failure in Arachne: code that worked here and broke on any clean checkout, because the file had never been versioned. One froze the frontend artifact for days; the other took down nine upload routes in CI."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-11 08:00:00 -03:00
+pubDate: 2026-11-11 08:00:00 -03:00
+project: arachne
+tags: [arachne, git, ci, build, debugging, python]
+cover: /covers/arachne-os-arquivos-que-nunca-entraram-no-repo.webp
+featured: false
+hidden: true
+---
+
+The build failed on a machine where it had never failed before — and the error did not point at the code written that day. It pointed at a file that had been sitting on disk for weeks, one that git never knew existed.
+
+On November 9th, Arachne got two commits with the same signature, three hours apart. Both fixed the same thing in different places: a file present on the development disk, working, imported by production code — and missing from the repository. As long as nobody ran a clean checkout, everything looked fine.
+
+## The symptom that surfaced in the wrong place
+
+The first signal came from the dashboard. A component imported the list of navigation destinations from a data module. The file had 59 lines, it was on the machine, and the project compiled without complaint locally.
+
+Then the build ran on a clean checkout and produced:
+
+```text
+UNLOADABLE_DEPENDENCY: Could not load src/data/navLinks
+```
+
+The broken component was only the surface. Because the frontend artifact is versioned inside the backend — the build generates the static bundles the server ships — a build that cannot run means an artifact frozen at the previous state. And that previous state did not carry the analytics domain in the content security policy meta tag.
+
+The proof came from outside: the master E2E suite finished with 35 failures out of 56 tests, all reporting the same CSP violation while loading the analytics script. Thirty-five reds for a 59-line file nobody committed. Commit `366cfa3c` versioned it; the list it holds is the single source for the bottom dock and for the Hub action panel — two screens that must show exactly the same destinations, so a link never exists in the dock and misses the card.
+
+## The second one, three hours later, in CI
+
+The second arrived in the same shape, with a different message:
+
+```text
+ModuleNotFoundError: No module named 'app.security.upload_gate'
+```
+
+The module had been on disk since the day before — 207 lines written, tested, imported by nine upload routes. It was never added to git. Locally the 12 tests passed because the import resolved. On the CI runner, which checks out the repository, it did not.
+
+Here the failure class has an aggravating factor: nine routes depended on it. Automatic export, extraction, knowledge base, podcast, RAG, transcription, public API, scrape, universal extraction. All of them broke in a chain with the same error. Commit `7ed3741b` versioned the module and, in the same move, fixed a second problem that only existed because of the first: the runner has no antivirus installed, and the gate is conservative by default — "I could not verify" must not become "it is clean". Without antivirus, every upload was rejected as unverifiable and the suite failed by environment, not by code.
+
+The fix separated the two cases. CI now explicitly declares it has no antivirus, and production kept the strict behaviour, because there it exists. The signature test gained a skip when no antivirus is present: without a signature there is no detection, and the correct behaviour in that environment is "unavailable", not "blocked". Demanding the impossible from a test is manufacturing a red.
+
+## What the gate did once it finally landed
+
+The module decides the real file type from the first bytes, never from the extension:
+
+```python
+_MAGIC = [
+    (0, b"%PDF-", "application/pdf", (".pdf",)),
+    (0, b"PK\x03\x04", "application/zip", (".zip", ".docx", ".xlsx")),
+    (0, b"MZ", "application/x-msdownload", ()),      # Windows executable
+    (0, b"\x7fELF", "application/x-executable", ()), # Linux executable
+]
+```
+
+Order matters: size first, then magic bytes, then a type allowlist, and only then the antivirus — cheapest to most expensive. Renaming an executable to `.pdf` does not get through, because the decision reads content. And the failure policy is explicit in the code: antivirus absent or timing out, the scan is recorded as unavailable and blocks by default.
+
+That module was protecting nine upload routes in production. It simply did not exist in the repository.
+
+## What this changes
+
+The lesson is not "do not forget `git add`". It is that a complete development environment hides the absence of a file. The import works because the file is there. The build works because it is there. The test passes because it is there. Three layers of verification agreeing with each other and all blind to the same fact.
+
+What catches it is a clean checkout — CI, a fresh container, another machine. It is expensive to run every minute and cheap to run once per pull request. And it is the only thing that reproduces the right question: what can this repository, on its own, build?
+
+Both files showed up the same day, three hours apart. That is not bad luck: it is a sign the branch accumulated pending work long enough for the gap between "my disk" and "the repository" to stop being visible. With hundreds of open modifications, a new file stops being an event — it becomes one more item in a list nobody reads.
+
+## Next step
+
+What is missing is not another point fix. It is automating the question the clean checkout asks, before the clean checkout: a check that cross-references the files imported by the code against the git index and lists whatever sits on one side and not the other, running alongside lint. Until that exists, the only reliable detector remains the red CI — and it only speaks after the artifact has already frozen.
