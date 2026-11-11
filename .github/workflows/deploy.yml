@@ -15,6 +15,10 @@ concurrency:
 jobs:
   validate-and-deploy:
     runs-on: [self-hosted, linux, x64]
+    # 11/11/2026 — sem teto explicito o job herda os 360 min do GitHub. O E2E
+    # completo (410+ testes, workers=1) leva ~20 min; 45 da margem para o build
+    # e nao deixa um job travado segurando o runner unico por 6 horas.
+    timeout-minutes: 45
     permissions:
       contents: write
       deployments: write

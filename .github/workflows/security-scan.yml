@@ -25,15 +25,24 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install bandit + opengrep
+      # 11/11/2026 — runner self-hosted: `actions/setup-python@v5` falha com
+      # "The version '3.11' with architecture 'x64' was not found for cachyos rolling".
+      # O CachyOS e rolling e nao tem build do 3.11; o host ja tem python3.14 +
+      # bandit + opengrep em ~/.local/bin. Usar o que existe em vez de baixar.
+      # `curl -o /usr/local/bin/` tambem falharia (root-only). Sem sudo no CI.
+      - name: Ferramentas de scan disponiveis no host
         run: |
-          pip install bandit
-          curl -sL https://github.com/opengrep/opengrep/releases/download/v1.26.0/opengrep_manylinux_x86 -o /usr/local/bin/opengrep
-          chmod +x /usr/local/bin/opengrep
+          echo "python:  $(python3 --version 2>&1)"
+          echo "bandit:  $(command -v bandit || echo AUSENTE)"
+          echo "opengrep: $(command -v opengrep || echo AUSENTE)"
+          # fallback: se sumirem do host, instala em ~/.local (sem sudo)
+          if ! command -v bandit >/dev/null; then python3 -m pip install --user bandit; fi
+          if ! command -v opengrep >/dev/null; then
+            mkdir -p "$HOME/.local/bin"
+            curl -sL https://github.com/opengrep/opengrep/releases/download/v1.26.0/opengrep_manylinux_x86 \
+              -o "$HOME/.local/bin/opengrep"
+            chmod +x "$HOME/.local/bin/opengrep"
+          fi
       - name: Bandit scan (se houver Python)
         run: |
           if find . -name "*.py" -not -path "*/node_modules/*" | grep -q .; then
