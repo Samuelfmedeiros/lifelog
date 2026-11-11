@@ -318,6 +318,7 @@ export const TAG_VOCAB: TagDef[] = [
   { slug: 'skills' },
   { slug: 'socat' },
   { slug: 'sqlalchemy' },
+  { slug: 'sqlite' },
   { slug: 'sqlite-vec' },
   { slug: 'ssm' },
   { slug: 'ssr' },
