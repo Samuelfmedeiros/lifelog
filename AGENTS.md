@@ -1,5 +1,13 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-10 (fim de dia) — 16 commits em 5 branches (2 releases de post PT+EN, refações do pipeline, capas); `main` sincronizada com `origin`; push ok
+
+- 16 commits hoje, o grosso em `roger/*`: `02d8455` fix(capas): motivo por tag cobre 100% dos posts e colisao de cor sai do violeta (00:26), `76477e9` release(post): yurumi-a-resposta-que-levava-56-segundos PT+EN + ocultos-data (08:35), `413b87d` post(capivara): tres alarmes que reportavam verde sem medir (12:31), `95bec97` chore(ocultos): sync ocultos-data (12:39, era o topo do `main` local), `fbc27c9` roger: residual antes de nova campanha (13:57), `0d9f751` release(post): capivara-os-tres-alarmes-que-reportavam-verde (16:05), `85bd54d` release(post): tatuengine-o-veredito-que-nao-tinha-prova (16:06), as refações `b50b367`/`83b86d7`/`01be096` (16:06) e `3b3025f`/`abaa4a1`/`cdef624` (19:06-19:07), os dois finais `6360f0c`/`462896c` (19:08, topo de `origin/main`) e `8320b81` roger: residual (22:43).
+- `main` local estava 0 à frente / 10 atrás de `origin/main`; doc escrito em worktree detachado sobre `origin/main`, push fast-forward e `main` local avançada — a branch deixa de ficar atrás.
+- HEAD do checkout em `roger/lifelog-entrega-20261110-224327` com 6 sujos preservados (`.loop-worker-general-r2..r4.md` deletados, `api/ocultos-data.mjs`, `src/components/CookieBanner.astro`, `coverage/`).
+- Releases de post seguem em `ocultos-data` aguardando liberação do Samuel — nenhum publish automático.
+- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
+
 ## Sessão 2026-11-09 (fim de dia) — 1 commit em `main` (ordem de importação do build); push `origin` ok
 
 - 1 commit hoje em `main`: `5e804e51` fix(build) ordem de importação (12:24).

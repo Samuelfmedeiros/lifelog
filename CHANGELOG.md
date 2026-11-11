@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-10] - 16 commits em 5 branches: 2 releases de post PT+EN, refações do pipeline e capas; push origin ok
+
+- **conteúdo**: `0d9f751` post capivara (três alarmes que reportavam verde) e `85bd54d` post tatuengine (veredito sem prova), ambos PT+EN com `ocultos-data`.
+- **pipeline/capas**: `02d8455` motivo por tag em 100% dos posts, `413b87d`/`95bec97` post + sync ocultos do Capivara, `76477e9` post do yurumi, `8320b81`/`fbc27c9` residuals de campanha.
+- **refações**: 6 commits `refazer:` (recusas do pipeline de posts do Yurumi, 16:06 e 19:06-19:08).
+- `main` local estava 10 atrás de `origin/main`; doc em worktree sobre `origin/main`, push FF e `main` avançada.
+
 ## [2026-11-09] - 1 commit em main (ordem de importação do build); push origin ok
 
 - `5e804e51` fix(build), 12:24.
