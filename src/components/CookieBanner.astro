@@ -44,7 +44,6 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
         data-announce={c.declineAnnounce}
         data-announce-one={c.declineAnnounceOne}
       >{c.decline}</button>
-      <a href={privacyHref} class="lgpd-card__link lgpd-card__link--action">{c.privacy}</a>
     </div>
     <p id="lgpd-decline-status" class="lgpd-card__status" data-announce={c.declineAnnounce} data-announce-one={c.declineAnnounceOne} aria-live="polite" role="status"></p>
   </div>
@@ -172,66 +171,62 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
 
   @media (max-width: 559px) {
     .lgpd-card {
-      display: flex;
-      flex-direction: column;
-      max-width: 20rem;
-      padding: 0.4rem 0.5rem 0.35rem;
+      max-width: 20.25rem;
+      padding: 0.4rem 0.4rem 0.35rem;
       border-radius: 0.85rem;
+      /* O `<p>` de texto vira inline (para os botões seguirem o link na mesma
+         linha), e aí quem forma as caixas de linha é ESTE container — não o
+         parágrafo. Sem esta linha o card herda `line-height: 27.2px` do body
+         (16px × 1.7) e abre um vão de 17px entre a 1a e a 2a linha, mesmo com
+         fonte de 8px. Medido: gap 17px → 3px. */
+      line-height: 1.2;
+      font-size: 0.5rem;
     }
-    /* `contents` deixa os filhos do copy participarem da ordem do card,
-       então os botões sobem para logo depois do título. */
+    /* `contents` deixa título, texto e ações fluírem como irmãos do card:
+       é o que permite o parágrafo e os botões dividirem o MESMO contexto
+       inline (botões logo depois do link, na mesma linha). */
     .lgpd-card__copy { display: contents; }
     .lgpd-card__title {
-      order: 1;
-      margin: 0 0 0.22rem;
+      margin: 0 0 0.1rem;
       font-size: 0.625rem;
-      text-align: center;
+    }
+    .lgpd-card__text {
+      display: inline;
+      font-size: 0.5rem;
+      line-height: 1.3;
     }
     .lgpd-card__actions {
-      order: 2;
-      display: flex;
+      display: inline-flex;
       flex-direction: row;
-      justify-content: center;
+      /* Alinhado com a linha do link, não com o topo da caixa de linha:
+         `middle` deixa o botão 4px acima do texto quando a caixa de linha
+         tem 9,6px e o botão 16px. */
+      vertical-align: -4px;
       align-items: center;
-      gap: 0.28rem;
-      margin-top: 0;
+      gap: 0.16rem;
+      margin: 0 0 0 0.24rem;
     }
     .lgpd-btn--primary {
       flex: 0 0 auto;
-      min-height: 28px;
-      padding: 0 0.5rem;
-      font-size: 0.6875rem;
-      border-radius: 0.55rem;
+      min-height: 16px;
+      padding: 0 0.26rem;
+      font-size: 0.5rem;
+      letter-spacing: 0.01em;
+      border-radius: 0.4rem;
     }
     .lgpd-btn--ghost {
       flex: 0 0 auto;
-      min-height: 22px;
-      padding: 0 0.25rem;
-      font-size: 0.625rem;
-    }
-    .lgpd-card__link--action {
-      display: inline;
-      flex: 0 0 auto;
-      font-size: 0.5625rem;
-      line-height: 1.15;
-      max-width: 4.6rem;
-      white-space: normal;
-      text-align: left;
-    }
-    /* O link sai do parágrafo no mobile: ele já está na linha dos botões. */
-    .lgpd-card__text .lgpd-card__link { display: none; }
-    .lgpd-card__text {
-      order: 3;
-      margin-top: 0.28rem;
-      font-size: 0.5625rem;
-      line-height: 1.25;
-      text-align: center;
-    }
-    .lgpd-card__status {
-      order: 4;
-      min-height: 0.6rem;
-      margin-top: 0.1rem;
+      min-height: 14px;
+      padding: 0 0.1rem;
       font-size: 0.5rem;
+    }
+    .lgpd-card__link { white-space: nowrap; }
+    .lgpd-card__status {
+      display: block;
+      min-height: 0.55rem;
+      margin: 0.06rem 0 0;
+      font-size: 0.5rem;
+      text-align: left;
     }
   }
 
@@ -252,7 +247,6 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
       align-items: center;
       gap: 0.5rem;
     }
-    .lgpd-card__link--action { display: none; }
     .lgpd-btn--primary { min-height: 44px; padding: 0 1.15rem; white-space: nowrap; }
     .lgpd-btn--ghost { min-height: 32px; padding: 0 0.6rem; white-space: nowrap; }
     .lgpd-card__status {

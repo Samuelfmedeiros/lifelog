@@ -16,7 +16,7 @@ lifelog/
 ├── src/
 │   ├── content.config.ts          # Schema Zod: posts collection
 │   ├── content/
-│   │   ├── posts/                 # 80 posts bilíngues (160 MDX: PT + en/)
+│   │   ├── posts/                 # 244 PT + 248 EN posts (492 MDX: PT + en/)
 │   │   └── drafts/                # Rascunhos (.gitkeep)
 │   ├── components/                # 8 componentes Astro
 │   │   ├── PostCard.astro         # Card da timeline
@@ -113,7 +113,7 @@ pnpm test:headed       # Playwright E2E (visível)
 pnpm test:debug        # Playwright E2E (debug mode)
 ```
 
-**200 testes passando** (165 E2E + 35 Vitest) · 7 E2E specs · sync checker PT/EN no CI
+**782 testes passando** (644 E2E + 141 Vitest) · 7 E2E specs · sync checker PT/EN no CI
 
 ---
 

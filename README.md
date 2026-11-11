@@ -16,7 +16,7 @@ lifelog/
 ├── src/
 │   ├── content.config.ts          # Zod schema: posts collection
 │   ├── content/
-│   │   ├── posts/                 # 80 bilingual posts (160 MDX: PT + en/)
+│   │   ├── posts/                 # 244 PT + 248 EN posts (492 MDX: PT + en/)
 │   │   └── drafts/                # Drafts (.gitkeep)
 │   ├── components/                # 8 Astro components
 │   │   ├── PostCard.astro         # Timeline card

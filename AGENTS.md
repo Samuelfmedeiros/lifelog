@@ -116,7 +116,7 @@
 >
 > **Stack:** Astro 7 · MDX · Tailwind 4 · TypeScript · Playwright
 > **Live:** https://lifelog.seu.pet
-> **Status:** ✅ Operacional — 54 posts bilíngues (108 MDX) · 7 E2E specs · 200 testes · i18n PT/EN
+> **Status:** ✅ Operacional — 244 posts PT / 248 EN (492 MDX) · 239 pares públicos + 5 PT / 9 EN hidden (14 ocultos) · 141 testes Vitest + 644 E2E · i18n PT/EN
 > **Pipeline:** 📖 Narrative-First (desde 24/07) — **3 posts/dia hidden: 08:00/12:00/16:00 → /ocultos** (28/08; liberação manual do Samuel)
 
 ---
