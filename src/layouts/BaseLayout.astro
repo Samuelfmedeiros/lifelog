@@ -97,8 +97,21 @@ const alternates = (() => {
   if (/^\/ocultos(\/|$)/.test(trim)) return null;
   if (alternatePath === null) return null;
   const rest = isEn ? (trim.slice(3) || '/') : trim;
-  const ptOf: Record<string, string> = { '/archive': '/arquivo', '/about': '/sobre' };
-  const enOf: Record<string, string> = { '/arquivo': '/en/archive', '/sobre': '/en/about' };
+  // Slugs que MUDAM entre os idiomas. Sem a entrada aqui, a página gera um
+  // hreflang para um caminho que não existe (`/privacidade` -> `/en/privacidade/`)
+  // e o guard `scripts/check-alternates.py` reprova o CI.
+  const ptOf: Record<string, string> = {
+    '/archive': '/arquivo',
+    '/about': '/sobre',
+    '/privacy': '/privacidade',
+    '/terms': '/termos',
+  };
+  const enOf: Record<string, string> = {
+    '/arquivo': '/en/archive',
+    '/sobre': '/en/about',
+    '/privacidade': '/en/privacy',
+    '/termos': '/en/terms',
+  };
   const pt = slash(isEn ? (ptOf[rest] ?? rest) : rest);
   const en = slash(isEn ? trim : (enOf[rest] ?? (rest === '/' ? '/en' : '/en' + rest)));
   if (typeof alternatePath === 'string') {
