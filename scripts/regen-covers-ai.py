@@ -144,6 +144,58 @@ def build_prompt(slug, project, title):
     )
 
 
+def _compose_21x9(path, w=2100, h=900):
+    """Reenquadra a arte do Worker (quadrada) para o padrao 21:9 do acervo.
+
+    Mesma composicao do normalizar-capas-21x9.py: arte inteira ao centro,
+    fundo dela mesma ampliada + desfocada + escurecida, e mistura suave nas
+    bordas laterais para o quadrado nao aparecer com aresta dura. Reimplementado
+    aqui (e nao importado) porque aquele script e' CLI de varredura com
+    efeitos colaterais; aqui so precisamos do recorte de uma capa recem-baixada.
+    """
+    try:
+        from PIL import Image, ImageEnhance, ImageFilter
+    except ImportError:
+        print("  AVISO: PIL ausente, capa fica quadrada")
+        return False
+    try:
+        art = Image.open(path).convert("RGB")
+    except Exception as exc:
+        print(f"  AVISO: nao abriu a capa para recorte 21:9 ({type(exc).__name__})")
+        return False
+    if abs(art.width / art.height - w / h) < 0.05:
+        return True  # ja esta no padrao
+
+    bg = art.copy()
+    s = max(w / bg.width, h / bg.height)
+    bg = bg.resize((max(1, int(bg.width * s)), max(1, int(bg.height * s))), Image.LANCZOS)
+    left = (bg.width - w) // 2
+    top = (bg.height - h) // 2
+    bg = bg.crop((left, top, left + w, top + h))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=38))
+    bg = ImageEnhance.Brightness(bg).enhance(0.42)
+    bg = ImageEnhance.Color(bg).enhance(1.15)
+
+    s2 = h / art.height
+    fg = art.resize((max(1, int(art.width * s2)), h), Image.LANCZOS)
+    if fg.width > w:
+        fg = fg.resize((w, max(1, int(fg.height * (w / fg.width)))), Image.LANCZOS)
+
+    feather = max(24, int(fg.width * 0.10))
+    mask = Image.new("L", (fg.width, h), 255)
+    px = mask.load()
+    for x in range(feather):
+        v = int(255 * (x / feather))
+        for y in range(h):
+            px[x, y] = v
+            px[fg.width - 1 - x, y] = v
+
+    bg.paste(fg, ((w - fg.width) // 2, (h - fg.height) // 2), mask)
+    bg.save(path, "WEBP", quality=92, method=6)
+    print(f"  recorte 21:9 aplicado: {w}x{h}")
+    return True
+
+
 def normalize_to_webp(path):
     """Garante WEBP real no path: o Worker as vezes devolve JPEG cru.
 
@@ -162,6 +214,16 @@ def normalize_to_webp(path):
         return False
     tmp = path + ".tmp.webp"
     origem_bytes = os.path.getsize(path)
+    # Fonte JPEG comprime MUITO melhor que PNG/WebP num reencode WebP de
+    # qualidade 92 — medido 11/11/2026: Worker devolveu JPEG 1024x1024 de
+    # 336.169 bytes e o WebP saiu 70.934 (21%). O limite unico de 35%,
+    # calibrado so para PNG, recusava esse reencode LEGITIMO e deixava um
+    # JPEG com extensao .webp no repo (o normalizar-capas-21x9 entao
+    # registrava a capa no baseline de "legado fora de 21/9" porque nao
+    # conseguia nem abrir direito). Limite agora depende do formato de
+    # origem; a checagem de dimensao abaixo e' a prova real de integridade.
+    eh_jpeg = head[:2] == b"\xff\xd8"
+    piso = 0.10 if eh_jpeg else 0.35
     # libwebp NAO usa -q:v (qscale do encoder de video): no libwebp a opcao de
     # qualidade e' -quality (0-100). Com -q:v 90 o resultado saiu 8 KB a partir
     # de uma arte de 135 KB — reencode destrutivo que depois fazia o
@@ -175,8 +237,9 @@ def normalize_to_webp(path):
         print("  AVISO: reencode WEBP falhou, mantendo o original")
         return False
     novo_bytes = os.path.getsize(tmp)
-    if origem_bytes and novo_bytes < origem_bytes * 0.35:
-        print(f"  AVISO: reencode suspeito ({origem_bytes} -> {novo_bytes} bytes), mantendo original")
+    if origem_bytes and novo_bytes < origem_bytes * piso:
+        print(f"  AVISO: reencode suspeito ({origem_bytes} -> {novo_bytes} bytes, "
+              f"piso {piso:.0%} p/ {'JPEG' if eh_jpeg else 'PNG/WebP'}), mantendo original")
         os.unlink(tmp)
         return False
     os.replace(tmp, path)
@@ -217,6 +280,11 @@ def generate(slug, force=True):
                 with open(output_path, "wb") as f:
                     f.write(img)
                 normalize_to_webp(output_path)
+                # Padrao do acervo e 21:9 (2100x900); o Worker entrega quadrado.
+                # Sem isto a capa nova vai quadrada e o gate de aspect do build
+                # a registra no baseline de "legado fora de 21/9" (aconteceu
+                # 11/11/2026: capa AI virou excecao permanente do baseline).
+                _compose_21x9(output_path)
                 print(f"OK {slug} ({len(img)} bytes)")
                 return True
         except urllib.error.HTTPError as e:
