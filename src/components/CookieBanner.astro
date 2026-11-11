@@ -1,0 +1,367 @@
+---
+// ═══════════════════════════════════════════════
+// CookieBanner — gate de consentimento LGPD
+// Aparece só pós-mount (sem flash no SSR / sem mismatch).
+// Nenhum analytics carrega antes do "Aceitar".
+// ═══════════════════════════════════════════════
+import { getTranslations } from '../lib/i18n';
+
+export interface Props {
+  locale?: string;
+}
+
+const { locale } = Astro.props;
+const dataLocale = locale === 'en' ? 'en' : 'pt';
+const t = getTranslations(dataLocale);
+const c = t.cookie.banner;
+const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
+---
+
+<div
+  id="lgpd-banner"
+  class="lgpd-banner"
+  role="dialog"
+  aria-modal="false"
+  aria-labelledby="lgpd-banner-title"
+  aria-describedby="lgpd-banner-text"
+  hidden
+>
+  <div class="lgpd-card">
+    <div class="lgpd-card__copy">
+      <p id="lgpd-banner-title" class="lgpd-card__title">{t.footer.lgpd.title}</p>
+      <p id="lgpd-banner-text" class="lgpd-card__text">
+        {c.text}{' '}
+        <a href={privacyHref} class="lgpd-card__link">{c.privacy}</a>
+      </p>
+    </div>
+    <div class="lgpd-card__actions">
+      <button type="button" id="lgpd-accept" class="lgpd-btn lgpd-btn--primary">{c.accept}</button>
+      <button
+        type="button"
+        id="lgpd-decline"
+        class="lgpd-btn lgpd-btn--ghost"
+        data-label-progress={c.declineProgress}
+        data-announce={c.declineAnnounce}
+        data-announce-one={c.declineAnnounceOne}
+      >{c.decline}</button>
+    </div>
+    <p id="lgpd-decline-status" class="lgpd-card__status" data-announce={c.declineAnnounce} data-announce-one={c.declineAnnounceOne} aria-live="polite" role="status"></p>
+  </div>
+</div>
+
+<style>
+  /* Bannerzinho pequeno: centralizado na horizontal, FIXADO EMBAIXO.
+     O wrapper não captura clique (pointer-events: none) — só o card.
+     A página ao redor segue utilizável: é aviso, não jaula. */
+  .lgpd-banner {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+  .lgpd-banner[hidden] { display: none; }
+
+  .lgpd-card {
+    pointer-events: auto;
+    width: 100%;
+    max-width: 25rem;
+    padding: 0.8rem 0.95rem 0.7rem;
+    /* Fundo SÓLIDO de propósito: o lightningcss dropa o `backdrop-filter` sem
+       prefixo, e sem blur a transparência deixava o texto do post aparecer
+       atrás do banner. Legibilidade > vidro. */
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.12);
+    animation: lgpd-pop 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes lgpd-pop {
+    from { transform: translateY(16px) scale(0.96); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lgpd-card { animation: none; }
+  }
+
+  .lgpd-card__copy { display: flex; flex-direction: column; min-width: 0; }
+
+  .lgpd-card__title {
+    margin: 0 0 0.15rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--color-heading);
+  }
+  .lgpd-card__text {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+  }
+  .lgpd-card__link {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+  }
+  .lgpd-card__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: stretch;
+    margin-top: 0.7rem;
+  }
+  .lgpd-btn {
+    border-radius: 0.875rem;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  }
+  /* Aceitar = ação primária: largo, alto, cheio de cor. */
+  .lgpd-btn--primary {
+    order: -1;
+    min-height: 44px;
+    padding: 0 1rem;
+    border-radius: 0.875rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    /* Fundo fixo, não var(--color-accent): o accent muda por tema e nenhuma
+       cor de texto única passa nos dois (branco sobre #a78bfa = 2.72:1 no dark;
+       escuro sobre #7c3aed = 3.22:1 no light). #fff sobre #7c3aed = 5.7:1 nos
+       dois temas, e o botão segue reconhecível como ação primária. */
+    background: #7c3aed;
+    border: 1px solid #7c3aed;
+    color: #ffffff;
+  }
+  /* Recusar = secundário discreto: texto pequeno, sem moldura. */
+  .lgpd-btn--ghost {
+    min-height: 30px;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: transparent;
+    border: 0;
+    color: var(--color-text-muted);
+    opacity: 0.8;
+  }
+  .lgpd-btn:active { transform: scale(0.98); }
+  .lgpd-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .lgpd-btn--ghost:hover { color: var(--color-text); opacity: 1; }
+  .lgpd-btn--primary:hover { background: #6d28d9; border-color: #6d28d9; }
+
+  /* Status da confirmação de recusa: reservado (sem layout shift), discreto.
+     Precisa vir ANTES das media queries: declarado depois, empata em
+     especificidade e vence no mobile, devolvendo os 16px que o corte remove. */
+  .lgpd-card__status {
+    min-height: 1rem;
+    margin: 0.4rem 0 0;
+    font-size: 0.6875rem;
+    line-height: 1.3;
+    text-align: center;
+    color: var(--color-text-muted);
+    opacity: 0.75;
+  }
+
+  @media (max-width: 559px) {
+    .lgpd-card {
+      max-width: 20.25rem;
+      padding: 0.4rem 0.4rem 0.35rem;
+      border-radius: 0.85rem;
+      /* O `<p>` de texto vira inline (para os botões seguirem o link na mesma
+         linha), e aí quem forma as caixas de linha é ESTE container — não o
+         parágrafo. Sem esta linha o card herda `line-height: 27.2px` do body
+         (16px × 1.7) e abre um vão de 17px entre a 1a e a 2a linha, mesmo com
+         fonte de 8px. Medido: gap 17px → 3px. */
+      line-height: 1.2;
+      font-size: 0.5rem;
+    }
+    /* `contents` deixa título, texto e ações fluírem como irmãos do card:
+       é o que permite o parágrafo e os botões dividirem o MESMO contexto
+       inline (botões logo depois do link, na mesma linha). */
+    .lgpd-card__copy { display: contents; }
+    .lgpd-card__title {
+      margin: 0 0 0.1rem;
+      font-size: 0.625rem;
+    }
+    .lgpd-card__text {
+      display: inline;
+      font-size: 0.5rem;
+      line-height: 1.3;
+    }
+    .lgpd-card__actions {
+      display: inline-flex;
+      flex-direction: row;
+      /* Alinhado com a linha do link, não com o topo da caixa de linha:
+         `middle` deixa o botão 4px acima do texto quando a caixa de linha
+         tem 9,6px e o botão 16px. */
+      vertical-align: -4px;
+      align-items: center;
+      gap: 0.16rem;
+      margin: 0 0 0 0.24rem;
+    }
+    .lgpd-btn--primary {
+      flex: 0 0 auto;
+      min-height: 16px;
+      padding: 0 0.26rem;
+      font-size: 0.5rem;
+      letter-spacing: 0.01em;
+      border-radius: 0.4rem;
+    }
+    .lgpd-btn--ghost {
+      flex: 0 0 auto;
+      min-height: 14px;
+      padding: 0 0.1rem;
+      font-size: 0.5rem;
+    }
+    .lgpd-card__link { white-space: nowrap; }
+    .lgpd-card__status {
+      display: block;
+      min-height: 0.55rem;
+      margin: 0.06rem 0 0;
+      font-size: 0.5rem;
+      text-align: left;
+    }
+  }
+
+  /* Telas largas: texto à esquerda, botões à direita — banner deitado.
+     Era um cartão alto no meio da tela; agora é uma faixa fina. */
+  @media (min-width: 560px) {
+    .lgpd-card {
+      max-width: 40rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      column-gap: 1.1rem;
+      align-items: center;
+      padding: 0.75rem 0.9rem 0.65rem 1.1rem;
+    }
+    .lgpd-card__actions {
+      margin-top: 0;
+      flex-direction: row-reverse;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lgpd-btn--primary { min-height: 44px; padding: 0 1.15rem; white-space: nowrap; }
+    .lgpd-btn--ghost { min-height: 32px; padding: 0 0.6rem; white-space: nowrap; }
+    .lgpd-card__status {
+      grid-column: 1 / -1;
+      margin: 0.3rem 0 0;
+      text-align: left;
+    }
+  }
+</style>
+
+<script>
+  import { CONSENT_EVENT, CONSENT_KEY, DECLINE_CLICKS, declineStep, readConsent, writeConsent } from '../lib/consent';
+
+  const banner = document.getElementById('lgpd-banner') as HTMLElement | null;
+  const acceptBtn = document.getElementById('lgpd-accept');
+  const declineBtn = document.getElementById('lgpd-decline');
+  const declineStatus = document.getElementById('lgpd-decline-status');
+
+  function safeStorage(): Storage | null {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  function choice(value: 'accepted' | 'declined'): void {
+    const storage = safeStorage();
+    writeConsent(storage, value);
+    banner?.setAttribute('hidden', '');
+    window.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: { value } }));
+  }
+
+  // ── Recusa em 6 cliques (decisão de produto, não bug) ────────────────────
+  // O rótulo mostra quantos faltam a cada toque: sem esse feedback o botão
+  // "que não faz nada" é lido como bug e a pessoa desiste da página inteira.
+  // O texto base vem de i18n (decline / declineProgress / declineAnnounce).
+  let declineCount = 0;
+  const declineLabel = declineBtn?.textContent?.trim() ?? '';
+
+  /** Texto de anúncio com plural correto: 1 clique ≠ "1 cliques". */
+  function announceText(el: Element | null, remaining: number): string {
+    if (!el) return '';
+    const many = el.getAttribute('data-announce') ?? '';
+    const one = el.getAttribute('data-announce-one') ?? many;
+    const tpl = remaining === 1 ? one : many;
+    return tpl.replace('{n}', String(remaining));
+  }
+
+  function renderDecline(): void {
+    if (!declineBtn) return;
+    const remaining = Math.max(0, DECLINE_CLICKS - declineCount);
+    const tpl = declineBtn.getAttribute('data-label-progress');
+    declineBtn.textContent = remaining > 0 && tpl
+      ? tpl.replace('{n}', String(remaining))
+      : declineLabel;
+    const label = remaining > 0 ? announceText(declineBtn, remaining) : '';
+    if (label) declineBtn.setAttribute('aria-label', label);
+    else declineBtn.removeAttribute('aria-label');
+  }
+
+  function resetDecline(): void {
+    declineCount = 0;
+    if (declineBtn) {
+      declineBtn.textContent = declineLabel;
+      declineBtn.removeAttribute('aria-label');
+    }
+    if (declineStatus) declineStatus.textContent = '';
+  }
+
+  function onDecline(): void {
+    const step = declineStep(declineCount);
+    declineCount = step.count;
+    if (step.done) {
+      choice('declined');
+      return;
+    }
+    renderDecline();
+    if (declineStatus) declineStatus.textContent = announceText(declineStatus, step.remaining);
+  }
+
+  if (banner) {
+    // Só aparece se ainda não houver escolha — pós-mount, sem flash.
+    if (readConsent(safeStorage()) === null) banner.removeAttribute('hidden');
+
+    acceptBtn?.addEventListener('click', () => choice('accepted'));
+    declineBtn?.addEventListener('click', onDecline);
+
+    // "Rever preferências" no footer: limpa a escolha e reabre o banner.
+    window.addEventListener(CONSENT_EVENT, (ev) => {
+      const detail = (ev as CustomEvent<{ value?: string }>).detail;
+      if (detail?.value === 'reset') {
+        resetDecline();
+        banner.removeAttribute('hidden');
+      }
+    });
+
+    document.querySelectorAll('[data-lgpd-reopen]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        try {
+          safeStorage()?.removeItem(CONSENT_KEY);
+        } catch {
+          /* modo restritivo */
+        }
+        resetDecline();
+        banner.removeAttribute('hidden');
+        acceptBtn?.focus();
+      });
+    });
+
+    // Esc = mesma ação do recusar, contando como UM clique da confirmação.
+    // Se aqui recusasse de uma vez, os 6 cliques do botão não valeriam nada.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !banner.hasAttribute('hidden')) onDecline();
+    });
+  }
+</script>

@@ -400,3 +400,6 @@
 ## 2026-10-16 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
 
 - 3 commits: feat: nova história do Dogwalk – resolução CI spiral e Stripe Connect; fix(lifelog): versiona capa(s) gerada(s) fora do git (auto-heal do push); content(lifelog): remove posts recusados do /ocultos
+
+## [2026-11-11]
+- Sincronização e fechamento de expediente.

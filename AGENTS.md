@@ -684,3 +684,7 @@ Guard rodado no dia: "PARCIAL 1/3" (o slot C foi rodado manualmente) — alerta
 honesto em vez de silêncio.
 
 Plano: `~/.hermes/plans/2026-10-18-lifelog-pipeline-slots-falhando.md`.
+
+
+## Sessão 2026-11-11
+- Fim de dia sync: rotina de fechamento automatizada.

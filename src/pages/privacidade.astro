@@ -1,0 +1,132 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getTranslations } from '../lib/i18n';
+
+const locale = 'pt';
+const t = getTranslations(locale);
+const p = t.privacy;
+const CONTACT = 'privacidade@seu.pet';
+---
+
+<BaseLayout title={p.title} description={p.description} locale={locale}>
+  <article class="legal max-w-3xl mx-auto py-12">
+    <header class="legal__header">
+      <h1 class="legal__title">{p.title}</h1>
+      <p class="legal__updated">{p.updated}</p>
+    </header>
+
+    <p class="legal__lead">{p.intro}</p>
+
+    <section class="legal__section">
+      <h2>{p.section1.title}</h2>
+      <p>{p.section1.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section2.title}</h2>
+      <p>{p.section2.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section3.title}</h2>
+      <p>{p.section3.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section4.title}</h2>
+      <p>{p.section4.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section5.title}</h2>
+      <p>{p.section5.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section6.title}</h2>
+      <p>{p.section6.text}</p>
+      <ul class="legal__list">
+        <li>{p.section6.rights.access}</li>
+        <li>{p.section6.rights.correction}</li>
+        <li>{p.section6.rights.deletion}</li>
+        <li>{p.section6.rights.revocation}</li>
+        <li>{p.section6.rights.portability}</li>
+      </ul>
+    </section>
+
+    <section class="legal__section">
+      <h2>{p.section7.title}</h2>
+      <p>{p.section7.text} <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
+    </section>
+
+    <footer class="legal__footer">
+      <a href="/">← {t['404'].backHome}</a>
+    </footer>
+  </article>
+</BaseLayout>
+
+<style>
+  .legal { padding-inline: 1rem; }
+  .legal__header { margin-bottom: 2rem; }
+  .legal__title {
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--color-heading);
+    margin: 0 0 0.4rem;
+  }
+  .legal__updated {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+  .legal__lead {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--color-text);
+    margin: 0 0 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .legal__section { margin-bottom: 1.75rem; }
+  .legal__section h2 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-heading);
+    margin: 0 0 0.5rem;
+  }
+  .legal__section p {
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    color: var(--color-text);
+    margin: 0;
+  }
+  .legal__section a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .legal__list {
+    margin: 0.6rem 0 0;
+    padding-left: 1.15rem;
+    list-style: disc;
+  }
+  .legal__list li {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--color-text);
+    margin-bottom: 0.25rem;
+  }
+  .legal__footer {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .legal__footer a {
+    font-size: 0.875rem;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .legal__footer a:hover { text-decoration: underline; }
+</style>

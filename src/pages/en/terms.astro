@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getTranslations } from '../../lib/i18n';
+
+const locale = 'en';
+const t = getTranslations(locale);
+const tm = t.terms;
+const CONTACT = 'contato@seu.pet';
+---
+
+<BaseLayout title={tm.title} description={tm.description} locale={locale}>
+  <article class="legal max-w-3xl mx-auto py-12">
+    <header class="legal__header">
+      <h1 class="legal__title">{tm.title}</h1>
+      <p class="legal__updated">{tm.updated}</p>
+    </header>
+
+    <section class="legal__section">
+      <h2>{tm.section1.title}</h2>
+      <p>{tm.section1.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section2.title}</h2>
+      <p>{tm.section2.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section3.title}</h2>
+      <p>{tm.section3.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section4.title}</h2>
+      <p>{tm.section4.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section5.title}</h2>
+      <p>{tm.section5.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section6.title}</h2>
+      <p>{tm.section6.text}</p>
+    </section>
+
+    <section class="legal__section">
+      <h2>{tm.section7.title}</h2>
+      <p>{tm.section7.text} <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.</p>
+    </section>
+
+    <footer class="legal__footer">
+      <a href="/en/">← {t['404'].backHome}</a>
+    </footer>
+  </article>
+</BaseLayout>
+
+<style>
+  .legal { padding-inline: 1rem; }
+  .legal__header { margin-bottom: 2rem; }
+  .legal__title {
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--color-heading);
+    margin: 0 0 0.4rem;
+  }
+  .legal__updated {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+  .legal__section { margin-bottom: 1.75rem; }
+  .legal__section h2 {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-heading);
+    margin: 0 0 0.5rem;
+  }
+  .legal__section p {
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    color: var(--color-text);
+    margin: 0;
+  }
+  .legal__section a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .legal__footer {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .legal__footer a {
+    font-size: 0.875rem;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .legal__footer a:hover { text-decoration: underline; }
+</style>
