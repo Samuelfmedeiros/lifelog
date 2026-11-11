@@ -1,0 +1,67 @@
+---
+title: "A cerca virtual que rejeitava todo mundo"
+description: "Uma área de atendimento desenhada no mapa nunca aceitava nenhum ponto dentro dela. O algoritmo estava correto na forma e errado nos eixos: comparava latitude com longitude. Duas linhas trocadas, e o geofencing do PataPass simplesmente não existia."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-11 12:00:00 -03:00
+pubDate: 2026-11-11 12:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, geofence, testing, debugging, javascript]
+cover: /covers/dogwalk-a-cerca-virtual-que-rejeitava-todo-mundo.webp
+featured: false
+hidden: true
+---
+
+Um passeador cadastra a área onde atende. O tutor abre o app, o endereço dele cai bem no meio dessa área no mapa. E o sistema responde que não atende ali.
+
+Não era configuração, não era dado faltando, não era o provedor de mapas. Era um raio que atravessava a cerca por dentro do polígono e contava as interseções erradas, porque uma das comparações usava a coordenada errada.
+
+## O que estava acontecendo
+
+No dia 9 de novembro, o commit `711752f4` fechou a questão com uma frase direta na mensagem: o ray casting usava `yi > lng` e `lat < ...`, invertendo os eixos. O efeito prático é o pior tipo de falha: qualquer ponto testado contra uma cerca virtual caía sempre fora, mesmo estando dentro. Geofencing de área de atendimento nunca casava. Nunca.
+
+O trecho defeituoso era curto o suficiente para caber num cartão:
+
+```js
+const intersect = ((yi > lng) !== (yj > lng)) &&
+  (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+```
+
+`yi` é a latitude do vértice (`polygon[i][0]`), `xi` é a longitude do mesmo vértice (`polygon[i][1]`). A convenção do array é `[lat, lng]`. Só que a primeira comparação opõe `yi`, uma latitude, contra `lng`, a longitude do ponto testado. A segunda linha repete o erro de forma mais sutil: calcula uma interpolação entre `lng` e `yi` — duas grandezas de eixos diferentes.
+
+O que torna esse bug tão silencioso é que JavaScript não tem tipo numérico distinto para latitude e longitude. As duas são `number`. Nenhum linter reclama, nenhum compilador barra, nenhum erro aparece em produção. O código roda, retorna `false` com toda a confiança do mundo, e a única coisa que o usuário vê é "fora da área de atendimento".
+
+E o comportamento não era aleatório: com coordenadas brasileiras, latitude fica em torno de -23 e longitude em torno de -46. Comparar -23 com -46 dá sempre o mesmo resultado. A condição de paridade do ray casting nunca alternava, o contador interno de `inside` nunca completava uma travessia válida, e o retorno era `false` para qualquer entrada.
+
+## Como foi resolvido
+
+A correção foi de duas linhas, cada eixo comparado com o seu próprio valor:
+
+```js
+const intersect = ((yi > lat) !== (yj > lat)) &&
+  (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+```
+
+Agora `yi` e `yj`, as latitudes dos vértices, são comparadas com `lat`, a latitude do ponto. E a interpolação roda em `lat - yi`, coerente com o eixo vertical. O mesmo cálculo, com os eixos certos, e a cerca virtual passa a funcionar.
+
+Mas o que transformou esse fix em algo que vale contar não foram as duas linhas. Foi a decisão de não consertar sem prova.
+
+O módulo de utilidades de mapa exportava 17 funções e nenhuma delas tinha teste. A cobertura do arquivo era 0%. Entre essas funções estava `haversineDistance`, que calcula a distância real de uma caminhada, e `isPointInPolygon`, que decide se o passeador atende o endereço. Ou seja: as duas funções que mais erram silenciosamente no produto eram justamente as que ninguém exercitava.
+
+O commit acrescentou 239 linhas de teste, 32 casos, cobrindo as 17 funções. Os valores esperados não foram inventados: são distâncias geodésicas conhecidas — São Paulo a Rio em torno de 357 km, um grau de latitude no equador em torno de 111,32 km. `isPointInPolygon` ganhou um quadrado de aproximadamente 1 km em torno de São Paulo e casos de inclusão, exclusão, polígono degenerado, ponto no vértice e ponto na borda.
+
+E aí veio a parte que fecha o argumento: a contra-prova. Revertendo apenas as duas linhas do fix, um teste falha — o caso "ponto no centro está dentro". Com o fix, os 32 passam. Isso é diferente de "eu acho que consertei". É a demonstração de que o teste realmente enxerga o bug, e não apenas acompanha o código.
+
+## Por que isso importa
+
+A primeira lição é sobre tipos que não existem. Latitude e longitude são o mesmo tipo para a linguagem, então o compilador nunca vai avisar que você trocou os eixos. Em qualquer código que lida com coordenadas, o nome da variável e a posição no array são a única defesa que existe. Vale a pena escrever `[lat, lng]` explicitamente em todo lugar, mesmo quando o array parece óbvio.
+
+A segunda é sobre o custo de um `false` silencioso. Um erro que levanta exceção aparece no log e alguém vai atrás. Um erro que devolve `false` com convicção é lido como resposta legítima de negócio — "esse passeador não atende aqui" — e pode passar meses sem que ninguém desconfie do cálculo. O bug não estava na tela; estava na premissa.
+
+A terceira é sobre onde colocar os testes. O módulo com 0% de cobertura não era um arquivo periférico: era a camada que decide preço por distância e elegibilidade por área. A regra prática que saiu daí é simples — função pura que decide regra de negócio entra no primeiro teste antes de entrar em produção, mesmo que pareça matemática trivial. Matemática trivial com eixo trocado é exatamente o tipo de coisa que ninguém revisa.
+
+O gate do projeto hoje fecha em 223 arquivos de teste e 2890 casos no frontend. O número não é vaidade: é o que permite reverter duas linhas e saber, em segundos, se o comportamento voltou ao que era.
+
+## Próximo passo
+
+O módulo de mapa agora tem cobertura completa das 17 funções, mas o teste de contrato que trava a convenção `[lat, lng]` na fronteira — antes de qualquer cálculo — ainda não existe. É a próxima peça: impedir que o erro volte por um caminho diferente, em vez de depender de alguém lembrar da ordem dos eixos.
