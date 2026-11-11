@@ -230,27 +230,40 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
     }
   }
 
-  /* Telas largas: texto à esquerda, botões à direita — banner deitado.
-     Era um cartão alto no meio da tela; agora é uma faixa fina. */
+  /* Telas largas: mesma receita do mobile — texto e botões na MESMA linha de
+     fluxo. Antes era grid de 2 colunas com max-width 40rem, e os botões
+     ficavam empurrados para a direita, longe do texto (cobrado 11/11). */
   @media (min-width: 560px) {
     .lgpd-card {
-      max-width: 40rem;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      column-gap: 1.1rem;
-      align-items: center;
-      padding: 0.75rem 0.9rem 0.65rem 1.1rem;
+      /* `fit-content` + teto de 24rem: o card encolhe até o texto em vez de
+         esticar 40rem com os botões na outra ponta (cobrado 11/11 — "botões
+         muito para a direita, deixa igual ao mobile"). 24rem = 384px, mesmo
+         perfil de sobra do mobile (62px na última linha). */
+      width: fit-content;
+      max-width: 24rem;
+      padding: 0.45rem 0.8rem 0.4rem;
+      /* Mesmo motivo do mobile: com o `<p>` inline, quem forma as caixas de
+         linha é o card. Sem isto herda 27,2px do body e abre vão. */
+      line-height: 1.3;
     }
+    /* `contents` deixa título, texto e ações fluírem como irmãos do card. */
+    .lgpd-card__copy { display: contents; }
+    .lgpd-card__title { margin: 0 0 0.15rem; }
+    .lgpd-card__text { display: inline; }
     .lgpd-card__actions {
-      margin-top: 0;
-      flex-direction: row-reverse;
+      display: inline-flex;
+      flex-direction: row;
       align-items: center;
-      gap: 0.5rem;
+      /* `baseline` alinha o botão com a linha do link (medido: dy 0,2px).
+         `vertical-align: middle` deixava o botão 0,6px alto e `-18px` o jogava
+         17,8px abaixo do texto. */
+      vertical-align: baseline;
+      gap: 0.4rem;
+      margin: 0 0 0 0.5rem;
     }
     .lgpd-btn--primary { min-height: 44px; padding: 0 1.15rem; white-space: nowrap; }
     .lgpd-btn--ghost { min-height: 32px; padding: 0 0.6rem; white-space: nowrap; }
     .lgpd-card__status {
-      grid-column: 1 / -1;
       margin: 0.3rem 0 0;
       text-align: left;
     }
