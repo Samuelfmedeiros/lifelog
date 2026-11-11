@@ -9,15 +9,6 @@
 - Release de post segue em `ocultos-data` aguardando liberação — nenhum publish automático.
 - Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
 
-## Sessao 2026-11-11 (fim de dia) — 13 commits em 3+ branches (lgpd, posts ocultos, capas); sincronia paralela ativa durante a rodada
-
-- Commits hoje (git log --all --since='2026-11-11 00:00'): `9c4e3bc` fix(lgpd): card desktop encolhe e botoes colam no link (11:24, `feat/lgpd-consent`), `7cc77fb` fix(lgpd): liga o banner ao layout e mergeia chaves i18n (10:50, `origin/feat/lgpd-consent`), `cefcaae` docs(expediente): fim de dia 2026-11-11 (10:42), `9d11175` release(post): arachne-os-arquivos-que-nunca-entraram-no-repo (PT+EN + ocultos-data, 09:10, `origin/main`), `005808a`+`9a4438e` fix(covers): reencode JPEG + recorte 21:9 (08:39), `5ae1f10` chore(ocultos): sync ocultos-data [skip ci] (11:35), `acd647e`/`cb4de6f` post(arachne): dois arquivos que nunca entraram no repo [hidden] (08:34), `12cada7` verify consent.ts (DECLINE_CLICKS=6, 01:06), `de6e3b3` refazer: troca de capa yurumi (00:27).
-- `main` local 2 à frente / 5 atrás de `origin/main`; os 2 locais-only (`9a4438e`, `cb4de6f`) são duplicatas de conteúdo já em origin (`005808a`, `acd647e` via `9d11175`) → nada perdido. Doc em worktree detachado sobre `origin/main`, push fast-forward, `main` local avançada.
-- HEAD em `feat/lgpd-consent` com 20 alteracoes preservadas; sessão paralela commitou no meio da rodada (`9c4e3bc`, `5ae1f10`).
-- Releases de posts seguem em `ocultos-data` aguardando liberação do Samuel — nenhum publish automático.
-- Pendência: merge de `feat/lgpd-consent` para `main` é decisão do Samuel (LGPD banner em andamento).
-- Docs reconciliados: AGENTS.md + CHANGELOG.md (esta entrada).
-
 ## Sessão 2026-11-10 (fim de dia) — 16 commits em 5 branches (2 releases de post PT+EN, refações do pipeline, capas); `main` sincronizada com `origin`; push ok
 
 - 16 commits hoje, o grosso em `roger/*`: `02d8455` fix(capas): motivo por tag cobre 100% dos posts e colisao de cor sai do violeta (00:26), `76477e9` release(post): yurumi-a-resposta-que-levava-56-segundos PT+EN + ocultos-data (08:35), `413b87d` post(capivara): tres alarmes que reportavam verde sem medir (12:31), `95bec97` chore(ocultos): sync ocultos-data (12:39, era o topo do `main` local), `fbc27c9` roger: residual antes de nova campanha (13:57), `0d9f751` release(post): capivara-os-tres-alarmes-que-reportavam-verde (16:05), `85bd54d` release(post): tatuengine-o-veredito-que-nao-tinha-prova (16:06), as refações `b50b367`/`83b86d7`/`01be096` (16:06) e `3b3025f`/`abaa4a1`/`cdef624` (19:06-19:07), os dois finais `6360f0c`/`462896c` (19:08, topo de `origin/main`) e `8320b81` roger: residual (22:43).
