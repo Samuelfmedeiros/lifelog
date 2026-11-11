@@ -119,6 +119,32 @@ const allLabel = isEn ? 'All' : 'Todos';
     return RGBS[hex];
   }
 
+  /* Contraste WCAG entre duas cores. Usado para escolher a cor do texto do
+     pill ATIVO: o fundo vem do accent do projeto, que varia de #00d4ff
+     (claríssimo) a #7c3aed (escuro), então nenhuma cor fixa de texto atende
+     todos os casos — #1a1a2e sobre #7c3aed dá 2.99:1 e #fff sobre #00d4ff
+     dá 1.77:1. Medimos e escolhemos. */
+  function luminance(hex) {
+    const c = hex.trim().replace('#', '');
+    if (c.length !== 6) return null;
+    const ch = [0, 2, 4].map(i => {
+      const v = parseInt(c.slice(i, i + 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  }
+  function contrast(a, b) {
+    const la = luminance(a), lb = luminance(b);
+    if (la === null || lb === null) return 0;
+    const hi = Math.max(la, lb), lo = Math.min(la, lb);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  /** Texto que maximiza contraste sobre `bg`. Preto puro vence o #1a1a2e
+      em quase todo accent e é o que passa AA nos 10 accents do site. */
+  function bestFg(bg) {
+    return contrast('#000000', bg) >= contrast('#ffffff', bg) ? '#000000' : '#ffffff';
+  }
+
   let activeProject = 'all';
   let activeYear = 'all';
   let activeSearch = '';
@@ -131,6 +157,7 @@ const allLabel = isEn ? 'All' : 'Todos';
       bar.removeAttribute('data-project');
       bar.style.setProperty('--bar-accent', '#848d97');
       bar.style.setProperty('--bar-accent-rgb', '132, 141, 151');
+      bar.style.setProperty('--bar-accent-fg', '#1a1a2e');
     } else {
       bar.setAttribute('data-project', projectId);
       const color = getComputedStyle(bar).getPropertyValue('--color-accent').trim();
@@ -138,6 +165,7 @@ const allLabel = isEn ? 'All' : 'Todos';
         const rgb = hexToRgb(color);
         bar.style.setProperty('--bar-accent', color);
         bar.style.setProperty('--bar-accent-rgb', rgb);
+        bar.style.setProperty('--bar-accent-fg', bestFg(color));
       }
     }
   }
@@ -484,12 +512,22 @@ const allLabel = isEn ? 'All' : 'Todos';
     --bar-accent-rgb: 132, 141, 151;
 
     /* ── Theme-aware backgrounds (overridden by themes.css) ── */
-    --filter-bar-bg: rgba(18, 18, 24, 0.55);
-    --filter-bar-border: rgba(255, 255, 255, 0.06);
-    --filter-search-bg: rgba(255, 255, 255, 0.04);
-    --filter-search-border: rgba(255, 255, 255, 0.04);
-    --filter-pill-hover-bg: rgba(255, 255, 255, 0.04);
-    --filter-pill-hover-border: rgba(255, 255, 255, 0.06);
+    /* Dark default: a superficie precisa se destacar da pagina (#0a0a0f).
+       O valor antigo rgba(18,18,24,.55) misturava para (14,14,20) = 1.03:1
+       contra a pagina, ou seja, INVISIVEL (o blur(16px) nao tinha o que
+       borrar e so sobrava um retangulo morto). Agora (30,32,44,.92) mistura
+       para (28,30,42) = 1.19:1 + borda de 10% — o bloco le como superficie. */
+    --filter-bar-bg: rgba(30, 32, 44, 0.92);
+    --filter-bar-border: rgba(255, 255, 255, 0.1);
+    --filter-search-bg: rgba(255, 255, 255, 0.07);
+    --filter-search-border: rgba(255, 255, 255, 0.08);
+    --filter-pill-hover-bg: rgba(255, 255, 255, 0.07);
+    --filter-pill-hover-border: rgba(255, 255, 255, 0.12);
+    /* Cor do texto sobre o pill ATIVO. Calculada em JS por luminancia do
+       accent (setBarAccent), porque um valor fixo nunca serve: #1a1a2e sobre
+       #7c3aed da 2.99:1 (reprova), enquanto #fff sobre #00d4ff da 1.77:1.
+       Fallback = o accent padrao (#848d97), que aceita texto escuro. */
+    --bar-accent-fg: #1a1a2e;
 
     /* ── Glass base ── */
     background: var(--filter-bar-bg);
@@ -511,9 +549,13 @@ const allLabel = isEn ? 'All' : 'Todos';
 
   /* Glass tint shift via color-mix com a cor ativa */
   .filter-bar {
-    /* O color-mix abaixo auto-atualiza quando --bar-accent-rgb muda */
+    /* O color-mix abaixo auto-atualiza quando --bar-accent-rgb muda.
+       ANTES estava fixo em rgba(18,18,24,.55) — ou seja, este bloco
+       sobrescrevia --filter-bar-bg com o valor antigo e qualquer ajuste de
+       superficie era ignorado. Agora mistura a PROPRIA variavel, entao a
+       superficie e o tint andam juntos. */
     background:
-      color-mix(in srgb, rgba(18, 18, 24, 0.55) 100%, rgba(var(--bar-accent-rgb), 0.06));
+      color-mix(in srgb, var(--filter-bar-bg) 100%, rgba(var(--bar-accent-rgb), 0.06));
   }
 
   /* ════════ Search Row ════════ */
@@ -574,8 +616,12 @@ const allLabel = isEn ? 'All' : 'Todos';
     min-width: 0;
   }
   .search-input::placeholder {
+    /* 0.4 sobre a superficie escura compunha ~(72,77,88) = 2.4:1 contra o
+       bar, abaixo do minimo legivel. 0.72 sobe para ~4.9:1 mantendo o
+       placeholder claramente secundario em relacao ao texto digitado
+       (#e1e4e8, 13:1). */
     color: var(--color-text-muted);
-    opacity: 0.4;
+    opacity: 0.72;
   }
 
   .search-hint {
@@ -649,17 +695,23 @@ const allLabel = isEn ? 'All' : 'Todos';
   }
 
   .pill[data-active="true"] {
-    /* Contraste WCAG AA (4.5:1): accent claro → texto escuro, accent escuro → texto claro.
-       #848d97 (Todos/ano) e accents pastel no light precisam de texto escuro. */
-    color: #1a1a2e;
+    /* Contraste WCAG AA calculado por luminancia do accent, nao fixado no CSS.
+       O valor antigo (#1a1a2e fixo) reprovava em accents escuros: sobre
+       #7c3aed (Arachne) dava 2.99:1 — texto praticamente invisivel, que era
+       exatamente a queixa. `--bar-accent-fg` e recalculado por setBarAccent()
+       a cada troca de filtro, escolhendo entre #1a1a2e e #fff o que tiver
+       maior contraste contra o accent ativo. */
+    color: var(--bar-accent-fg, #1a1a2e);
     background: var(--bar-accent);
     border-color: transparent;
     box-shadow: 0 0 20px color-mix(in srgb, var(--bar-accent) 30%, transparent);
   }
-  [data-theme="dark"] .pill[data-active="true"] {
-    /* No dark os accents são escuros — texto branco mantém contraste */
-    color: #fff;
-  }
+  /* A regra `[data-theme="dark"] .pill[...]` que existia aqui NUNCA aplicou:
+     dentro de <style> scoped do Astro ela compila para
+     `[data-astro-cid-x][data-theme=dark] .pill[data-astro-cid-x]`, exigindo
+     o atributo data-theme no PROPRIO elemento do componente — e ele vive no
+     <html>. Quem decide a cor agora e --bar-accent-fg (por luminancia),
+     entao a regra saiu em vez de virar :global(). */
   .pill[data-active="true"]:hover {
     filter: brightness(1.1);
   }
