@@ -89,5 +89,109 @@
     "lifelog": "LifeLog",
     "estudos": "Studies",
     "descobertas": "Discoveries"
+  },
+  "legal": {
+    "page": {
+      "privacyTitle": "Privacy Policy",
+      "termsTitle": "Terms of Use",
+      "updated": "Last updated",
+      "back": "Back to top"
+    }
+  },
+  "cookie": {
+    "banner": {
+      "text": "I use analytics to know which posts get read. No tracking cookies, no data sold.",
+      "accept": "Accept",
+      "decline": "Decline",
+      "privacy": "Privacy Policy",
+      "close": "Close cookie banner",
+      "declineProgress": "Decline ({n})",
+      "declineAnnounce": "{n} more clicks to decline.",
+      "declineAnnounceOne": "1 more click to decline."
+    }
+  },
+  "footer": {
+    "lgpd": {
+      "title": "Data Protection (LGPD)",
+      "text": "Your data is handled under LGPD (Brazilian Law 13.709/2018). Nothing is sold or shared for commercial purposes. You can request access, correction or deletion at any time.",
+      "link": "Read the full Privacy Policy →",
+      "privacy": "Privacy",
+      "terms": "Terms",
+      "preferences": "Review preferences"
+    }
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "description": "How LifeLog handles your personal data under LGPD.",
+    "updated": "Last updated: November 10, 2026",
+    "intro": "This policy explains which data LifeLog collects, why, where it is stored and how you can exercise your rights under the Brazilian General Data Protection Law (Law 13.709/2018).",
+    "section1": {
+      "title": "1. What data is collected",
+      "text": "LifeLog collects only two kinds of data: (a) anonymous browsing data — page visited, referrer and device type — and only after you click \"Accept\" on the cookie banner; (b) the email you voluntarily type into the subscribe form shown at the end of posts."
+    },
+    "section2": {
+      "title": "2. How the data is used",
+      "text": "Browsing data tells me which posts get read so I can improve the content. The email is used only to send new posts and LifeLog updates. There is no advertising use, commercial profiling or automated decision-making."
+    },
+    "section3": {
+      "title": "3. Legal basis",
+      "text": "Analytics: consent (art. 7, I of LGPD), revocable at any time via the \"Review preferences\" link in the footer. Subscription email: consent given when submitting the form (art. 7, I), with one-click unsubscribe in every message."
+    },
+    "section4": {
+      "title": "4. Where the data is stored",
+      "text": "Browsing data lives in OpenPanel, a self-hosted instance under my control, cookieless and without individual identification. Subscription email lives in the LifeLog mailing platform. Neither is sold, rented or handed to third parties for commercial purposes."
+    },
+    "section5": {
+      "title": "5. Cookies and local storage",
+      "text": "LifeLog uses no tracking cookies. Your browser's local storage keeps only preferences: theme, color palette, language, whether you dismissed the RSS notice and your consent choice. None of it is sent to a server."
+    },
+    "section6": {
+      "title": "6. Your rights (LGPD)",
+      "text": "Under Law 13.709/2018 you have the right to:",
+      "rights": {
+        "access": "Access your personal data",
+        "correction": "Correct incomplete, inaccurate or outdated data",
+        "deletion": "Delete personal data processed with consent",
+        "revocation": "Revoke consent at any time",
+        "portability": "Port your data to another service provider"
+      }
+    },
+    "section7": {
+      "title": "7. Controller contact",
+      "text": "Controller: Samuel Medeiros. To exercise any right or clarify privacy questions, write to"
+    }
+  },
+  "terms": {
+    "title": "Terms of Use",
+    "description": "LifeLog terms of use.",
+    "updated": "Last updated: November 10, 2026",
+    "section1": {
+      "title": "1. Acceptance of Terms",
+      "text": "By accessing and using LifeLog you agree to these Terms of Use. If you disagree with any part of them, do not use the site."
+    },
+    "section2": {
+      "title": "2. Site Use",
+      "text": "LifeLog is Samuel Medeiros' personal and technical blog. You may read, quote and share the content with attribution and a link to the original. Reproducing it in full, distributing it commercially or creating derivative works without explicit permission is not allowed."
+    },
+    "section3": {
+      "title": "3. Intellectual Property",
+      "text": "All content on this site — text, images, graphics, illustrations, logos and source code — belongs to Samuel Medeiros unless stated otherwise. All rights reserved."
+    },
+    "section4": {
+      "title": "4. Limitation of Liability",
+      "text": "Content is published for informational and personal record purposes. Samuel Medeiros is not liable for direct or indirect damages arising from the use of information published here. Code snippets are examples and should be reviewed before production use."
+    },
+    "section5": {
+      "title": "5. External Links",
+      "text": "This site contains links to third-party sites not controlled by Samuel Medeiros. There is no responsibility for the content, privacy policies or practices of those sites."
+    },
+    "section6": {
+      "title": "6. Terms Changes",
+      "text": "These terms may be changed at any time. The last-updated date at the top of the page indicates the current version. Continued use after changes constitutes acceptance of the new terms."
+    },
+    "section7": {
+      "title": "7. Contact",
+      "text": "For questions about these Terms of Use, write to"
+    }
   }
 }

@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import '../styles/themes.css';
 import PalettePicker from '../components/PalettePicker.astro';
+import CookieBanner from '../components/CookieBanner.astro';
 import { getTranslations } from '../lib/i18n';
 
 export interface Props {
@@ -105,6 +106,8 @@ const alternates = (() => {
   }
   return { pt, en };
 })();
+// Idioma da PÁGINA (do caminho, não da prop): footer legal + banner.
+const isEnPage = canonPath === '/en' || canonPath.startsWith('/en/');
 const footerText = dataLocale === 'en'
   ? `LifeLog © ${new Date().getFullYear()} — Samuel Medeiros' learning journey`
   : `LifeLog © ${new Date().getFullYear()} — A jornada de aprendizado de Samuel Medeiros`;
@@ -245,12 +248,9 @@ const footerText = dataLocale === 'en'
         })
       }
     </script>
-    <!-- OpenPanel (self-host, cookieless) — script+ingestao via proxy same-origin (CSP 'self' + COEP) -->
-    <script is:inline>
-      window.op=window.op||function(){var n=[];return new Proxy(function(){arguments.length&&n.push([].slice.call(arguments))},{get:function(t,r){return"q"===r?n:function(){n.push([r].concat([].slice.call(arguments)))}},has:function(t,r){return"q"===r}})}();
-      window.op('init',{apiUrl:'/api/op',clientId:'a3c3b6a8-a751-461a-88f9-8317f6760360',trackScreenViews:true,trackOutgoingLinks:true,trackAttributes:true});
-    </script>
-    <script is:inline src="/analytics/op1.js" defer async></script>
+    <!-- OpenPanel NÃO carrega aqui: o carregamento é condicionado ao consentimento
+         LGPD em src/lib/analytics.ts (initAnalyticsGate). O stub de fila e o init
+         também vivem lá — manter só uma fonte. Guard: scripts/check-consent-gate.mjs -->
   </head>
   <body>
     <header class="navbar">
@@ -285,10 +285,38 @@ const footerText = dataLocale === 'en'
       <p class="mt-1">
         <a href="/rss.xml" class="hover:underline" style="color: var(--color-accent)">RSS</a>
       </p>
+      <nav class="footer-legal" aria-label={t.footer.lgpd.title}>
+        <a href={isEnPage ? '/en/privacy' : '/privacidade'}>{t.footer.lgpd.privacy}</a>
+        <span aria-hidden="true">·</span>
+        <a href={isEnPage ? '/en/terms' : '/termos'}>{t.footer.lgpd.terms}</a>
+        <span aria-hidden="true">·</span>
+        <a href={isEnPage ? '/en/privacy' : '/privacidade'} data-lgpd-reopen>{t.footer.lgpd.preferences}</a>
+      </nav>
     </footer>
+
+    <CookieBanner locale={dataLocale} />
 
   <!-- ═══ Light theme overrides (fora do lightningcss pra não tree-shake) ═══ -->
   <style is:global>
+    .footer-legal {
+      margin-top: 0.55rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .footer-legal a {
+      color: var(--color-text-muted);
+      text-decoration: none;
+      transition: color 0.18s ease;
+    }
+    .footer-legal a:hover {
+      color: var(--color-accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .footer-legal a[data-lgpd-reopen] { text-decoration: underline; text-underline-offset: 2px; }
     [data-theme="light"] .navbar { background: rgba(255, 255, 255, 0.82); border-bottom-color: #efeee9; }
     [data-theme="light"] .navbar-link:not(.cta) { color: #5a5a60; background: rgba(99, 102, 241, 0.06); border-color: #e5e4df; }
     [data-theme="light"] .navbar-link:hover { color: var(--color-accent); background: rgba(99, 102, 241, 0.1); border-color: var(--color-accent); }
@@ -377,6 +405,14 @@ const footerText = dataLocale === 'en'
         }
       });
     })();
+    </script>
+
+    <!-- Gate de analytics (LGPD): nenhuma requisição antes do "Aceitar".
+         O módulo está em src/lib/analytics.ts e o guard de regressão em
+         scripts/check-consent-gate.mjs. -->
+    <script>
+      import { initAnalyticsGate } from '../lib/analytics';
+      initAnalyticsGate();
     </script>
 </body>
 </html>
