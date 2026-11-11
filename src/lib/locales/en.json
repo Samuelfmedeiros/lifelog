@@ -104,7 +104,10 @@
       "accept": "Accept",
       "decline": "Decline",
       "privacy": "Privacy Policy",
-      "close": "Close cookie banner"
+      "close": "Close cookie banner",
+      "declineProgress": "Decline ({n})",
+      "declineAnnounce": "{n} more clicks to decline.",
+      "declineAnnounceOne": "1 more click to decline."
     }
   },
   "footer": {

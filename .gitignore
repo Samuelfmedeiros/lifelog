@@ -94,3 +94,6 @@ coverage/
 
 # backups das capas quadradas (rollback local, nao versionar)
 public/covers/*.bak-quadrado-*
+
+# Prova visual de banner (capturas do capture-lgpd-banner.cjs)
+e2e/shots/

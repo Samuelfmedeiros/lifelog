@@ -1,8 +1,10 @@
 {
   "nota": "acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.",
   "atualizado": "2026-11-10",
-  "total": 1,
+  "total": 3,
   "legacy": [
-    "public/covers/capivara-os-tres-alarmes-que-reportavam-verde.webp"
+    "public/covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp",
+    "public/covers/yurumi-a-janela-que-o-subconjunto-aprovou.webp",
+    "public/covers/yurumi-a-resposta-que-levava-56-segundos.webp"
   ]
 }

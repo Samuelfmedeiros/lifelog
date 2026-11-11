@@ -104,7 +104,10 @@
       "accept": "Aceitar",
       "decline": "Recusar",
       "privacy": "Política de Privacidade",
-      "close": "Fechar banner de cookies"
+      "close": "Fechar banner de cookies",
+      "declineProgress": "Recusar ({n})",
+      "declineAnnounce": "Faltam {n} cliques para recusar.",
+      "declineAnnounceOne": "Falta 1 clique para recusar."
     }
   },
   "footer": {
