@@ -172,61 +172,65 @@ const privacyHref = dataLocale === 'en' ? '/en/privacy' : '/privacidade';
 
   @media (max-width: 559px) {
     .lgpd-card {
-      max-width: 20.25rem;
-      padding: 0.4rem 0.4rem 0.35rem;
+      /* Opcao A aprovada por Samuel em 11/11/2026 (mockup comparativo REAL
+         medido no DOM, nao estimativa). Antes: max-width 20.25rem + font 8px,
+         que cabia tudo numa linha mas era ilegivel no celular (8px e abaixo
+         de qualquer minimo; o botao Aceitar tinha 16px de altura, longe dos
+         44px de toque). Agora o card sobe para 21rem e o texto para 11px. */
+      max-width: 21rem;
+      padding: 0.55rem 0.6rem 0.5rem;
       border-radius: 0.85rem;
       /* O `<p>` de texto vira inline (para os botões seguirem o link na mesma
          linha), e aí quem forma as caixas de linha é ESTE container — não o
          parágrafo. Sem esta linha o card herda `line-height: 27.2px` do body
-         (16px × 1.7) e abre um vão de 17px entre a 1a e a 2a linha, mesmo com
-         fonte de 8px. Medido: gap 17px → 3px. */
-      line-height: 1.2;
-      font-size: 0.5rem;
+         e abre um vão enorme entre as linhas. Medido com 8px: gap 17px → 3px. */
+      line-height: 1.35;
+      font-size: 0.6875rem;
     }
     /* `contents` deixa título, texto e ações fluírem como irmãos do card:
        é o que permite o parágrafo e os botões dividirem o MESMO contexto
        inline (botões logo depois do link, na mesma linha). */
     .lgpd-card__copy { display: contents; }
     .lgpd-card__title {
-      margin: 0 0 0.1rem;
-      font-size: 0.625rem;
+      margin: 0 0 0.15rem;
+      font-size: 0.78125rem;
     }
     .lgpd-card__text {
       display: inline;
-      font-size: 0.5rem;
-      line-height: 1.3;
+      font-size: 0.6875rem;
+      line-height: 1.35;
     }
     .lgpd-card__actions {
       display: inline-flex;
       flex-direction: row;
       /* Alinhado com a linha do link, não com o topo da caixa de linha:
-         `middle` deixa o botão 4px acima do texto quando a caixa de linha
-         tem 9,6px e o botão 16px. */
-      vertical-align: -4px;
+         `middle` deixa o botão acima do texto porque a caixa de linha é mais
+         baixa que o botão. -2px e' o deslocamento medido para 11px/34px. */
+      vertical-align: -2px;
       align-items: center;
-      gap: 0.16rem;
-      margin: 0 0 0 0.24rem;
+      gap: 0.25rem;
+      margin: 0 0 0 0.35rem;
     }
     .lgpd-btn--primary {
       flex: 0 0 auto;
-      min-height: 16px;
-      padding: 0 0.26rem;
-      font-size: 0.5rem;
+      min-height: 34px;
+      padding: 0 0.55rem;
+      font-size: 0.75rem;
       letter-spacing: 0.01em;
-      border-radius: 0.4rem;
+      border-radius: 0.55rem;
     }
     .lgpd-btn--ghost {
       flex: 0 0 auto;
-      min-height: 14px;
-      padding: 0 0.1rem;
-      font-size: 0.5rem;
+      min-height: 30px;
+      padding: 0 0.35rem;
+      font-size: 0.71875rem;
     }
     .lgpd-card__link { white-space: nowrap; }
     .lgpd-card__status {
       display: block;
-      min-height: 0.55rem;
-      margin: 0.06rem 0 0;
-      font-size: 0.5rem;
+      min-height: 0.8rem;
+      margin: 0.15rem 0 0;
+      font-size: 0.6875rem;
       text-align: left;
     }
   }
