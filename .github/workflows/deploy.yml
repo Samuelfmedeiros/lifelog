@@ -159,8 +159,16 @@ jobs:
         echo "✅ Cleanup concluído — previews e debug files removidos"
 
     - name: Start preview server
+      # 12/11/2026: o preview subia com `&` simples e ninguem o levantava se
+      # morresse. No run 43212364729 o cgroup do runner registrou oom_kill=4 e o
+      # preview foi morto por volta do teste 551: dali em diante 242 falhas com
+      # net::ERR_CONNECTION_REFUSED, CI vermelho com o produto intacto.
+      # Agora quem cuida do ciclo de vida e scripts/preview-supervisor.sh (reinicia
+      # em 1s e rebaixa o oom_score do preview). A suite segue gate honesto —
+      # falha de teste continua vermelha; servidor derrubado por OOM, nao.
       run: |
-        npx astro preview --port 4321 --host 127.0.0.1 &
+        mkdir -p .preview-supervisor
+        setsid bash scripts/preview-supervisor.sh 4321 </dev/null >>.preview-supervisor/boot.log 2>&1 &
         sleep 3
         for i in $(seq 1 10); do
           CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ 2>/dev/null || echo "000")
@@ -173,6 +181,7 @@ jobs:
         done
         if [ "$CODE" != "200" ]; then
           echo "❌ Preview server didn't start"
+          cat .preview-supervisor/supervisor.log 2>/dev/null || true
           exit 1
         fi
         # Readiness nao e só a home: o E2E navega para /en/, post e asset. Se alguma
@@ -228,6 +237,7 @@ jobs:
         path: |
           playwright-report/
           test-results/
+          .preview-supervisor/
         retention-days: 14
         if-no-files-found: ignore
 
