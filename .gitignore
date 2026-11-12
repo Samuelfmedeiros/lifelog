@@ -94,3 +94,6 @@ coverage/
 
 # backups das capas quadradas (rollback local, nao versionar)
 public/covers/*.bak-quadrado-*
+
+# estado do supervisor do preview E2E (log/pid por run, nunca versionar)
+.preview-supervisor/

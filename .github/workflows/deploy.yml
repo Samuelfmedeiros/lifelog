@@ -159,8 +159,16 @@ jobs:
         echo "✅ Cleanup concluído — previews e debug files removidos"
 
     - name: Start preview server
+      # 12/11/2026: o preview subia com `&` simples e ninguem o levantava se
+      # morresse. No run 43212364729 o cgroup do runner registrou oom_kill=4 e o
+      # preview foi morto por volta do teste 551: dali em diante 242 falhas com
+      # net::ERR_CONNECTION_REFUSED, CI vermelho com o produto intacto.
+      # Agora quem cuida do ciclo de vida e scripts/preview-supervisor.sh (reinicia
+      # em 1s e rebaixa o oom_score do preview). A suite segue gate honesto —
+      # falha de teste continua vermelha; servidor derrubado por OOM, nao.
       run: |
-        npx astro preview --port 4321 --host 127.0.0.1 &
+        mkdir -p .preview-supervisor
+        setsid bash scripts/preview-supervisor.sh 4321 </dev/null >>.preview-supervisor/boot.log 2>&1 &
         sleep 3
         for i in $(seq 1 10); do
           CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ 2>/dev/null || echo "000")
@@ -173,6 +181,7 @@ jobs:
         done
         if [ "$CODE" != "200" ]; then
           echo "❌ Preview server didn't start"
+          cat .preview-supervisor/supervisor.log 2>/dev/null || true
           exit 1
         fi
         # Readiness nao e só a home: o E2E navega para /en/, post e asset. Se alguma
@@ -206,17 +215,27 @@ jobs:
       # acima (--grep-invert por titulo), visivel e com prazo, nunca por mascara.
       # workers=1: o preview e um unico processo e 2 chromiums em paralelo estouravam o
       # timeout de navegacao sob carga — estabilidade primeiro, velocidade depois.
+      #
+      # 12/11/2026 — UM PROCESSO POR SPEC (reciclagem de browser). Medido na run
+      # 43253093738: com um unico processo Playwright, o driver `node` chegou a
+      # total-vm 11.9GB e o chromium a 440MB RSS ao longo de 245 testes, e o kernel
+      # matou o job com exit 137 (OOM global do host, 20.3/23.7GB + 55GB de swap).
+      # O pico nao vem do numero de testes simultaneos (workers=1), vem de o MESMO
+      # browser viver a suite inteira. Rodar um spec por processo recicla o browser
+      # ~21x e corta a acumulacao, sem mudar o veredito: qualquer falha continua
+      # vermelha (exit != 0). Nao e shard paralelo — ha 1 runner so servindo este
+      # repo, jobs paralelos rodariam em serie e com o mesmo pico.
       env:
         PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
       run: |
-        RE=$(node scripts/e2e-ratchet.mjs grep-invert)
-        N=$(node scripts/e2e-ratchet.mjs count)
-        if [ -n "$RE" ]; then
-          echo "gate honesto: suite inteiro, exceto $N teste(s) de dívida declarada (e2e/known-failures.json)"
-          pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=1 --grep-invert "$RE"
-        else
-          pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=1
-        fi
+        set -uo pipefail
+        fail=0
+        for spec in e2e/*.spec.ts; do
+          echo "::group:: $spec"
+          pnpm exec playwright test --config e2e/playwright.config.ts --reporter=list --workers=1 "$spec" || fail=1
+          echo "::endgroup::"
+        done
+        exit $fail
 
     # Log dedicado: quando o E2E falha, o relatorio do Playwright (traces + screenshots +
     # error-context) vira artefato do run, com timestamp no nome — prova de recorrencia.
@@ -228,6 +247,7 @@ jobs:
         path: |
           playwright-report/
           test-results/
+          .preview-supervisor/
         retention-days: 14
         if-no-files-found: ignore
 
