@@ -1,0 +1,87 @@
+---
+title: "The green suite and the three owners nobody checked"
+description: "One hundred and two tests passing, and any authenticated account could still read the live GPS of someone else's walk. A static audit of the PataPass backend found three ownership failures the suite never covered."
+category: samuel-projects
+date: 2026-11-12 12:00:00 -03:00
+pubDate: 2026-11-12 12:00:00 -03:00
+project: dogwalk
+tags: ["seguranca", "ownership", "fastapi", "testing", "dogwalk"]
+cover: /covers/dogwalk-a-suite-verde-e-os-donos-que-faltavam.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The scoreboard said everything was fine
+
+The PataPass backend suite closed at 102 tests passing and 1 skipped. I had been using that number as a release signal for weeks, and it is honest: those tests really do cover what they claim to cover.
+
+The problem is what they did not cover. A static read of the backend returned ten findings, three of them high severity, all in the same family: routes that trust the identifier they receive and never ask who it belongs to. The worst one required no password and no forged token. It required an ordinary account.
+
+## What that account could do
+
+The realtime channel that streams a walk's position validated the JWT. That was all. It validated the token was legitimate and unexpired, then accepted the connection on any walk identifier, guessed or lifted from another screen.
+
+Whoever connected received live coordinates from a walk that was not theirs. And the same channel accepted GPS points sent by the client, persisting them into that walk's history. So it was possible to write fabricated movement into somebody else's track — and since that history feeds distance, validation and anomaly alerts, the damage did not stay in the database. The booking chat channel had the same shape: any authenticated account could read and inject messages into someone else's conversation.
+
+The third finding was money. The checkout endpoint loaded the booking and stopped there, never comparing the logged-in user against that booking's tutor. A tutor could assemble the payment session for someone else's booking, and the record came out with payer different from the owner. Worse: the identifier of the walker receiving the payout came from the request body sent by the client, so the payout could be steered to another connected account.
+
+None of those routes had an ownership test. All of them had shape tests: right response, right status, right field. The suite measured the response contract and never the question before it — is this resource yours?
+
+## The fix that is not about WebSocket
+
+The correction became a function, not a loose clause in each handler. The check gets one place to live, and the next realtime route reuses the same function instead of reimplementing the logic and forgetting one side of the comparison.
+
+```python
+async def require_walk_access(websocket, walk_id, user, db):
+    walk = (await db.execute(select(Walk).where(Walk.id == walk_id))).scalar_one_or_none()
+    if not walk:
+        await websocket.close(code=4004, reason="Walk not found")
+        return None
+    booking = (await db.execute(
+        select(Booking).where(Booking.id == walk.booking_id)
+    )).scalar_one_or_none()
+    if not booking:
+        await websocket.close(code=4004, reason="Booking not found")
+        return None
+    profile_id = await profile_id_for(user, db)
+    if not profile_id or profile_id not in (booking.tutor_id, booking.walker_id):
+        await websocket.close(code=4003, reason="Forbidden")
+        return None
+    return booking
+```
+
+Three details matter, and none is about syntax. Separating missing from forbidden: what does not exist closes with 4004, what is not yours closes with 4003. When both return the same thing, the legitimate client who mistyped an identifier gets a message that does not help.
+
+Comparing against both sides: tutor or walker. The channel is legitimately shared by two people, and checking only one side breaks the product for the other.
+
+Returning the record, not a boolean: the caller already needs the booking, and `True` would force a second identical query.
+
+```python
+profile = await get_active_profile(user=user, db=db)
+if not profile or booking.tutor_id != profile.id:
+    raise HTTPException(403, "Forbidden")
+walker_id = booking.walker_id
+```
+
+In the checkout, the first line blocks the wrong tutor. The second discards the destination that came from the client and uses the one recorded on the booking. Accepting a destination as input on a payment route is an invitation to diversion — and the rule that got written down is short: value and destination always from the record, never from the request body.
+
+## The missing test had a name
+
+The new tests do not exercise the route, they exercise the decision function, with a fake socket that records the close instead of speaking ASGI. That is what makes it possible to cover six paths without booting a server: tutor passes, walker passes, third party is blocked on the walk and on the chat, missing booking and missing walk close 4004.
+
+After the fixes the backend closed at 113 tests passing and the frontend at 3039. The number is not what solves the problem — the fact that a test now fails if someone deletes the check is. Before, removing the ownership validation left the entire suite green.
+
+The same day brought a fourth case in the frontend: the page that lists and deletes a tutor's pets sat outside the protected block. An anonymous visitor opened the address and saw the list skeleton, because the data was tied to the user identifier in the call. Eleven lines later the route was inside the block, and the frontend closed at 3036 tests.
+
+## What changes
+
+A green suite answers "the system does what I described". It does not answer "the system does what I described for the people entitled to it". The second question almost never arrives by accident: it requires someone to write the third-party case — who does not own the resource and tries to reach it anyway. That case does not come from a bug report, because someone who is not the owner does not report it.
+
+Ownership is also not an `if` we remember to add. It is a named function, called at every entry point. With a fixed address it survives refactoring; as a line copied across five handlers, the sixth is born without it.
+
+## Next step
+
+The three high findings are closed, but the audit listed seven more — four medium and three low — on write routes without an ownership test. The next step is to work the medium ones in the order the audit ranked them, starting with the one that lets a refresh token be used as an access token, and to write the third-party case before the fix. A test born alongside the correction describes the correction; a test born before it describes the failure.

@@ -1,0 +1,87 @@
+---
+title: "A suíte verde e os três donos que ninguém checava"
+description: "Cento e dois testes passando, e qualquer conta autenticada ainda lia o GPS ao vivo do passeio de outra pessoa. A auditoria estática do backend do PataPass achou três falhas de ownership que a suíte não cobria."
+category: samuel-projects
+date: 2026-11-12 12:00:00 -03:00
+pubDate: 2026-11-12 12:00:00 -03:00
+project: dogwalk
+tags: ["seguranca", "ownership", "fastapi", "testing", "dogwalk"]
+cover: /covers/dogwalk-a-suite-verde-e-os-donos-que-faltavam.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O placar dizia que estava tudo bem
+
+A suíte do backend do PataPass fechava em 102 testes passando e 1 ignorado. Sobre esse número eu vinha tomando decisão de release há semanas, e ele é honesto: aqueles testes cobrem o que dizem cobrir.
+
+O problema é o que eles não cobriam. Uma leitura estática do backend devolveu dez achados, três de severidade alta, todos na mesma família: rotas que confiam no identificador que chega e nunca perguntam de quem ele é. O pior não pedia senha nem token forjado. Pedia uma conta comum.
+
+## O que dava para fazer com essa conta
+
+O canal de tempo real que transmite a posição do passeio validava o JWT. Só isso. Validava que o token era legítimo e não expirado, e em seguida aceitava a conexão em qualquer identificador de passeio, adivinhado ou obtido de outra tela.
+
+Quem conectava recebia as coordenadas ao vivo de um passeio que não era seu. E o mesmo canal aceitava pontos de GPS enviados pelo cliente, gravando-os no histórico daquele passeio. Dava para escrever deslocamento falso na trilha de outra pessoa — e como esse histórico alimenta distância, validação e alertas de anomalia, o efeito não parava no banco. O canal de conversa tinha a mesma forma: qualquer conta autenticada lia e injetava mensagens na conversa alheia.
+
+O terceiro achado era dinheiro. O endpoint de checkout buscava a reserva no banco e parava ali, sem comparar o usuário logado com o tutor daquele agendamento. Um tutor montava a sessão de pagamento da reserva de outro, e o registro saía com pagador diferente do dono. Pior: o identificador do passeador que recebe o repasse vinha no corpo enviado pelo cliente, então o repasse podia ir para outra conta conectada.
+
+Nenhuma dessas rotas tinha teste de dono. Todas tinham teste de forma: resposta certa, status certo, campo certo. A suíte media o contrato da resposta e nunca a pergunta anterior — este recurso é seu?
+
+## O fix que não é sobre WebSocket
+
+A correção virou função, não cláusula solta em cada handler. A checagem ganha um lugar único para morar, e a próxima rota de tempo real reaproveita a mesma função em vez de reescrever a lógica e esquecer um dos lados da comparação.
+
+```python
+async def require_walk_access(websocket, walk_id, user, db):
+    walk = (await db.execute(select(Walk).where(Walk.id == walk_id))).scalar_one_or_none()
+    if not walk:
+        await websocket.close(code=4004, reason="Walk not found")
+        return None
+    booking = (await db.execute(
+        select(Booking).where(Booking.id == walk.booking_id)
+    )).scalar_one_or_none()
+    if not booking:
+        await websocket.close(code=4004, reason="Booking not found")
+        return None
+    profile_id = await profile_id_for(user, db)
+    if not profile_id or profile_id not in (booking.tutor_id, booking.walker_id):
+        await websocket.close(code=4003, reason="Forbidden")
+        return None
+    return booking
+```
+
+Três detalhes importam, e nenhum é sobre a sintaxe. Distinguir inexistente de proibido: o que não existe fecha com 4004, o que não é seu fecha com 4003. Quando os dois devolvem o mesmo, o cliente que digitou um identificador errado recebe uma mensagem que não o ajuda.
+
+Comparar contra os dois lados: tutor ou passeador. O canal é compartilhado por duas pessoas, e checar só um lado quebra o produto para a outra.
+
+Devolver o registro, não um booleano: quem chamou já precisa do booking, e `True` obrigaria uma segunda consulta idêntica.
+
+```python
+profile = await get_active_profile(user=user, db=db)
+if not profile or booking.tutor_id != profile.id:
+    raise HTTPException(403, "Forbidden")
+walker_id = booking.walker_id
+```
+
+No checkout, a primeira linha barra o tutor errado. A segunda descarta o destino que veio do cliente e usa o gravado na reserva. Aceitar destino como entrada em rota de pagamento é convite para desvio — e a regra que ficou escrita é curta: valor e destino sempre do registro, nunca do corpo da requisição.
+
+## O teste que faltava tinha nome
+
+Os testes novos não exercitam a rota, exercitam a função de decisão, com um socket falso que registra o fechamento em vez de falar ASGI. É o que permite cobrir os seis caminhos sem subir servidor: tutor passa, passeador passa, terceiro é barrado no passeio e na conversa, reserva e passeio inexistentes fecham 4004.
+
+Depois dos fixes o backend fechou em 113 testes passando e o frontend em 3039. O número não é o que resolve o problema — é o fato de que agora existe um teste que falha se alguém remover a checagem.
+
+No mesmo dia apareceu um quarto caso no frontend: a página que lista e apaga os pets do tutor estava fora do bloco protegido. Visitante anônimo abria o endereço e via o esqueleto da lista, porque os dados vinham amarrados ao identificador do usuário na chamada. Onze linhas depois a rota estava dentro do bloco, e o frontend fechou em 3036 testes.
+
+## O que muda
+
+Uma suíte verde responde "o sistema faz o que eu descrevi". Não responde "o sistema faz o que eu descrevi para quem tem direito". A segunda pergunta quase nunca entra por acidente: exige que alguém escreva o caso do terceiro — quem não é dono do recurso e tenta alcançá-lo de qualquer jeito. Esse caso não nasce de bug report, porque quem não é dono não reporta.
+
+Ownership também não é um `if` que a gente lembra de colocar. É função com nome, chamada em todo ponto de entrada. Com endereço fixo, sobrevive à refatoração; como linha copiada em cinco handlers, o sexto nasce sem ela.
+
+## Próximo passo
+
+Os três achados altos estão fechados, mas a auditoria listou mais sete — quatro médios e três baixos — em rotas de escrita sem teste de dono. O próximo passo é tratar os médios na ordem classificada, começando pelo que permite usar refresh token como access token, e escrever o caso do terceiro antes do fix. Teste que nasce junto da correção descreve a correção; teste que nasce antes descreve a falha.
