@@ -209,20 +209,38 @@ const ofensores = [...new Set(
     .filter((p) => p.startsWith('public/covers/')),
 )];
 let baseSet = new Set();
+let baseRaw = null;
 try {
-  const base = JSON.parse(readFileSync(BASELINE, 'utf-8'));
+  baseRaw = readFileSync(BASELINE, 'utf-8');
+  const base = JSON.parse(baseRaw);
   const list = Array.isArray(base) ? base : base.legacy || [];
   for (const p of list) {
     if (typeof p === 'string' && p) baseSet.add(p);
   }
 } catch {}
-if (record || baseSet.size === 0) {
-  const payload = {
-    nota: 'acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.',
-    atualizado: new Date().toISOString().slice(0, 10),
-    total: ofensores.length,
-    legacy: ofensores.sort(),
-  };
+// 12/11/2026: `baseSet.size === 0` acontece legitimamente quando NAO ha capa
+// legada fora de 21/9 — e o arquivo existe com legacy: []. A condicao antiga
+// regravava o baseline a CADA run so para trocar `atualizado` para hoje,
+// deixando a arvore suja; o lifelog-push.sh entao abortava o rebase com
+// "nao e possivel rebase: voce tem alteracoes nao preparadas" e o push morria.
+// Agora so escreve quando o CONTEUDO muda (ou --record-baseline explicito).
+const payload = {
+  nota: 'acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.',
+  atualizado: new Date().toISOString().slice(0, 10),
+  total: ofensores.length,
+  legacy: ofensores.sort(),
+};
+const mudou = (() => {
+  if (!baseRaw) return true;
+  try {
+    const prev = JSON.parse(baseRaw);
+    const prevList = Array.isArray(prev) ? prev : prev.legacy || [];
+    return JSON.stringify(prevList) !== JSON.stringify(payload.legacy);
+  } catch {
+    return true;
+  }
+})();
+if (record || mudou) {
   writeFileSync(BASELINE, `${JSON.stringify(payload, null, 2)}\n`);
   console.log(
     record
