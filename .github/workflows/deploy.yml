@@ -248,11 +248,16 @@ jobs:
         TOTAL_OK=0
         TOTAL_FAIL=0
 
+        # BUG (12/11/2026): `curl ... || echo 000` concatenava quando o curl
+        # escrevia o codigo E saia !=0 (exit 18/52/56 em transferencia parcial):
+        # resultado "200000" e o health check reprovava uma URL que respondia 200.
+        # Capturar o codigo primeiro e so cair no 000 quando a saida vier vazia.
         check_url() {
           local url="$1"
           local label="${2:-$url}"
           local code
-          code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE$url" 2>/dev/null || echo "000")
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE$url" 2>/dev/null) || true
+          [ -z "$code" ] && code="000"
           if [ "$code" = "200" ]; then
             echo "  ✅ $label → $code"
             TOTAL_OK=$((TOTAL_OK + 1))
