@@ -1,0 +1,70 @@
+---
+title: "The button that said yes and stored no — the consent gate that blocked its own ad"
+description: "The banner promised 'Accept all' and stored ads: false. canShowAds() returned false every time, so no ad ever loaded even with AdSense configured. The fix took three commits over two days, and the last one was not about the bug — it was about the wrong promise on the label."
+category: samuel-projects
+date: 2026-11-12 08:00:00 -03:00
+pubDate: 2026-11-12 08:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "react", "privacy", "frontend", "testing"]
+cover: /covers/portfolio-o-botao-que-dizia-sim-e-gravava-nao.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The consent that denied what the user had just consented to
+
+A cookie banner has a small, well-defined job: ask one question and record the answer. The Portfolio's banner did both — except the answer it recorded was the opposite of the question.
+
+Anyone clicking "Accept all" was authorizing analytics and ads. The handler called `acceptWithAds("none")`. The persisted object came out with `ads: false` and `nonPersonalizedAds: false`. From then on, `canShowAds()` returned `false` for that visitor, and the monetization component simply never mounted the slot. No ad, ever, for anyone who had said yes.
+
+The first symptom was not that one. It was "the site has no ads." AdSense was configured, the script was injected, the slot existed in the JSX. Production HTML carried the ad block. And nothing was served, because the consent gate was closed — from the inside.
+
+## The path consent travelled
+
+The flow has two layers. The first is the banner, which stores `accepted` or `declined` plus the chosen ad level. The second is monetization, which reads a separate `localStorage` object and decides whether it may render.
+
+The bridge between them is this:
+
+```ts
+export function canShowAds(consent: MonetizationConsent | null): boolean {
+  if (!consent) return false;
+  return consent.nonPersonalizedAds || (consent.analytics && consent.ads);
+}
+```
+
+Reading the function, the rule is clear: no consent, nothing. With non-personalized consent, allowed. With analytics plus ads, allowed. The bug was not in the rule — it was in whoever fed it.
+
+The handler built the object like this:
+
+```ts
+const mcConsent = {
+  analytics: true,
+  ads: adsLevel === "personalized",
+  nonPersonalizedAds: adsLevel === "non-personalized" || adsLevel === "personalized",
+};
+```
+
+With `adsLevel = "none"`, both ad fields fall to `false`. The rule behaved exactly as designed; the defect was the argument.
+
+## Three commits, and the third is the interesting one
+
+The first, `5cdc897`, fixed the main button to call `acceptWithAds("personalized")` and added a third button, "No tracking", pointing at `acceptWithAds("non-personalized")`. The idea was to offer the middle ground instead of only two extremes. The commit's proof: clean `tsc`, 569 of 569 tests passing, clean build.
+
+The second, `2f4cf71`, was a direct consequence of the first: three buttons did not fit a phone's width. The card overflowed the viewport, and the banner — the first thing any visitor sees — broke exactly on the device where most of them arrive.
+
+The third, `76d688e`, same day, undid part of the first. The "No tracking" button came out, the banner went back to two buttons, and the mobile card dropped from 154 to 94 pixels in height, a 39% reduction. Type dropped from 12 to 11 pixels on mobile and the touch target stayed at 34 pixels — above the minimum of 24 that WCAG 2.5.8 requires for a pointer target. In other words: the visual shrank, the clickable area did not.
+
+Two days later came `cab278d`, which touched no logic at all. It only changed the label. "Accept all" became "Accept", in Portuguese and English, because "all" promised a scope the banner never had: it never asked for consent for third-party personalized advertising, only for analytics and the chosen ad level. The label was the last lie left after the bug was gone.
+
+## What this teaches about consent
+
+The error was not a typo. It was modelling: two representations of the same consent, written at different times, with different vocabularies. One used `"accepted"` plus a level; the other used three booleans. As long as two sources of truth describe the same decision, one of them will diverge — and the divergence shows up far from the defect, here as "the ad does not load."
+
+The second lesson is about what the tests covered. There were 569 assertions, all green, on the commit that introduced the bug. None of them asserted what the monetization object should contain after a click on "Accept all". They verified that the banner disappeared, that `localStorage` received `accepted`, that the component unmounted — screen behaviour, not decision content. A three-line test over the persisted object would have caught it before deploy.
+
+The third is about product: reducing scope is a form of fixing. The middle button looked more honest and cost 60 pixels of height on mobile. It was removed, and the honesty moved into the wording of the main button. Fewer options, a more precise promise.
+
+## Next step
+
+Consent now has a single write path and a test that inspects the persisted content, not just the screen. What remains is reviewing the English banner copy — the label changed, but the supporting sentence still describes "analytics" without saying what happens to the chosen ad level. It is the last edge between what the banner says and what the code stores.
