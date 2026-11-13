@@ -1,0 +1,75 @@
+---
+title: "The scanner shouted 2858 times — four of them were real"
+description: "A static analyzer returned almost three thousand high-severity findings in TatuEngine. Nearly all of them were the same test line repeated. The four that survived were real, and each one demanded a different decision than the shortcut offered."
+date: 2026-11-13 16:00:00 -03:00
+pubDate: 2026-11-13 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "security", "bandit", "python", "tools"]
+cover: /covers/tatuengine-o-scanner-que-gritava-2858-vezes.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## Two thousand eight hundred and fifty-eight problems
+
+I ran the static analyzer against the TatuEngine repository and it came back with 2858 high-severity occurrences. No project has 2858 security problems. A number that size does not describe an insecure system — it describes a report nobody will read.
+
+And that is where the damage starts. A report with 2858 lines has the same practical effect as an empty report: it trains the reader to ignore it. The next run will produce a big number again, and the only policy that survives that is "we will look at it later". Later never arrives.
+
+## Almost all of it was the same line
+
+The detail that changes the diagnosis: all 2858 came from a single rule identifier, and that rule fired on Python's `assert` statement. That is not a security problem. It is a warning that `assert` can be stripped when the interpreter runs with optimization — irrelevant in test code, where the assertion is the entire point of the line.
+
+All of the project's test code uses `assert` as its verification mechanism. The scanner read each occurrence as an independent vulnerability: same cause, same decision, repeated 2858 times.
+
+The right triage is not fixing 2858 lines, and it is not marking 2858 `nosec` comments in the code. It is stating once that the directory is test code and that `assert` there is the correct tool. One decision, applied in the scan configuration, removes the entire noise floor — and what appears after it is the signal: four high-severity findings.
+
+## The four that survived
+
+Four is a number you can read. And four real findings demand four real decisions — which requires looking at each one.
+
+The first was the use of `md5` as a checksum. The scanner classifies any `md5` call as a broken cryptographic primitive, which is correct in general and wrong here: in that spot the hash verifies whether the data coming back out of a decompression is byte-for-byte identical to what went in. It protects nobody from anything. It authenticates nobody. It is an integrity check, and for that `md5` is enough.
+
+There are two ways to silence this finding. The first is the shortcut: turn the rule off at that point, with no explanation, and move on. The second is to declare the intent in the code itself:
+
+```python
+# this hash compares the roundtrip byte for byte: integrity, not authentication
+h1 = hashlib.md5(dados, usedforsecurity=False).hexdigest()
+h2 = hashlib.md5(volta, usedforsecurity=False).hexdigest()
+```
+
+The parameter does not gag the scanner — it answers the question the scanner was asking. `usedforsecurity=False` is a verifiable claim about usage, not a silence. Whoever reviews it later knows why it is there and can disagree. A `nosec` leaves nothing to disagree with.
+
+The second finding was more serious, and it is the kind that slips through because it works on the easy cases. A comparison script invoked an external utility by building the command line through string interpolation, and the filename came from the command-line argument. With an ordinary name, the command runs. With a name containing a semicolon, the shell terminates the first command and starts another — and the other one is chosen by whoever supplied the name.
+
+```python
+# before: the filename went into the string the shell interprets
+print(os.popen(f"gzip -9 -c {args.arquivo} | wc -c").read().strip())
+
+# after: the binary gets the argument as a list, no shell in between
+_gz = subprocess.run(["gzip", "-9", "-c", args.arquivo],
+                     capture_output=True, check=False).stdout
+```
+
+The difference is not stylistic, it is surface area. In the second form there is no command string to interpret, so there is no injection to perform. The script measures exactly the same thing and becomes immune to the entire class of defect. Commit `83fca7a` closed both fixes along with the two smaller findings, and the scanner counter went from 2858 to zero high-severity.
+
+## The same md5, two different problems
+
+Part of this story only makes sense after seeing both sides of it.
+
+The day before, the same `md5` had already failed in another way. In an environment with FIPS mode enabled, the default call raises an exception instead of computing the hash. The script died before comparing anything at all — meaning the roundtrip verification it was supposed to perform never happened, and the symptom was a library error that said nothing about whether the data was intact.
+
+The fix was the same line, `usedforsecurity=False`, for a different reason: declaring that the hash is not cryptography resolves both the FIPS objection and the scanner objection. Two problems from unrelated origins, one decision point that explains them both. That was not a coincidence — it was the correct diagnosis of what that hash was doing there.
+
+## What this changes
+
+The practical change is not "the project became secure". That would be a claim without proof. The change is that the scanner report became readable, and a readable report can serve as a gate. While the number was 2858, nobody could fail a delivery because of it: the number never reached zero, and the difference between a regression and the usual noise was invisible.
+
+There is also an effect on how tools get built. The exclusion filter — a directory, a rule, an identifier — is less satisfying to write than a code fix, and it is the correct decision in many cases. The criterion is always the cause: if the same cause produces N findings, fixing N times is wrong, and the real cost lies in telling the two situations apart.
+
+One lesson carries beyond security: an instrument that returns too much signal is not protecting anything. It only moves the work onto whoever has no time to triage, and the predictable result is that the triage never happens.
+
+## Next step
+
+The noise filter is currently an exclusion applied on the command line. The next step is turning it into versioned configuration, so the same slice holds on any machine and the difference between a new finding and known noise shows up on its own.
