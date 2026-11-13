@@ -1,5 +1,100 @@
 import { describe, it, expect } from 'vitest';
-import { DECLINE_CLICKS, declineStep } from './consent';
+import {
+  CONSENT_KEY,
+  CONSENT_EVENT,
+  DECLINE_CLICKS,
+  clearConsent,
+  declineStep,
+  readConsent,
+  writeConsent,
+} from './consent';
+
+/** Storage mínimo, em memória, com a mesma superfície que o código usa. */
+function fakeStorage(initial: Record<string, string> = {}) {
+  const map = new Map(Object.entries(initial));
+  return {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    _map: map,
+  } as unknown as Storage & { _map: Map<string, string> };
+}
+
+describe('consent — storage (LGPD)', () => {
+  it('readConsent devolve o valor gravado', () => {
+    expect(readConsent(fakeStorage({ [CONSENT_KEY]: 'accepted' }))).toBe('accepted');
+    expect(readConsent(fakeStorage({ [CONSENT_KEY]: 'declined' }))).toBe('declined');
+  });
+
+  it('readConsent: ausente, storage nulo ou lixo => null (nunca inventa consent)', () => {
+    expect(readConsent(fakeStorage())).toBeNull();
+    expect(readConsent(null)).toBeNull();
+    expect(readConsent(undefined)).toBeNull();
+    // valor fora do union não deve virar consent por acidente
+    expect(readConsent(fakeStorage({ [CONSENT_KEY]: 'yes' }))).toBeNull();
+    expect(readConsent(fakeStorage({ [CONSENT_KEY]: '' }))).toBeNull();
+  });
+
+  it('readConsent: storage que lança (modo restritivo) => null, sem quebrar a página', () => {
+    const explode = {
+      getItem: () => {
+        throw new Error('SecurityError: storage bloqueado');
+      },
+    } as unknown as Storage;
+    expect(readConsent(explode)).toBeNull();
+  });
+
+  it('writeConsent grava na chave única', () => {
+    const s = fakeStorage();
+    writeConsent(s, 'declined');
+    expect((s as unknown as { _map: Map<string, string> })._map.get(CONSENT_KEY)).toBe('declined');
+    expect(readConsent(s)).toBe('declined');
+  });
+
+  it('writeConsent: storage nulo ou que lança não propaga erro', () => {
+    expect(() => writeConsent(null, 'accepted')).not.toThrow();
+    expect(() => writeConsent(undefined, 'accepted')).not.toThrow();
+    const explode = {
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    } as unknown as Storage;
+    expect(() => writeConsent(explode, 'accepted')).not.toThrow();
+  });
+
+  it('clearConsent remove a escolha (link "rever preferências")', () => {
+    const s = fakeStorage({ [CONSENT_KEY]: 'accepted' });
+    clearConsent(s);
+    expect(readConsent(s)).toBeNull();
+  });
+
+  it('clearConsent: storage nulo ou que lança não propaga erro', () => {
+    expect(() => clearConsent(null)).not.toThrow();
+    const explode = {
+      removeItem: () => {
+        throw new Error('SecurityError');
+      },
+    } as unknown as Storage;
+    expect(() => clearConsent(explode)).not.toThrow();
+  });
+
+  it('CONSENT_KEY e CONSENT_EVENT são strings estáveis (guard depende de UM lugar só)', () => {
+    expect(typeof CONSENT_KEY).toBe('string');
+    expect(CONSENT_KEY).toBe('lifelog-analytics-consent');
+    expect(typeof CONSENT_EVENT).toBe('string');
+    expect(CONSENT_EVENT.length).toBeGreaterThan(0);
+  });
+
+  it('ciclo completo: aceita -> limpa -> recusa', () => {
+    const s = fakeStorage();
+    writeConsent(s, 'accepted');
+    expect(readConsent(s)).toBe('accepted');
+    clearConsent(s);
+    expect(readConsent(s)).toBeNull();
+    writeConsent(s, 'declined');
+    expect(readConsent(s)).toBe('declined');
+  });
+});
 
 describe('declineStep — recusa em N cliques', () => {
   it('exige exatamente DECLINE_CLICKS cliques para concluir', () => {
