@@ -25,6 +25,12 @@ jobs:
       statuses: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Porta dedicada do CI (12/11/2026). Antes era 4321 hardcoded em 5 pontos e
+      # o Roger (`config/test-loop/lifelog.json`) tambem sobe em 4321: rodando os
+      # dois no mesmo host, o segundo a subir falhava com "Preview server didn't
+      # start" — sintoma que parece bug de produto. 4331 fica fora de 4321/4322.
+      CI_PREVIEW_PORT: 4331
+      CI_PREVIEW_URL: http://127.0.0.1:4331
 
     steps:
     - uses: actions/checkout@v4
@@ -168,19 +174,20 @@ jobs:
       # falha de teste continua vermelha; servidor derrubado por OOM, nao.
       run: |
         mkdir -p .preview-supervisor
-        setsid bash scripts/preview-supervisor.sh 4321 </dev/null >>.preview-supervisor/boot.log 2>&1 &
+        setsid bash scripts/preview-supervisor.sh "$CI_PREVIEW_PORT" </dev/null >>.preview-supervisor/boot.log 2>&1 &
         sleep 3
         for i in $(seq 1 10); do
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ 2>/dev/null || echo "000")
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "$CI_PREVIEW_URL/" 2>/dev/null || echo "000")
           if [ "$CODE" = "200" ]; then
-            echo "✅ Preview server ready on :4321"
+            echo "✅ Preview server ready on :$CI_PREVIEW_PORT"
             break
           fi
           echo "Waiting for preview... ($i)"
           sleep 2
         done
         if [ "$CODE" != "200" ]; then
-          echo "❌ Preview server didn't start"
+          echo "❌ Preview server didn't start on :$CI_PREVIEW_PORT"
+          ss -tlnp 2>/dev/null | grep ":$CI_PREVIEW_PORT" || echo "(porta sem listener)"
           cat .preview-supervisor/supervisor.log 2>/dev/null || true
           exit 1
         fi
@@ -188,7 +195,7 @@ jobs:
         # dessas ainda nao serve, os testes comecam contra servidor meio-vivo e o erro
         # vira net::ERR_ABORTED (o falso-negativo que mascaramos por meses).
         for probe in /en/ /404.html /manifest.json; do
-          C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:4321$probe" || echo 000)
+          C=$(curl -s -o /dev/null -w "%{http_code}" "$CI_PREVIEW_URL$probe" || echo 000)
           echo "probe $probe -> $C"
           case "$C" in
             200|404) ;;
@@ -226,7 +233,7 @@ jobs:
       # vermelha (exit != 0). Nao e shard paralelo — ha 1 runner so servindo este
       # repo, jobs paralelos rodariam em serie e com o mesmo pico.
       env:
-        PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
+        PLAYWRIGHT_TEST_URL: ${{ env.CI_PREVIEW_URL }}
       run: |
         set -uo pipefail
         fail=0

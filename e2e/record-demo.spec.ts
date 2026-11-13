@@ -1,7 +1,11 @@
 import { test, chromium } from '@playwright/test';
 
-// Use local dev server ou fallback pra produção
-const URL = process.env.E2E_BASE_URL || 'http://localhost:4321';
+// Preview do CI roda em porta dedicada (12/11/2026). Antes so E2E_BASE_URL era
+// lido e o default 4321 vencia — com o CI em 4331 o spec batia em porta morta.
+const URL =
+  process.env.E2E_BASE_URL ||
+  process.env.PLAYWRIGHT_TEST_URL ||
+  'http://localhost:4321';
 
 test('record full demo video', async () => {
   const browser = await chromium.launch();

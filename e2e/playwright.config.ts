@@ -1,6 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
+// Porta unica por processo (12/11/2026). O default 4321 continua valendo para
+// uso local, mas CI e gates automatizados passam PLAYWRIGHT_TEST_URL e param de
+// competir pela mesma porta no mesmo host.
+const PREVIEW_URL = process.env.PLAYWRIGHT_TEST_URL || 'http://localhost:4321';
+const PREVIEW_PORT = (() => {
+  try { return new URL(PREVIEW_URL).port || '4321'; } catch { return '4321'; }
+})();
+
 export default defineConfig({
   testDir: '.',
   // 13/09/2026: 20s nao suportava o preview sob carga (net::ERR_ABORTED em
@@ -10,7 +18,12 @@ export default defineConfig({
   retries: 2,
   fullyParallel: false,
   use: {
-    baseURL: 'http://localhost:4321',
+    // Porta vem do ambiente, nao hardcoded (12/11/2026). Antes era 'localhost:4321'
+    // fixo: CI e qualquer gate local (Roger) no MESMO host disputavam a mesma porta
+    // e o segundo a subir falhava com "Preview server didn't start" — sintoma que
+    // parece bug de produto e nao e. `PLAYWRIGHT_TEST_URL` ja existia no workflow
+    // desde sempre mas ninguem lia; agora e a fonte da verdade.
+    baseURL: PREVIEW_URL,
     navigationTimeout: 45000,
     // trace so quando falha: evidencia p/ o artefato do CI
     trace: 'retain-on-failure',
@@ -24,8 +37,8 @@ export default defineConfig({
   // e2e morreram com net::ERR_CONNECTION_REFUSED e o critic só viu
   // "e2e playwright falhou:" vazio), o Playwright sobe o próprio preview.
   webServer: {
-    command: 'pnpm preview',
-    url: 'http://localhost:4321/',
+    command: `pnpm preview --port ${PREVIEW_PORT}`,
+    url: `${PREVIEW_URL}/`,
     reuseExistingServer: true,
     timeout: 60_000,
   },
