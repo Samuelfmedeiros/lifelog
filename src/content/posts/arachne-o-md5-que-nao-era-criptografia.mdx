@@ -1,0 +1,71 @@
+---
+title: "O MD5 que não era criptografia"
+description: "O scanner de segurança acusou MD5 como achado de severidade alta no Arachne. O lugar estava certo e o motivo estava errado: aquele resumo não protege nada, só detecta quando um site muda de layout. Entender a diferença exigiu olhar o que o achado realmente media."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-13 12:00:00 -03:00
+pubDate: 2026-11-13 12:00:00 -03:00
+project: arachne
+tags: [arachne, bandit, seguranca, python, ci]
+cover: /covers/arachne-o-md5-que-nao-era-criptografia.webp
+featured: false
+hidden: true
+---
+
+## O achado que apontava para o lugar certo pelo motivo errado
+
+O relatório do scanner de segurança do Arachne voltou com uso de MD5 classificado como severidade alta. Não era. O achado estava correto quanto ao fato — existe mesmo uma chamada a MD5 no código — e errado quanto ao motivo, porque aquele resumo não é fronteira de segurança de nada.
+
+O monitor de estrutura precisa responder a uma pergunta só: esta página mudou de layout desde a última coleta bem-sucedida? Se mudou, o extrator pode ter parado de achar o que achava antes, e alguém precisa olhar. Para responder isso, o caminho natural é reduzir a página ao seu esqueleto e comparar o esqueleto de hoje com o de ontem. Uma impressão digital da estrutura.
+
+O problema é que o nome do algoritmo carrega a reputação dele. MD5 em qualquer lugar de um código é lido como "alguém está protegendo algo com uma função quebrada". Aqui ninguém estava protegendo nada. O HTML que o monitor analisa é público: qualquer visitante recebe exatamente o mesmo documento. Não existe segredo a preservar, não existe adversário a deter. O resumo não é uma fechadura — é um marcador de diferença.
+
+## O que aquela função faz de verdade
+
+A assinatura descarta tudo que muda sem que a estrutura mude. Texto entre tags, preço, data, número de estoque: nada disso entra. Sobram as tags e os atributos que definem papel estrutural — classe, id, role, type. E os identificadores dinâmicos, aqueles com sufixo numérico gerado a cada renderização, são normalizados antes de entrar no cálculo, senão a assinatura mudaria a cada acesso sem que nada tivesse mudado de verdade.
+
+```python
+# o sufixo numérico cai fora antes do hash:
+# item_12345 e item_67890 viram o mesmo item_
+cleaned = re.sub(r'[_-]\d+', '', str(value))
+
+return hashlib.md5(
+    ''.join(structural_parts).encode(),
+    usedforsecurity=False,
+).hexdigest()
+```
+
+O contrato desse comportamento está preso por teste, e os testes são o melhor documento do que a função é: dois documentos com o mesmo esqueleto e preços diferentes produzem a mesma assinatura; dois documentos com um item de lista a mais produzem assinaturas diferentes; dois identificadores que só diferem no número gerado produzem a mesma assinatura. Um hash usado para guardar senha jamais aceitaria nenhuma dessas três afirmações — ele precisa que qualquer mudança de conteúdo mude o resultado. Aqui é o contrário: a função precisa ignorar o conteúdo por projeto.
+
+E há um segundo resumo no mesmo módulo que ninguém discute: a assinatura completa usa SHA-256 e devolve 64 caracteres hexadecimais. Os dois convivem porque respondem a perguntas diferentes. O SHA-256 diz "o esqueleto mudou". O MD5 é o resumo leve usado na comparação rápida de contêineres extraíveis. Ler o relatório como se fossem duas tentativas da mesma coisa é o primeiro passo para consertar o lugar errado.
+
+## O conserto de uma linha
+
+O commit `743720e9`, de 8 de novembro, alterou um arquivo e uma linha: acrescentou o argumento `usedforsecurity=False` na chamada. Nada mais. Esse argumento existe no `hashlib` desde que a biblioteca passou a distinguir "resumo usado como fronteira de segurança" de "resumo usado como qualquer outra coisa". Com ele, o Bandit para de sinalizar — a regra B324 checa justamente a presença desse keyword para decidir se o achado continua de pé ou se foi declarado não-criptográfico pelo autor do código.
+
+Vale ler o que a linha está dizendo, porque não é uma anotação cosmética. É uma afirmação sobre uso, escrita no código, revisável por qualquer pessoa que abrir o arquivo depois: este digest não é fronteira de segurança, e se um dia passar a ser, esta linha vira mentira. Um comentário solto ao lado do `md5()` não teria o mesmo peso — seria opinião. O argumento é contrato, e é o mesmo mecanismo que o próprio Bandit consulta.
+
+A comparação que consome esse resumo é deliberadamente simples, e também está no código:
+
+```python
+if not old_sig or not new_sig:
+    return False  # primeira coleta: não há com o que comparar
+
+return old_sig != new_sig
+```
+
+A primeira coleta nunca conta como mudança. Sem essa guarda, todo site novo entraria no sistema já marcado como alterado, e o alerta perderia o sentido na primeira execução — um alarme que dispara na instalação não é alarme.
+
+## Dois significados para a mesma linha
+
+Na mesma semana, o mesmo argumento de uma linha foi aplicado em outro projeto do ecossistema, e ali o problema era o oposto: a chamada não completava. Num host com política criptográfica restritiva, o resumo fraco levanta exceção em tempo de execução, e o script morria antes de comparar os dois lados de uma verificação de integridade. Ou seja: no Arachne o `usedforsecurity=False` silenciou um falso positivo de análise estática; no outro, destravou código que não rodava.
+
+Mesmo texto, significados opostos. Isso é o que torna a linha perigosa quando copiada por hábito: quem adiciona o argumento só para o relatório parar de reclamar está afirmando algo que talvez não seja verdade. Um achado aberto e conhecido é melhor que um achado fechado por conveniência — o aberto continua na lista e alguém vai olhar; o fechado desaparece.
+
+Havia ainda o detalhe que explicava por que a correção não era urgente: o passo do scanner estava configurado para aceitar qualquer resultado sem derrubar o pipeline. O achado nunca bloqueou nada. Nunca impediu entrega. Ficou parado no relatório por semanas, e a lista cresceu. Corrigir não destravou o CI, porque nada estava travado. Corrigir devolveu sinal ao relatório — e relatório que sempre tem quarenta itens não é lido por ninguém.
+
+## O que isso muda
+
+O valor não está no `usedforsecurity=False` em si, e sim no critério que sobrou dele: antes de silenciar um achado, é preciso saber qual é o uso real do trecho. Se o resumo é fronteira de segurança, o conserto é trocar o algoritmo por um forte. Se não é, o conserto é declarar isso no código com o argumento certo e deixar o motivo ao alcance de quem revisar.
+
+E sobrou uma pendência honesta: os outros pontos do mesmo repositório que usam resumo fraco — chave de cache, deduplicação de documento, assinatura de conteúdo baixado — ainda precisam passar pela mesma pergunta, um por um. Alguns são o mesmo caso, uso não-criptográfico. Outros talvez não sejam, e é justamente por isso que a resposta não pode ser um `grep` e um `sed` em massa. O próximo passo é revisar cada chamada e escrever o motivo onde ele sobreviva à próxima leitura, não na memória de quem corrigiu.

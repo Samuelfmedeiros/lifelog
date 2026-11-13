@@ -1,0 +1,71 @@
+---
+title: "The MD5 that was never cryptography"
+description: "The security scanner flagged MD5 as a high-severity finding in Arachne. The location was right and the reason was wrong: that digest protects nothing, it only detects when a site changes its layout. Understanding the difference meant looking at what the finding actually measured."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-13 12:00:00 -03:00
+pubDate: 2026-11-13 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "bandit", "seguranca", "python", "ci"]
+cover: /covers/arachne-o-md5-que-nao-era-criptografia.webp
+featured: false
+hidden: true
+---
+
+## A finding right about the place, wrong about the reason
+
+The Arachne security scan came back with MD5 usage rated high severity. It was not. The finding got the fact right — there is a call to MD5 in the code — and the reason wrong, because that digest is not a security boundary for anything.
+
+The structure monitor has exactly one question to answer: has this page changed its layout since the last successful collection? If it has, the extractor may have stopped finding what it used to find, and someone needs to look. The natural way to answer that is to reduce the page to its skeleton and compare today's skeleton with yesterday's. A fingerprint of the structure.
+
+The trouble is that an algorithm's name carries its reputation. MD5 anywhere in a codebase reads as "someone is protecting something with a broken function". Nobody here was protecting anything. The HTML the monitor inspects is public: every visitor receives the same document. There is no secret to preserve and no adversary to deter. The digest is not a lock — it is a difference marker.
+
+## What that function actually does
+
+The signature discards everything that changes without the structure changing. Text between tags, price, date, stock count: none of it goes in. What survives are the tags and the attributes that define structural role — class, id, role, type. And dynamic identifiers, the ones with a numeric suffix generated on every render, are normalized before they enter the hash, otherwise the signature would change on every request while nothing had actually changed.
+
+```python
+# the numeric suffix is stripped before hashing:
+# item_12345 and item_67890 both become item_
+cleaned = re.sub(r'[_-]\d+', '', str(value))
+
+return hashlib.md5(
+    ''.join(structural_parts).encode(),
+    usedforsecurity=False,
+).hexdigest()
+```
+
+That behaviour is pinned by tests, and the tests are the best documentation of what the function is: two documents with the same skeleton and different prices produce the same signature; two documents with one extra list item produce different signatures; two identifiers that differ only in the generated number produce the same signature. A hash guarding passwords would accept none of those three statements — it needs any content change to change the output. Here it is the reverse: the function must ignore content by design.
+
+There is a second digest in the same module that nobody argues about: the full signature uses SHA-256 and returns 64 hex characters. The two coexist because they answer different questions. SHA-256 says "the skeleton changed". The MD5 is the light digest used in the fast comparison of extractable containers. Reading the report as if they were two attempts at the same thing is the first step toward fixing the wrong place.
+
+## The one-line fix
+
+Commit `743720e9`, from 8 November, touched one file and one line: it added the `usedforsecurity=False` argument to the call. Nothing else. That argument exists in `hashlib` because the library distinguishes "digest used as a security boundary" from "digest used as anything else". With it, Bandit stops reporting — rule B324 checks precisely for that keyword to decide whether the finding stands or whether the code author declared it non-cryptographic.
+
+It is worth reading what the line is saying, because it is not cosmetic annotation. It is a statement about usage, written in the code, reviewable by anyone who opens the file later: this digest is not a security boundary, and if it ever becomes one, this line turns into a lie. A loose comment next to the `md5()` call would not carry the same weight — that would be opinion. The argument is a contract, and it is the same mechanism Bandit itself consults.
+
+The comparison that consumes the digest is deliberately plain, and it is also in the code:
+
+```python
+if not old_sig or not new_sig:
+    return False  # first collection: nothing to compare against
+
+return old_sig != new_sig
+```
+
+The first collection never counts as a change. Without that guard, every new site would enter the system already marked as altered, and the alert would lose its meaning on the first run — an alarm that fires during installation is not an alarm.
+
+## Two meanings for the same line
+
+The same week, the same one-line argument was applied in another project of the ecosystem, and there the problem was the opposite: the call did not complete. On a host with a restrictive crypto policy, the weak digest raises at runtime, and the script died before comparing both sides of an integrity check. So in Arachne `usedforsecurity=False` silenced a static-analysis false positive; in the other it unblocked code that would not run.
+
+Same text, opposite meanings. That is what makes the line dangerous when copied out of habit: whoever adds the argument just to make the report go quiet is asserting something that may not be true. An open, known finding beats a finding closed by convenience — the open one stays on the list and someone will look; the closed one disappears.
+
+There was also the detail explaining why the fix was not urgent: the scan step was configured to accept any result without failing the pipeline. The finding never blocked anything. It never stopped a release. It sat in the report for weeks and the list grew. Fixing it did not unblock CI, because nothing was blocked. Fixing it gave the report its signal back — and a report that always carries forty items is read by nobody.
+
+## What this changes
+
+The value is not in `usedforsecurity=False` itself, but in the criterion it left behind: before silencing a finding, you have to know the real use of the snippet. If the digest is a security boundary, the fix is swapping in a strong algorithm. If it is not, the fix is declaring that in the code with the right argument and leaving the reason within reach of whoever reviews it.
+
+And there is an honest piece of unfinished work: the other places in the same repository that use a weak digest — cache key, document deduplication, downloaded content signature — still have to go through the same question, one at a time. Some are the same case, non-cryptographic use. Others may not be, which is exactly why the answer cannot be a `grep` and a bulk `sed`. The next step is reviewing each call and writing the reason where it survives the next reading, not in the memory of whoever fixed it.
