@@ -91,21 +91,24 @@ jobs:
       # e o VRT cairia contra porta fechada.
       - name: Subir preview e regenerar baselines
         env:
-          PLAYWRIGHT_TEST_URL: http://127.0.0.1:4321
+          # Porta dedicada (12/11/2026): mesma razao do deploy.yml — 4321 e do
+          # Roger (config/test-loop/lifelog.json); CI usa 4332 para nao competir.
+          PLAYWRIGHT_TEST_URL: http://127.0.0.1:4332
         run: |
           set -euo pipefail
-          pnpm preview --port 4321 &
+          PREVIEW_PORT=4332
+          pnpm preview --port "$PREVIEW_PORT" &
           PREVIEW_PID=$!
           trap 'kill $PREVIEW_PID 2>/dev/null || true' EXIT
 
           for i in $(seq 1 40); do
-            C=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4321/ || echo 000)
+            C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PREVIEW_PORT/" || echo 000)
             [ "$C" = "200" ] && break
             sleep 2
           done
           # Readiness nao e so a home: o E2E navega para /en/, 404 e manifest.
           for probe in / /en/ /404.html /manifest.json; do
-            C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:4321$probe" || echo 000)
+            C=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PREVIEW_PORT$probe" || echo 000)
             echo "probe $probe -> $C"
             case "$C" in 200|404) ;; *) echo "preview nao pronto em $probe ($C)"; exit 1;; esac
           done
