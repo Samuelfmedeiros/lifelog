@@ -1,0 +1,76 @@
+---
+title: "O exit 137 que parecia teste vermelho"
+description: "Um pull request que não tocava no backend derrubou os jobs de teste do backend e de end-to-end. O código de saída era 137, e o log dizia 'falhou'. Não falhou: nunca rodou. A causa era memória, e o CI estava escondendo isso."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-13 08:00:00 -03:00
+pubDate: 2026-11-13 08:00:00 -03:00
+project: capivara
+tags: [capivara, ci, github-actions, oom, debugging, pnpm]
+cover: /covers/capivara-o-exit-137-que-parecia-teste-vermelho.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O pull request que não tocava no backend
+
+O PR mexia em frontend. Nenhum arquivo de backend, nenhuma migração, nenhum endpoint novo. Mesmo assim, o job de testes de backend morreu dentro do passo de instalação de dependências, e o job de ponta a ponta morreu no build do bundle. Os dois com o mesmo código de saída: **137**.
+
+137 não é resultado de teste. É 128 mais 9, o sinal de kill. Em runner de integração contínua isso quase sempre significa que o kernel matou o processo por falta de memória — o escolhido é sempre o passo mais gordo do momento. O log, porém, mostra a última linha do passo e depois um X vermelho. Quem lê conclui que os testes falharam. Não falharam: nunca chegaram a rodar.
+
+O PR não tinha culpado. O culpado era o relógio — o instante em que ele entrou na fila.
+
+## O que estava medido durante a falha
+
+A máquina tinha 4.500 MB de memória disponível e **zero** de swap livre, de 59 GB no total. Não era swap acabando: era swap esgotado, com a compressão em RAM saturada e o arquivo de swap no teto. No mesmo instante, outro runner do mesmo host rodava uma suíte de navegador completa. O pool tinha 7 runners num host de 24.000 MB, e cada navegador de teste abre dezenas de subprocessos.
+
+O segundo sinal veio de graça: o re-run passou. Nada mudou no código entre a falha e o verde. Isso fecha diagnóstico de contenção de recurso, não de defeito de software — e é a informação que o log vermelho não dava.
+
+## Os dois falsos negativos seguintes no mesmo caminho
+
+O mesmo commit trouxe outros dois problemas que se vestiam de "bug de código", e ambos tinham a mesma assinatura: o CI acusava no lugar errado.
+
+O primeiro era um hook local de proteção de segredos. Ele abortava o commit por causa de um valor de teste que existe no arquivo de integração contínua desde antes da regra: o literal casava com o padrão de credencial. O efeito medido era confuso — o typecheck aparecia limpo e a suíte de backend passava com 246 testes, mas o commit não fechava. Sem ler a linha de aborto, parecia que os hooks tinham aprovado. A correção foi uma lista de exceções para valores obviamente falsos, testada nos dois sentidos: o arquivo de CI passa, e uma chave com cara de real continua sendo detectada.
+
+O segundo era mais caro: os overrides de dependência viviam num arquivo de workspace que só a versão nova do gerenciador de pacotes interpreta naquele formato. O CI roda a versão 9, onde a chave simplesmente não existe — a consulta respondia vazio e as versões vulneráveis continuavam onde estavam. O arquivo parecia certo e não fazia nada. Mover os overrides para o `package.json` mudou o resultado: 5 vulnerabilidades viraram 1, baixa e sem correção publicada na época.
+
+```json
+{
+  "pnpm": {
+    "overrides": {
+      "glob": "^14.0.2",
+      "minimatch": "^11.0.1",
+      "deepmerge": "^4.3.1"
+    }
+  }
+}
+```
+
+## O gate que aprendeu a contar jobs, não processos
+
+A correção do problema principal foi um gate antes dos jobs pesados: o CI espera até um teto de tempo por um mínimo de memória disponível e de swap livre. Se não liberar até o limite, ele falha alto, imprimindo os números medidos, em vez de deixar o processo morrer no meio de um passo e virar "teste vermelho".
+
+A primeira versão do gate tinha um erro que só aparece rodando de verdade: contava processos. E encontrou "46 jobs pesados" — que eram um único navegador com mais de 40 subprocessos filhos. Contar processo mede o formato do processo, não a carga da máquina. A versão que ficou sobe a cadeia de processos pais até o dono do runner e conta apenas jobs distintos:
+
+```text
+job_pesado(pid):
+  sobe a cadeia de PPIDs até o dono do runner
+  conta o JOB de origem, não o processo
+  navegador com 40 filhos  ->  1 job
+```
+
+O terceiro ajuste foi cosmético e por isso instrutivo. O gate lia a linha de comando de processos que podiam morrer entre a listagem e a leitura. O redirecionamento de erro ficava fora do agrupamento, então a mensagem de arquivo inexistente vazava para o log do job e poluía a saída. Agrupar o redirecionamento levou o erro junto: 5 linhas de ruído antes, zero em três rodadas depois.
+
+## O que muda quando o CI diz a verdade
+
+Código de saída é contrato. Um pipeline que reporta 137 como falha de teste manda o desenvolvedor investigar o lugar errado, e o re-run verde confirma o diagnóstico errado — porque o defeito é justamente intermitente e depende de quem mais está na fila. A diferença entre "o seu teste está quebrado" e "a máquina não tinha memória para rodar o seu teste" é a diferença entre uma tarde perdida e um ajuste de infraestrutura.
+
+A segunda lição é mais silenciosa: configuração que existe no arquivo e é ignorada pela versão que roda é pior que configuração ausente. Ausente, alguém procura. Inerte, todo mundo assume que está resolvido, e o audit vermelho passa a parecer teimosia.
+
+E a terceira: gate que espera precisa dizer quanto esperou e o que faltava. Sem número, ele só adiciona latência — e ninguém descobre depois por que aquele job demora mais que os outros.
+
+## Próximo passo
+
+O gate hoje protege os jobs de backend e de ponta a ponta. O passo seguinte é medir quanto ele custa num PR pequeno, onde não há disputa por memória, para garantir que a espera é próxima de zero no caso folgado — e só cresce quando a máquina realmente está cheia.

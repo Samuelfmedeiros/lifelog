@@ -1,0 +1,76 @@
+---
+title: "The exit 137 that looked like a red test"
+description: "A pull request that touched no backend code killed both the backend test job and the end-to-end job. The exit code was 137 and the log said 'failed'. It did not fail: it never ran. The cause was memory, and CI was hiding it."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-13 08:00:00 -03:00
+pubDate: 2026-11-13 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "ci", "github-actions", "oom", "debugging", "pnpm"]
+cover: /covers/capivara-o-exit-137-que-parecia-teste-vermelho.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The pull request that touched no backend code
+
+The PR changed the frontend. No backend file, no migration, no new endpoint. Even so, the backend test job died inside the dependency install step, and the end-to-end job died while building the bundle. Both with the same exit code: **137**.
+
+137 is not a test result. It is 128 plus 9 — the kill signal. On a CI runner that almost always means the kernel killed the process for lack of memory, and the victim is whichever step is heaviest at that moment. The log, however, shows the last line of the step and then a red X. Anyone reading it concludes the tests failed. They did not fail: they never got to run.
+
+The PR had no culprit. The culprit was the clock — the exact moment it entered the queue.
+
+## What was actually measured during the failure
+
+The machine had 4,500 MB of available memory and **zero** free swap out of 59 GB. Swap was not running low: it was exhausted, with in-RAM compression saturated and the swap file at its ceiling. At the same instant another runner on the same host was driving a full browser suite. The pool had 7 runners on a 24,000 MB host, and every test browser spawns dozens of child processes.
+
+The second signal came for free: the re-run passed. Nothing in the code changed between the failure and the green. That closes it as resource contention, not a software defect — and that is exactly the information the red log never gave.
+
+## The next two false negatives on the same path
+
+The same commit carried two other problems dressed as "code bugs", both with the same signature: CI pointed at the wrong place.
+
+The first was a local secret-protection hook. It aborted the commit because of a test value that had been in the CI file since before the rule existed: the literal matched the credential pattern. The measured effect was confusing — typecheck looked clean and the backend suite passed with 246 tests, but the commit would not close. Without reading the abort line, it looked like the hooks had approved. The fix was an allowlist for obviously fake values, validated in both directions: the CI file passes, and a key that looks real is still caught.
+
+The second was more expensive: dependency overrides lived in a workspace file that only the newer package manager version parses in that format. CI runs version 9, where the key simply does not exist — the query returned empty and the vulnerable versions stayed right where they were. The file looked correct and did nothing. Moving the overrides into `package.json` changed the outcome: 5 vulnerabilities became 1, low severity and with no upstream fix at the time.
+
+```json
+{
+  "pnpm": {
+    "overrides": {
+      "glob": "^14.0.2",
+      "minimatch": "^11.0.1",
+      "deepmerge": "^4.3.1"
+    }
+  }
+}
+```
+
+## The gate that learned to count jobs, not processes
+
+The main fix was a gate placed before the heavy jobs: CI waits up to a time ceiling for a minimum of available memory and free swap. If resources never free up before the limit, it fails loudly and prints the measured numbers, instead of letting a process die mid-step and become "a red test".
+
+The first version of that gate had an error you only find by running it: it counted processes. It reported "46 heavy jobs" — which were a single browser with more than 40 child processes. Counting processes measures the shape of the process, not the load on the machine. The version that stayed walks up the parent chain to the runner owner and counts only distinct jobs:
+
+```text
+heavy_job(pid):
+  walk the PPID chain up to the runner owner
+  count the originating JOB, not the process
+  browser with 40 children  ->  1 job
+```
+
+The third adjustment was cosmetic, and therefore instructive. The gate read command lines of processes that could die between the listing and the read. The error redirect sat outside the grouping, so the "file not found" message leaked into the job log and polluted the output. Grouping the redirect took the error with it: 5 lines of noise before, zero across three runs after.
+
+## What changes when CI tells the truth
+
+Exit codes are a contract. A pipeline that reports 137 as a test failure sends the developer to the wrong place, and the green re-run confirms the wrong diagnosis — because the defect is intermittent by nature and depends on who else is in the queue. The difference between "your test is broken" and "the machine had no memory to run your test" is the difference between a lost afternoon and an infrastructure adjustment.
+
+The second lesson is quieter: configuration that exists in a file and is ignored by the version that actually runs is worse than configuration that is missing. When it is missing, someone goes looking. When it is inert, everyone assumes it is handled, and the red audit starts to look like stubbornness.
+
+And the third: a gate that waits has to say how long it waited and what was missing. Without numbers it only adds latency — and nobody ever finds out why that one job takes longer than the others.
+
+## Next step
+
+The gate currently protects the backend and end-to-end jobs. The next step is measuring what it costs on a small PR, where there is no memory contention, to confirm the wait is close to zero in the comfortable case — and only grows when the machine really is full.
