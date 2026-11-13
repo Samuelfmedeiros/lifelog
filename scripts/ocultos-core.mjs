@@ -85,7 +85,7 @@ export function collectHidden() {
     const slug = (lang === 'en' ? parts.slice(1) : parts).join('/').replace(/\.mdx$/, '');
     const contentStart = raw.indexOf('---', 3);
     const content = contentStart !== -1 ? raw.slice(contentStart + 3).trim().slice(0, 30000) : '';
-    posts.push({ path: rel, slug, lang, title: fm.title || slug, date: fm.pubDate || fm.date || '', project: fm.project || '', content });
+    posts.push({ path: rel, slug, lang, title: fm.title || slug, date: fm.pubDate || fm.date || '', project: fm.project || '', cover: fm.cover || '', content });
   }
   return posts;
 }

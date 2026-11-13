@@ -129,7 +129,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     var el = document.createElement('div');
     el.className = 'p-5 rounded-xl';
     el.style.cssText = 'background: var(--color-bg-card); border: 1px solid var(--color-border)';
+    // Capa: o card TEM que mostrar a imagem. Antes o entry nem trazia `cover`
+    // (ocultos-core.mjs nao copiava o campo) e a lista mostrava post sem capa —
+    // o Samuel via "esta sem capa" e nao tinha como saber se o post tinha capa.
+    // Fallback: capa ausente -> bloco com icone do projeto, nunca card vazio mudo.
+    var coverHtml = entry.cover
+      ? '<img src="' + esc(entry.cover) + '" alt="" loading="lazy" class="w-full h-32 object-cover rounded-lg mb-3" style="border: 1px solid var(--color-border)" onerror="this.style.display=\'none\';this.nextElementSibling&&(this.nextElementSibling.style.display=\'flex\')" />' +
+        '<div class="w-full h-32 rounded-lg mb-3 items-center justify-center text-xs hidden" style="display:none;background: var(--color-bg); border: 1px dashed #ff6b6b; color: #ff6b6b">capa nao carregou: ' + esc(entry.cover) + '</div>'
+      : '<div class="w-full h-32 rounded-lg mb-3 flex items-center justify-center text-xs" style="background: var(--color-bg); border: 1px dashed var(--color-border); color: var(--color-text-muted)">SEM CAPA no frontmatter</div>';
     el.innerHTML =
+      coverHtml +
       '<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">' +
         '<div class="w-full sm:flex-1 sm:min-w-0">' +
           '<div class="flex flex-wrap items-center gap-1 mb-1">' +

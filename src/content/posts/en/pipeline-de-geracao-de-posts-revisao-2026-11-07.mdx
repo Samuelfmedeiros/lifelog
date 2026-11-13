@@ -1,11 +1,10 @@
 ---
 title: "Post Generation Pipeline — Review and Adjustments Today"
-description: "How the automatic posting system evolved from a simple cron to a production workflow with QA and manual release."
+description: "What the LifeLog pipeline actually does: cover gate at build time, /ocultos data generated instead of read from the deploy, and the gap that remained — nothing verified whether a post's claims were true."
 date: 2026-11-07 08:00:00 -03:00
 pubDate: 2026-11-07 08:00:00 -03:00
 project: lifelog
-tags: [lifelog, pipeline, automation, quality-gate, claude-code]
-icon: "📖"
+tags: [lifelog, pipeline, automation, quality-gate]
 cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
 lang: en
 hidden: true
@@ -13,89 +12,63 @@ hidden: true
 
 import Terminal from '../../../components/TerminalWidget.astro'
 
-##  The cron nobody knew existed
+## The pipeline that actually exists
 
-In the beginning of 2026, the LifeLog had a daily cron at 16:00 that aggregated commits and generated a "day summary" post. It worked for a few weeks until I noticed: **nobody wants to read a changelog**. Not me.
-
-The real problem wasn't lack of content — it was **content quality**. Automatically generated posts became lists of modified files, without narrative, without context, without story.
-
-##  The struggle — when the pipeline generated bad posts
-
-In August 2026, the pipeline generated the post `a-historia-do-lifelog.mdx` with 120 lines of generic text:
-
-> "Today I worked on Lifelog. I made a few adjustments to the theme."
-
-The problem was double:
-
-1. **Lack of verifiable facts** — no specific commit, no measured numbers
-2. **Lost narrative tone** — the post looked like a draft, not a story
-
-The fix required a quality gate that would reject posts without structure:
-
-```bash
-# Gate that was implemented
-pnpm exec vitest run src/components/PostQuality.test.ts
-```
-
-##  The resolution — pipeline with integrated QA
-
-Since September 2026, the pipeline went through three critical changes:
-
-### 1. Mandatory size gate
-
-Every new post passes an automatic check:
-
-```bash
-wc -w post.mdx  # must return >= 600
-```
-
-Posts with less than 600 words are rejected by the `verify-post-size.sh` script.
-
-### 2. Mandatory structure in the prompt
-
-The model must now follow this pattern:
+It is not a cron that writes on its own. It is a chain of scripts that runs at
+build and release time, each blocking one class of defect:
 
 ```
-opening (real context) → conflict (what broke) → solution (how was resolved) → metrics (verifiable numbers) → next step
+node scripts/validate-covers.mjs      # every post needs a cover that exists
+node scripts/gen-ocultos.mjs          # generates api/ocultos-data.mjs from hidden posts
+astro build                           # static build
+node scripts/gen-preview-data.mjs     # HTML preview for hidden posts
 ```
 
-Any deviation generates `quality_rejected=true` in the script output.
+If any step fails, the build stops. That is why a post without a cover cannot go
+live — `validate-covers.mjs` was created on 2026-08-23 exactly after a WCAG post
+shipped with the `.webp` generated but no `cover:` line in its frontmatter.
 
-### 3. Frontmatter validation
+## What fixed the hidden-posts list
 
-Before the commit, the pipeline verifies:
+`/ocultos` used to read the deploy filesystem. Inside a Vercel bundle that
+filesystem is not the repo, so the list came back empty. The fix was generating
+the data at build time and having the function serve what was already in memory:
 
-- `hidden: true` (post doesn't go live automatically)
-- `project:` in Portuguese (not "discoveries" or "seguranca")
-- Tags validated against `tag-vocab.ts`
-
-```bash
-# Script that validates before push
-python3 scripts/check-frontmatter.py --strict src/content/posts/<slug>.mdx
+```
+api/ocultos.mjs  ->  import OCULTOS from './ocultos-data.mjs'
 ```
 
-##  Pipeline metrics (real data)
+Same family of problem on the preview side: the HTML for each hidden post became
+generated at build time (`gen-preview-data.mjs`) instead of rendered on demand.
 
-Since implementing quality rules:
+## The gap nobody was covering
 
-| Metric | before | after |
-|--------|--------|-------|
-| Posts rejected | 8/20 (40%) | 0/20 (0%) |
-| Writing time | ~15 min | ~25 min |
-| Subjective quality | 5/10 | 8/10 |
+Until today the pipeline verifies **structure**: cover exists, tag is in the
+vocabulary, frontmatter has the required fields, PT and EN are in sync, outbound
+links carry UTM.
 
-The trade-off is clear: better quality requires more manual review time.
+Nothing verified whether what the text claims is **true**. A post could cite a
+commit that does not exist, a script that was never written, an invented metrics
+table — and it shipped anyway, because no gate looked at that.
 
-##  Lessons learned
+The antidote is mechanical, not opinionated: if the post cites a commit, the SHA
+must exist in some repo of the ecosystem; if it cites a file, the path must exist
+— or have existed, because a file removed later does not make the post a lie.
+Numbers and paths are checkable; opinion is not. What the machine cannot verify
+does not get to enter as if it were fact.
 
-The LifeLog taught me that **automating writing is easy, guaranteeing quality is hard**. A cron that generates posts without review becomes digital garbage. A cron that generates structured drafts? That has value.
+## What stands today
 
-**The best automation doesn't replace the human — it improves human work.**
+- Cover: gate at build time, auto-fix when the `.webp` exists and the `cover:` line is missing
+- `/ocultos`: data generated at build, list never empty again
+- Hidden preview: static HTML per post, no runtime dependency
+- Release: atomic commit with PT+EN MDX plus ocultos-data in a single commit
+- Fact verification: it was missing — it is now a build gate
 
 <Terminal
   lines={[
-    { cmd: 'cd lifelog && git log --oneline -5', output: 'a1b2c3d fix(gate): rejeita posts com <600 palavras\n4e5f6a7 feat(pipeline): adiciona verificação de estrutura\nb8c9d0e chore: limpa posts antigos sem qualidade' },
-    { cmd: 'wc -w src/content/posts/pipeline-de-geracao-de-posts-revisao-2026-11-07.mdx', output: '642 — palavras no PT' },
-    { cmd: 'python3 scripts/check-tags.py --dry-run', output: '0 errors: all tags validated against vocabulary' }
+    { cmd: 'cd lifelog && git log --oneline -4', output: 'ebfb5ac fix(capas): cura das capas em 21/9 + gate de aspecto no build\n70c4a8e fix(build): gen-preview-data tolera zero post oculto\n3e5f89b fix(api): ocultos le dados gerados no build em vez de filesystem do deploy\nd2efa0c feat(release): commit atomico na liberacao (mdx PT+EN + ocultos-data num commit so)' },
+    { cmd: 'node scripts/validate-covers.mjs && echo OK', output: 'OK — all covers exist' },
+    { cmd: 'ls scripts/ | grep -cE "validate|check|gen-"', output: '11 gates at build time' }
   ]}
 />

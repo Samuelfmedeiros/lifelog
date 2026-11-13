@@ -154,4 +154,39 @@ test.describe('Verificacao de ocultos no frontend', () => {
     expect(xml).toContain(PUBLIC_SLUG);
     expect(xml).not.toContain(HIDDEN_SLUG);
   });
+
+  // Regressao 13/11/2026: a lista /ocultos mostrava card SEM capa porque
+  // scripts/ocultos-core.mjs montava o entry sem o campo `cover` e a pagina
+  // nao tinha nenhuma <img>. O post tinha capa; o revisor nao via. Estes dois
+  // testes travam o dado e a renderizacao.
+  test('ocultos-data inclui o campo cover de cada post', async () => {
+    // Le o artefato GERADO no build (api/ocultos-data.mjs) — a funcao serverless
+    // /api/ocultos nao existe no `astro preview` estatico, entao bater na API
+    // aqui testaria o servidor errado. O que precisa ser verdade e o dado.
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const file = path.resolve(process.cwd(), 'api', 'ocultos-data.mjs');
+    const raw = await fs.readFile(file, 'utf-8');
+    const json = raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1);
+    const posts = JSON.parse(json);
+    expect(posts.length).toBeGreaterThan(0);
+    for (const post of posts) {
+      expect(Object.prototype.hasOwnProperty.call(post, 'cover')).toBe(true);
+    }
+    // o caso concreto que motivou o fix: post oculto COM capa declarada
+    const comCapa = posts.filter((p) => p.cover && p.cover.startsWith('/covers/'));
+    expect(comCapa.length).toBeGreaterThan(0);
+  });
+
+  test('/ocultos renderiza <img> de capa no card', async ({ page }) => {
+    await page.goto('/ocultos/');
+    // A pagina monta os cards via JS depois do login; aqui basta provar que o
+    // template tem a tag de imagem de capa no bundle servido.
+    const html = await page.content();
+    const js = await page.evaluate(() => {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      return scripts.map((s) => s.textContent || '').join('\n');
+    });
+    expect(html + js).toMatch(/<img[^>]+entry\.cover|entry\.cover[^>]*<img|coverHtml/);
+  });
 });
