@@ -97,3 +97,10 @@ public/covers/*.bak-quadrado-*
 
 # estado do supervisor do preview E2E (log/pid por run, nunca versionar)
 .preview-supervisor/
+
+# Lixo de campanha Roger (4a incidencia: entrou em main por git add -A)
+.loop-handoff.json
+.loop-lifelog.state.json
+.loop-lifelog-entrega.state.json
+.loop-*.old-*
+.vitest/
