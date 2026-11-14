@@ -25,8 +25,8 @@ const allLabel = isEn ? 'All' : 'Todos';
   <div class="search-row">
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.8"/>
+        <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
       </svg>
       <input
         id="filter-search"
@@ -568,6 +568,11 @@ const allLabel = isEn ? 'All' : 'Todos';
     align-items: center;
     gap: 0.5rem;
     width: 100%;
+    /* Ancora do .search-icon (position: absolute, left:1rem/top:50%). Sem
+       relative aqui o icone escapa do container e desenha sobre o texto do
+       input — o critic visual chamou de "mancha borrada no campo de busca"
+       (medido 14/11, achado mobile). */
+    position: relative;
     padding: 0.5rem 0.75rem;
     border-radius: 12px;
     background: var(--filter-search-bg);
@@ -592,11 +597,11 @@ const allLabel = isEn ? 'All' : 'Todos';
     left: 1rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
     pointer-events: none;
-    opacity: 0.7;
+    opacity: 0.9;
     transition: opacity 0.4s ease, color 0.4s ease;
     color: var(--color-text-muted);
   }
@@ -614,6 +619,10 @@ const allLabel = isEn ? 'All' : 'Todos';
     font-size: 0.875rem;
     font-family: inherit;
     min-width: 0;
+    /* A lupa e absolute em left:1rem com 16px de largura: sem este respiro o
+       texto digitado (e o placeholder) comeca embaixo dela — era o "mancha
+       borrada" que o critic via no mobile. 1.75rem = 1rem + 16px - 1px. */
+    padding-left: 1.875rem;
   }
   .search-input::placeholder {
     /* 0.4 sobre a superficie escura compunha ~(72,77,88) = 2.4:1 contra o

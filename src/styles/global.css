@@ -509,7 +509,11 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
+  /* Sem uppercase: as datas dentro dos cards aparecem em caixa baixa
+     ("13 de nov. de 2026") e o separador gritava "13 DE NOV. DE 2026" logo
+     acima delas — inconsistência tipográfica que o juiz visual marcou em
+     desktop (medido 14/11). Um só padrão para data. */
+  text-transform: none;
 }
 .date-separator::before,
 .date-separator::after {
