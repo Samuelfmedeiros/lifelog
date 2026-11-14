@@ -1,0 +1,73 @@
+---
+title: "Yurumi: the memory layer that locked its own database"
+description: "Four fixes in four days around the same SQLite file: descriptors nobody closed, a schema that demanded a write lock on every boot, and two mute exception handlers. The database was never corrupted — it was held hostage by connections the code forgot to close."
+date: 2026-11-14 16:00:00 -03:00
+pubDate: 2026-11-14 16:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "sqlite", "memory", "reliability", "python", "observability"]
+cover: /covers/yurumi-a-memoria-que-travava-o-proprio-banco.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The message that showed up everywhere except where it mattered
+
+`sqlite3.OperationalError: database is locked` has a property that makes it expensive to diagnose: it never names the culprit. It says the file is busy, but not who is holding it, for how long, or since when. When the database is local and the process is single, the answer is obvious. When six processes share the same file, the message becomes a note with no signature.
+
+In Yurumi — the memory layer that stores what the agents talked about, decided and learned — that single file is the center of everything. It holds the memories, the full-text search index, the work announcements between agents and the job state. Four days in a row, four commits, and each one revealed the cause lived in a different place. Every one of them carried the same signature in the log.
+
+## The first one: 39 descriptors held by code that never closed them
+
+November eleventh. The first symptom was a round-trip test failing because of the service, not because of the test. The route that publishes and clears a work announcement between agents started taking thirty seconds — exactly the lock wait timeout — and then failing.
+
+The measurement explained the rest. The announcement store created the connection lazily and never called close. Every announcement published through an HTTP request left a connection open. In six hours of uptime, a single worker accumulated **39 open descriptors on the same file**, 17 of them pointing at a pending write file that had already been deleted from disk. The process was holding locks on a file that no longer existed.
+
+The fix was boring, which is exactly why it works: explicit close, context manager support, and `finally` at all three entry points. One detail mattered more than the rest: **only close what you own**. The store can be injected from outside, and whoever injects it owns the connection — closing what you did not open trades a leak for a use-after-free. The two exception handlers that swallowed everything in silence now record the type and the reason. Measured proof: five cycles of open, end and list left 4 descriptors before and leave 4 after, instead of growing by one per call.
+
+## The second and third: the same leak elsewhere, and a schema demanding writes
+
+November thirteenth, two commits in one day. The first was the same defect in another spot: the agent loop instantiated the store and never closed it. The job runs every ten minutes. Each run left a connection open with a pending transaction, and the next run died on the same error — exit code 1 on every tick, a 52 KB pending journal on disk and the main file already at 801 MB.
+
+```python
+store = MemoryStore(collection=args.collection)
+try:
+    loop = AgentLoop(store)
+    summary = loop.run_once(dry_run=args.dry_run)
+finally:
+    store.close()
+```
+
+The second commit of the day was the most instructive, because the defect was not a leak: it was the opposite. The schema was created on **every** boot of the store, and every cron job instantiates the store. Creating a table requires a write lock. With six processes sharing the file, the creation script blew through the lock and the constructor died before doing anything useful.
+
+The surprising part is why the thirty second wait timeout did not save it. That script is not a single transaction: it commits implicitly on every statement. The timeout buys time to wait for the lock, it does not undo what was already partially committed.
+
+The fix had three parts, and the first matters most:
+
+```python
+already_there = conn.execute(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories'"
+).fetchone() is not None
+if already_there:
+    return
+```
+
+If the table exists, there is no schema to create — so there is no reason to ask for a write lock. Only those who actually need to create it wait, with a six attempt backoff. And the last part is a deliberate concession: a lock failure during initialization **does not tear down the constructor**. The store comes up anyway and the first `INSERT` is what reports the problem. Proof: five initializations passed while a write lock was held by another process (previously: exception), a fresh database created the table and the full-text index, and eight out of eight writes went through without a lock, against two out of three before.
+
+## What this changes
+
+The database was never corrupted. It was **busy** — and the business was caused by the code itself, which forgot open connections and asked for writes it did not need. The error message was technically accurate and completely useless, because the culprit and the victim were the same program.
+
+The transferable lesson is about where to look first. Facing a lock, the instinct is to raise the timeout. The timeout only buys time for a process that will be slow doing what it must; when the problem is descriptor leakage, waiting longer just makes the symptom arrive later and cost more. The right question is not how long to wait, it is **who is holding it**. The second question, less obvious: did this operation need a write at all? An existing schema does not.
+
+Closing this required fixing every open point, not the main one. Fixing the agent loop while leaving the announcement path leaking gives you the same lock with half the diagnosis. A leak is always a sum — and a sum does not close by fixing the biggest term.
+
+## The fourth: when the guard and the source fought each other
+
+November fourteenth brought a defect of a different nature, in the same background file. A time bound on the prefetch path existed because the announcement work, unbounded, blew the response budget — measured at 24.79 seconds against a 20 second budget. The snippet was applied to the plugin mirror, and a guard reapplied that snippet every fifteen minutes. The sync copied the source over it right after, without the snippet. Endless war: the job exited with code 4 on every tick and the hash divergence between source and mirror was permanent.
+
+The fix was to stop repairing the mirror and change the source — the place the sync copies from. Proof: thirteen copies sharing the same hash, the guard clean on two consecutive runs without reapplying, and the state stable 45 seconds later. As long as the fix lives in a derived copy, the next sync will undo it. That holds for generated files, container images and replicated configuration.
+
+## Next step
+
+The four fixes closed the symptom, not the class of problem. What is missing is continuous measurement: tracking descriptor counts per process over time, so that a new leak shows up as a rising number before it becomes a lock. A guard that only checks whether the service responds cannot tell healthy from slowly leaking — and the second state is exactly what cost four days.
