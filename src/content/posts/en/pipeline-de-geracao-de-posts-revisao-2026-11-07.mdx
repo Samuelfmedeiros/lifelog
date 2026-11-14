@@ -5,7 +5,7 @@ date: 2026-11-07 08:00:00 -03:00
 pubDate: 2026-11-07 08:00:00 -03:00
 project: lifelog
 tags: [lifelog, pipeline, automation, quality-gate]
-cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
+cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07-v3.webp
 lang: en
 hidden: true
 ---
@@ -56,6 +56,19 @@ must exist in some repo of the ecosystem; if it cites a file, the path must exis
 — or have existed, because a file removed later does not make the post a lie.
 Numbers and paths are checkable; opinion is not. What the machine cannot verify
 does not get to enter as if it were fact.
+
+The difference between "valid structure" and "true claim" became concrete the
+first time the gate ran against a draft: the cover existed, the frontmatter was
+complete, PT and EN matched — and the text cited two hashes that exist in no
+repository on the machine. None of the earlier gates looked at that. The whole
+build stayed green over a post describing work that never happened, which is worse
+than an ugly post: it is a record that lies with the appearance of an audit.
+
+The gate now runs inside the `pnpm build` chain, between the cover validation and
+the hidden-posts list generation, and its stopping criterion is the same as every
+other: found it, fail the build. There is no tolerant mode and no warning that
+lets it through. That choice was deliberate — a gate that only warns becomes noise
+within two weeks, and everyone learns to ignore the yellow.
 
 ## What stands today
 

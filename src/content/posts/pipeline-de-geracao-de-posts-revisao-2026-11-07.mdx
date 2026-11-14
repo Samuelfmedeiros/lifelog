@@ -5,7 +5,7 @@ date: 2026-11-07 08:00:00 -03:00
 pubDate: 2026-11-07 08:00:00 -03:00
 project: lifelog
 tags: [lifelog, pipeline, automation, quality-gate]
-cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07.webp
+cover: /covers/pipeline-de-geracao-de-posts-revisao-2026-11-07-v3.webp
 hidden: true
 ---
 
@@ -54,6 +54,20 @@ existir em algum repo do ecossistema; se cita um arquivo, o caminho tem que
 existir — ou ter existido, porque arquivo removido depois não torna o post
 mentira. Número e path são checáveis; opinião não. O que não pode ser verificado
 pela máquina não entra como se fosse fato.
+
+A diferença entre "estrutura válida" e "afirmação verdadeira" ficou concreta na
+primeira vez que o gate rodou contra um rascunho: a capa existia, o frontmatter
+estava completo, PT e EN batiam — e o texto citava dois hashes que não existem em
+nenhum repositório da máquina. Nenhum dos gates anteriores olhava para isso. O
+build inteiro ficava verde com um post que descrevia trabalho que nunca aconteceu,
+o que é pior do que um post feio: é um registro que mente com aparência de
+auditoria.
+
+O gate hoje roda na cadeia do `pnpm build`, entre a validação de capa e a geração
+da lista de ocultos, e o critério de parada é o mesmo de qualquer outro: achou,
+derruba o build. Não existe modo tolerante nem aviso que deixa passar. A escolha
+foi deliberada — gate que só avisa vira ruído em duas semanas e todo mundo aprende
+a ignorar o amarelo.
 
 ## O que ficou de pé
 
