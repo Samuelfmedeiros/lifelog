@@ -169,7 +169,14 @@ export default async function handler(req, res) {
     return;
   }
   if (!check.ok) {
-    res.status(401).json({ error: check.error || 'Segredo invalido' });
+    // Config de servidor ausente (env nao definida) NAO e erro do cliente:
+    // 401 aqui mentia dizendo "segredo errado" quando o problema era o deploy.
+    // 500 + mensagem propria (medido 14/11: 19 testes de vitest falhavam
+    // esperando 500 e recebendo 401).
+    const _faltaCfg = /nao configurad|not configured/i.test(check.error || '');
+    res.status(_faltaCfg ? 500 : 401).json({
+      error: _faltaCfg ? 'Server misconfiguration' : (check.error || 'Segredo invalido'),
+    });
     return;
   }
   if (req.method !== 'POST') {

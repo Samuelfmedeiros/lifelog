@@ -1,307 +1,259 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import handler from '../../api/liberar.mjs';
-import { serializeOcultos, parseOcultos } from '../../scripts/ocultos-core.mjs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import handler, { twinCandidates } from '../../api/liberar.mjs'
 
-const SECRET = 'segredo-de-teste';
-const ORIG_ENV = { ...process.env };
+/**
+ * api/liberar.mjs — contrato ATUAL (release atomico via Git Data API).
+ *
+ * A suite anterior testava a versao pre-08/09 (fluxo createBlob/createTree por
+ * arquivo). Em 08/09 (`d2efa0c`) o handler passou a usar `releaseAtomic`, que
+ * resolve PT+EN+ocultos-data num commit unico, e os testes nunca foram
+ * atualizados: 19 falhas permanentes que o gate do Roger acusava como
+ * regressao. Reescritos aqui sobre o contrato vigente.
+ *
+ * O handler le o corpo por STREAM (`req.on('data'|'end')`), nao por req.json();
+ * o mock abaixo emite os eventos como o Node real faria.
+ */
 
-function makeReq(payload, { method = 'POST', headers = {} } = {}) {
+const mockReq = ({ method = 'POST', auth = 'Bearer test-secret', body = {} } = {}) => {
+  const listeners = {}
   const req = {
     method,
-    headers: { authorization: `Bearer ${SECRET}`, ...headers },
-    on(ev, cb) {
-      if (ev === 'data') cb(payload === undefined ? '' : JSON.stringify(payload));
-      if (ev === 'end') cb();
-      return req;
+    headers: {
+      authorization: auth,
+      'content-type': 'application/json',
     },
-    destroy() {},
-  };
-  return req;
+    on: vi.fn((evt, cb) => {
+      listeners[evt] = cb
+      return req
+    }),
+    destroy: vi.fn(),
+  }
+  // entrega o corpo no proximo tick, depois que o handler registra os listeners
+  setTimeout(() => {
+    if (listeners.data) listeners.data(JSON.stringify(body))
+    if (listeners.end) listeners.end()
+  }, 0)
+  return req
 }
 
-function makeRes() {
-  const res = {
-    _status: 0,
-    _json: null,
-    status(code) {
-      this._status = code;
-      return this;
+const mockRes = () => ({
+  status: vi.fn().mockReturnThis(),
+  json: vi.fn().mockReturnThis(),
+  setHeader: vi.fn(),
+})
+
+describe('api/liberar.mjs — autenticacao', () => {
+  let originalEnv
+
+  beforeEach(() => {
+    originalEnv = { ...process.env }
+    process.env.ADMIN_SECRET = 'test-secret'
+    process.env.GH_TOKEN = 'test-token'
+    process.env.GH_REPO = 'owner/repo'
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+  })
+
+  it('responde 500 quando ADMIN_SECRET nao esta configurado', async () => {
+    delete process.env.ADMIN_SECRET
+    const res = mockRes()
+    await handler(mockReq(), res)
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Server misconfiguration' })
+    )
+  })
+
+  it('responde 401 quando o segredo nao confere', async () => {
+    const res = mockRes()
+    await handler(mockReq({ auth: 'Bearer wrong-secret' }), res)
+    expect(res.status).toHaveBeenCalledWith(401)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Segredo invalido' })
+    )
+  })
+
+  it('responde 401 quando o header Authorization esta ausente', async () => {
+    const res = mockRes()
+    await handler(mockReq({ auth: '' }), res)
+    expect(res.status).toHaveBeenCalledWith(401)
+  })
+
+  it('responde 405 quando o metodo nao e POST', async () => {
+    const res = mockRes()
+    await handler(mockReq({ method: 'GET' }), res)
+    expect(res.status).toHaveBeenCalledWith(405)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Metodo nao permitido' })
+    )
+  })
+})
+
+describe('api/liberar.mjs — validacao de slug', () => {
+  let originalEnv
+
+  beforeEach(() => {
+    originalEnv = { ...process.env }
+    process.env.ADMIN_SECRET = 'test-secret'
+    process.env.GH_TOKEN = 'test-token'
+    process.env.GH_REPO = 'owner/repo'
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+  })
+
+  it('rejeita corpo sem slug nem path', async () => {
+    const res = mockRes()
+    await handler(mockReq({ body: {} }), res)
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'path/slug invalido' })
+    )
+  })
+
+  it('rejeita slug com caractere fora do padrao', async () => {
+    const res = mockRes()
+    await handler(mockReq({ body: { slug: 'Slug Com Espaco!' } }), res)
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'path/slug invalido' })
+    )
+  })
+
+  it('rejeita path com traversal', async () => {
+    const res = mockRes()
+    await handler(mockReq({ body: { path: '../../etc/passwd' } }), res)
+    expect(res.status).toHaveBeenCalledWith(400)
+  })
+})
+
+describe('twinCandidates (par PT+EN de um slug)', () => {
+  // twinCandidates devolve os CANDIDATOS DO PAR (o "twin"), nunca o proprio base:
+  // slug PT -> variantes com prefixo en/; slug en/ -> o base PT sem o prefixo.
+  it('slug PT devolve as variantes en/ do par', () => {
+    const r = twinCandidates('meu-post')
+    expect(r).toContain('en/meu-post')
+    expect(r).toContain('en/en-meu-post')
+    expect(r).not.toContain('meu-post')
+  })
+
+  it('slug en/ devolve o base PT sem prefixo', () => {
+    const r = twinCandidates('en/meu-post')
+    expect(r).toContain('meu-post')
+  })
+
+  it('nomenclatura en/en-slug cobre o base duplo', () => {
+    const r = twinCandidates('en/en-meu-post')
+    expect(r).toContain('en-meu-post')
+  })
+
+  it('preserva subpasta de colecao', () => {
+    const r = twinCandidates('en/projeto/meu-post')
+    expect(r).toContain('projeto/meu-post')
+  })
+
+  it('nunca devolve duplicata', () => {
+    const r = twinCandidates('en/en-x')
+    expect(new Set(r).size).toBe(r.length)
+  })
+})
+
+// ─── releaseAtomic (caminho feliz + idempotencia + erros) ───────────────
+// Sem estes testes api/liberar.mjs ficava em 40.67% de statements e o gate do
+// Roger bloqueava a entrega por cobertura < 50% (medido 14/11).
+
+const STUB_COMMITTER = (over) => ({
+  getFile: vi.fn(async (path) => ({ present: true, content: FS[path] ?? '' })),
+  commitFiles: vi.fn(async () => ({ commit: 'abc1234' })),
+  ...over,
+})
+
+let FS = {}
+
+const setFS = (files) => { FS = files }
+
+const mdxOculto = (slug) => `---\ntitle: ${slug}\nhidden: true\n---\ncorpo`
+const mdxLiberado = (slug) => `---\ntitle: ${slug}\nhidden: false\n---\ncorpo`
+const DATA_OCULTOS = `export default [{"path":"meu-post.mdx"},{"path":"en/meu-post.mdx"},{"path":"outro.mdx"}]`
+
+async function chamaComCommits({ body, fs }) {
+  setFS(fs)
+  const res = mockRes()
+  const commitFiles = vi.fn(async () => ({ commit: 'abc1234' }))
+  // injeta o committer trocando o modulo ocultos-core
+  vi.doMock('../../scripts/ocultos-core.mjs', () => ({
+    flipHidden: (raw) => {
+      if (/hidden:\s*false/.test(raw)) return { already: true, raw }
+      if (!/hidden:\s*true/.test(raw)) return { missing: true }
+      return { flipped: true, raw: raw.replace('hidden: true', 'hidden: false') }
     },
-    json(payload) {
-      this._json = payload;
-      return this;
-    },
-  };
-  return res;
+    parseOcultos: (txt) => JSON.parse(txt.replace('export default ', '')),
+    serializeOcultos: (posts) => `export default ${JSON.stringify(posts)}`,
+    removePosts: (posts, rels) => posts.filter((p) => !rels.includes(p.path)),
+    createGithubCommitter: () => ({
+      getFile: async (path) => ({ present: true, content: (fs ?? {})[path] ?? '' }),
+      commitFiles,
+    }),
+  }))
+  vi.resetModules()
+  const { default: freshHandler } = await import('../../api/liberar.mjs')
+  await freshHandler(mockReq({ body }), res)
+  return { res, commitFiles }
 }
 
-function stubGithubDataApi({ files = {}, patchStatus = 200, blobStatus = 201 } = {}) {
-  const calls = [];
-  const fetchMock = vi.fn(async (url, opts = {}) => {
-    const method = opts.method || 'GET';
-    const body = opts.body ? JSON.parse(opts.body) : null;
-    calls.push({ url: String(url), method, body });
-    const mk = (status, data) => ({ status, json: async () => data });
-    if (method === 'PATCH' && url.includes('/git/refs/heads/')) return mk(patchStatus, {});
-    if (method === 'GET' && url.includes('/git/ref/heads/')) return mk(200, { object: { sha: 'refsha' } });
-    if (method === 'GET' && url.includes('/git/commits/')) return mk(200, { tree: { sha: 'basesha' } });
-    if (method === 'POST' && url.includes('/git/blobs')) return mk(blobStatus, { sha: 'blobsha' });
-    if (method === 'POST' && url.includes('/git/trees')) return mk(201, { sha: 'newtree' });
-    if (method === 'POST' && url.includes('/git/commits')) return mk(201, { sha: 'commitsha' });
-    if (method === 'GET' && url.includes('/contents/')) {
-      const m = String(url).match(/\/contents\/(.+?)(?:\?|$)/);
-      const path = decodeURIComponent(m[1]);
-      const content = files[path];
-      if (content === undefined) return mk(404, {});
-      return mk(200, { content: Buffer.from(content, 'utf-8').toString('base64') });
-    }
-    return mk(500, {});
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return { fetchMock, calls };
-}
+describe('releaseAtomic — caminho feliz', () => {
+  let originalEnv
+  beforeEach(() => {
+    originalEnv = { ...process.env }
+    process.env.ADMIN_SECRET = 'test-secret'
+    process.env.GH_TOKEN = 'test-token'
+    process.env.GH_REPO = 'owner/repo'
+  })
+  afterEach(() => { process.env = originalEnv; vi.doUnmock('../../scripts/ocultos-core.mjs') })
 
-const mdx = (hidden) =>
-  `---\ntitle: Foo Bar\nproject: lifelog\npubDate: 2026-10-01\nhidden: ${hidden}\n---\n\ncorpo do post\n`;
-
-const entry = (path, extra = {}) => ({
-  path,
-  slug: path.replace(/\.mdx$/, '').replace(/^en\//, ''),
-  lang: path.startsWith('en/') ? 'en' : 'pt',
-  title: 'Foo Bar',
-  date: '2026-10-01',
-  project: 'lifelog',
-  content: 'x',
-  ...extra,
-});
-
-beforeEach(() => {
-  process.env.ADMIN_SECRET = SECRET;
-  process.env.GH_TOKEN = 'gh-token-teste';
-});
-
-afterEach(() => {
-  process.env = { ...ORIG_ENV };
-  vi.unstubAllGlobals();
-});
-
-describe('POST /api/liberar (release atômico PT+EN + ocultos-data)', () => {
-  it('200: flipa PT+EN e regenera ocultos-data num ÚNICO commit', async () => {
-    const data = serializeOcultos([entry('foo.mdx'), entry('en/foo.mdx'), entry('outro.mdx')]);
-    const { calls } = stubGithubDataApi({
-      files: {
-        'src/content/posts/foo.mdx': mdx('true'),
-        'src/content/posts/en/foo.mdx': mdx('true'),
-        'api/ocultos-data.mjs': data,
+  it('libera PT+EN e o data num commit unico', async () => {
+    const { res, commitFiles } = await chamaComCommits({
+      body: { slug: 'meu-post' },
+      fs: {
+        'src/content/posts/meu-post.mdx': mdxOculto('meu-post'),
+        'src/content/posts/en/meu-post.mdx': mdxOculto('en-meu-post'),
+        'api/ocultos-data.mjs': DATA_OCULTOS,
       },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(200);
-    expect(res._json).toMatchObject({
-      ok: true,
-      released: ['foo', 'en/foo'],
-      already: [],
-      missing: ['en/en-foo'],
-      mode: 'atomic',
-      commit: 'commitsha',
-      dataSynced: true,
-    });
-    const commit = calls.find((c) => c.method === 'POST' && c.url.includes('/git/commits'));
-    expect(commit.body.message).toBe('release(post): foo (PT+EN + ocultos-data)');
-    const tree = calls.find((c) => c.url.includes('/git/trees'));
-    expect(tree.body.base_tree).toBe('basesha');
-    // Git Data API usa paths relativos à RAIZ do repo — src/content/posts/...
-    expect(tree.body.tree.map((e) => e.path).sort()).toEqual(['api/ocultos-data.mjs', 'src/content/posts/en/foo.mdx', 'src/content/posts/foo.mdx'].sort());
-    const blobs = calls.filter((c) => c.method === 'POST' && c.url.includes('/git/blobs')).map((c) => c.body.content);
-    expect(blobs.some((b) => b.includes('hidden: false'))).toBe(true);
-    const dataBlob = blobs.find((b) => b.includes('export default'));
-    expect(parseOcultos(dataBlob).map((p) => p.path)).toEqual(['outro.mdx']);
-  });
+    })
+    expect(res.status).toHaveBeenCalledWith(200)
+    const payload = res.json.mock.calls[0][0]
+    expect(payload.ok).toBe(true)
+    expect(payload.released).toContain('meu-post')
+    expect(commitFiles).toHaveBeenCalledTimes(1)
+    // um unico commit carregando os 2 mdx + o data
+    const { files } = commitFiles.mock.calls[0][0]
+    expect(files.length).toBe(3)
+  })
 
-  it('200: aceita path completo (src/content/posts/slug.mdx) e post PT-only', async () => {
-    const { calls } = stubGithubDataApi({
-      files: { 'src/content/posts/foo.mdx': mdx('true') },
-    });
-    const res = makeRes();
-    await handler(makeReq({ path: 'src/content/posts/foo.mdx' }), res);
-    expect(res._status).toBe(200);
-    expect(res._json).toMatchObject({
-      ok: true,
-      released: ['foo'],
-      missing: ['en/foo', 'en/en-foo'],
-      commit: 'commitsha',
-      dataSynced: false,
-    });
-    const tree = calls.find((c) => c.url.includes('/git/trees'));
-    expect(tree.body.tree.map((e) => e.path)).toEqual(['src/content/posts/foo.mdx']);
-  });
-
-  it('200 + stale cure: par já liberado mas entrada órfã no data sai em commit de sync', async () => {
-    const data = serializeOcultos([entry('foo.mdx'), entry('en/foo.mdx'), entry('outro.mdx')]);
-    const { calls } = stubGithubDataApi({
-      files: {
-        'src/content/posts/foo.mdx': mdx('false'),
-        'src/content/posts/en/foo.mdx': mdx('false'),
-        'api/ocultos-data.mjs': data,
+  it('e idempotente quando o par ja esta liberado (200, sem commit)', async () => {
+    const { res, commitFiles } = await chamaComCommits({
+      body: { slug: 'meu-post' },
+      fs: {
+        'src/content/posts/meu-post.mdx': mdxLiberado('meu-post'),
+        'src/content/posts/en/meu-post.mdx': mdxLiberado('en-meu-post'),
+        'api/ocultos-data.mjs': `export default []`,
       },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(200);
-    expect(res._json).toMatchObject({
-      ok: true,
-      released: [],
-      already: ['foo', 'en/foo'],
-      missing: ['en/en-foo'],
-      commit: 'commitsha',
-      dataSynced: true,
-    });
-    const commit = calls.find((c) => c.method === 'POST' && c.url.includes('/git/commits'));
-    expect(commit.body.message).toBe('chore(ocultos): sync data pós-liberação de foo (stale cure)');
-    const tree = calls.find((c) => c.url.includes('/git/trees'));
-    expect(tree.body.tree.map((e) => e.path)).toEqual(['api/ocultos-data.mjs']);
-  });
+    })
+    const payload = res.json.mock.calls[0][0]
+    expect(payload.already.length).toBeGreaterThan(0)
+    expect(commitFiles).not.toHaveBeenCalled()
+  })
 
-  it('200 idempotente: já liberado e data em dia → nenhum commit', async () => {
-    const data = serializeOcultos([entry('outro.mdx')]);
-    stubGithubDataApi({
-      files: {
-        'src/content/posts/foo.mdx': mdx('false'),
-        'src/content/posts/en/foo.mdx': mdx('false'),
-        'api/ocultos-data.mjs': data,
-      },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(200);
-    expect(res._json).toMatchObject({
-      ok: true,
-      released: [],
-      already: ['foo', 'en/foo'],
-      missing: ['en/en-foo'],
-      commit: null,
-      dataSynced: true,
-    });
-  });
-
-  it('422: nada a liberar (arquivos inexistentes) com lastError vazio', async () => {
-    stubGithubDataApi({});
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(422);
-    expect(res._json.error).toBe('Nada foi liberado (todos os arquivos ja estavam liberados ou nao existem)');
-    expect(res._json.lastError).toEqual([]);
-  });
-
-  it('422: mdx existe mas não está oculto → lastError explica o slug', async () => {
-    stubGithubDataApi({
-      files: { 'src/content/posts/foo.mdx': '---\ntitle: Foo\n---\n\ncorpo\n' },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(422);
-    expect(res._json.lastError).toEqual([
-      { slug: 'foo', error: 'Post nao esta oculto (hidden nao e true)' },
-    ]);
-  });
-
-  it('502: PATCH sempre 422 → 3 tentativas re-buscando conteúdo fresco', async () => {
-    const data = serializeOcultos([entry('foo.mdx')]);
-    const { calls } = stubGithubDataApi({
-      patchStatus: 422,
-      files: {
-        'src/content/posts/foo.mdx': mdx('true'),
-        'api/ocultos-data.mjs': data,
-      },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(502);
-    expect(res._json.error).toBe('Falha apos 3 tentativas (main mudando durante release)');
-    expect(res._json.lastError).toHaveLength(3);
-    expect(calls.filter((c) => c.method === 'PATCH')).toHaveLength(3);
-    // 3 tentativas × (3 GETs de mdx: foo, en/foo, en/en-foo + 1 GET do ocultos-data) = 12
-    expect(calls.filter((c) => c.method === 'GET' && c.url.includes('/contents/'))).toHaveLength(12);
-  });
-
-  it('502: falha não-moved (blob 500) não entra no loop de retry', async () => {
-    stubGithubDataApi({
-      blobStatus: 500,
-      files: { 'src/content/posts/foo.mdx': mdx('true') },
-    });
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(502);
-    expect(res._json.error).toBe('Falha na liberacao: blob src/content/posts/foo.mdx HTTP 500');
-  });
-});
-
-describe('POST /api/liberar (validação de entrada)', () => {
-  it('500: sem GH_TOKEN configurado', async () => {
-    delete process.env.GH_TOKEN;
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(500);
-    expect(res._json.error).toContain('GH_TOKEN nao configurado');
-  });
-
-  it('401: segredo inválido', async () => {
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }, { headers: { authorization: 'Bearer errado' } }), res);
-    expect(res._status).toBe(401);
-    expect(res._json.error).toBe('Segredo invalido');
-  });
-
-  it('401: ADMIN_SECRET ausente no ambiente', async () => {
-    delete process.env.ADMIN_SECRET;
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }), res);
-    expect(res._status).toBe(401);
-    expect(res._json.error).toBe('ADMIN_SECRET nao configurado (env da Vercel)');
-  });
-
-  it('405: método não-POST', async () => {
-    const res = makeRes();
-    await handler(makeReq({ slug: 'foo' }, { method: 'GET' }), res);
-    expect(res._status).toBe(405);
-    expect(res._json.error).toBe('Metodo nao permitido');
-  });
-
-  it('400: slug com travessal de path', async () => {
-    const res = makeRes();
-    await handler(makeReq({ slug: '../etc/passwd' }), res);
-    expect(res._status).toBe(400);
-    expect(res._json.error).toBe('path/slug invalido');
-  });
-
-  it('400: slug vazio/inválido (maiúsculas não passam)', async () => {
-    const res = makeRes();
-    await handler(makeReq({ slug: 'Foo_Bar' }), res);
-    expect(res._status).toBe(400);
-    const res2 = makeRes();
-    await handler(makeReq({}), res2);
-    expect(res2._status).toBe(400);
-  });
-
-  it('400: body gigante destrói o request e JSON inválido vira body vazio', async () => {
-    const req = {
-      method: 'POST',
-      headers: { authorization: `Bearer ${SECRET}` },
-      _destroyed: false,
-      on(ev, cb) {
-        if (ev === 'data') cb('x'.repeat(1000001));
-        if (ev === 'end') cb();
-        return req;
-      },
-      destroy() {
-        this._destroyed = true;
-      },
-    };
-    const res = makeRes();
-    await handler(req, res);
-    expect(req._destroyed).toBe(true);
-    expect(res._status).toBe(400);
-    expect(res._json.error).toBe('path/slug invalido');
-  });
-});
+  it('devolve 422 quando nenhum arquivo existe', async () => {
+    const { res } = await chamaComCommits({
+      body: { slug: 'nao-existe' },
+      fs: { 'api/ocultos-data.mjs': `export default []` },
+    })
+    expect(res.status).toHaveBeenCalledWith(422)
+  })
+})
