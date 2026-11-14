@@ -1,0 +1,55 @@
+---
+title: "O teste que falhou por causa do relógio, não do código"
+description: "Três suítes quebraram no mesmo dia em dois projetos diferentes, todas com a mesma mensagem de timeout — e nenhuma delas tinha regressão. A causa era o load average do host em 81. O que muda quando o orçamento do teste é dimensionado pela latência observada em vez de um número escolhido no susto."
+date: 2026-11-14 12:00:00 -03:00
+pubDate: 2026-11-14 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "vitest", "testing", "ci", "reliability", "quality", "frontend"]
+cover: /covers/estudos-o-teste-que-falhou-por-causa-do-relogio.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A falha que não se repetia
+
+Treze de novembro começou com um CI vermelho e uma frase que eu já tinha visto vezes suficientes para desconfiar dela: `Test timed out in 5000ms`. Quatro testes falhando no frontend do Capivara. Abri o código, procurei a regressão, encontrei nada. Rodei o mesmo arquivo isolado: os quatro passaram em cerca de um segundo.
+
+Teste que falha na suíte completa e passa sozinho tem um nome — teste instável, flaky — e uma fama ruim merecida. A fama faz as pessoas tratarem o sintoma como ruído: reexecuta o job, ele passa, vida que segue. Só que naquele dia três suítes diferentes quebraram, em dois projetos, com a mesma assinatura. Não era ruído. Era a máquina.
+
+## O que estava rodando na mesma máquina
+
+O host não estava executando uma tarefa. Estava executando cinco: um treino de modelo consumindo toda a GPU disponível, um modelo de visão analisando telas, um navegador automatizado, o processo do Node que roda o Vitest e o backend em Python com o pytest. O load average medido durante a janela foi oitenta e um. Depois, no meio da tarde, cinquenta e três, num host de doze núcleos.
+
+Load average é a média de processos em execução ou esperando CPU. Oitenta e um num host de doze núcleos significa, na prática, que uma tarefa pronta para rodar espera a vez com mais de seis na frente. Um teste que precisa de duzentos milissegundos de CPU num host vazio leva vários segundos numa fila dessas — e nada no código mudou para justificar isso.
+
+## Três sintomas, uma causa só
+
+O primeiro caso foi o do Capivara. O Vitest tem um tempo limite por teste com valor padrão de cinco segundos. Quatro testes do painel de administração estouravam esse relógio porque são os que mais dependem de renderização de componentes. O commit que corrigiu — `19bc6da` — moveu o limite para vinte segundos, tanto em `testTimeout` quanto em `hookTimeout`, e registrou os números da rodada: antes, código de saída 1 com quatro falhas; depois, código 0, vinte e seis arquivos e trezentos e noventa e quatro testes aprovados. O backend, em Python, fechou duzentos e quarenta e seis testes verdes na mesma janela de carga. A máquina estava lenta; o código estava intacto.
+
+O segundo apareceu horas depois, no Dogwalk. Dezenove chamadas de `waitFor` numa suíte de hook sem timeout explícito — o padrão da biblioteca de testes é um segundo. A suíte inteira tem duzentos e trinta e sete arquivos e leva cerca de trezentos segundos só de transformação e importação. Na rodada completa, aquele mesmo teste levou três segundos e seis décimos e estourou o limite; isolado, trezentos milissegundos. Uma falha falsa que aparecia e desaparecia entre rodadas. O commit `f3da6c02` passou o orçamento explícito para dez segundos e a rodada seguinte fechou com três mil e quarenta e oito testes aprovados e nenhuma falha.
+
+O terceiro é o mais instrutivo, e é de manhã. Um teste de painel esperava até cinco segundos pelo sumiço de uma camada de carregamento e mais cinco segundos dentro de um `waitFor` com callback assíncrono — total de dez, exatamente o limite global daquele arquivo. O orçamento interno consumia o orçamento externo inteiro. Sob carga cinquenta e três, a espera nunca caberia: o job de integração morreu com `Test timed out in 10000ms` e o deploy não rodou. A correção em `17d99599` não foi aumentar o número global: foi tirar o `waitFor` aninhado, esperar diretamente pelo elemento com vinte segundos por busca e dar ao caso um teto próprio de quarenta e cinco segundos.
+
+```ts
+// antes: dois relógios aninhados consumindo o limite do teste
+await waitFor(async () => {
+  expect(await findByText('Ficar Online', {}, { timeout: 2000 })).toBeTruthy()
+}, { timeout: 5000 })
+
+// depois: uma espera só, com orçamento declarado e teto no próprio caso
+const online = await findByText('Ficar Online', {}, { timeout: 20000 })
+expect(online).toBeTruthy()
+```
+
+## O que isso muda
+
+A lição não é "aumente os timeouts". Timeout gigante em tudo é o outro extremo: transforma suíte lenta em suíte interminável e esconde travamento real. A lição é que o tempo limite de um teste é uma grandeza **medida**, não um número escolhido no susto depois do vermelho.
+
+Duas consequências saíram daí. Primeira: o valor precisa vir da latência observada em pior caso, com margem para o ambiente saturado. O padrão de cinco segundos tolerava quatro vezes de degradação — e o host entregou mais que isso; vinte segundos dão folga para desaceleração de quatro vezes sobre o tempo real, sem virar espera infinita. Segunda: quando há espera aninhada, o orçamento interno nunca deve alcançar o externo. Dois relógios somando ao limite total transformam qualquer atraso em falha garantida.
+
+E tem o efeito que não aparece no código: um teste instável treina quem lê o painel a ignorar vermelho. Numa tarde, três falhas falsas — o mesmo sintoma do erro que passa despercebido. O custo real não é o tempo de reexecutar o job, é a credibilidade do sinal.
+
+## Próximo passo
+
+O que essas três correções não resolvem é o futuro: nada impede um teste novo de nascer com orçamento curto e virar o próximo flaky. O passo seguinte é medir a duração por arquivo em cada rodada e sinalizar quando um caso chegar perto do próprio limite — antes de estourar, não depois. Um teste que gasta oitenta por cento do orçamento está a uma tarde de load alto de virar falso vermelho.

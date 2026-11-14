@@ -1,0 +1,55 @@
+---
+title: "The test that failed because of the clock, not the code"
+description: "Three suites broke on the same day in two different projects, all with the same timeout message — and none of them had a regression. The cause was a host load average of 81. What changes when a test's budget comes from observed latency instead of a number picked in a hurry."
+date: 2026-11-14 12:00:00 -03:00
+pubDate: 2026-11-14 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "vitest", "testing", "ci", "reliability", "quality", "frontend"]
+cover: /covers/estudos-o-teste-que-falhou-por-causa-do-relogio.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The failure that refused to repeat
+
+November thirteenth opened with a red pipeline and a message I had seen often enough to distrust: `Test timed out in 5000ms`. Four failing tests in the Capivara frontend. I opened the code, looked for the regression, found none. I ran the same file in isolation: all four passed in about a second.
+
+A test that fails in the full suite and passes alone has a name — flaky — and a deservedly bad reputation. That reputation leads people to treat the symptom as noise: rerun the job, it goes green, move on. Except that day three different suites broke, across two projects, with the same signature. It was not noise. It was the machine.
+
+## What was running on the same box
+
+The host was not running one task. It was running five: a model training job eating all available GPU, a vision model analyzing screenshots, an automated browser, the Node process running Vitest, and the Python backend under pytest. The load average measured during that window was eighty-one. Later that afternoon, fifty-three, on a twelve-core host.
+
+Load average is the mean count of processes running or waiting for CPU. Eighty-one on twelve cores means, in practice, that a task ready to run waits behind six or more. A test needing two hundred milliseconds of CPU on an idle host takes several seconds in that queue — and nothing in the code changed to justify it.
+
+## Three symptoms, one cause
+
+The first case was Capivara. Vitest ships a per-test time limit defaulting to five seconds. Four admin panel tests blew past that clock because they are the ones that lean hardest on component rendering. The fix — commit `19bc6da` — moved the limit to twenty seconds, on both `testTimeout` and `hookTimeout`, and recorded the numbers: before, exit code 1 with four failures; after, exit code 0, twenty-six files and three hundred ninety-four passing tests. The Python backend closed two hundred forty-six green tests in the same load window. The machine was slow; the code was intact.
+
+The second surfaced hours later, in Dogwalk. Nineteen `waitFor` calls in a hook suite with no explicit timeout — the testing library default is one second. The full suite holds two hundred thirty-seven files and spends roughly three hundred seconds just transforming and importing. In the complete run that same test took three and six-tenths seconds and blew the limit; in isolation, three hundred milliseconds. A false failure that appeared and vanished between runs. Commit `f3da6c02` gave it an explicit ten-second budget, and the next full run closed with three thousand forty-eight passing tests and zero failures.
+
+The third is the most instructive, and it happened in the morning. A dashboard test waited up to five seconds for a loading overlay to disappear and another five inside a `waitFor` with an async callback — ten total, exactly the global limit for that file. The inner budget consumed the outer budget entirely. Under load fifty-three, that wait could never fit: the integration job died with `Test timed out in 10000ms` and the deploy never ran. The fix in `17d99599` was not to raise the global number: it removed the nested `waitFor`, awaited the element directly with twenty seconds per lookup, and gave the case its own forty-five second ceiling.
+
+```ts
+// before: two nested clocks consuming the test's own limit
+await waitFor(async () => {
+  expect(await findByText('Ficar Online', {}, { timeout: 2000 })).toBeTruthy()
+}, { timeout: 5000 })
+
+// after: a single wait, with a declared budget and a ceiling on the case itself
+const online = await findByText('Ficar Online', {}, { timeout: 20000 })
+expect(online).toBeTruthy()
+```
+
+## What this changes
+
+The lesson is not "raise your timeouts". A huge timeout everywhere is the opposite extreme: it turns a slow suite into an endless one and hides real hangs. The lesson is that a test's time limit is a **measured** quantity, not a number picked in a hurry after the red.
+
+Two practical consequences followed. First: the value has to come from observed worst-case latency, with margin for a saturated environment. In the Vitest case, the five-second default tolerated four times of degradation — and the host delivered more than that. Twenty seconds leaves room for a four-fold slowdown over the observed real time without becoming an infinite wait. Second: when waits nest, the inner budget must never reach the outer one. Two clocks adding up to the total limit turn any delay into a guaranteed failure.
+
+And there is an effect that never shows up in the code: a flaky test trains whoever reads the dashboard to ignore red. In one afternoon, three false failures — the same symptom as the error that goes unnoticed. The real cost is not the time spent rerunning the job, it is the credibility of the signal.
+
+## Next step
+
+What these three fixes do not solve is the future: nothing stops a new test from being born with a short budget and becoming the next flaky one. The next step is to record per-file duration on every run and flag when a case approaches its own limit — before it blows, not after. A test spending eighty percent of its available budget is one high-load afternoon away from turning into a false red.
