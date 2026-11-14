@@ -68,6 +68,18 @@ IGNORE_SHA = {
     "0000000", "ffffff",
 }
 
+# SHA PLACEHOLDER — escrito a mao para preencher espaco, nao e commit de verdade.
+# Medido 13/11: `a1b2c3d4` apareceu em 5 posts do acervo como "(hash `a1b2c3d4`)"
+# em migracao Alembic que nunca teve esse commit. `a1b2c3d4` e o 12345678 do
+# hex: sequencia obvia de proposito. Nao adianta checar no git — ele NUNCA vai
+# existir, e o guard tem que dizer isso na cara em vez de "nao encontrado".
+PLACEHOLDER_SHA = {
+    "a1b2c3d4", "a1b2c3d", "1234567", "12345678", "1234567890abcdef",
+    "deadbeef", "deadbee", "cafebabe", "cafebab", "0badc0de", "badc0de",
+    "abcdef1", "abcdef12", "fedcba9", "8badf00d", "b16b00b5", "defaced",
+    "f00dbabe", "f00dface", "facade0", "decafba", "abad1dea",
+}
+
 
 def is_git_repo() -> bool:
     return (ROOT / ".git").exists()
@@ -123,7 +135,12 @@ def shas_in(text: str) -> set[str]:
         # letra entre a-f (senão é número, data, versão ou contagem).
         if not re.search(r"[a-f]", s):
             continue
-        # 4 dígitos puros já foi filtrado acima; 7+ hex é candidato.
+        # Cor CSS hex com alfa (`#f5a62322`) e hex de 8 digitos precedido de #.
+        # Medido 13/11: `1px solid #f5a62322` virava "commit fabricado" e
+        # reprovava um post correto sobre ajuste de bordas.
+        start = m.start()
+        if start > 0 and text[start - 1] == "#":
+            continue
         found.add(s)
     return found
 
@@ -153,13 +170,54 @@ def path_exists(rel: str) -> bool:
     return False
 
 
+# Data do purge anti-exposicao do historico do LifeLog (25/08/2026, decisao do
+# Samuel): o historico foi reescrito via git plumbing para remover portas,
+# scripts e topologia dos posts. Qualquer SHA anterior a essa data citado num
+# post do PROPRIO LifeLog aponta para um commit que existiu e foi apagado por
+# design — nao e fabricacao. Ver MEMORY: "LifeLog ANTI-EXPOSICAO (25/08)".
+PURGE_CUTOFF = "2026-08-26"
+
+
+def is_predates_purge(post_path: Path) -> bool:
+    """O post foi escrito ANTES do purge do historico do LifeLog?
+
+    O purge (25/08/2026) reescreveu o historico para tirar portas e topologia.
+    Um SHA citado num post anterior a isso pode apontar para commit que
+    existiu e foi apagado — irresolvivel hoje, mas verdadeiro quando o post
+    nasceu.
+
+    Critério é a DATA DO POST, nao a data do commit: SHA de 7 hex nao carrega
+    data e adivinhar a idade dele produziria falso negativo (deixaria SHA
+    inventado passar). Post novo (posterior ao corte) NAO ganha essa tolerancia
+    — e exatamente o caso que o guard existe para pegar.
+    """
+    try:
+        raw = post_path.read_text(encoding="utf-8", errors="replace")[:2000]
+    except OSError:
+        return False
+    m = re.search(r"^date:\s*['\"]?(\d{4}-\d{2}-\d{2})", raw, re.M)
+    if not m:
+        return False
+    return m.group(1) < PURGE_CUTOFF
+
+
 def audit_post(path: Path) -> list[str]:
     raw = path.read_text(encoding="utf-8", errors="replace")
     problems: list[str] = []
+    # Post anterior ao purge do historico (25/08/2026) pode citar SHA que
+    # existiu e foi apagado por design. Post novo NAO ganha essa tolerancia.
+    tolera_sha_antigo = is_predates_purge(path)
 
     for sha in sorted(shas_in(raw)):
-        if not sha_exists(sha):
-            problems.append(f"commit citado nao existe no repo: {sha}")
+        if sha in PLACEHOLDER_SHA:
+            # Mensagem distinta: nao e "nao achei no git", e "isso e filler".
+            problems.append(f"SHA placeholder (nao e commit real): {sha}")
+            continue
+        if sha_exists(sha):
+            continue
+        if tolera_sha_antigo:
+            continue
+        problems.append(f"commit citado nao existe no repo: {sha}")
 
     for rel in sorted(paths_in(raw)):
         if not path_exists(rel):
