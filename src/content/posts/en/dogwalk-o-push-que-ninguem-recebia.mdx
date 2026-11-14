@@ -1,0 +1,76 @@
+---
+title: "The push nobody received — two silent bugs and months of zero subscriptions"
+description: "Dogwalk's Web Push was implemented in the frontend, the backend and the database. The subscription count was zero. Not from one bug, but from two hiding behind each other — and from empty catch blocks that erased every clue about what had happened."
+date: 2026-11-14 08:00:00 -03:00
+pubDate: 2026-11-14 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, progressive-web-app, debugging, react, fastapi]
+cover: /covers/dogwalk-o-push-que-ninguem-recebia.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The feature was complete. And dead.
+
+Web Push is one of those features that look finished once the code compiles and the tests pass. On Dogwalk everything was in place: the backend had the sending service, the frontend had the subscription hook, the service worker was registered, the settings screen showed the enable-notifications button. From the perspective of anyone reading the code, it was a delivered feature.
+
+Production said otherwise: **zero rows in the subscriptions table**. Not "few". Not "declining". Absolute zero, since the first day the feature existed.
+
+The cause was not one thing. There were two, independent, in different layers — frontend and infrastructure. Either one alone was enough to keep the counter at zero. Fixing only one would have left the feature exactly as dead as before, with the added insult of looking repaired.
+
+## The condition that could never be true
+
+The first bug lived in a React effect meant to request notification permission once the user is logged in. The shape was this:
+
+```jsx
+useEffect(() => {
+  if (!user) {
+    return;           // bails out early when there is no user
+  }
+
+  // below this line, user is ALWAYS truthy
+  const wasLoggedOut = prevUserRef.current && !user;
+  if (wasLoggedOut) {
+    subscribe();
+  }
+}, [user, permission, subscription, subscribe]);
+```
+
+Read the condition carefully. The effect returns immediately when `!user`. Everything after that runs only when `user` exists — that is, when `!user` is always false. The `wasLoggedOut` variable depended on `prevUserRef.current && !user`, and the second term was false by construction. It never evaluated to `true`. The function that asks for permission was never called.
+
+This is a one-line mistake that no unit test caught, because the tests exercised the function in isolation, not the real state transition the effect observed. The code was covered; the behaviour was not.
+
+The fix started from the browser's actual state instead of the component's memory: if permission is still `default` and there is no subscription, ask. Simple, and it does not need to know whether the user just logged in or was already logged in when the page loaded.
+
+## The key that never existed
+
+The second bug lived outside the application code. Web Push requires a VAPID key pair so the browser accepts the subscription and the server can sign the messages. The frontend read that key from an environment variable baked into the bundle by Vite.
+
+That variable was never created in CI. The pipeline compiled successfully, the bundle shipped without the key, and the code attempting to subscribe aborted silently — a quiet `return null` when the key could not be resolved, inside a path that only logged a warning in development. In production, nothing.
+
+There is a Vite detail worth remembering here: `import.meta.env` is substituted at build time, not read at runtime. A variable read at the top of a module freezes the value that existed during that build. If it did not exist, the module is born with `undefined` and there is no way to correct it without producing another bundle. The solution was to read the variable at the point of use and, when unavailable, fetch the public key from a backend endpoint — which now answers with an explicit error instead of returning empty when configuration is missing.
+
+## The silence of empty catches
+
+There was a third problem. It did not cause the zero directly, but it guaranteed nobody would find the cause. The `catch {}` blocks around the call that stores the subscription on the server did nothing at all. A 401 from an expired session, a network failure, a 500 — all became the same thing: nothing. The subscription existed in the user's browser and never reached the database, and no log told that story.
+
+Replacing `catch {}` with a `catch` that records status and message is a three-line change that completely changes the diagnosis. A problem that lasted months would have surfaced on day one with a real error log.
+
+## The proof that settled it
+
+Both fix commits landed the same day, about two and a half hours apart: the key configuration first, the provider logic second. Validation was not "the tests pass" — it was an authenticated POST in production returning 201 with the row actually appearing in the subscriptions table.
+
+The numbers measured at that moment: 3048 frontend tests passing across 237 files and 115 backend tests. Along with the fixes came regression tests for the three states that matter — permission undecided, permission granted, and user logged out — plus two backend tests covering the public key and the missing-configuration case.
+
+## What this changes
+
+A feature can be complete in code and nonexistent in behaviour. Both bugs were invisible to types, to linters and to the test suite, because all of them verify what the code says, not what the system does. What found them was measuring the final effect: zero rows in the table.
+
+The practical lesson is to build the feature together with the counter that proves it works. Had there been a panel showing active subscriptions and the date of the last one from the start, the zero would have shown up in the first week instead of after months.
+
+The second lesson is about the cost of swallowing exceptions. Every empty `catch` is a decision to stay blind. It is not code economy, it is diagnostic debt.
+
+## Next step
+
+Now that subscription works end to end, the missing measurement is delivery: how many notifications go out, how many return success, and how many hit an expired subscription. Push has its own lifecycle — subscriptions die when the browser is cleared or the endpoint expires — and without that number the next zero will be just as silent.

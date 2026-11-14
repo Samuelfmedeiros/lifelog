@@ -1,0 +1,76 @@
+---
+title: "O push que ninguém recebia — dois bugs silenciosos e meses de zero inscrições"
+description: "O Web Push do Dogwalk estava implementado no front, no backend e no banco. O número de inscrições era zero. Não por um erro só, mas por dois que se escondiam um atrás do outro — e por blocos de catch vazio que apagavam qualquer pista do que tinha acontecido."
+date: 2026-11-14 08:00:00 -03:00
+pubDate: 2026-11-14 08:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, progressive-web-app, debugging, react, fastapi]
+cover: /covers/dogwalk-o-push-que-ninguem-recebia.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O recurso estava pronto. E morto.
+
+Web Push é uma daquelas features que parecem concluídas quando o código compila e os testes passam. No Dogwalk estava tudo no lugar: o backend tinha o serviço de envio, o front tinha o hook de inscrição, o service worker estava registrado, a tela de configurações exibia o botão de ativar notificações. Do ponto de vista de quem lia o código, era um recurso entregue.
+
+A medição em produção dizia outra coisa: **zero linhas na tabela de inscrições**. Não "poucas". Não "caindo". Zero absoluto, desde o primeiro dia em que o recurso existiu.
+
+A causa não era uma. Eram duas, independentes, em camadas diferentes — front e infraestrutura. Qualquer uma delas bastava para manter o contador em zero. Consertar só uma teria deixado o recurso exatamente tão morto quanto antes, com o agravante de parecer consertado.
+
+## A condição que nunca podia ser verdadeira
+
+O primeiro bug estava num efeito de React que deveria pedir permissão de notificação quando o usuário está logado. A estrutura era esta:
+
+```jsx
+useEffect(() => {
+  if (!user) {
+    return;           // sai cedo quando não há usuário
+  }
+
+  // daqui para baixo, user é SEMPRE verdadeiro
+  const eraDeslogado = prevUserRef.current && !user;
+  if (eraDeslogado) {
+    subscribe();
+  }
+}, [user, permission, subscription, subscribe]);
+```
+
+Leia a condição com atenção. O efeito retorna imediatamente quando `!user`. Tudo o que vem depois roda apenas quando `user` existe — ou seja, quando `!user` é sempre falso. A variável `eraDeslogado` dependia de `prevUserRef.current && !user`, e o segundo termo era falso por construção. Ela nunca valia `true`. A função que pede permissão nunca era chamada.
+
+Isso é um erro de uma linha que nenhum teste de unidade pegava, porque o teste exercitava a função isolada, não a transição real de estado que o efeito observava. O código estava coberto; o comportamento não estava.
+
+A correção partiu do estado real do navegador, não da memória do componente: se a permissão ainda é `default` e não existe inscrição, pede. Simples, e independe de saber se o usuário acabou de logar ou já estava logado quando a página abriu.
+
+## A chave que nunca existiu
+
+O segundo bug morava fora do código da aplicação. Web Push precisa de um par de chaves VAPID para que o navegador aceite a inscrição e para que o servidor possa assinar as mensagens. O front lia essa chave de uma variável de ambiente embutida no bundle pelo Vite.
+
+Essa variável nunca foi criada no CI. O pipeline compilava com sucesso, o bundle saía sem a chave, e o código que tentava se inscrever abortava em silêncio — havia um `return null` silencioso quando a chave não resolvia, dentro de um caminho que só logava aviso em desenvolvimento. Em produção, nada.
+
+Aqui há um detalhe de Vite que vale guardar: `import.meta.env` é substituído em tempo de build, não lido em tempo de execução. Uma variável lida no topo do módulo congela o valor que existia naquele build. Se ela não existia, o módulo nasce com `undefined` e não há como corrigir depois sem gerar outro bundle. A solução foi ler a variável no ponto de uso e, quando ela não estiver disponível, buscar a chave pública num endpoint do backend — que agora responde com erro explícito em vez de devolver vazio quando a configuração está ausente.
+
+## O silêncio dos catch vazios
+
+Havia ainda um terceiro problema, esse não causava o zero diretamente, mas garantia que ninguém descobrisse a causa. Os blocos `catch {}` em volta da chamada que grava a inscrição no servidor não faziam nada. Um 401 por sessão expirada, um erro de rede, um erro 500 — todos viravam a mesma coisa: nada. A inscrição existia no navegador do usuário e nunca chegava ao banco, e nenhum log contava essa história.
+
+Trocar `catch {}` por um `catch` que registra o status e a mensagem é uma mudança de três linhas que muda completamente o diagnóstico. Um problema que durou meses teria aparecido no primeiro dia com um log de erro de verdade.
+
+## A prova que fechou a dúvida
+
+Os dois commits de correção saíram no mesmo dia, com cerca de duas horas e meia de diferença: o da configuração de chaves primeiro, o da lógica do provider depois. A validação não foi "os testes passam" — foi um POST autenticado em produção devolvendo 201 e a linha aparecendo de fato na tabela de inscrições.
+
+Os números medidos naquele momento: 3048 testes de front passando em 237 arquivos e 115 testes de backend. Junto com as correções entraram testes de regressão específicos para os três estados que importam — permissão não decidida, permissão concedida e usuário deslogado —, mais dois testes no backend cobrindo a chave pública e o caso de configuração ausente.
+
+## O que isso muda
+
+Um recurso pode estar inteiro no código e inexistente no comportamento. Os dois bugs eram invisíveis para tipos, para linters e para a suíte de testes, porque todos eles verificam o que o código diz, não o que o sistema faz. O que os encontrou foi a medição do efeito final: zero linhas na tabela.
+
+A lição prática é construir o recurso já com o contador que prova que ele funciona. Se existisse desde o início um painel mostrando o número de inscrições ativas e a data da última, o zero teria aparecido na primeira semana, não depois de meses.
+
+A segunda lição é sobre o custo de engolir exceção. Cada `catch` vazio é uma decisão de ficar cego. Não é economia de código, é dívida de diagnóstico.
+
+## Próximo passo
+
+Agora que a inscrição funciona de ponta a ponta, o que falta medir é a entrega: quantas notificações saem, quantas retornam sucesso e quantas caem em inscrição expirada. Push tem um ciclo de vida próprio — inscrições morrem quando o navegador é limpo ou o endpoint expira — e sem esse número o próximo zero vai ser igualmente silencioso.
