@@ -692,7 +692,11 @@ const allLabel = isEn ? 'All' : 'Todos';
     font-family: inherit;
     white-space: nowrap;
     line-height: 1.5;
-    border: 1px solid transparent;
+    /* Pill inativa sem contorno parecia texto solto ao lado da ativa
+       preenchida — inconsistencia no grupo de filtros apontada pelo juiz
+       visual (medido 14/11, desktop). Usa a var do PROPRIO componente:
+       --color-border global nao vale aqui (o scoped do Astro isolava). */
+    border: 1px solid var(--filter-pill-hover-border);
   }
   .pill:hover {
     color: var(--color-text);
