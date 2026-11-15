@@ -1,0 +1,64 @@
+---
+title: "The gate that approved the void — null, inherited environment and orphan processes"
+description: "Three holes closed in 48 hours in the same verification engine: a null key that in Node collapsed to zero and released any score at all, an inherited environment that made the same commit produce two different results, and a timeout that killed the parent process and left four children burning CPU for over an hour."
+date: 2026-11-15 16:00:00 -03:00
+pubDate: 2026-11-15 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "testing", "quality", "gate", "fail-closed"]
+cover: /covers/descobertas-o-gate-que-aprovava-o-vazio.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## A verifier that lies is worse than no verifier
+
+The engine behind ai-test-loop exists for one specific reason: an agent grading its own homework will always find a reason to call it good. So the grade does not come from the agent — it comes from a script that runs real checks, adds up a score from 0 to 100, and blocks delivery whenever the score sits below the cutoff.
+
+That whole promise hangs on a single sentence: **if a score came out, something was actually measured**. In the last 48 hours I closed three holes in that same engine, and all three carried the same signature — the arithmetic was fine, the input was lying. All between November 13 and 15, 2026.
+
+## Hole 1: the key that existed and meant nothing
+
+The config carries the approval cutoff and the maximum number of rounds. The code handled the classic case — a missing key — with `setdefault` in the Python runner and `=== undefined` in the Node runner. But a missing key and a key present with a null value are different things, and neither branch covered the second.
+
+In Python, `float(None)` raises TypeError: a traceback, exit code 1, and not one word about which config key caused it. In Node, the same gap produces the opposite outcome, and a far worse one:
+
+```js
+const threshold = config.threshold ?? 85;  // the default only covers undefined
+Number(null) === 0;                         // true — the key exists, holding null
+// with the cutoff at 0: score >= 0 is true for ANY score at all
+```
+
+`Number(null)` is zero. With the cutoff at zero, `score >= threshold` becomes true for anything — including a project that does not even compile. The gate did not become lenient; it switched itself off while keeping the appearance of being on. The fix was normalizing `null` to the default value in both runners and pinning the behavior with six contract tests, three contracts exercised in both languages.
+
+## Hole 2: the same commit with two outcomes
+
+The second hole is subtler and, over time, the more serious one. Checks inherited the entire environment of whoever ran the runner. Harmless, until you measure it: the `PYTHONPATH` exported by another install on the machine landed ahead of the project's own virtual environment, and the check died with `ModuleNotFoundError` for a dependency that was installed — the message pointed at numpy, the cause was the environment from outside. Worse: session variables such as `VIRTUAL_ENV` and `CI` changed the result of the **same commit** depending on who invoked it.
+
+A gate that grades the same code differently is not a gate, it is a coin flip. The fix was building the environment from scratch for every check: system PATH, HOME and locale, plus an explicit list of variables a check may request, plus the literal block from the config itself. No more silent inheritance.
+
+And the detail that closes the loop: if the environment changes the result, then the environment has to enter the drift fingerprint. Changing a variable now invalidates the stored result just like a code change does — because for verification purposes that is exactly what it is.
+
+## Hole 3: the timeout that kills the parent and spares the children
+
+The third one is the most expensive in resources. Every check ran under `bash -o pipefail -c`, and a test check spawns children: the test process, the language runner, the bundler. The `subprocess` timeout kills **the direct process** — the grandchildren survive.
+
+```python
+# what used to be there: kill the direct process, return control, move on
+subprocess.run(cmd, timeout=300)
+
+# what exists now: the check starts in its own session (process group)
+# and on timeout the whole group gets SIGTERM, then SIGKILL
+```
+
+Measured on the 15th: four orphan test processes running between 84% and 89% of CPU for over an hour, with the host at load 20. The gate had already reported that check as "could not be measured" and moved on, while the work it gave up waiting for kept eating the machine and holding a port. The before-and-after proof was empirical, using a marked child: the old behavior leaves one alive, the new one leaves zero.
+
+## What this changes
+
+The three holes are the same defect in three costumes: a verifier that accepts ambiguous input and then speaks with confidence. None of them shows up as an error in the log. The first approves, the second varies, the third leaks CPU — and all three create the impression that the work was verified.
+
+The rule that came out of it is short: a gate is fail-closed at every edge. A key present with a null value is invalid input, not a silent default. Environment is not inherited, it is declared — and the declaration enters the fingerprint. A timeout does not end a process, it ends a group. The suite closed at 159 passing tests, with a dedicated regression for each of the three cases.
+
+## Next step
+
+The next target is the edge that still has no contract: what happens when the check itself does not exist on the machine. Today the runner classifies that as "not measured" and does not count it as a failure — which is honest, but also the last place where a high score can still mean less than it appears.

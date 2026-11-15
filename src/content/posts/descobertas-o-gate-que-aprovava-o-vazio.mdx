@@ -1,0 +1,64 @@
+---
+title: "O gate que aprovava o vazio — null, ambiente herdado e processos órfãos"
+description: "Três furos fechados em 48 horas no mesmo motor de verificação: uma chave nula que em Node virava zero e liberava qualquer nota, um ambiente herdado que fazia o mesmo commit dar dois resultados, e um timeout que matava o processo pai e deixava quatro filhos consumindo CPU por mais de uma hora."
+date: 2026-11-15 16:00:00 -03:00
+pubDate: 2026-11-15 16:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "testing", "quality", "gate", "fail-closed"]
+cover: /covers/descobertas-o-gate-que-aprovava-o-vazio.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## Um verificador que mente é pior que nenhum
+
+O motor do ai-test-loop existe por um motivo específico: agente que julga o próprio trabalho sempre encontra um motivo para dizer que ficou bom. Então quem dá a nota não é o agente — é um script que roda checks reais, soma um score de 0 a 100 e bloqueia a entrega quando a nota fica abaixo do corte.
+
+A promessa inteira depende de uma coisa só: **se saiu nota, alguma coisa foi medida**. Nas últimas 48 horas eu fechei três furos nesse mesmo motor, e os três tinham a mesma assinatura — o cálculo estava certo, a entrada é que era mentira. Tudo entre 13 e 15 de novembro de 2026.
+
+## Furo 1: a chave que existia valendo nada
+
+O config define o corte de aprovação e o número máximo de rodadas. O código tratava o caso clássico — chave ausente — com `setdefault` no runner Python e `=== undefined` no runner Node. Só que chave ausente e chave presente valendo nulo são coisas diferentes, e nenhum dos dois cobria a segunda.
+
+No Python, `float(None)` estoura TypeError: traceback, saída com código 1 e nenhuma palavra dizendo qual chave do config provocou aquilo. No Node, o mesmo buraco produz o desfecho oposto, e bem pior:
+
+```js
+const threshold = config.threshold ?? 85;  // o default só cobre undefined
+Number(null) === 0;                         // true — a chave existe, vale null
+// com o corte valendo 0: score >= 0 é verdadeiro para QUALQUER nota
+```
+
+`Number(null)` é zero. Com o corte em zero, a comparação `score >= threshold` passa a ser verdadeira para qualquer coisa — inclusive para um projeto que não compila. O gate não ficou permissivo: ele ficou desligado mantendo a aparência de ligado. A cura foi normalizar `null` para o valor padrão nos dois runners e travar o comportamento com seis testes de contrato, três contratos rodados nas duas linguagens.
+
+## Furo 2: o mesmo commit com dois resultados
+
+O segundo furo é mais sutil e, a longo prazo, o mais grave. Os checks herdavam o ambiente inteiro de quem executava o runner. Parece inofensivo até você medir: o `PYTHONPATH` exportado por outra instalação da máquina entrava na frente do ambiente virtual do projeto, e o check morria com `ModuleNotFoundError` de uma dependência que estava instalada — a mensagem falava de numpy, a causa era o ambiente de fora. Pior ainda: variáveis de sessão como `VIRTUAL_ENV` e `CI` mudavam o resultado do **mesmo commit** dependendo de quem chamou.
+
+Um gate que dá nota diferente para o mesmo código não é gate, é sorteio. A cura foi montar o ambiente do zero a cada check: PATH, HOME e locale do sistema, mais uma lista explícita de variáveis que o check pode pedir, mais o bloco literal do próprio config. Nada de herança silenciosa.
+
+E o detalhe que fecha o raciocínio: se o ambiente muda o resultado, então o ambiente tem que entrar no fingerprint de drift. Mudar uma variável passou a invalidar o resultado guardado como qualquer mudança de código — porque, para efeito de verificação, é exatamente isso que ela é.
+
+## Furo 3: o timeout que mata o pai e deixa os filhos
+
+O terceiro é o mais caro em recurso. Cada check rodava sob `bash -o pipefail -c`, e um check de testes gera filhos: o processo de teste, o runner da linguagem, o bundler. O `timeout` do `subprocess` mata **o processo direto** — os netos ficam vivos.
+
+```python
+# o que estava lá: mata o processo direto, devolve o controle, segue a vida
+subprocess.run(cmd, timeout=300)
+
+# o que passou a existir: o check nasce em sessão própria (grupo de processos)
+# e, no timeout, o grupo inteiro recebe SIGTERM e depois SIGKILL
+```
+
+Medido no dia 15: quatro processos de teste órfãos rodando entre 84% e 89% de CPU por mais de uma hora, com o host em load 20. O gate já tinha reportado aquele check como "não deu para medir" e seguido adiante, enquanto o trabalho que ele desistiu de esperar continuava consumindo a máquina e segurando porta. A prova do antes e depois foi empírica, com um filho marcado: o comportamento antigo deixa um vivo, o novo deixa zero.
+
+## O que isso muda
+
+Os três furos são o mesmo defeito com três roupas: um verificador que aceita entrada ambígua e depois fala com confiança. Nenhum deles aparece como erro no log. O primeiro aprova, o segundo varia, o terceiro vaza CPU — e todos os três passam a impressão de que o trabalho foi verificado.
+
+A regra que saiu disso é curta: gate é fail-closed em todas as bordas. Chave presente com valor nulo é entrada inválida, não default silencioso. Ambiente não se herda, se declara — e declaração entra no fingerprint. Timeout não encerra um processo, encerra um grupo. A suíte fechou em 159 testes passando, com regressão específica para cada um dos três casos.
+
+## Próximo passo
+
+O próximo alvo é a borda que ainda não tem contrato: o que acontece quando o próprio check não existe na máquina. Hoje o runner classifica como "não medido" e não conta como falha — o que é honesto, mas também é o último lugar onde uma nota alta ainda pode significar menos do que aparenta.
