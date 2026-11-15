@@ -1,0 +1,75 @@
+---
+title: "O painel que só funcionava com a API inteira"
+description: "Uma resposta 200 com metade do payload deixou o dashboard do Capivara em branco, sem erro visível na tela. Três correções no mesmo dia e a lição: guarda que olha o pai não protege o neto."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-15 12:00:00 -03:00
+pubDate: 2026-11-15 12:00:00 -03:00
+project: capivara
+tags: [capivara, react, typescript, vitest, debugging, frontend]
+cover: /covers/capivara-o-painel-que-so-funcionava-com-a-api-inteira.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A tela em branco que não deixava rastro
+
+O painel do Capivara é a primeira coisa que eu abro de manhã. Ele não busca dado em cada lugar: recebe um resumo único que agrega saúde dos serviços, estado dos backups, alertas pendentes, números de infraestrutura e a lista de projetos. Uma chamada, uma tela.
+
+Na sexta-feira, dia 13, o painel abriu em branco. Não com mensagem de erro, não com um card vermelho: a casca da página, o menu, e nada dentro. O console do navegador tinha exceção. A tela, não.
+
+A causa não foi deploy quebrado nem banco fora. Foi uma resposta `200` com payload incompleto. O agregador monta o resumo a partir de várias fontes; quando uma delas não responde, ele devolve o que conseguiu e sai com sucesso. Do lado do cliente, `200` sempre significou "resumo completo". Nesse dia significou "resumo pela metade", e o código acessava as chaves que não vieram.
+
+## O que estava medido na falha
+
+Três exceções diferentes, todas da mesma família, em três pontos da mesma tela. A faixa de indicadores executivos quebrava com `Cannot convert undefined or null to object` — o código chamava `Object.keys` direto no mapa de projetos. O cabeçalho quebrava com `Cannot read properties of undefined (reading 'r2')`, tentando ler o estado do backup. A lista de convites quebrava com `TypeError: Cannot read properties of undefined (reading 'filter')`, filtrando um array que virou indefinido porque a resposta veio vazia.
+
+Três pontos, um padrão: o dado opcional era tratado como garantido.
+
+E a tela ficava em branco porque existe uma barreira de erro em volta da árvore de componentes. Ela impede que um erro de render derrube o app inteiro — e faz isso bem. O efeito colateral é transformar exceção em tela vazia sem barulho: o componente que falhou é desmontado, o resto fica de pé, e quem olha não sabe que houve falha. Barreira de erro sem telemetria é um silenciador.
+
+O número que fechou o diagnóstico veio da suíte: rodando com cobertura, o mesmo erro apareceu **11 vezes** antes das correções e zero depois. Não era um caso de borda teórico. Era o caminho que os testes já percorriam, com o mock devolvendo payload parcial — os testes passavam porque ninguém afirmava nada sobre esse cenário.
+
+## O guarda que olhava o pai enquanto o acesso estava no neto
+
+O trecho original parecia defensivo. Ele testava o objeto de topo antes de usar:
+
+```ts
+// o guarda checa "overview", o acesso acontece dois níveis abaixo
+const backupsOk = overview
+  ? [overview.backups.r2, overview.backups.d1].filter(b => b.online === true).length
+  : 0
+```
+
+Se `overview` fosse nulo, o ternário salvava. O problema é o caso do meio: `overview` existe, `backups` não. O guarda aprova, o acesso segue, e a exceção nasce na propriedade que ninguém checou. Um `if` no pai não é validação do neto — e com payload parcial é sempre esse o formato que chega: o objeto de topo existe porque é montado localmente com o que deu; o que falta são os galhos.
+
+## A correção: a cadeia inteira, e o default no fim
+
+O fix foi trocar o guarda de nível único por acesso opcional em cada elo, com valor padrão no final:
+
+```ts
+const backupsOk = [overview?.backups?.r2, overview?.backups?.d1]
+  .filter(b => b?.online === true).length
+const alerts = overview?.alerts?.length ?? 0
+const projects = overview?.projects ?? {}
+```
+
+Cada `?.` cobre um elo da cadeia; cada `??` define o estado legítimo de ausência. Antes a ausência virava exceção; agora vira zero, mapa vazio ou lista vazia — estados que a interface sabe desenhar. O terceiro commit do dia fechou o vazamento pela borda oposta: o estado recebia a lista direto, e um erro escapando como exceção não tratada derrubava o código de saída da suíte inteira — 378 testes passando e o resultado vermelho. Depois do fix: zero erros não tratados, saída 0.
+
+## O teste que faltava: faixa, não caminho feliz
+
+O que impedia esse bug de ser pego era o formato do teste, não a quantidade. Existiam testes de renderização com payload completo. O cenário que quebrava — payload sem backups, sem alertas, sem projetos — não estava escrito em lugar nenhum.
+
+Entraram 15 testes de faixa no mesmo commit do cabeçalho: tom do indicador para memória, disco e CPU; formatação de uptime em minutos, horas e dias; carga; backups parciais; resumo nulo; e a regressão específica do payload sem backups e sem alertas. A cobertura de branches subiu de 79,94% para 81,73% com 368 testes, e os quatro limites do projeto passaram.
+
+No mesmo dia ainda apareceu um problema de ambiente disfarçado de bug de código: quatro testes estouravam com `Test timed out in 5000ms` enquanto o host estava em carga 81 — os mesmos testes passavam em cerca de um segundo rodando sozinhos. Era o relógio, não a asserção. O limite subiu para 20 segundos e a suíte voltou a 394 testes com código de saída 0.
+
+## O que isso muda
+
+A lição não é sobre o painel do Capivara. É sobre contrato de dados entre dois processos que eu mesmo escrevo: **`200 OK` não significa payload completo**. Um agregador que costura seis fontes devolve o que conseguiu; o consumo precisa tratar ausência como estado esperado, não como exceção. E quando existe barreira de erro na interface, ela precisa de telemetria — senão o bug mais grave do dia é o único que não aparece em lugar nenhum.
+
+## Próximo passo
+
+Aplicar o mesmo teste de payload parcial nas outras telas que consomem o resumo — e fazer o agregador declarar, na resposta, quais seções falharam, para a interface poder dizer "este bloco não carregou" em vez de mostrar zero como se fosse verdade.

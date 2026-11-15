@@ -1,0 +1,81 @@
+---
+title: "The dashboard that only worked with a complete API payload"
+description: "A 200 response carrying half the payload left the Capivara dashboard blank, with no visible error. Three fixes in one day and one lesson: a guard that checks the parent does not protect the grandchild."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-15 12:00:00 -03:00
+pubDate: 2026-11-15 12:00:00 -03:00
+project: capivara
+tags: [capivara, react, typescript, vitest, debugging, frontend]
+cover: /covers/capivara-o-painel-que-so-funcionava-com-a-api-inteira.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The blank screen that left no trace
+
+The Capivara dashboard is the first thing I open every morning. It does not fetch from every corner: it receives a single summary that aggregates service health, backup state, pending alerts, infrastructure numbers and the project list. One call, one screen.
+
+On Friday the 13th, the dashboard opened blank. Not with an error message, not with a red card: the shell of the page, the menu, and nothing inside. The browser console had an exception. The screen did not.
+
+The cause was neither a broken deploy nor a dead database. It was a `200` response with an incomplete payload. The aggregator stitches the summary together from several sources; when one of them fails to answer, it returns what it managed to collect and exits successfully. On the client side, `200` had always meant "complete summary". That day it meant "half a summary", and the code reached for keys that never arrived.
+
+## What the failure actually measured
+
+Three different exceptions, all from the same family, in three points of the same screen. The executive indicators strip broke with `Cannot convert undefined or null to object` — the code called `Object.keys` directly on the project map. The header broke with `Cannot read properties of undefined (reading 'r2')`, trying to read backup state. The invites list broke with `TypeError: Cannot read properties of undefined (reading 'filter')`, filtering an array that had become undefined because the response came back empty.
+
+Three points, one pattern: optional data treated as guaranteed.
+
+And the screen went blank because there is an error boundary wrapped around the component tree. It exists to stop a render error from taking down the whole app — and it does that well. The side effect is that it turns an exception into an empty screen without noise: the failing component is unmounted, everything else stays up, and whoever is looking has no idea a failure happened. An error boundary without telemetry is a silencer.
+
+The number that closed the diagnosis came from the suite: running with coverage, the same error showed up **11 times** before the fixes and zero afterwards. It was not a theoretical edge case. It was the path the tests already walked, with mocks returning partial payloads — the tests passed because nobody asserted anything about that scenario.
+
+## The guard that watched the parent while the access hit the grandchild
+
+The original snippet looked defensive. It tested the top-level object before using it:
+
+```ts
+// the guard checks "overview", the access happens two levels down
+const backupsOk = overview
+  ? [overview.backups.r2, overview.backups.d1].filter(b => b.online === true).length
+  : 0
+```
+
+If `overview` were null, the ternary saved it. The problem is the middle case: `overview` exists, `backups` does not. The guard approves, the access proceeds, and the exception is born on the property nobody checked. An `if` on the parent is not validation of the grandchild.
+
+With a partial payload, that is exactly the shape that arrives: the top-level object always exists, because it is assembled locally from whatever came back; the missing pieces are the branches.
+
+## The fix: the whole chain, and the default at the end
+
+The fix replaced the single-level guard with optional access at every link, plus a default value at the end:
+
+```ts
+const backupsOk = [overview?.backups?.r2, overview?.backups?.d1]
+  .filter(b => b?.online === true).length
+const alerts = overview?.alerts?.length ?? 0
+const projects = overview?.projects ?? {}
+```
+
+Each `?.` covers one link in the chain; each `??` defines the legitimate state of absence. The behavioural difference is large: before, absence became an exception; now it becomes zero, an empty map or an empty list — states the interface knows how to draw.
+
+The third commit of the day closed the leak from the opposite edge: the state setter received `d.invites` directly, so not even the state was trustworthy. It started receiving `d?.invites ?? []`. An error escaping as an unhandled exception was taking down the exit code of the entire suite — 378 tests passing and the result still red. After the fix: zero unhandled errors, exit code 0.
+
+## The missing test: ranges, not happy paths
+
+What kept this bug from being caught was the shape of the tests, not their quantity. There were rendering tests with complete payloads. The scenario that broke — payload without backups, without alerts, without projects — was not written down anywhere.
+
+Fifteen range tests landed in the same commit as the header: indicator tone for memory, disk and CPU; uptime formatting in minutes, hours and days; load; partial backups; null summary; and the specific regression of a payload without backups and alerts. Branch coverage went from 79.94% to 81.73% with 368 tests, and the project's four thresholds passed.
+
+That same day another problem showed up disguised as a code bug: four tests blowing up with `Test timed out in 5000ms` while the host sat at load 81 — the same tests passed in about a second when run alone. The clock was expiring, not the assertion. The limit moved to 20 seconds and the suite returned to 394 tests with exit code 0.
+
+## What this changes
+
+The lesson is not about the Capivara dashboard. It is about the data contract between two processes I write myself: **`200 OK` does not mean complete payload**. An aggregator stitching six sources together will return whatever it managed to collect; the consumer must treat absence as an expected state, not an exception. And when an error boundary exists in the interface, it needs telemetry — otherwise the day's most serious bug is the only one that appears nowhere.
+
+In practice, the dashboard now opens and shows what it knows, with missing numbers appearing as absence instead of taking the screen down. A partial summary became a legitimate state rather than an event.
+
+## Next step
+
+Apply the same partial-payload test to the other screens that consume the summary — and make the aggregator declare, in the response, which sections failed, so the interface can say "this block did not load" instead of showing zero as if it were truth.
