@@ -1,0 +1,93 @@
+---
+title: "145 visitantes que não existiam — quando o robô de QA inflou o contador do site"
+description: "O painel mostrava 145 visitas 'desktop' em sete dias, todas na home, com hits espaçados de 16 a 24 segundos. Nenhuma era gente: era o meu próprio harness de QA abrindo o site a cada quatro horas. O guard de user-agent nunca ia pegar isso."
+date: 2026-11-15 08:00:00 -03:00
+pubDate: 2026-11-15 08:00:00 -03:00
+lang: 'pt'
+project: portfolio
+tags: [portfolio, analytics, automation, observability, nextjs, qa]
+cover: /covers/portfolio-o-visitante-que-era-meu-robo.webp
+featured: false
+hidden: true
+---
+
+## O número que não fechava
+
+O painel da loja somava **145 visitantes "desktop" em sete dias**, todos na raiz do site, e o número crescia com uma regularidade que visitante nenhum tem. O padrão estava ali, só não era óbvio: os hits vinham espaçados de 16 a 24 segundos entre si, e os blocos batiam sempre em três horários — 00:17, 04:17, 08:17.
+
+Três horários fixos, quatro horas de intervalo. Isso não é comportamento humano. É o relógio de um cron.
+
+O culpado era o meu próprio harness de QA. Ele abre o site a cada quatro horas justamente para verificar se a página continua de pé — e, ao abrir, disparava o beacon de visita. Cada rodada de verificação entrava na contabilidade como um usuário novo. O monitor estava sendo contado como audiência do que ele monitorava.
+
+## Por que o guard existente não pegou
+
+O site já tinha uma proteção para robô: o servidor olhava o user-agent da requisição e descartava o que não parecesse navegador. Só que o harness foi escrito para ser indistinguível de gente — ele abre o site com um user-agent de Chrome normal, de propósito, porque um QA que se anuncia como script não testa o mesmo caminho que o visitante real percorre.
+
+Resultado: o guard de user-agent era perfeitamente correto e completamente inútil naquele caso. Ele filtrava o robô que se declarava robô. O que se disfarçava passava limpo.
+
+A lição aqui não é sobre esse projeto especificamente — é sobre uma classe de falha. Guard que se apoia em **o que o cliente diz sobre si mesmo** só funciona contra quem coopera com a classificação. Para tudo o mais, é preciso um sinal que o cliente não consegue escolher.
+
+## O sinal que o navegador não consegue esconder
+
+Existe um. Quando um Chromium é controlado por CDP ou Playwright, ele expõe isso numa propriedade do próprio navegador:
+
+```javascript
+// navigator.webdriver é true no Chromium controlado por CDP/Playwright.
+// Não é o cliente se declarando: é o motor do navegador expondo o modo em que roda.
+if (typeof navigator !== "undefined" && navigator.webdriver === true) {
+  return false; // automação não conta como visita
+}
+```
+
+A diferença de natureza importa. O user-agent é texto que a ferramenta escreve e pode mentir à vontade. `navigator.webdriver` é um estado do motor de renderização — quem dirige por automação não escolhe não ter esse flag ligado.
+
+Com isso no lugar, a decisão de medir ficou assim:
+
+```javascript
+function deveMedir(): boolean {
+  if (typeof window === "undefined") return false;
+  if (process.env.NODE_ENV !== "production" && !process.env.NEXT_PUBLIC_LOJA_HIT_URL) {
+    return false;
+  }
+  if (!hostMedido(window.location.hostname)) return false;
+  if (navigator.webdriver === true) return false;
+  return !pediuParaNaoSerRastreado();
+}
+```
+
+Quatro portões em sequência, e a ordem não é decorativa: ambiente, host, automação, preferência de privacidade. O último respeita DNT e Global Privacy Control — quem pediu para não ser rastreado não entra na conta, o que também significa que o número nunca vai ser exatamente o total de acessos. Ele é uma estimativa honesta, não um censo.
+
+## O bug que veio junto na mesma correção
+
+Ao mexer no arquivo, apareceu um segundo problema que não tinha nada a ver com robô: o guard de hostname tinha sido perdido num merge anterior.
+
+O contexto é trapaça de ambiente. `next start` roda localmente com `NODE_ENV=production` — ou seja, o site em `localhost:3000` na minha máquina se comportava exatamente como produção do ponto de vista do código. Sem o guard de host, cada visita de teste durante o desenvolvimento ia para o servidor real de medição. O commit registra **46 eventos em três horas** vindos de localhost, medidos em 24 de outubro.
+
+Duas causas diferentes, ambas invisíveis no painel: uma inflava por automação de produção, outra por desenvolvimento local. As duas foram corrigidas na mesma passada, e as duas ganharam teste que trava o comportamento.
+
+## O que os testes cobrem agora
+
+A suíte do beacon passou a fixar os casos que quebram em silêncio. Um beacon que erra não aparece no painel de erro: ele simplesmente não conta, ou conta demais, e você só descobre semanas depois olhando um número esquisito.
+
+Os testes que entraram travam exatamente os caminhos que ninguém notaria quebrar:
+
+- navegador controlado por CDP não mede, e nada é enviado;
+- navegador normal mede, e é enviado uma vez;
+- host que não é o de produção não mede, mesmo rodando com `NODE_ENV=production`;
+- o host do `www` também mede — este existe porque o guard aceita dois hosts e só um era testado. Estreitar o guard para o apex zeraria a contagem de quem chega pelo `www` sem quebrar nenhum teste da suíte antiga.
+
+Este último merece atenção: era um guard correto com teste incompleto. O teste passava pelo motivo errado. Corrigir o código para aceitar um host só teria deixado a suíte verde e a medição furada.
+
+A contagem saiu de 11 para 13 testes no arquivo do beacon, e a suíte inteira foi de 588 para 590 naquele commit. Depois, mais dois casos entraram junto com a correção do host — fechando 581 testes verdes no commit seguinte.
+
+## Por que isso importa mais do que parece
+
+Medição errada é pior que medição ausente. Sem número nenhum, você sabe que está no escuro. Com número inflado, você decide com base em ficção — e a ficção é plausível o suficiente para não levantar suspeita.
+
+No caso concreto: 145 visitas em sete dias é um número que parece saudável. Não parece bom demais para ser verdade nem ruim o bastante para investigar. É exatamente o tipo de dado que passa uma semana inteira sem ser questionado. O que salvou foi o padrão temporal — três horários fixos é uma assinatura que nenhum humano produz.
+
+A regra que ficou: **monitorar o monitor**. Todo processo que abre o site programaticamente é um produtor de eventos falsos em potencial, e ele vai produzir exatamente no ritmo mais regular possível — porque é um cron.
+
+## Próximo passo
+
+Falta separar o que ainda passa. O guard de automação cobre Chromium via CDP, mas busca orgânica de crawler legítimo, pré-visualização de link em mensageiro e navegador embutido de app ainda entram na conta como visita. O próximo trabalho é classificar essas três categorias em vez de tratá-las como uma só — e fazer isso sem quebrar a promessa de que o beacon não usa cookie, não guarda IP e não identifica ninguém.

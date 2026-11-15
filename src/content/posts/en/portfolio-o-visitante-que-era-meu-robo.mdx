@@ -1,0 +1,93 @@
+---
+title: "145 visitors that never existed — when my own QA robot inflated the site counter"
+description: "The dashboard showed 145 'desktop' visits in seven days, all on the homepage, with hits spaced 16 to 24 seconds apart. None of them were people: it was my own QA harness opening the site every four hours. The user-agent guard was never going to catch it."
+date: 2026-11-15 08:00:00 -03:00
+pubDate: 2026-11-15 08:00:00 -03:00
+lang: 'en'
+project: portfolio
+tags: [portfolio, analytics, automation, observability, nextjs, qa]
+cover: /covers/portfolio-o-visitante-que-era-meu-robo.webp
+featured: false
+hidden: true
+---
+
+## The number that did not add up
+
+The store dashboard totalled **145 "desktop" visitors over seven days**, every one of them on the site root, and the count kept climbing with a regularity no visitor ever has. The pattern was right there, just not obvious: hits arrived 16 to 24 seconds apart, and the blocks always landed at three times — 00:17, 04:17, 08:17.
+
+Three fixed times, four hours apart. That is not human behaviour. That is a cron clock.
+
+The culprit was my own QA harness. It opens the site every four hours precisely to check the page is still standing — and when it opened, it fired the visit beacon. Every verification run went into the ledger as a new user. The monitor was being counted as an audience for the thing it monitored.
+
+## Why the existing guard missed it
+
+The site already had a bot protection: the server read the request's user-agent and discarded anything that did not look like a browser. The problem is that the harness was written to be indistinguishable from a person — it opens the site with a normal Chrome user-agent, on purpose, because a QA that announces itself as a script does not exercise the same path a real visitor walks.
+
+So the user-agent guard was perfectly correct and completely useless in that case. It filtered out the robot that declared itself a robot. The one wearing a disguise walked straight through.
+
+The lesson here is not about this specific project — it is about a class of failure. A guard built on **what the client says about itself** only works against clients that cooperate with the classification. For everything else you need a signal the client cannot choose.
+
+## The signal the browser cannot hide
+
+One exists. When a Chromium is driven by CDP or Playwright, it advertises that fact in a property of the browser itself:
+
+```javascript
+// navigator.webdriver is true on Chromium driven by CDP/Playwright.
+// It is not the client declaring itself: it is the engine exposing the mode it runs in.
+if (typeof navigator !== "undefined" && navigator.webdriver === true) {
+  return false; // automation is not a visit
+}
+```
+
+The difference in nature is the whole point. The user-agent is text the tool writes and can lie about freely. `navigator.webdriver` is a state of the rendering engine — whoever drives through automation does not get to opt out of that flag being set.
+
+With that in place, the decision to measure became this:
+
+```javascript
+function deveMedir(): boolean {
+  if (typeof window === "undefined") return false;
+  if (process.env.NODE_ENV !== "production" && !process.env.NEXT_PUBLIC_LOJA_HIT_URL) {
+    return false;
+  }
+  if (!hostMedido(window.location.hostname)) return false;
+  if (navigator.webdriver === true) return false;
+  return !pediuParaNaoSerRastreado();
+}
+```
+
+Four gates in sequence, and the order is not decorative: environment, host, automation, privacy preference. The last one honours DNT and Global Privacy Control — anyone who asked not to be tracked stays out of the count, which also means the number will never be exactly the total number of accesses. It is an honest estimate, not a census.
+
+## The bug that came with the same fix
+
+While touching the file, a second problem surfaced that had nothing to do with robots: the hostname guard had been lost in an earlier merge.
+
+The context is environment trickery. `next start` runs locally with `NODE_ENV=production` — meaning the site at `localhost:3000` on my machine behaved exactly like production as far as the code could tell. Without the host guard, every test visit during development went to the real measurement server. The commit records **46 events in three hours** coming from localhost, measured on 24 October.
+
+Two different causes, both invisible on the dashboard: one inflated by production automation, the other by local development. Both were fixed in the same pass, and both got a test that locks the behaviour down.
+
+## What the tests cover now
+
+The beacon suite started pinning the cases that break silently. A beacon that fails does not show up on an error dashboard: it simply either does not count, or counts too much, and you find out weeks later staring at a strange number.
+
+The tests that went in lock down exactly the paths nobody would notice breaking:
+
+- a browser driven by CDP does not measure, and nothing is sent;
+- a normal browser measures, and something is sent once;
+- a host that is not the production one does not measure, even running under `NODE_ENV=production`;
+- the `www` host also measures — this one exists because the guard accepts two hosts and only one was tested. Narrowing the guard to the apex alone would have zeroed the count for everyone arriving via `www` without breaking a single test in the old suite.
+
+That last one deserves attention: it was a correct guard with an incomplete test. The test passed for the wrong reason. Fixing the code to accept a single host would have left the suite green and the measurement broken.
+
+The count went from 11 to 13 tests in the beacon file, and the full suite from 588 to 590 in that commit. Two more cases came in with the host fix — closing out at 581 green tests in the following commit.
+
+## Why this matters more than it looks
+
+Wrong measurement is worse than no measurement. With no number at all, you know you are in the dark. With an inflated number, you decide based on fiction — and the fiction is plausible enough that nobody questions it.
+
+In the concrete case: 145 visits in seven days is a number that looks healthy. It does not look too good to be true, nor bad enough to investigate. It is exactly the kind of data that goes a whole week without being challenged. What saved it was the temporal pattern — three fixed times is a signature no human produces.
+
+The rule that stuck: **monitor the monitor**. Every process that opens the site programmatically is a potential producer of false events, and it will produce at the most regular rhythm possible — because it is a cron.
+
+## Next step
+
+What still slips through needs separating. The automation guard covers Chromium via CDP, but legitimate crawler traffic, link previews in messengers and in-app browsers still land in the count as visits. The next piece of work is classifying those three categories instead of treating them as one — without breaking the promise that the beacon uses no cookie, stores no IP and identifies nobody.
