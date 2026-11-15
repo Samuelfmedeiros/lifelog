@@ -35,14 +35,35 @@ jobs:
           echo "python:  $(python3 --version 2>&1)"
           echo "bandit:  $(command -v bandit || echo AUSENTE)"
           echo "opengrep: $(command -v opengrep || echo AUSENTE)"
-          # fallback: se sumirem do host, instala em ~/.local (sem sudo)
-          if ! command -v bandit >/dev/null; then python3 -m pip install --user bandit; fi
+          # 15/11/2026 — DOIS defeitos no fallback antigo, medidos no run
+          # 43703582905 (job 132779766272):
+          #  (1) `pip install --user bandit` morre com
+          #      externally-managed-environment (PEP 668 do CachyOS) e reprovava
+          #      o job em 1s sem rodar scan nenhum;
+          #  (2) ~/.local/bin nao estava no PATH do runner, entao as duas
+          #      ferramentas JA INSTALADAS no host apareciam como AUSENTE.
+          # A cura de (2) foi Environment=PATH na unit do runner (raiz).
+          # Aqui: detecta uv/pipx e so instala se realmente faltar.
+          export PATH="$HOME/.local/bin:$PATH"
+          if ! command -v bandit >/dev/null; then
+            if command -v uv >/dev/null; then
+              uv tool install bandit
+            elif command -v pipx >/dev/null; then
+              pipx install bandit
+            else
+              python3 -m venv /tmp/bandit-venv && /tmp/bandit-venv/bin/pip -q install bandit
+              ln -sf /tmp/bandit-venv/bin/bandit "$HOME/.local/bin/bandit"
+            fi
+          fi
           if ! command -v opengrep >/dev/null; then
             mkdir -p "$HOME/.local/bin"
             curl -sL https://github.com/opengrep/opengrep/releases/download/v1.26.0/opengrep_manylinux_x86 \
               -o "$HOME/.local/bin/opengrep"
             chmod +x "$HOME/.local/bin/opengrep"
           fi
+          echo "--- final ---"
+          echo "bandit:  $(command -v bandit || echo AUSENTE)"
+          echo "opengrep: $(command -v opengrep || echo AUSENTE)"
       - name: Bandit scan (se houver Python)
         run: |
           if find . -name "*.py" -not -path "*/node_modules/*" | grep -q .; then
