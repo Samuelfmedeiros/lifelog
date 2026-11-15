@@ -770,9 +770,11 @@ body {
     padding-left: 0.875rem;
   }
 
-  /* Post cover/banner — aspect ratio fix inline */
+  /* Post cover/banner — MESMA proporcao do desktop (21/9).
+     As 285 capas sao 2100x900 = 21/9. Forcar 16/9 no mobile cortava as
+     laterais da arte (medido 14/11: container 1.78 vs imagem 2.33). */
   article[data-project] > div > div.relative.w-full {
-    aspect-ratio: 16/9 !important;
+    aspect-ratio: 21/9 !important;
     margin-bottom: 1.5rem !important;
   }
 
