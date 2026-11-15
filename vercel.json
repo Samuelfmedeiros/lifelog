@@ -3,6 +3,56 @@
   "buildCommand": "pnpm run build",
   "redirects": [
     {
+      "source": "/post/ollama-truncation-loop",
+      "destination": "/post/ollama-truncation-loop-4096",
+      "permanent": true
+    },
+    {
+      "source": "/post/ollama-truncation-loop/",
+      "destination": "/post/ollama-truncation-loop-4096",
+      "permanent": true
+    },
+    {
+      "source": "/en/post/ollama-truncation-loop",
+      "destination": "/en/post/ollama-truncation-loop-4096",
+      "permanent": true
+    },
+    {
+      "source": "/en/post/ollama-truncation-loop/",
+      "destination": "/en/post/ollama-truncation-loop-4096",
+      "permanent": true
+    },
+    {
+      "source": "/estudos/:slug",
+      "destination": "/post/:slug",
+      "permanent": true
+    },
+    {
+      "source": "/estudos/:slug/",
+      "destination": "/post/:slug",
+      "permanent": true
+    },
+    {
+      "source": "/en/studies/:slug",
+      "destination": "/en/post/:slug",
+      "permanent": true
+    },
+    {
+      "source": "/en/studies/:slug/",
+      "destination": "/en/post/:slug",
+      "permanent": true
+    },
+    {
+      "source": "/en/posts/:slug",
+      "destination": "/en/post/:slug",
+      "permanent": true
+    },
+    {
+      "source": "/en/posts/:slug/",
+      "destination": "/en/post/:slug",
+      "permanent": true
+    },
+    {
       "source": "/(.*)",
       "has": [
         {
