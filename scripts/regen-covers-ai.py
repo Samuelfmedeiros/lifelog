@@ -140,6 +140,8 @@ def build_prompt(slug, project, title):
         f"{style['prompt_suffix']}. {composition}. "
         f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
+        "Centered composition: keep the subject inside the middle third of the frame, "
+        "with breathing room above and below (the image is cropped to a wide 21:9 banner). "
         f"No UI elements, no watermark, no raw text overlays."
     )
 
@@ -147,14 +149,16 @@ def build_prompt(slug, project, title):
 def _compose_21x9(path, w=2100, h=900):
     """Reenquadra a arte do Worker (quadrada) para o padrao 21:9 do acervo.
 
-    Mesma composicao do normalizar-capas-21x9.py: arte inteira ao centro,
-    fundo dela mesma ampliada + desfocada + escurecida, e mistura suave nas
-    bordas laterais para o quadrado nao aparecer com aresta dura. Reimplementado
-    aqui (e nao importado) porque aquele script e' CLI de varredura com
-    efeitos colaterais; aqui so precisamos do recorte de uma capa recem-baixada.
+    CROP FILL: escala a arte para COBRIR 2100x900 e corta o excedente vertical
+    no centro. A arte preenche o quadro inteiro.
+
+    Histórico: a versão anterior fazia letterbox (arte quadrada inteira ao
+    centro, fundo blur nas laterais). Samuel reprovou em 15/11/2026 — "capa tá
+    no formato errado": sobravam duas faixas borradas de ~600px e o assunto
+    ficava pequeno no meio. Capa de LifeLog é arte cheia, sem barra.
     """
     try:
-        from PIL import Image, ImageEnhance, ImageFilter
+        from PIL import Image
     except ImportError:
         print("  AVISO: PIL ausente, capa fica quadrada")
         return False
@@ -166,33 +170,14 @@ def _compose_21x9(path, w=2100, h=900):
     if abs(art.width / art.height - w / h) < 0.05:
         return True  # ja esta no padrao
 
-    bg = art.copy()
-    s = max(w / bg.width, h / bg.height)
-    bg = bg.resize((max(1, int(bg.width * s)), max(1, int(bg.height * s))), Image.LANCZOS)
-    left = (bg.width - w) // 2
-    top = (bg.height - h) // 2
-    bg = bg.crop((left, top, left + w, top + h))
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=38))
-    bg = ImageEnhance.Brightness(bg).enhance(0.42)
-    bg = ImageEnhance.Color(bg).enhance(1.15)
-
-    s2 = h / art.height
-    fg = art.resize((max(1, int(art.width * s2)), h), Image.LANCZOS)
-    if fg.width > w:
-        fg = fg.resize((w, max(1, int(fg.height * (w / fg.width)))), Image.LANCZOS)
-
-    feather = max(24, int(fg.width * 0.10))
-    mask = Image.new("L", (fg.width, h), 255)
-    px = mask.load()
-    for x in range(feather):
-        v = int(255 * (x / feather))
-        for y in range(h):
-            px[x, y] = v
-            px[fg.width - 1 - x, y] = v
-
-    bg.paste(fg, ((w - fg.width) // 2, (h - fg.height) // 2), mask)
-    bg.save(path, "WEBP", quality=92, method=6)
-    print(f"  recorte 21:9 aplicado: {w}x{h}")
+    scale = max(w / art.width, h / art.height)
+    nw, nh = max(w, int(round(art.width * scale))), max(h, int(round(art.height * scale)))
+    art = art.resize((nw, nh), Image.LANCZOS)
+    left = (nw - w) // 2
+    top = (nh - h) // 2
+    art = art.crop((left, top, left + w, top + h))
+    art.save(path, "WEBP", quality=92, method=6)
+    print(f"  crop fill 21:9 aplicado: {w}x{h} (escala {scale:.2f})")
     return True
 
 
