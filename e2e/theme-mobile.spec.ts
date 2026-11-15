@@ -1,77 +1,89 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
+/**
+ * Regressão do tema no mobile (viewport iPhone 14).
+ *
+ * 15/11/2026 — este spec era um script de debug que nunca falhava por
+ * comportamento: não tinha nenhum `expect()`, só `console.log`, e navegava
+ * direto para `https://lifelog.seu.pet/` ignorando o `baseURL` do config
+ * (portanto o preview local). Falhava só por timeout, porque usava
+ * `waitUntil: 'networkidle'` — a mesma armadilha que `e2e/vrt.spec.ts:41`
+ * já documenta ("não usar networkidle"). Resultado: 1 de 669 testes E2E
+ * falhando de forma intermitente e mascarando o que ele deveria proteger.
+ *
+ * Regra que fica: aqui se mede COMPORTAMENTO (o tema troca de fato e persiste).
+ * Navegação usa `domcontentloaded` + espera explícita do elemento.
+ *
+ * Estrutura real (src/components/PalettePicker.astro): `#theme-rail` é sempre
+ * visível — não existe `#rail-toggle`. `#rail-theme` alterna o tema direto;
+ * `#rail-color` abre o dropdown de paleta.
+ */
 test('mobile theme check', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); // iPhone 14
-  await page.goto('https://lifelog.seu.pet/', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(3000);
-  
-  // Check if the is:global styles are in the page
-  const styles = await page.evaluate(() => {
-    const sheets = Array.from(document.styleSheets);
-    let foundLightNavbar = false;
-    for (const sheet of sheets) {
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.navbar')).toBeVisible({ timeout: 15000 });
+
+  // Dispensa o banner de consentimento: no mobile ele cobre o rail e o clique
+  // falharia por interceptação, não por bug de tema.
+  const aceitar = page.getByRole('button', { name: 'Aceitar' });
+  if (await aceitar.isVisible().catch(() => false)) {
+    await aceitar.click();
+    await expect(aceitar).toBeHidden({ timeout: 5000 });
+  }
+
+  // 1) O tema claro tem regras de navbar próprias — é o que mantém a navbar
+  // creme no mobile (preferência do dono: páginas principais SEMPRE claras).
+  const hasLightThemeRules = await page.evaluate(() =>
+    Array.from(document.styleSheets).some((sheet) => {
       try {
-        const rules = Array.from(sheet.cssRules || []);
-        for (const rule of rules) {
-          if (rule.cssText?.includes('[data-theme="light"]')) {
-            foundLightNavbar = true;
-            break;
-          }
-        }
-      } catch(e) { /* styleSheet cross-origin */ }
-    }
-    return {
-      numStyleSheets: sheets.length,
-      hasLightThemeRules: foundLightNavbar,
-      dataTheme: document.documentElement.getAttribute('data-theme'),
-    };
-  });
-  console.log('Styles:', JSON.stringify(styles, null, 2));
-  
-  // Try clicking toggle
+        return Array.from(sheet.cssRules || []).some((rule) =>
+          rule.cssText?.includes('[data-theme="light"]'),
+        );
+      } catch {
+        return false; // stylesheet cross-origin: não legível, não é falha
+      }
+    }),
+  );
+  expect(hasLightThemeRules, 'faltam regras [data-theme="light"] no CSS').toBe(true);
+
+  // 2) Estado inicial registrado e válido.
   const before = await page.evaluate(() => {
     const nav = document.querySelector('.navbar');
-    const cs = nav ? getComputedStyle(nav) : null;
-    return { theme: document.documentElement.getAttribute('data-theme'), navbar: cs?.backgroundColor };
-  });
-  console.log('BEFORE click:', JSON.stringify(before));
-  
-  // Click the toggle button
-  await page.evaluate(() => {
-    const toggle = document.querySelector('#rail-toggle');
-    if (toggle) (toggle as HTMLElement).click();
-  });
-  await page.waitForTimeout(500);
-  
-  const middle = await page.evaluate(() => {
-    const rail = document.getElementById('theme-rail');
-    return { open: rail?.classList.contains('open') };
-  });
-  console.log('Popover open:', middle.open);
-  
-  // Click the theme switch
-  await page.evaluate(() => {
-    const themeBtn = document.querySelector('#rail-theme');
-    if (themeBtn) (themeBtn as HTMLElement).click();
-  });
-  await page.waitForTimeout(1500);
-  
-  const after = await page.evaluate(() => {
-    const nav = document.querySelector('.navbar');
-    const cs = nav ? getComputedStyle(nav) : null;
-    const thumb = document.querySelector('.rail-theme-thumb');
     return {
       theme: document.documentElement.getAttribute('data-theme'),
-      navbar: cs?.backgroundColor,
-      thumbTransform: thumb ? getComputedStyle(thumb).transform : null,
-      bgVar: getComputedStyle(document.documentElement).getPropertyValue('--color-bg').trim(),
+      navbar: nav ? getComputedStyle(nav).backgroundColor : null,
     };
   });
-  console.log('AFTER click:', JSON.stringify(after, null, 2));
-  
-  if (after.navbar?.includes('255, 255, 255')) {
-    console.log('✅ NAVBAR LIGHT!');
-  } else {
-    console.log('❌ Navbar ainda escura:', after.navbar);
-  }
+  expect(before.navbar, 'navbar sem backgroundColor computado').not.toBeNull();
+
+  // 3) O botão alterna o tema para um valor DIFERENTE do atual.
+  await page.locator('#rail-theme').click();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => document.documentElement.getAttribute('data-theme')),
+      { timeout: 5000, message: 'data-theme não mudou após clicar no toggle' },
+    )
+    .not.toBe(before.theme);
+
+  // 4) O efeito visual acompanha o atributo: a navbar muda de cor.
+  const after = await page.evaluate(() => {
+    const nav = document.querySelector('.navbar');
+    return {
+      theme: document.documentElement.getAttribute('data-theme'),
+      navbar: nav ? getComputedStyle(nav).backgroundColor : null,
+    };
+  });
+  expect(after.navbar, 'navbar não recalculou a cor após trocar o tema').not.toBe(
+    before.navbar,
+  );
+
+  // 5) A escolha persiste (o usuário não perde o tema ao recarregar).
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.navbar')).toBeVisible({ timeout: 15000 });
+  const persisted = await page.evaluate(() =>
+    document.documentElement.getAttribute('data-theme'),
+  );
+  expect(persisted, 'tema escolhido não persistiu após reload').toBe(after.theme);
 });
