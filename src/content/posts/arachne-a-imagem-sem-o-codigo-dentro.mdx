@@ -1,0 +1,69 @@
+---
+title: "A imagem que subia sem o código dentro"
+description: "O scanner de segurança acusou o Dockerfile do Arachne por rodar como root. O conserto veio no mesmo commit que apagou a linha que copiava o projeto para dentro do container — e ninguém viu, porque o build continuou passando."
+category: samuel-projects
+lang: 'pt'
+date: 2026-11-16 12:00:00 -03:00
+pubDate: 2026-11-16 12:00:00 -03:00
+project: arachne
+tags: [arachne, docker, devops, seguranca, ci, deploy]
+cover: /covers/arachne-a-imagem-sem-o-codigo-dentro.webp
+featured: false
+hidden: true
+---
+
+## O achado certo, o conserto errado
+
+O scanner de segurança do Arachne apontou um achado legítimo: a imagem da API era construída com um Dockerfile que nunca declarava um usuário, então o processo principal subia como root dentro do container. É o tipo de achado fácil de fechar — basta criar um usuário sem privilégio e trocar para ele antes do comando final.
+
+O conserto foi feito em 06 de novembro, no commit `6d64b68a`. A parte do usuário está lá e funciona: `addgroup`, `adduser`, `chown` do diretório de trabalho e `USER appuser` antes do comando. O achado do scanner fechou. O problema é o que veio junto na mesma edição.
+
+## O que o commit levou embora
+
+Três linhas desapareceram do arquivo, e são justamente as três que faziam a imagem conter alguma coisa:
+
+```dockerfile
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+COPY . .
+```
+
+A primeira copia o manifesto de dependências. A segunda instala o pacote. A terceira — a que importa — copia o código-fonte para dentro da imagem. No lugar delas entrou uma instalação manual de uma lista longa de bibliotecas, feita por `pip install --no-cache-dir` com os nomes soltos, sem instalar o projeto em si.
+
+O resultado é uma imagem que tem todas as dependências do mundo e nenhum arquivo do Arachne. O comando final continua o mesmo de sempre:
+
+```dockerfile
+CMD ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "9000"]
+```
+
+Só que agora ele aponta para um módulo `app.main` que não existe no sistema de arquivos do container. Um `uvicorn` chamado com módulo inexistente não falha na construção da imagem — falha em runtime, quando o import não resolve.
+
+## Por que ninguém percebeu
+
+Aqui está o detalhe que transforma um commit ruim em um commit invisível: **o build passa**. Não há erro no `docker build`. As dependências instalam, o usuário é criado, a imagem é gerada com sucesso e o `EXPOSE` anuncia um serviço na porta 9000.
+
+O que falhou foi a checagem. O scanner olha o texto do Dockerfile e pergunta "existe uma instrução `USER`?". Existe. Ele não pergunta "o container consegue executar o comando que declarou?". Essa pergunta exige construir e subir a imagem, e o gate de segurança do repositório não faz isso — ele lê arquivo, não executa container.
+
+É a mesma classe de falha que já apareceu outras vezes neste projeto: uma superfície que responde "ok" porque mediu a coisa errada. A credencial existe, então o gate de segredo passa. O arquivo foi copiado para a pasta certa, então o gate de deploy passa. O Dockerfile tem `USER`, então o gate de container passa. Em todos os casos o objeto medido é o texto, e o defeito mora no comportamento.
+
+## O segundo desencontro, esse mais antigo
+
+O mesmo commit trocou a porta: saiu de 8000, entrou 9000. E mexeu também no endereço de escuta, de `0.0.0.0` para `127.0.0.1`.
+
+O `0.0.0.0` aceita conexão em qualquer interface. O `127.0.0.1` aceita apenas de dentro do próprio container. Para um processo rodando direto no host isso pode fazer sentido, porque limita a exposição. Dentro de container é o oposto: a publicação de porta do Docker encaminha o tráfego para a interface do container, e um serviço escutando só em loopback não responde a esse encaminhamento.
+
+O `docker-compose.yml` versionado no repositório ainda declara outra combinação — publica 8000 e aponta para 8000 interna. O `docker-compose.prod.yml`, que não está versionado, publica 9000 e espera 9000. O `docker-compose.wsl.yml` publica 9000 em `0.0.0.0` e sobrescreve o comando com `--host 0.0.0.0`, anulando o loopback do Dockerfile.
+
+Três arquivos de orquestração, três respostas diferentes sobre em que porta e em que interface esse serviço existe. O que está em produção não é o que está no repositório, e o que está no repositório não conversa com o Dockerfile.
+
+## O que isso muda
+
+A lição não é "não mexa no Dockerfile". É que a auditoria de segurança e a auditoria de funcionalidade olham para lados opostos do mesmo arquivo, e uma pode destruir a outra sem que o alarme toque. O commit que fechou um achado de severidade abriu uma regressão funcional silenciosa, e as duas coisas vieram de boa-fé.
+
+O que separa os dois mundos é uma verificação só: construir a imagem e rodar o comando declarado nela, esperando que o processo responda. Não precisa de infraestrutura sofisticada — precisa que o CI execute o artefato em vez de ler o texto que o descreve. Um `docker run` com `--rm` e uma sonda no healthcheck faria o `6d64b68a` nunca passar.
+
+Vale a mesma regra para o resto do ecossistema: se o gate não executou o artefato, ele não aprovou o artefato — aprovou a descrição dele. E descrição não sobe serviço.
+
+## Próximo passo
+
+Restaurar a cópia do código-fonte no Dockerfile, com a instalação do projeto voltando a ser feita a partir do `pyproject.toml`, e reconciliar os três arquivos de compose com uma única porta e uma única interface. Depois disso, adicionar ao CI um passo que constrói a imagem e verifica que o processo responde antes de qualquer imagem ser publicada.

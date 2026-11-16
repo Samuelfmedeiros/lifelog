@@ -1,0 +1,69 @@
+---
+title: "The image that shipped without the code inside"
+description: "The security scanner flagged Arachne's Dockerfile for running as root. The fix landed in the same commit that deleted the line copying the project into the container — and nobody noticed, because the build kept passing."
+category: samuel-projects
+lang: 'en'
+date: 2026-11-16 12:00:00 -03:00
+pubDate: 2026-11-16 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "docker", "devops", "seguranca", "ci", "deploy"]
+cover: /covers/arachne-a-imagem-sem-o-codigo-dentro.webp
+featured: false
+hidden: true
+---
+
+## The right finding, the wrong fix
+
+Arachne's security scanner raised a legitimate finding: the API image was built from a Dockerfile that never declared a user, so the main process started as root inside the container. It is the kind of finding that shows up in every container audit and that, on paper, is easy to close — create an unprivileged user and switch to it before the final command.
+
+The fix landed on November 6, in commit `6d64b68a`, titled "restore USER appuser and port 9000 in Dockerfile". The user part is there and it works: there is an `addgroup`, an `adduser`, a `chown` of the working directory, and a `USER appuser` before the command. The scanner finding closed. The problem is what came along in the same edit.
+
+## What the commit took away
+
+Three lines disappeared from the file, and they are precisely the three that made the image contain anything at all:
+
+```dockerfile
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+COPY . .
+```
+
+The first copies the dependency manifest. The second installs the package. The third — the one that matters — copies the source code into the image. In their place came a manual install of a long list of libraries, done with `pip install --no-cache-dir` and bare names, without ever installing the project itself.
+
+What is left is an image that carries every dependency in the world and not a single Arachne file. The final command is still the old one:
+
+```dockerfile
+CMD ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "9000"]
+```
+
+Except now it points at an `app.main` module that does not exist in the container's filesystem. A `uvicorn` invoked with a missing module does not fail at image build time — it fails at runtime, when the import does not resolve.
+
+## Why nobody caught it
+
+Here is the detail that turns a bad commit into an invisible one: **the build passes**. There is no error in `docker build`. Dependencies install, the user is created, the healthcheck is declared, the image is produced successfully, and `EXPOSE` tells the world that a service runs inside on port 9000.
+
+What failed was the check. The scanner reads the Dockerfile text and asks "is there a `USER` instruction?". There is. It does not ask "can the container run the command it declared?". That second question requires building and starting the image, and the security gate running in the repository does not do that — it reads files, it does not run containers.
+
+It is the same class of failure that has appeared several times in this project: a surface that answers "ok" because it measured the wrong thing. The credential exists, so the secret gate passes. The file was copied to the right folder, so the deploy gate passes. The Dockerfile has `USER`, so the container gate passes. In every case the measured object is the text, and the defect lives in the behavior.
+
+## The second mismatch, the older one
+
+The same commit changed the port: 8000 out, 9000 in. It also changed the listen address, from `0.0.0.0` to `127.0.0.1`.
+
+`0.0.0.0` means "accept connections on any interface". `127.0.0.1` means "accept only from inside the container itself". For a process running directly on the host that can make sense, because it limits exposure. For a process inside a container it is the opposite: Docker's port publishing forwards traffic to the container interface, and a service listening only on loopback does not answer that forwarding.
+
+The `docker-compose.yml` versioned in the repository still declares yet another combination — it publishes port 8000 and points at internal 8000. `docker-compose.prod.yml`, which is not versioned, publishes 9000 and expects 9000. `docker-compose.wsl.yml` publishes 9000 on `0.0.0.0` and overrides the command with `--host 0.0.0.0`, cancelling the Dockerfile's loopback.
+
+Three orchestration files, three different answers about which port and which interface this service exists on. What runs in production is not what is in the repository, and what is in the repository does not talk to the Dockerfile.
+
+## What this changes
+
+The lesson is not "do not touch the Dockerfile". It is that security auditing and functional auditing look at opposite sides of the same file, and one can destroy the other without any alarm going off. The commit that closed a severity finding opened a silent functional regression, and both came in good faith.
+
+What separates the two worlds is a single check: build the image and run the command declared inside it, expecting the process to answer. It does not need sophisticated infrastructure — it needs the pipeline to execute the artifact instead of reading the text that describes it. A `docker run` with `--rm` and a probe against the healthcheck would have made `6d64b68a` fail.
+
+The same rule holds for the rest of the ecosystem: if the gate did not execute the artifact, it did not approve the artifact — it approved the description of the artifact. And a description does not start a service.
+
+## Next step
+
+Restore the source copy in the Dockerfile, with the project install going back through `pyproject.toml`, and reconcile the three compose files onto a single port and a single interface. Then add a CI step that builds the image and verifies the process answers before any image is published.
