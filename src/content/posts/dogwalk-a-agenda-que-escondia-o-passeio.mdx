@@ -1,0 +1,67 @@
+---
+title: "A agenda que escondia o passeio — quando o formato da data virou filtro"
+description: "Dois commits no mesmo dia no Dogwalk. O primeiro normalizou a data do agendamento para acabar com três formatos convivendo no banco. O segundo desfez metade do primeiro, porque a normalização reinterpretava o instante e movia o passeio três horas. O guard de contrato de tempo foi quem barrou."
+date: 2026-11-16 16:00:00 -03:00
+pubDate: 2026-11-16 16:00:00 -03:00
+category: samuel-projects
+lang: 'pt'
+project: dogwalk
+tags: [dogwalk, python, fastapi, timezone, testing, postgres]
+cover: /covers/dogwalk-a-agenda-que-escondia-o-passeio.webp
+featured: false
+hidden: true
+---
+
+## O passeio que existia e não aparecia
+
+Um agendamento confirmado, com horário, valor e tutor, simplesmente não estava na agenda do dia. A consulta era feita com data de início e data de fim iguais — o dia inteiro — e o registro não voltava. Nenhum erro, nenhum log, nenhum 404: a resposta era 200 com uma lista menor do que devia.
+
+O banco tinha o registro. A coluna que guarda a data do passeio é do tipo texto, e ao longo do tempo ela recebeu três formatos diferentes vindos de clientes distintos: a data pura, a data com hora no formato ISO completo, e nulo com o instante preenchido em outra coluna. O filtro da agenda compara essa coluna como texto, com maior ou igual e menor ou igual contra a data pedida.
+
+Aí está o problema inteiro. Comparação de texto é lexicográfica, não cronológica. A string `2026-11-13` termina ali. A string `2026-11-13T10:00:00` continua por mais nove caracteres. Quando o filtro pede tudo menor ou igual a `2026-11-13`, a segunda string não passa — ela é maior, porque é mais longa. O passeio do dia ficava fora da consulta do próprio dia.
+
+Medido em produção em 13 de novembro: um agendamento das 10h, no valor de 45 reais, invisível na consulta daquele dia, enquanto outro das 09h aparecia normalmente. A diferença entre os dois não era o horário nem o estado — era o formato em que a data tinha sido gravada.
+
+## O primeiro conserto, e o que ele fez demais
+
+A correção óbvia é normalizar na escrita: escolher um formato canônico e converter tudo para ele antes de gravar. Data em formato curto, hora em formato de hora. Um único ponto no código faz a conversão, e o roteador de criação de agendamentos passa a usá-lo.
+
+O detalhe perigoso está em como converter a variante ISO. O caminho natural em Python é ler a string com o parser de data e hora da biblioteca padrão e formatar o resultado. É uma linha, funciona, e faz uma coisa que ninguém pediu: reinterpreta o instante.
+
+Uma string como `2026-11-13T10:00:00` sem offset explícito é lida como hora local do processo — e o processo roda em UTC. Então dez da manhã vira dez da manhã UTC, que em Brasília são sete da manhã. O passeio não foi remarcado no banco de dados, mas passou a ser gravado três horas antes do que o cliente pediu. A data continua certa, o dia continua certo, o horário não.
+
+Esse é o tipo de erro que passa em teste feliz. O registro existe, a data está no formato certo, a agenda do dia devolve o passeio. Só o cliente chega três horas antes e o passeador não está lá.
+
+## O guard que barrou a segunda entrega
+
+O repositório tem uma suíte de contrato de tempo que nasceu meses antes, de outro incidente. Ela não testa o comportamento de uma função específica: ela varre o código-fonte e recusa padrões proibidos. A regra que importa aqui é que nenhum valor de data vindo de fora pode ser convertido sem passar pelo helper que garante fuso.
+
+A versão do primeiro commit usava a conversão crua. O guard falhou, e falhou certo — o código estava violando um contrato que existia justamente para impedir deriva de fuso. A resposta não foi afrouxar o guard nem adicionar uma exceção. Foi reescrever a normalização sem ele.
+
+A segunda versão separa dois casos com precedências explícitas. Se existe o instante completo com fuso, ele manda: extrai-se dia e hora no fuso do negócio, porque um passeio às dez da noite é do dia local, não do dia seguinte em UTC. Se existe apenas a data em texto, ela é literal — o `T` serve só para partir a string em duas, sem reinterpretar nada.
+
+```python
+if isinstance(scheduled_at, datetime):
+    aware = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=timezone.utc)
+    local = aware.astimezone(SAO_PAULO)
+    return local.strftime("%Y-%m-%d"), local.strftime("%H:%M:%S")
+
+# sem scheduled_at: a string e' literal, o 'T' so separa
+data_parte, _, resto = valor.partition("T")
+```
+
+O segundo caso é o que resolve o bug original sem criar outro. A data ISO não vira instante nenhum, então não há o que deslocar. A hora sai exatamente como o cliente digitou.
+
+## O que isso muda
+
+Duas lições, e a segunda é a que custa caro.
+
+A primeira é que normalizar dado de entrada é obrigatório quando a coluna aceita qualquer coisa. Três formatos na mesma coluna de texto não é diversidade, é ausência de contrato. O filtro que compara como texto só funciona porque o formato é estável — e ele não era.
+
+A segunda é que normalizar não é a mesma coisa que interpretar. Converter formato é reescrever a representação. Converter fuso é decidir qual instante aquela string significa, e essa decisão não pode ser tomada por omissão. Quando ninguém escolhe, o processo escolhe pelo fuso do servidor, que não tem nada a ver com o fuso do cliente.
+
+O guard foi o que separou os dois commits. Ele não sabia do bug da agenda; sabia de um contrato anterior, escrito quando outro incidente de fuso apareceu. Contrato antigo barrando código novo por um motivo diferente do original é o que se espera de um guard que mede propriedade em vez de caso.
+
+## Próximo passo
+
+A coluna continua sendo texto. Enquanto for, cada cliente novo pode introduzir um quarto formato, e a normalização na escrita só protege o que passa por ali. O caminho é migrar a coluna para tipo de data de verdade, com a conversão feita uma vez sobre o histórico — e aí o banco recusa formato inválido antes de o filtro precisar se defender.

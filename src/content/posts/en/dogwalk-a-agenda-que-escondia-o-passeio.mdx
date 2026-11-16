@@ -1,0 +1,67 @@
+---
+title: "The schedule that hid the walk — when a date format becomes a filter"
+description: "Two commits on the same day in Dogwalk. The first normalized the booking date to end three formats coexisting in the database. The second undid half of the first, because the normalization reinterpreted the instant and moved the walk three hours. The time contract guard is what stopped it."
+date: 2026-11-16 16:00:00 -03:00
+pubDate: 2026-11-16 16:00:00 -03:00
+category: samuel-projects
+lang: 'en'
+project: dogwalk
+tags: [dogwalk, python, fastapi, timezone, testing, postgres]
+cover: /covers/dogwalk-a-agenda-que-escondia-o-passeio.webp
+featured: false
+hidden: true
+---
+
+## The walk that existed and did not show up
+
+A confirmed booking, with time, price and owner, simply was not on the day's schedule. The query used the same value for start date and end date — the whole day — and the record did not come back. No error, no log line, no 404: the response was a 200 with a shorter list than it should have.
+
+The database had the record. The column storing the walk date is a text column, and over time it received three different formats from different clients: the plain date, the date with time in full ISO form, and null with the instant filled into another column. The schedule filter compares that column as text, with greater-or-equal and less-or-equal against the requested date.
+
+That is the whole problem. Text comparison is lexicographic, not chronological. The string `2026-11-13` ends there. The string `2026-11-13T10:00:00` continues for nine more characters. When the filter asks for everything less than or equal to `2026-11-13`, the second string does not pass — it is greater, because it is longer. The walk of the day fell outside the query for its own day.
+
+Measured in production on November 13: a 10 a.m. booking worth 45 reais, invisible in that day's query, while another one at 9 a.m. appeared normally. The difference between them was neither the time nor the state — it was the format the date had been stored in.
+
+## The first fix, and what it did beyond the brief
+
+The obvious correction is to normalize on write: pick a canonical format and convert everything into it before storing. Short date, time as time. One single point in the code performs the conversion, and the booking creation router starts using it.
+
+The dangerous detail is how to convert the ISO variant. The natural path in Python is to parse the string with the standard library date-time parser and format the result. It is one line, it works, and it does something nobody asked for: it reinterprets the instant.
+
+A string like `2026-11-13T10:00:00` with no explicit offset is read as the process local time — and the process runs in UTC. So ten in the morning becomes ten in the morning UTC, which in Brasilia is seven in the morning. The walk was not rescheduled in the database, but it started being stored three hours earlier than the customer asked for. The date stays right, the day stays right, the time does not.
+
+This is the kind of error that passes a happy-path test. The record exists, the date is in the right format, the day's schedule returns the walk. Only the customer shows up three hours early and the walker is not there.
+
+## The guard that blocked the second delivery
+
+The repository has a time contract suite born months earlier, out of a different incident. It does not test the behavior of one specific function: it scans the source code and rejects forbidden patterns. The rule that matters here is that no date value coming from outside can be converted without going through the helper that guarantees timezone.
+
+The first commit's version used the raw conversion. The guard failed, and it failed correctly — the code was violating a contract that existed precisely to prevent timezone drift. The answer was not to weaken the guard or add an exception. It was to rewrite the normalization without it.
+
+The second version separates two cases with explicit precedence. If the full instant with timezone exists, it wins: day and time are extracted in the business timezone, because a walk at ten at night belongs to the local day, not to the next day in UTC. If only the date as text exists, it is literal — the `T` merely splits the string in two, without reinterpreting anything.
+
+```python
+if isinstance(scheduled_at, datetime):
+    aware = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=timezone.utc)
+    local = aware.astimezone(SAO_PAULO)
+    return local.strftime("%Y-%m-%d"), local.strftime("%H:%M:%S")
+
+# no scheduled_at: the string is literal, 'T' only splits
+data_parte, _, resto = valor.partition("T")
+```
+
+The second case is what solves the original bug without creating another. The ISO date does not become an instant at all, so there is nothing to shift. The time comes out exactly as the customer typed it.
+
+## What changes
+
+Two lessons, and the second one is the expensive one.
+
+The first is that normalizing input is mandatory when the column accepts anything. Three formats in the same text column is not diversity, it is absence of a contract. The filter that compares as text only works because the format is stable — and it was not.
+
+The second is that normalizing is not the same as interpreting. Converting format is rewriting the representation. Converting timezone is deciding which instant that string means, and that decision cannot be made by omission. When nobody chooses, the process chooses for the server timezone, which has nothing to do with the customer timezone.
+
+The guard is what separated the two commits. It knew nothing about the schedule bug; it knew about an earlier contract, written when a different timezone incident showed up. An old contract blocking new code for a reason different from the original is exactly what you expect from a guard that measures property instead of case.
+
+## Next step
+
+The column is still text. While it is, every new client can introduce a fourth format, and normalizing on write only protects what passes through there. The path is migrating the column to a real date type, with the conversion done once over history — and then the database refuses invalid formats before the filter has to defend itself.
