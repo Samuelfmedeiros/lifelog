@@ -1,0 +1,67 @@
+---
+title: "The security flaw that came back eleven days later"
+description: "In November the TatuEngine security scan stopped reporting an entire class of finding. Eleven days later the same class was back in seven places, written by hand, by the same people who had just fixed it. What was missing was not attention: it was a mechanism that made the return impossible."
+date: 2026-11-16 08:00:00 -03:00
+pubDate: 2026-11-16 08:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "security", "python", "pytorch", "process"]
+cover: /covers/tatuengine-a-falha-que-voltou-onze-dias-depois.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The day the scan went clean
+
+On November 4th, two commits fixed the same problem in different parts of TatuEngine. The first removed a direct deserialization of a model file and replaced it with a restricted load, backed by measured evidence: a test payload executed arbitrary commands through the old path, and the restricted path refused the very same payload. The second applied the same change to two other spots the scan still flagged.
+
+The result was what anyone would expect. The finding class disappeared from the report. The history recorded the fix, the occurrence count went to zero, and the natural reading was "solved".
+
+That is the highest-risk moment in a project's life, and it is not the moment anyone notices the risk. A problem that leaves the report stops being remembered. It only exists again when someone trips over it, and in that gap nobody is watching.
+
+## Eleven days later, seven occurrences
+
+Today I ran the same scan, narrowed to that single finding class, and the report came back with seven occurrences spread across several scripts. None of them high severity: all medium. None of them news from outside. All written by hand, inside scripts created in the eleven days that followed.
+
+The wrong reading here is that the fix failed. It did not: the corrected spots are still correct. What appeared were new spots, each carrying the same shape as the old problem.
+
+And here is the uncomfortable part: every one of those new scripts was written during the same stretch when the fix was fresh in someone's mind. This is not collective forgetting. It is pattern copying.
+
+## Why the pattern returns
+
+The short answer is that existing code is the reference material. When someone opens a working script and needs to write a neighbour, they copy the shape. If the copied file is old, the old shape travels with it, including whatever has already been fixed somewhere else. A fix in one place teaches nothing to the file that was never touched.
+
+But there was a technical reason behind the relapse: The seven new spots did not load model weights. They loaded resume state: the dictionary that lets a training run stop and continue, holding optimizer state and a step counter. The assumption was that this kind of file needs the permissive mode, because a state dictionary is not a plain tensor.
+
+I tested the assumption instead of accepting it. I build a simple dictionary with a counter, a configuration, optimizer state and scheduler state, save it, and load it both ways:
+
+```python
+state = {"step": 1200, "config": cfg, "optimizer": opt_state, "scheduler": sched_state}
+torch.save(state, path)
+
+# permissive mode: accepts any serialized object in the file
+a = torch.load(path, map_location="cpu", weights_only=False)
+
+# restricted mode: accepts only primitive types and tensors
+b = torch.load(path, map_location="cpu", weights_only=True)
+```
+
+Both loads return the same dictionary. The restricted mode accepts nested structures of dict, list, number and tensor, which is exactly what resume state is. The belief that the door had to be open did not survive the test.
+
+Then I repeated it with a real artifact: a real checkpoint from the project itself, in the gigabyte range, loaded both ways with memory mapping straight from the file. Same return type, same key count in both cases. Opening the door bought nothing.
+
+## What actually contains the problem
+
+There is a difference between fixing and preventing the return, and it is one of nature, not effort.
+
+Fixing is an action at a point in time. Preventing the return is a property of the process: a test that fails when the pattern reappears, a scan that runs on its own and compares the count against the expected one, a build that breaks when the count moves. The November 4th fix was good and done the right way, with justification and proof for each change. What it lacked was an heir.
+
+The most honest signal of that is that today's count, seven, was found because I happened to run the scan, not because an alarm fired. A project that depends on someone remembering to look does not have control; it has luck on a variable interval.
+
+The second lesson is about the nature of model files. Every file produced by that format is, in practice, a program. Loading it without restriction means running code that arrived with the data. That holds for a downloaded checkpoint, for resumed training state and for any artifact that crosses machines. The restriction is not about trusting whoever produced the file, it is about not turning data into executable instructions when there is no need to.
+
+## The next step
+
+The seven occurrences go into the queue with the same discipline as before: each one carries a different kind of state, and each one needs verification against the real artifact before the switch, not confidence in the assumption that it should work.
+
+But the part that changes the game is another one. What was missing in November was not a commit; it was a check that does not depend on memory. As long as the occurrence count is something discovered by chance, the gap between a fix and the next regression will keep being defined by how often someone decides to look.

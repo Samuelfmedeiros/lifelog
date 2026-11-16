@@ -1,0 +1,67 @@
+---
+title: "A falha de segurança que voltou onze dias depois"
+description: "Em novembro a varredura de segurança do TatuEngine parou de acusar uma classe inteira de problema. Onze dias depois, a mesma classe estava de volta em sete pontos, escrita à mão, por quem tinha acabado de corrigi-la. O que faltou não foi atenção: foi um mecanismo que impedisse a volta."
+date: 2026-11-16 08:00:00 -03:00
+pubDate: 2026-11-16 08:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "security", "python", "pytorch", "process"]
+cover: /covers/tatuengine-a-falha-que-voltou-onze-dias-depois.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O dia em que a varredura ficou limpa
+
+No dia 4 de novembro, dois commits resolveram o mesmo problema em pontos diferentes do TatuEngine. O primeiro removia uma desserialização direta de um arquivo de modelo e a substituía por um carregamento restrito, com uma justificativa medida: um payload de teste executava comando arbitrário pelo caminho antigo, e o caminho restrito recusava o mesmo payload. O segundo aplicava a mesma troca em outros dois pontos que a varredura ainda acusava.
+
+O resultado foi o que se esperava. A classe de achado sumiu do relatório. O histórico registrava a correção, o número de ocorrências ia a zero e a leitura natural era "resolvido".
+
+Esse é o momento de maior risco de um projeto, e não é o momento em que qualquer pessoa percebe o risco. Um problema que sai do relatório deixa de ser lembrado. Ele só volta a existir quando alguém tropeça nele de novo, e nesse intervalo ninguém está olhando.
+
+## Onze dias depois, sete ocorrências
+
+Hoje rodei a mesma varredura, restrita àquela classe de achado, e o relatório voltou com sete ocorrências espalhadas por vários scripts. Nenhuma de severidade alta: todas médias. Nenhuma novidade vinda de fora. Todas escritas à mão, dentro de scripts que nasceram nos onze dias seguintes.
+
+A leitura errada aqui é achar que a correção falhou. Ela não falhou: os pontos corrigidos continuam corretos. O que apareceu foram pontos **novos**, cada um com o mesmo formato do problema antigo.
+
+E aqui está a parte desconfortável: cada um desses scripts novos foi escrito durante o mesmo período em que a correção estava fresca na cabeça. Não é um caso de esquecimento coletivo. É um caso de cópia de padrão.
+
+## Por que o padrão volta
+
+A resposta curta é que o código existente é o material de referência. Quando alguém abre um script que já funciona e precisa escrever um vizinho, copia o formato. Se o arquivo copiado é antigo, o formato antigo viaja junto — inclusive o que já foi corrigido em outro lugar. A correção num ponto não ensina nada ao arquivo que não foi tocado.
+
+Mas havia uma razão técnica por trás da reincidência: Os sete pontos novos não carregavam pesos de modelo. Carregavam estado de retomada: o dicionário que permite a um treino parar e continuar, com o estado do otimizador e o contador de passos. A suposição era que esse tipo de arquivo precisa do modo permissivo, porque um dicionário de estado não é um tensor puro.
+
+Testei a suposição em vez de aceitá-la. Monto um dicionário simples com contador, configuração, estado do otimizador e estado do agendador de taxa, salvo, e carrego nos dois modos:
+
+```python
+estado = {"step": 1200, "config": cfg, "optimizer": opt_state, "scheduler": sched_state}
+torch.save(estado, caminho)
+
+# modo permissivo: aceita qualquer objeto serializado no arquivo
+a = torch.load(caminho, map_location="cpu", weights_only=False)
+
+# modo restrito: aceita apenas tipos primitivos e tensores
+b = torch.load(caminho, map_location="cpu", weights_only=True)
+```
+
+Os dois carregamentos devolvem o mesmo dicionário. O modo restrito aceita estruturas aninhadas de dicionário, lista, número e tensor — que é exatamente o que um estado de retomada é. A crença de que era necessário abrir a porta não se sustentou no teste.
+
+Depois repeti com um artefato de verdade: um checkpoint real do próprio projeto, na casa dos gigabytes, carregado nos dois modos com mapeamento de memória por arquivo. Mesmo tipo de retorno, mesmo número de chaves nos dois casos. Não houve ganho nenhum em abrir a porta.
+
+## O que realmente contém o problema
+
+Existe uma diferença entre corrigir e impedir a volta, e ela é de natureza, não de esforço.
+
+Corrigir é uma ação num ponto do tempo. Impedir a volta é uma propriedade do processo: um teste que falha quando o padrão reaparece, uma varredura que roda sozinha e compara o número com o esperado, um limite que quebra o build. A correção de 4 de novembro foi boa e foi feita do jeito certo — cada mudança tinha justificativa e prova. O que ela não tinha era herdeiro.
+
+O sinal mais honesto disso é que o número de ocorrências hoje, sete, foi descoberto por mim ao rodar a varredura por acaso, não por um alarme. Um projeto que depende de alguém lembrar de olhar não tem controle; tem sorte com intervalo variável.
+
+A segunda lição é sobre a natureza do carregamento de arquivos de modelo. Todo arquivo produzido por esse formato é, na prática, um programa. Carregar sem restrição é executar código que veio junto com os dados. Isso vale para checkpoint baixado, para estado de treino retomado e para qualquer artefato que atravesse máquinas. A restrição não é sobre confiar ou não em quem gerou o arquivo — é sobre não transformar dado em instrução executável quando não é necessário.
+
+## O próximo passo
+
+As sete ocorrências entram na fila com a mesma disciplina de antes: cada uma carrega um tipo de estado diferente, e cada uma precisa de verificação contra o artefato real antes da troca, não de confiança na suposição de que "deve funcionar".
+
+Mas a parte que muda o jogo é outra. O que faltou em novembro não foi um commit; foi uma checagem que não depende de memória. Enquanto o número de ocorrências for algo que se descobre por acaso, o intervalo entre a correção e a próxima regressão vai continuar sendo definido pela frequência com que alguém decide olhar.
