@@ -167,22 +167,11 @@ describe('twinCandidates (par PT+EN de um slug)', () => {
 // Sem estes testes api/liberar.mjs ficava em 40.67% de statements e o gate do
 // Roger bloqueava a entrega por cobertura < 50% (medido 14/11).
 
-const STUB_COMMITTER = (over) => ({
-  getFile: vi.fn(async (path) => ({ present: true, content: FS[path] ?? '' })),
-  commitFiles: vi.fn(async () => ({ commit: 'abc1234' })),
-  ...over,
-})
-
-let FS = {}
-
-const setFS = (files) => { FS = files }
-
 const mdxOculto = (slug) => `---\ntitle: ${slug}\nhidden: true\n---\ncorpo`
 const mdxLiberado = (slug) => `---\ntitle: ${slug}\nhidden: false\n---\ncorpo`
 const DATA_OCULTOS = `export default [{"path":"meu-post.mdx"},{"path":"en/meu-post.mdx"},{"path":"outro.mdx"}]`
 
 async function chamaComCommits({ body, fs }) {
-  setFS(fs)
   const res = mockRes()
   const commitFiles = vi.fn(async () => ({ commit: 'abc1234' }))
   // injeta o committer trocando o modulo ocultos-core

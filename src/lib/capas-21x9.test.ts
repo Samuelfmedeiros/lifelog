@@ -49,7 +49,7 @@ function coverOf(dir: string, fn: string): string | null {
 function posts(): Array<{ dir: string; fn: string }> {
   const out: Array<{ dir: string; fn: string }> = [];
   for (const dir of [POSTS, join(POSTS, 'en')]) {
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = readdirSync(dir);
     } catch {

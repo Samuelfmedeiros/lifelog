@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 describe('openai dependency regression (REVISOR_INDISPONIVEL)', () => {
   it('project source has no openai dependency or import', () => {
     const packageJson = JSON.parse(
-      require('fs').readFileSync(
+      readFileSync(
         new URL('../../package.json', import.meta.url).pathname,
         'utf-8',
       ),

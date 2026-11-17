@@ -43,11 +43,15 @@ log() { printf '[%s] %s\n' "$(date -u +%H:%M:%SZ)" "$*" >>"$LOG"; }
 # os filhos assim, tornando-os alvo preferencial). O preview e o processo mais
 # caro da suite e o menos descartavel — puxamos o score dele para baixo. Sem
 # choom, segue sem ajuste (nao e requisito da correcao).
-if command -v choom >/dev/null 2>&1; then
+# 17/11/2026: `choom -n -300` exige privilegio. Sem ele o choom falha e NAO
+# executa o comando depois de `--` — o preview saia rc=1 em 0s e ninguem subia
+# (medido local e no CI). Agora o ajuste so entra se um teste real passar.
+CHILDREN_PRIO=()
+ADJ_NOTE="off(sem privilegio)"
+if command -v choom >/dev/null 2>&1 && choom -n -300 -- true >/dev/null 2>&1; then
   CHILDREN_PRIO=(choom -n -300 --)
   ADJ_NOTE="on(-300)"
-else
-  CHILDREN_PRIO=()
+elif ! command -v choom >/dev/null 2>&1; then
   ADJ_NOTE="off(choom ausente)"
 fi
 
@@ -58,7 +62,17 @@ while true; do
   started=$(date +%s)
   [ "$restarts" -gt 0 ] && log "restart #$restarts — subindo preview de novo"
 
-  "${CHILDREN_PRIO[@]}" npx astro preview --port "$PORT" --host "$HOST" >>"$PREVIEW_LOG" 2>&1
+  # 17/11/2026: no CI o projeto instala com pnpm e `npx astro` NAO acha o
+  # binario local (rc=1 em 0s, preview nunca sobe). Preferir o binario do
+  # node_modules e, se ausente, `pnpm exec` — npx so como ultimo recurso.
+  if [ -x node_modules/.bin/astro ]; then
+    ASTRO=(node_modules/.bin/astro)
+  elif command -v pnpm >/dev/null 2>&1; then
+    ASTRO=(pnpm exec astro)
+  else
+    ASTRO=(npx --no-install astro)
+  fi
+  "${CHILDREN_PRIO[@]}" "${ASTRO[@]}" preview --port "$PORT" --host "$HOST" >>"$PREVIEW_LOG" 2>&1
   rc=$?
   lived=$(( $(date +%s) - started ))
   restarts=$((restarts + 1))
