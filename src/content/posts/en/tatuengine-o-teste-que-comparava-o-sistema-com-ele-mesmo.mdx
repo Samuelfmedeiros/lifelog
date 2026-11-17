@@ -1,0 +1,82 @@
+---
+title: "The test that compared the system to itself"
+description: "Sixteen coherence checks passed, the gap between CPU and GPU sat in the billionths, and the engine still produced nonsense. The defect only surfaced when a second engine, written by somebody else, read the same model file. A test that compares a system to itself always agrees."
+date: 2026-11-17 12:00:00 -03:00
+pubDate: 2026-11-17 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "testing", "model", "debugging", "lessons"]
+cover: /covers/tatuengine-o-teste-que-comparava-o-sistema-com-ele-mesmo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## An engine that ran without failing
+
+An inference engine has two properties people keep confusing: it executes, and it executes correctly. For weeks the TatuEngine had the first one comfortably, while nobody had measured the second with the discipline it deserves.
+
+The symptom was not a crash. It was text. A short prompt went in, tokens came out, and what came out was not any language at all: invented names, words welded together, fragments of unrelated languages. In the clearest case, the same token repeated eight times in a row until generation ran out of room. None of it killed a process. Exit code zero, output filled, plausible length. The kind of failure that slips past a distracted eye precisely because it never shouts.
+
+That is how it walked through a whole test suite without being caught.
+
+## Sixteen out of sixteen
+
+The coherence suite did the obvious thing: it ran the same prompt through two execution paths, one on CPU and one on GPU, and required both to agree. Sixteen prompts, sixteen approvals. The numeric difference between the paths landed in the billionths, which is more than enough precision to claim the computation is stable.
+
+The reasoning behind it is sound, and that is exactly where the trap sits: if two independent implementations reach the same result, the math must be right. Except that in this arrangement, "the same result" only means "the same mistake". Both paths share the same weight-conversion code, the same notion of scale, the same order of operations. If the premise is wrong in both, both are wrong together, and the test applauds.
+
+```python
+# the test that passed all along: both sides come from the same engine
+def test_coherence(prompts):
+    for p in prompts:
+        assert almost_equal(engine_cpu(p), engine_gpu(p))
+```
+
+A test like that can never fail on a modelling defect. It measures internal consistency, not correctness. And internal consistency is the floor, not the proof.
+
+## The second engine
+
+What broke the stalemate was not one more test. It was bringing in a reader for the same format from the outside — written by the original author of the specification — and putting the two of them side by side on the identical model file, with the same tokens, on the same machine.
+
+On the first prompt, the reference engine produced coherent English. On the second, a full sentence with a subject and a verb. The TatuEngine, on the same input, produced garbage on the first and a degenerate loop on the second: eight repetitions of one token, no stop in sight.
+
+That closed the case in a single line: the artefact is fine, the engine is wrong. The model file could not be the culprit, because another implementation read it and generated text from it. The only variable left was the code interpreting the file.
+
+The consequence landed immediately, and it was uncomfortable. Every throughput figure published up to that point compared the TatuEngine against that reference engine. Comparing throughput only makes sense when both sides run the same work, and they were not. One was producing language; the other was producing noise. Publishing a performance ratio in that state meant comparing two different programs.
+
+## The constant pointing the wrong way
+
+Once the divergence was located, the cause was ordinary in the way good causes usually are. A normalisation constant was applied backwards: where the format definition called for division, the code multiplied. A flipped operator, the sort of thing code review misses because the line reads correctly in both directions.
+
+The damage came from composition, not from the factor itself. The same constant was applied at two stages of the path, so the final deviation was its square. A moderate factor turned into output orders of magnitude outside the expected range, and the model responded the way any model does when the numbers stop making sense: it repeats itself.
+
+The fix was swapping the operation at both points. Text went from garbage to partially coherent sentences on the first attempt. It is still not good, and now there is an instrument to say so with a number instead of an impression.
+
+## The instrument that should have come first
+
+The hunt produced a by-product: a quality meter for the artefact, a tool that computes perplexity of the quantised model by running through the real generation path rather than a shortcut of convenience.
+
+Its first run returned an absurd number. That was not a flaw in the meter — it was the meter doing its job. Chasing the absurd number revealed that it had been calling a routine marked obsolete, which silently dropped part of the computation whenever it received more than a single token. A shortcut that worked in the trivial case and lied in every other. Swapped for the official path, the meter started reflecting what generation actually does.
+
+The rule that follows: a meter that has never produced an absurd number has probably never been calibrated.
+
+## What changes
+
+Three rules came out of that week, and they travel well beyond this project.
+
+A self-referential test is half a truth. Comparing two implementations of the same system catches hardware and threading divergence; it cannot catch a wrong premise. That requires an external oracle — other code, another person, another language — reading the same input and stating what should come out.
+
+```python
+# the test that failed: one side comes from outside the system
+def test_differential(prompts):
+    for p in prompts:
+        assert engine_in_house(p) == engine_reference(p)
+```
+
+A speed number without a quality number is not a result. If the system does not execute the same work as the reference, the ratio between them measures a difference in workload, not in efficiency. And a green suite says more about what the suite asks than about the system.
+
+Finally, the diagnostic ladder became clear. First prove the artefact is good, by isolating the engine. Then prove the engine runs the same model as the reference. Only then measure throughput. Outside that order, any number is noise wearing the clothes of a metric.
+
+## Next step
+
+The remaining divergence has concrete suspects: the layout of the stacked weights during conversion, and the order in which tensors are read. The plan is to isolate each one by comparing tensor against tensor with the reference, instead of comparing the final output and guessing where the deviation came from. Once the output matches the reference across more than one prompt, performance measurement starts to mean something again.

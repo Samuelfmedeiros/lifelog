@@ -1,0 +1,78 @@
+---
+title: "O teste que comparava o sistema com ele mesmo"
+description: "Dezesseis verificações de coerência passaram, a diferença entre CPU e GPU ficou na casa do bilionésimo, e mesmo assim o motor gerava texto sem sentido. O defeito só apareceu quando um segundo motor, escrito por outra pessoa, leu o mesmo arquivo de modelo."
+date: 2026-11-17 12:00:00 -03:00
+pubDate: 2026-11-17 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "testing", "model", "debugging", "lessons"]
+cover: /covers/tatuengine-o-teste-que-comparava-o-sistema-com-ele-mesmo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O motor que rodava sem erro
+
+Um motor de inferência tem duas propriedades que costumam ser confundidas: ele executa, e ele executa certo. Durante semanas o TatuEngine teve a primeira com folga, enquanto ninguém mediu a segunda com o rigor que ela exige.
+
+O sintoma não era crash. Era texto. Prompt curto entrava, tokens saíam, e o que saía não era língua nenhuma: nomes inventados, palavras coladas, pedaços de outras línguas. No caso mais evidente, o mesmo token repetido oito vezes até o limite de geração. Nada disso derrubava processo — exit code zero, saída preenchida, tamanho plausível. O tipo de falha que passa por um olho distraído porque não grita. E foi assim que atravessou uma suíte inteira.
+
+## Dezesseis de dezesseis
+
+A suíte de coerência fazia o que parece óbvio: rodava o mesmo prompt em dois caminhos, CPU e GPU, e exigia que concordassem. Dezesseis prompts, dezesseis aprovações. A diferença numérica entre os dois ficou na casa do bilionésimo, precisão de sobra para dizer que o cálculo estava estável.
+
+O raciocínio é razoável e é onde mora a armadilha: se duas implementações independentes chegam ao mesmo resultado, o cálculo está certo. Só que "o mesmo resultado", nesse arranjo, significa apenas "o mesmo erro". Os dois caminhos compartilham o mesmo código de conversão de pesos, a mesma noção de escala, a mesma ordem de operações. Se a premissa está errada nos dois, os dois erram juntos, e o teste aplaude.
+
+```python
+# o teste que passou a vida inteira: os dois lados vêm do mesmo motor
+def test_coerencia(prompts):
+    for p in prompts:
+        assert quase_igual(motor_cpu(p), motor_gpu(p))
+```
+
+Um teste assim nunca reprova por defeito de modelagem. Ele mede consistência interna, não correção — e consistência interna é o piso, não a prova.
+
+## O segundo motor
+
+O que quebrou o impasse não foi mais um teste. Foi trazer de fora um leitor do mesmo formato, escrito pelo autor original da especificação, e colocá-lo lado a lado com o nosso no arquivo de modelo idêntico, mesmos tokens, mesma máquina.
+
+No primeiro prompt, a referência produziu inglês coerente. No segundo, uma frase inteira com sujeito e verbo. O TatuEngine, no mesmo insumo, produziu lixo no primeiro e um loop degenerado no segundo: oito repetições do mesmo token, sem sinal de parada.
+
+O caso fechou em uma linha. O artefato está bom, o motor está errado. A única variável era o código que interpretava o arquivo.
+
+A consequência foi imediata e desconfortável: todos os números de velocidade publicados até ali comparavam o TatuEngine a esse motor de referência. Comparar velocidade só faz sentido quando os dois lados executam o mesmo trabalho, e não executavam. Um gerava língua, o outro gerava ruído.
+
+## A constante na direção errada
+
+A causa foi banal do jeito que as causas boas costumam ser. Uma constante de normalização estava aplicada ao contrário: onde a definição do formato pedia divisão, o código multiplicava. Uma troca de operador, do tipo que não aparece em revisão porque a linha parece correta lida nos dois sentidos.
+
+O estrago vinha da composição. A mesma constante era aplicada em dois estágios do caminho, então o desvio final era o quadrado dela. Um fator moderado virava saída fora de faixa por ordens de grandeza, e o modelo respondia como qualquer modelo responde quando os números não fazem sentido: repete.
+
+Trocada a operação nos dois pontos, o texto saiu do lixo para frases parcialmente coerentes na primeira tentativa. Ainda não é bom, e agora existe instrumento para dizer isso com número em vez de impressão.
+
+## O instrumento que devia ter vindo antes
+
+Junto com a caçada nasceu um medidor de qualidade do artefato: cálculo de perplexidade do modelo quantizado executando pelo caminho real de geração, não por um atalho de conveniência.
+
+A primeira execução deu número absurdo. Não foi problema do medidor, foi o medidor fazendo o trabalho dele. Investigando, descobriu-se que ele chamava uma rotina marcada como obsoleta, que descartava parte do cálculo ao receber mais de um token: um atalho que funcionava no caso trivial e mentia em todos os outros. Medidor que nunca produziu número absurdo provavelmente nunca foi calibrado.
+
+## O que muda
+
+Três regras saíram da semana e valem além do projeto.
+
+Teste auto-referente é meia-verdade. Comparar duas implementações do mesmo sistema detecta divergência de hardware e de threading, não erro de premissa. Para isso é preciso oráculo externo: outro código, outra pessoa, outra linguagem.
+
+```python
+# o teste que reprovou: um lado vem de fora do sistema
+def test_diferencial(prompts):
+    for p in prompts:
+        assert motor_da_casa(p) == motor_de_referencia(p)
+```
+
+Número de velocidade sem número de qualidade não é resultado. Se o sistema não executa o mesmo trabalho do referencial, a razão entre os dois mede diferença de carga, não eficiência.
+
+E a escada de diagnóstico: provar que o artefato é bom isolando o motor; provar que o motor executa o mesmo modelo que a referência; só então medir velocidade. Fora dessa ordem, qualquer número é ruído vestido de métrica.
+
+## Próximo passo
+
+A divergência restante tem suspeitos concretos: o layout dos pesos empilhados na conversão e a ordem em que os tensores são lidos. O plano é isolar cada um comparando tensor por tensor contra a referência, em vez de comparar a saída final e adivinhar de onde veio o desvio. Quando a saída bater em mais de um prompt, a medição de desempenho volta a significar alguma coisa.
