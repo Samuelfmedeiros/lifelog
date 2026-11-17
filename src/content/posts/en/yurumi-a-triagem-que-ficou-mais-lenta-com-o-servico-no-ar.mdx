@@ -1,0 +1,71 @@
+---
+title: "Yurumi: the triage that got slower with the service up"
+description: "With the decision server down, triage finished in 300 ms. With it up and the host saturated, it took eight seconds to return a neutral answer. A degraded dependency was more expensive than a missing one, and the code treated both as the same case."
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "latency", "reliability", "performance", "python", "observability"]
+cover: /covers/yurumi-a-triagem-que-ficou-mais-lenta-com-o-servico-no-ar.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The arithmetic that did not add up
+
+Yurumi is the memory layer of my ecosystem: the place where conversations, decisions and rules travel between agents. Before an agent accepts a message from another, a triage step reads the text and decides whether it is information, a request, a new rule or noise. That classification is not done by the memory layer itself. It is delegated to a separate decision server, with its own lifecycle and its own failure modes.
+
+So triage has two routes: call the decision server, or fall back to a local heuristic when it is unavailable. Graceful degradation is a sound, cheap pattern to implement. What was missing was someone measuring the degraded route while the host was under load.
+
+On the morning of November seventeenth the host was running training and backups at the same time, and the decision server was up. Every triage call took **8,074 ms**. The waiting budget was eight seconds, and the number is no coincidence: triage was not answering slowly, it was burning the entire ceiling before giving up and returning a neutral classification.
+
+The same test, with the decision server **down**, finished in **300 ms**. Three orders of magnitude of difference — faster with the dependency dead than with the dependency alive.
+
+## Why the missing dependency is faster
+
+The explanation is silly, and that is precisely why nobody looks at it. When the server is down, the code does not attempt HTTP at all: it performs a socket check first, gets the refusal in milliseconds and takes the local path. Classic fail-fast — somebody asked "are you there?" and the answer was no.
+
+When the server is up but the machine is saturated, the answer is "I am here". It accepts the connection, starts processing, and does not finish within budget. The client waits out the full timeout. The *alive* state convinces the code that waiting is worthwhile.
+
+The availability check was answering the wrong question. "Are you up?" is not the same question as "can you answer right now?". On an overloaded host the answer is yes to the first and no to the second — and the outcome is the worst of both worlds: you pay the entire timeout and still get a neutral result, which is indistinguishable from "there was nothing to classify here".
+
+## The fix: ask first, with a cheap question
+
+The fix (commit `a76be64`) placed a guard before the call. It compares the host load average against the core count and, when the ratio crosses the configured ceiling, marks the server as "not expected right now" and goes straight to the local heuristic. The guard costs microseconds: no network, no connection, no serialization.
+
+```python
+def service_expected_fast() -> bool:
+    if load_max <= 0:                 # zero disables the guard
+        return True
+    load = os.getloadavg()[0] / os.cpu_count()
+    return load <= load_max
+
+def classify(text: str):
+    if not service_expected_fast():
+        return local_heuristic(text)      # cheap path, no network
+    return decision_server(text)
+```
+
+Measured proof in the same load scenario: 8,074 ms before, **0 to 36 ms** after. And to confirm the guard is what explains the difference, raising the ceiling to an absurd value brings the old behaviour back — around 8,020 ms.
+
+One detail of the fix is worth more than the fix. A test whose result depends on host load is a test that passes on the wrong machine. The guard was explicitly disabled in the test configuration, so the suite measures triage instead of the machine's mood of the moment. An environment side effect in production has to be switchable off in tests — otherwise you trade a real bug for a flake and lose the cause along the way.
+
+## Same day, same class of defect
+
+Two other fixes from the same date are variations on the same theme: silent degradation.
+
+The first (commit `0a5fd38`) attacked pure latency. The embedder — the component that turns text into vectors for semantic search — spent 1,523 ms on queries that repeat all day long. The cure was a result cache limited to short queries; documents never enter it, because documents rarely repeat and take far too much room. Measured: 1,523 ms down to 0 ms on a repeat, and the API call went from 0.19 s cold to 0.003–0.007 s warm.
+
+The second, in the same commit, is the most dangerous of the three. Collection discovery started receiving a 401 from an endpoint that now required a key, and the code treated the refusal as "there are no collections". Result: zero collections visible, the protection breaker opening in silence, and search dropping to the plain text path without a single alarm. After sending the correct header, **34 collections**. No exception, no error line — just a smaller number nobody was watching.
+
+## What this changes
+
+A degraded service and a missing service are different states, and the code has to tell them apart. The useful question is not "did the dependency answer the ping?" but "does the dependency deliver within budget?". And that question must be answered by something cheaper than the dependency itself — otherwise you just swap one timeout for another.
+
+The second effect is diagnostic. All three cases that day carried the same signature: no error at all. Nothing blew up, nothing showed in the logs — the only clue was a number that did not add up (eight seconds, a second and a half, zero collections). A system that degrades silently is only diagnosable when the number is visible somewhere.
+
+## Next step
+
+The guard uses host load as an estimate of slowness, and estimates are debt: a loaded host can serve fast, and an idle host can be slow for other reasons. The next step is to measure the real latency of the dependency over a short window and decide from that history instead of from load. Until then, the cheapest thing that worked stays: ask first, with a question that costs microseconds and never lies out of optimism.

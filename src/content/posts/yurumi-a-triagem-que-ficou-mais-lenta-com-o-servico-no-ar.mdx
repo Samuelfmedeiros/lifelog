@@ -1,0 +1,71 @@
+---
+title: "Yurumi: a triagem que ficou mais lenta com o serviço no ar"
+description: "Com o servidor de decisão fora, a triagem terminava em 300 ms. Com ele no ar e o host saturado, levava 8 segundos para devolver uma resposta neutra. A dependência degradada custava mais caro que a dependência ausente, e o código tratava os dois casos como se fossem o mesmo."
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "latency", "reliability", "performance", "python", "observability"]
+cover: /covers/yurumi-a-triagem-que-ficou-mais-lenta-com-o-servico-no-ar.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A conta que não fechava
+
+O Yurumi é a camada de memória do meu ecossistema: onde ficam as conversas, as decisões e as regras que os agentes trocam entre si. Antes de um agente aceitar uma mensagem de outro, existe uma triagem — ela lê o texto e decide se aquilo é informação, pedido, regra nova ou ruído. Essa classificação não é feita pela memória em si. É delegada a um servidor de decisão separado, com o próprio ciclo de vida e os próprios modos de falha.
+
+A triagem, por isso, tem duas rotas: chamar o servidor de decisão ou cair numa heurística local quando ele não está disponível. Degradação graciosa é um padrão correto e barato de implementar. O que faltava era alguém medir a rota degradada com o host sob carga.
+
+Na manhã de dezessete de novembro, o host rodava treino e backup ao mesmo tempo, e o servidor de decisão estava no ar. Cada triagem levava **8.074 ms**. O orçamento máximo de espera era de oito segundos, e o número não é coincidência: a triagem não estava respondendo devagar, estava esperando o teto inteiro para desistir e então devolver a classificação neutra.
+
+O mesmo teste, com o servidor de decisão **fora**, terminava em **300 ms**. Três ordens de grandeza de diferença — mais rápido com a dependência morta do que com a dependência viva.
+
+## Por que a dependência ausente é mais rápida
+
+A explicação é boba, e é exatamente por isso que ninguém olha. Quando o servidor está fora, o código não tenta falar HTTP: ele faz uma verificação de socket antes, recebe a recusa em milissegundos e segue pelo caminho local. É fail-fast clássico — alguém perguntou "você está aí?" e a resposta foi não.
+
+Quando o servidor está no ar mas a máquina está saturada, a resposta é "estou aqui". Ele aceita a conexão, começa a processar, e não termina dentro do orçamento. O cliente espera o timeout completo. O estado *vivo* convence o código de que vale a pena esperar.
+
+A checagem de disponibilidade respondia à pergunta errada. "Está no ar?" não é a mesma pergunta que "consegue responder agora?". Em host sobrecarregado, a resposta é sim para a primeira e não para a segunda — e o resultado é o pior dos dois mundos: você paga o timeout inteiro e ainda recebe um neutro, que é indistinguível de "não havia nada a classificar ali".
+
+## O fix: perguntar antes, com uma pergunta barata
+
+A correção (commit `a76be64`) colocou um guard antes da chamada. Ele compara a carga média do host com o número de núcleos e, quando a razão passa do teto configurado, marca o servidor como "não esperado agora" e vai direto para a heurística local. O guard custa microssegundos: não faz rede, não abre conexão, não serializa nada.
+
+```python
+def servico_esperado_rapido() -> bool:
+    if load_max <= 0:                 # zero desliga o guard
+        return True
+    carga = os.getloadavg()[0] / os.cpu_count()
+    return carga <= load_max
+
+def classificar(texto: str):
+    if not servico_esperado_rapido():
+        return heuristica_local(texto)      # caminho barato, sem rede
+    return servidor_de_decisao(texto)
+```
+
+Prova medida no mesmo cenário de carga: 8.074 ms antes, **0 a 36 ms** depois. E, para confirmar que é o guard que explica a diferença, subir o teto para um valor absurdo devolve o comportamento antigo — cerca de 8.020 ms.
+
+Tem um detalhe do fix que vale mais que o fix. Um teste cujo resultado depende da carga do host é um teste que passa na máquina errada. O guard foi desligado explicitamente na configuração de testes, e assim a suíte mede a triagem em vez do humor momentâneo da máquina. Efeito colateral de ambiente em produção precisa ser desligável no teste — senão você troca um bug real por um flaky e perde a causa.
+
+## O mesmo dia, a mesma classe de defeito
+
+Duas outras correções da mesma data são variações do mesmo tema: degradação silenciosa.
+
+A primeira (commit `0a5fd38`) atacou latência pura. O embedder — o componente que transforma texto em vetor para a busca semântica — gastava 1.523 ms em consultas que se repetem o tempo todo. A cura foi cache de resultado limitado a consultas curtas; documento nunca entra, porque documento se repete pouco e ocupa demais. Medido: 1.523 ms para 0 ms na repetição, e a chamada de API caiu de 0,19 s fria para 0,003–0,007 s quente.
+
+A segunda, no mesmo commit, é a mais perigosa das três. A descoberta de coleções passou a receber 401 num endpoint que exigia chave, e o código tratou a recusa como "não há coleções". Resultado: zero coleções vistas, o disjuntor de proteção abrindo em silêncio e a busca caindo para o caminho de texto puro sem emitir um único alarme. Depois de mandar o header correto, **34 coleções**. Nenhuma exceção, nenhuma linha de erro — só um número menor que ninguém estava olhando.
+
+## O que isso muda
+
+Serviço degradado e serviço ausente são estados diferentes, e o código precisa distinguir os dois. A pergunta útil não é "a dependência respondeu ao ping?", e sim "a dependência entrega dentro do orçamento?". E ela tem que ser respondida por algo mais barato que a própria dependência — senão você só troca um timeout por outro.
+
+O segundo efeito é de diagnóstico. Os três casos do dia tinham a mesma assinatura: nenhum erro. Nada estourou, nada apareceu no log — a única pista era um número que não fechava (oito segundos, um segundo e meio, zero coleções). Sistema que degrada em silêncio só é diagnosticável quando o número está visível em algum lugar.
+
+## Próximo passo
+
+O guard usa carga do host como estimativa de lentidão, e estimativa é dívida: host com carga alta pode servir rápido, e host ocioso pode estar lento por outro motivo. O próximo passo é medir a latência real da dependência numa janela curta e decidir pelo histórico em vez de pelo load. Enquanto isso vale o mais barato que funcionou: perguntar antes, com uma pergunta que custa microssegundos e nunca mente por otimismo.
