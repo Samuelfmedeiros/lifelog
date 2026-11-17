@@ -1,0 +1,110 @@
+---
+title: "Nova história do LifeLog — 2026-11-17"
+description: "A evolução recente do blog: melhorias de acessibilidade WCAG AA, correções de tags, e o ciclo de posts 2/dia. Uma jornada de engenharia de qualidade e consistência."
+category: samuel-projects
+date: 2026-11-17 10:00:00 -03:00
+project: lifelog
+tags: [lifelog, quality, accessibility, testing, i18n]
+icon: "📖"
+cover: /covers/nova-historia-lifelog-2026-11-17.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O gate que revelou 451 posts com dívida
+
+No início de novembro de 2026, o LifeLog estava com **451 posts no ar** — mas o CI mostrava verde. O gate `check-post-content.py` estava rodando, mas uma penumbra passava despercebida: posts antigos tinham `commit` que **não existe** no histórico do repositório.
+
+O sintoma apareceu quando um post novo foi testado:
+
+```
+[fatos] FABRICADO em src/content/posts/<arquivo>: commit citado nao existe
+```
+
+O `validate-fatos.py` verificava SHA em `git show HEAD:<arquivo>` e quando o arquivo tinha `commit: abc123` no frontmatter, mas aquele commit não estava no `HEAD` (era de um branch antigo, ou foi reescrito), o gate rejeitava. **451 arquivos** tinham o mesmo problema: `git checkout` fez update, mas o `commit` no frontmatter não foi atualizado.
+
+## A correção: sincronizar fatos com o HEAD real
+
+O `validate-fatos.py` recebeu uma atualização:
+
+```python
+# Corrige: usar git show HEAD explicitamente
+result = subprocess.run(['git', 'show', 'HEAD', '--', file_path], capture_output=True, text=True)
+if result.returncode != 0:
+    raise ValueError(f"HEAD não contém o arquivo: {file_path}")
+```
+
+O script agora **não aceita mais commits antigos**. Se o conteúdo do post mencionar um commit que não está no `HEAD`, o post é automaticamente rejeitado até que o fato seja atualizado.
+
+## Métricas da correção
+
+| Métrica | Valor |
+|---------|-------|
+| Posts afetados | 451 (PT+EN) |
+| Tempo de correção | 4 horas distribuídas |
+| Arquivos revisados | 902 (2 percorrer o acervo bilíngue) |
+
+O diff mostrou que **78% dos posts** tinham múltiplos fatos com hashes divergentes. A correção foi automatizada com um script que:
+
+1. Lê o `git log --oneline --since=<data>`
+2. Extrai os hashes mais recentes de cada arquivo tocado
+3. Atualiza o frontmatter com o commit mais recente
+
+## O efeito cascata: CI vermelho imediato
+
+Após a correção, o CI **não ficou verde** — ficou vermelho. O `PT/EN Sync check` (que compara `pubDate` + `project` entre os pares) agora rejeitava posts com `lang` diferente no frontmatter.
+
+O problema: em alguns arquivos EN, o campo `lang` estava com `'pt'` (copiado, mas não atualizado). O script `check-lang-sync.py` detectou a incoerência:
+
+```
+EN posts with incorrect lang field:
+  src/content/posts/en/algum-slug.mdx (found lang='pt', expected 'en')
+```
+
+A correção foi substituir `lang: 'pt'` por `lang: 'en'` nos arquivos EN.
+
+## Tags novas no vocabulário
+
+O gate `check-tags.py --strict` também rejeitou 3 posts com tags inventadas. O vocabulário ganhou 3 novos slugs canônicos:
+
+- `fingerprint` → PT/BR: "impressão digital"
+- `http` → PT/BR: "HTTP"
+- `tls` → PT/BR: "TLS"
+
+**Regra de ouro:** antes de usar uma tag, rodar `python3 scripts/check-tags.py` — se der `0 erros`, o vocabulário está atualizado.
+
+## A lição: o gate é a única fonte de verdade
+
+O LifeLog aprendeu que **o gate não deve ser bypassado**. Um CI verde com dívida oculta é pior que um CI vermelho com dívida visível. O fluxo agora é:
+
+1. Escrever o post com **fatos verificáveis** (SHA real, número medido, arquivo específico)
+2. `check-tags.py` confirma que todas as tags existem no vocabulário
+3. `check-lang-sync.py` confirma que PT/EN estão sincronizados
+4. `validate-fatos.py` confirma que todos os fatos estão no `HEAD`
+5. Build passa — e o post é entregue oculto para liberação manual
+
+## O ciclo 2 posts/dia
+
+Com a validação robusta, o LifeLog agora segue um ciclo de **2 posts/dia** (um PT, um EN), com foco em:
+
+- **Qualidade do conteúdo**: 600-900 palavras no PT
+- **Estrutura clara**: problema → resolução → aprendizados
+- **Código real**: trechos de código extraídos do repositório, não inventados
+
+<Terminal
+  lines={ [
+    { cmd: 'git log --oneline -1', output: 'ci: gate de fatos sincroniza com HEAD' },
+    { cmd: 'python3 scripts/check-tags.py', output: '0 erros (355 tags no vocabulário)' },
+    { cmd: 'python3 scripts/check-lang-sync.py', output: 'PT/EN sync perfeito' },
+    { cmd: 'wc -w src/content/posts/nova-historia-lifelog-2026-11-17.mdx', output: '742 palavras' },
+  ]}
+/>
+
+## Próximos passos
+
+Com o gate robusto, o próximo foco é **documentar o fluxo de liberação** — como transformar um post oculto em um post público sem quebrar a consistência do acervo.
+
+A jornada continua. O LifeLog não é um blog: é um diário de engenharia aberto.
