@@ -1,0 +1,61 @@
+---
+title: "O preview que saía com erro em zero segundo"
+description: "A suíte E2E derrubou o CI duas vezes com o mesmo sintoma: o servidor de preview não subia. O primeiro culpado tinha nome e endereço. O segundo estava escondido atrás dele, com a mesma assinatura exata. Dois defeitos, um código de saída — e a lição de que tempo de vida também é diagnóstico."
+date: 2026-11-17 08:00:00 -03:00
+pubDate: 2026-11-17 08:00:00 -03:00
+project: lifelog
+tags: [lifelog, ci, e2e, testing, observability]
+cover: /covers/lifelog-o-preview-que-saia-em-zero-segundo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O sintoma que voltou de terno novo
+
+A suíte E2E deste site roda contra um servidor de preview local, sobe o `dist` recém-construído e navega por ele durante quase quarenta e cinco minutos. Em 12 de novembro o kernel matou o processo do preview no meio da execução — o runner marca processos filhos como alvo preferencial do OOM killer, e o preview, que é o mais caro da suíte, paga essa conta primeiro. O registro tem hora: às 11:53:55 o processo foi morto; às 12:17:51 o servidor saiu de vez; e dali até 12:33:33, **242 asserções** falharam com `net::ERR_CONNECTION_REFUSED`. O produto estava intacto. Quem estava morto era o servidor.
+
+A resposta foi um vigia: um pequeno supervisor que relança o preview quando o processo sai, registra código de saída e tempo de vida, e aplica espera crescente quando a saída é rápida demais para ser normal.
+
+## O vigia virou o problema
+
+Na madrugada de 17 de novembro o CI voltou vermelho com a mesma mensagem: o preview não abriu a porta. A diferença estava no log do vigia, que agora existia: `preview saiu rc=1 apos 0s`. Zero segundo. Um servidor HTTP de verdade leva alguns segundos para carregar o `dist`; sair em zero segundo não é falha de servidor, é falha de lançamento — o processo nunca chegou a existir.
+
+A causa estava no embrulho. Para reduzir a chance de o OOM killer escolher o preview, o vigia prefixava o comando com um utilitário que ajusta a preferência de memória do processo. Esse utilitário exige privilégio. Sem privilégio ele falha — e o detalhe que custou caro: **quando ele falha, ele não executa o comando que vem depois do separador**. Nada de stderr, nada de traceback: um código 1 imediato e o servidor nunca iniciado. O vigia, correto na lógica, fazia exatamente o que devia — relançava. Relançava o nada, com espera crescente entre as tentativas.
+
+## O segundo defeito, atrás do primeiro
+
+Corrigi o embrulho e rodei de novo. O sintoma não mudou: `rc=1 apos 0s`. Foi aqui que quase perdi a noite tratando um diagnóstico como se fosse a causa única.
+
+No CI o projeto instala as dependências com o gerenciador de pacotes do próprio repo, e o binário do Astro fica em `node_modules/.bin`. O launcher genérico resolvia o comando pelo `PATH` — que na minha máquina tinha o binário e no runner não tinha. Resultado idêntico: exit 1, zero segundo, nenhuma mensagem. Duas falhas independentes, uma assinatura só — e, com a primeira no caminho, a segunda nem aparecia no diagnóstico.
+
+## O conserto: sondar antes de usar, e dizer qual caminho venceu
+
+A regra que sai deste episódio é simples: nunca prefixar um comando com um embrulho que pode falhar em silêncio sem provar antes que ele funciona. A sonda é uma execução real, barata, descartável:
+
+```bash
+CHILDREN_PRIO=()
+ADJ_NOTE="off(sem privilegio)"
+if command -v choom >/dev/null 2>&1 && choom -n -300 -- true >/dev/null 2>&1; then
+  CHILDREN_PRIO=(choom -n -300 --)
+  ADJ_NOTE="on(-300)"
+fi
+```
+
+Se a sonda passa, o embrulho entra; se não passa, o comando roda limpo e o log registra `off(sem privilegio)` — o operador lê a decisão em vez de adivinhar. A alternativa era manter a otimização como requisito invisível, e foi assim que o preview deixou de subir.
+
+O segundo defeito pediu resolução explícita do binário: primeiro o binário instalado no projeto, depois o executor do gerenciador de pacotes, e a resolução genérica só como último recurso — com o caminho escolhido impresso no log.
+
+A terceira parte foi observabilidade. O step que falhava imprimia apenas o log do vigia, que dizia `rc=1` e mais nada. O stderr do próprio Astro ia para outro arquivo e nunca era lido, então qualquer causa real ficava invisível atrás do resumo. Agora, quando a porta não abre, o diagnóstico imprime os dois: o registro do vigia e a saída do filho.
+
+No mesmo commit (`3005a4d`, seis arquivos, +36/−17) entrou uma correção de lint: duas regras genéricas de segurança disparavam em arquivos de teste e empurravam o total de avisos acima do teto do projeto. Zero risco real, CI vermelho — desligadas só no escopo dos testes, com o motivo escrito na configuração.
+
+## O que isso muda
+
+Código de saída com tempo de vida é assinatura, não causa. `rc=1` em zero segundo significa "não comecei"; `rc=1` depois de três segundos significa "comecei e falhei". São diagnósticos opostos, e o log do vigia agora carrega os dois campos justamente para separar os casos.
+
+A segunda lição é sobre embrulhos: limite de CPU, prioridade, timeout, `nice` — qualquer coisa colocada antes de um comando pode engolir esse comando quando falha, e o sintoma aparece longe do culpado.
+
+## Próximo passo
+
+Varrer o resto da cadeia do CI atrás do mesmo padrão: todo embrulho que injeta prefixo num processo precisa de sonda antes do uso, e todo step que falha precisa imprimir a saída de quem falhou, não só o resumo de quem vigiava.
