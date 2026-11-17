@@ -85,12 +85,29 @@ const CURADAS = [
 ];
 
 describe('capas 21/9', () => {
+  // capas com hash de conteudo no nome (cache immutable): <slug>-<8 hex>.webp
+  function resolveCover(slug: string): string | null {
+    const plain = join(COVERS, `${slug}.webp`);
+    if (existsSync(plain)) return plain;
+    let entries: string[];
+    try {
+      entries = readdirSync(COVERS);
+    } catch {
+      return null;
+    }
+    const hashed = entries.filter((f) =>
+      new RegExp(`^${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[0-9a-f]{8}\\.webp$`).test(f),
+    );
+    if (hashed.length === 0) return null;
+    return join(COVERS, hashed.sort().at(-1) as string);
+  }
+
   it('cada capa curada existe em 2100x900', () => {
     const faltando: string[] = [];
     const erradas: string[] = [];
     for (const slug of CURADAS) {
-      const abs = join(COVERS, `${slug}.webp`);
-      if (!existsSync(abs)) {
+      const abs = resolveCover(slug);
+      if (!abs) {
         faltando.push(slug);
         continue;
       }
