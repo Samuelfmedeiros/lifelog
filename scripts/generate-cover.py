@@ -81,7 +81,7 @@ PROJECT_STYLES = {
         "colors": ["#1d4ed8", "#38bdf8", "#fde68a"],
     },
     "yurumi": {
-        "prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper",
+        "prompt_suffix": "Minimal flat illustration, one single large solid rounded node-cluster shape in deep emerald green made of three bold linked circles joined by thick bars, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
         "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
@@ -201,7 +201,8 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         f"{composition}. "
         f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
-        f"No UI elements, no watermark, no raw text overlays."
+        f"No UI elements, no watermark, no raw text overlays. "
+        "No characters, no people, no animals, no mascots, no anthropomorphic figures."
     )
 
     log(f"Gerando capa para '{slug}' (projeto: {project})...")

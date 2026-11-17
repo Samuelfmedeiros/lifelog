@@ -91,7 +91,7 @@ PROJECT_STYLES = {
     "seguranca": {"prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper", "colors": ["#ef4444", "#fca5a5", "#fde68a"]},
     "lifelog": {"prompt_suffix": "Minimal flat illustration, one single large solid vertical page-card shape in vivid violet with a bold amber accent band across its lower third, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no lines, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#a855f7", "#fde68a"]},
     "estudos": {"prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
-    "yurumi": {"prompt_suffix": "Pixel art adventure scene. Anthropomorphic giant anteater (tamanduá-bandeira) character with long tubular snout, small ears, huge bushy tail, black-and-white diagonal band across the shoulders, wearing green military-style jacket, cargo pants and large backpack, standing on a dirt path in the cerrado of Brasília, Brazil. Typical cerrado landscape: twisted trees (pequi, ipê), dry golden grasses, red earth, low shrubs. Cosmic night sky with planets, Saturn rings, nebulae, aurora borealis in the background. Camping gear (lantern, stove) nearby. Warm tan and deep navy palette. Sense of wonder and exploration. 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
+    "yurumi": {"prompt_suffix": "Minimal flat illustration, one single large solid rounded node-cluster shape in deep emerald green made of three bold linked circles joined by thick bars, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
     "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
 }
 
@@ -142,7 +142,8 @@ def build_prompt(slug, project, title):
         f"Color palette: {', '.join(style['colors'])}. "
         "Centered composition: keep the subject inside the middle third of the frame, "
         "with breathing room above and below (the image is cropped to a wide 21:9 banner). "
-        f"No UI elements, no watermark, no raw text overlays."
+        f"No UI elements, no watermark, no raw text overlays. "
+        "No characters, no people, no animals, no mascots, no anthropomorphic figures."
     )
 
 
