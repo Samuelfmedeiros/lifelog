@@ -1,0 +1,73 @@
+---
+title: "The scanner that passed without measuring anything: a silent report is not a clean report"
+description: "A weekly security sweep came back green because a path inherited from the previous system no longer existed. Zero findings meant zero measurement, not health."
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "fail-closed", "detection", "monitoring", "hardening"]
+cover: /covers/seguranca-o-scanner-que-passou-sem-medir-nada.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The green that measured nothing
+
+The weekly security sweep finished green. No findings, no alerts, an exit code of zero. Three days later, opening the report to check one unrelated item, the file held only a header: no section, no scanned file, no count. The sweep had run end to end and had looked at nothing.
+
+The cause was not a broken analyzer. It was the path where the analyzer fetched the credential for the memory service: a default directory inherited from the previous operating system, one that simply does not exist on this machine. Without the file, the credential came back empty. Without the credential, sending the report failed. The send failed inside a broad handler that logged the exception and moved on. The run finished successfully, and the silence lasted the whole week.
+
+That history is written in the code today, as a scar: the function that reads the secret documents that it used to look only at the old path, that on the new system the credential came back empty, and that the report died quietly. Whoever wrote that comment is the same person who lost the week.
+
+## The default that points at another planet
+
+This case is not exotic. A default file path is the most discreet form of environment coupling there is: it does not show up in `--help`, it does not show up in the docs, it breaks no test, and it only surfaces when the environment changes. When I switched systems, dozens of automations crossed the migration carrying the same default.
+
+Measured today across the whole fleet: **108 automations still reference the old path and only 22 know the native one**. Four out of five are still programmed to look for a file in a place that no longer exists on this machine. Most will not complain: they will return an empty list, a zero count, a blank report. The symptom is indistinguishable from health.
+
+The secret scanner's resolver shows the same pattern almost didactically. It looks for the binary on the PATH; if it fails, it tries the legacy path; if that fails, it returns the bare program name with a comment saying it will fail and that the caller handles the error. Except "the caller handles it" is exactly the weak point: who handles a missing-tool error? In practice nobody, because the exception lands in the same broad handler and the sweep continues without a scanner.
+
+## Fail-closed is a decision, not an adjective
+
+The fix has two parts and neither one is about a password or a path.
+
+The first is explicit resolution: a chain with a declared order that prefers an environment variable, then the native directory, then the legacy one, and that **aborts** when nothing exists. Aborting is the correct behavior. A security automation that does not know where its data lives should not carry on with a plausible default.
+
+```python
+import os
+from pathlib import Path
+
+def environment_root() -> Path:
+    candidates = [
+        os.environ.get("HERMES_HOME"),
+        Path.home() / ".hermes",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "hermes",
+    ]
+    for c in candidates:
+        if c and Path(c).is_dir():
+            return Path(c)
+    raise SystemExit("root not found: abort instead of assuming a default")
+```
+
+The second part matters more and applies to any guard: **declare coverage**. Finishing without an exception is not enough; the code has to say how many items it examined, and zero has to be a failure.
+
+```python
+targets = list_targets(root)
+print(f"coverage: {len(targets)} targets")
+if not targets:
+    raise SystemExit("nothing was examined: this is a failure, not an approval")
+```
+
+Two lines change the nature of the report. It stops saying "I found nothing" and starts saying "I examined N and found nothing". The first sentence is ambiguous by construction. The second is a verifiable claim, and verifiable is the minimum you ask of a security tool.
+
+## What this changes
+
+The underlying problem is not the path: it is the merging of three states that must stay apart. **Failure** is the tool trying and not succeeding. **Unavailability** is the tool not being there at all. **Not verified** is the check having been skipped. Collapsing all three into "ok" produces the false green, and a false green is worse than a red, because someone investigates a red.
+
+After this audit the criterion became measurable: a guard that does not print how many targets it examined does not ship, and every guard already running got the same question added to its output. The inventory of the remaining 86 is open, ordered by how long each one has been blind, not by declared criticality.
+
+The lesson is not about Python or about a system migration. It is about the difference between absence of evidence and evidence of absence: the first is the normal state of a tool that is not running, and every green dashboard hides one of those per week.
+
+## Next step
+
+The next step is turning coverage into a gate: every periodic check starts failing when it examines fewer items than the previous run, and the number of examined targets lands in the same report as the findings. As long as coverage stays optional, silence remains the easiest exit.

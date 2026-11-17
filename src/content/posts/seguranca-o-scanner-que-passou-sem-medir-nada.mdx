@@ -1,0 +1,73 @@
+---
+title: "O scanner que passou sem medir nada: silêncio de relatório não é ausência de achado"
+description: "Uma varredura semanal deu verde porque um caminho herdado do sistema anterior não existia mais. Zero achados era zero medição, não saúde."
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "fail-closed", "detection", "monitoring", "hardening"]
+cover: /covers/seguranca-o-scanner-que-passou-sem-medir-nada.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O verde que não media nada
+
+A varredura semanal de segurança terminou verde. Nenhum achado, nenhum alerta, execução com código de saída zero. Três dias depois, ao abrir o relatório para conferir um item qualquer, o arquivo tinha só o cabeçalho: nenhuma seção, nenhum arquivo examinado, nenhuma contagem. A varredura tinha rodado por inteiro e não tinha olhado nada.
+
+O motivo não era defeito do analisador. Era o caminho onde ele buscava a credencial do serviço de memória: um diretório padrão herdado do sistema operacional anterior, que na máquina atual simplesmente não existe. Sem o arquivo, a credencial vinha vazia. Sem credencial, o envio do relatório falhava. O envio falhava dentro de um tratador amplo, que registrava a exceção e seguia. A execução terminava com sucesso, e o silêncio atravessou a semana inteira.
+
+Esse histórico está escrito no próprio código hoje, como cicatriz: a função que lê o segredo documenta que antes lia apenas o caminho antigo, que no sistema novo a credencial vinha vazia e que o relatório morria calado. Quem escreveu o comentário foi o mesmo que perdeu a semana.
+
+## O default que aponta para outro planeta
+
+O caso não é exótico. Um caminho padrão de arquivo é a forma mais discreta de dependência de ambiente que existe: não aparece no `--help`, não aparece na documentação, não quebra teste nenhum, e só se manifesta quando o ambiente muda. Quando mudei de sistema, dezenas de automações atravessaram a migração carregando o mesmo default.
+
+Medido hoje no parque inteiro: **108 automações ainda referenciam o caminho antigo e apenas 22 conhecem o caminho nativo**. Quatro em cada cinco continuam programadas para procurar arquivo num lugar que não existe mais nesta máquina. A maioria não vai reclamar: vai devolver lista vazia, contagem zero, relatório em branco. O sintoma é indistinguível de saúde.
+
+O resolvedor do scanner de segredos mostra o mesmo padrão de forma quase didática. Ele procura o binário no PATH; se não acha, tenta o caminho legado; se não acha, devolve o nome cru do programa com um comentário dizendo que vai falhar e que o chamador trata o erro. Só que "o chamador trata" é exatamente o ponto frágil: quem trata erro de ferramenta ausente? Na prática ninguém, porque a exceção cai no mesmo tratador amplo e a varredura segue sem scanner.
+
+## Fail-closed é decisão, não adjetivo
+
+O conserto tem duas partes e nenhuma delas é sobre senha ou sobre caminho.
+
+A primeira é resolução explícita: uma cadeia com ordem declarada, que prefere variável de ambiente, depois o diretório nativo, depois o legado, e que **aborta** quando nada existe. Abortar é o comportamento correto. Uma automação de segurança que não sabe onde estão seus dados não deve continuar com um default plausível.
+
+```python
+import os
+from pathlib import Path
+
+def raiz_do_ambiente() -> Path:
+    candidatos = [
+        os.environ.get("HERMES_HOME"),
+        Path.home() / ".hermes",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "hermes",
+    ]
+    for c in candidatos:
+        if c and Path(c).is_dir():
+            return Path(c)
+    raise SystemExit("raiz nao encontrada: abortar em vez de assumir default")
+```
+
+A segunda parte é mais importante e vale para qualquer guarda: **declarar cobertura**. Não basta o código terminar sem exceção; ele tem que dizer quantos itens examinou, e zero tem que ser falha.
+
+```python
+examinados = listar_alvos(raiz)
+print(f"cobertura: {len(examinados)} alvos")
+if not examinados:
+    raise SystemExit("nada foi examinado: isso e falha, nao aprovacao")
+```
+
+Duas linhas mudam a natureza do relatório. Ele deixa de dizer "não achei nada" e passa a dizer "examinei N e não achei nada". A primeira frase é ambígua por construção. A segunda é afirmação verificável, e verificável é o mínimo que se pede a uma ferramenta de segurança.
+
+## O que isso muda
+
+O problema de fundo não é o caminho: é a fusão de três estados que precisam ficar separados. **Falha** é a ferramenta tentar e não conseguir. **Indisponibilidade** é a ferramenta não estar lá. **Não verificado** é a checagem ter sido pulada. Colapsar os três em "ok" produz o verde falso, e o verde falso é pior que o vermelho, porque o vermelho alguém investiga.
+
+Depois dessa auditoria o critério virou medível: guarda que não imprime quantos alvos examinou não entra em produção, e toda guarda que já roda ganhou a mesma pergunta na saída. O inventário dos 86 restantes está aberto, ordenado por tempo de cegueira, não por criticidade declarada.
+
+A lição que fica não é sobre Python nem sobre migração de sistema. É sobre a diferença entre ausência de evidência e evidência de ausência: a primeira é o estado normal de uma ferramenta que não está rodando, e todo painel verde esconde uma dessas por semana.
+
+## Próximo passo
+
+O passo seguinte é a cobertura virar portão: cada checagem periódica passa a falhar quando examina menos itens que a execução anterior, e o número de alvos examinados entra no mesmo relatório dos achados. Enquanto cobertura for opcional, o silêncio continua sendo a saída mais fácil.
