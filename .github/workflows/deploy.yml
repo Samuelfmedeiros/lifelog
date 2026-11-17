@@ -189,6 +189,8 @@ jobs:
           echo "❌ Preview server didn't start on :$CI_PREVIEW_PORT"
           ss -tlnp 2>/dev/null | grep ":$CI_PREVIEW_PORT" || echo "(porta sem listener)"
           cat .preview-supervisor/supervisor.log 2>/dev/null || true
+          echo "--- preview.log (stderr do astro) ---"
+          tail -30 .preview-supervisor/preview.log 2>/dev/null || true
           exit 1
         fi
         # Readiness nao e só a home: o E2E navega para /en/, post e asset. Se alguma
