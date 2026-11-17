@@ -159,7 +159,8 @@ def build_prompt(slug, project, title):
         "Centered composition: keep the subject inside the middle third of the frame, "
         "with breathing room above and below (the image is cropped to a wide 21:9 banner). "
         f"No UI elements, no watermark, no raw text overlays. "
-        "No characters, no people, no animals, no mascots, no anthropomorphic figures."
+        "No characters, no people, no animals, no mascots, no anthropomorphic figures, "
+        "absolutely no humans, no human silhouettes, no scale figures, no crowds."
     )
 
 

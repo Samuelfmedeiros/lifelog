@@ -209,7 +209,8 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
         f"No UI elements, no watermark, no raw text overlays. "
-        "No characters, no people, no animals, no mascots, no anthropomorphic figures."
+        "No characters, no people, no animals, no mascots, no anthropomorphic figures, "
+        "absolutely no humans, no human silhouettes, no scale figures, no crowds."
     )
 
     log(f"Gerando capa para '{slug}' (projeto: {project})...")
