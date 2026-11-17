@@ -1,0 +1,65 @@
+---
+title: "The guard that said PASS without ever reading the file"
+description: "The terminal game was still announcing the old domain months after the migration. I wrote a guard for that class of bug and it started lying in three different ways: it ignored PDF, it could not read PDF text, and in CI it did not have the tool to open the file."
+category: samuel-projects
+date: 2026-11-17 12:00:00 -03:00
+pubDate: 2026-11-17 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ci-cd", "testing", "quality", "nextjs"]
+cover: /covers/portfolio-o-guard-que-dizia-pass-sem-ler.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+The terminal game had been live for months advertising the wrong address. In the footer, in text any visitor could read: "Site: samuelmedeiros.vercel.app" and, right below it, "All available at: https://portifolio-30.vercel.app/games/...". The migration to the custom domain had happened long before. The file lived in `public/games/terminal/index.html`, and that folder has an awkward property: nothing in it goes through the framework build. No `src/` scan, no import, no type check. The file is copied to the output exactly as it sits on disk, and it survived every sweep because none of them were looking at it.
+
+The answer was the `check-legacy-hosts.mjs` guard, in PR #132: no text file under `public/` may mention `*.vercel.app`. Intentional uses of the old host are legitimate, but they live in `src/`, in `next.config.js`, in `vercel.json` and in `scripts/`, never in the folder served to visitors as is. The guard was born with proof on both ends: a clean `public/` returned rc=0, a dirty fixture returned rc=1 pointing at file and line, and the game file from the commit before the fix failed. A gate nobody has ever seen fail is not a gate, it is a hope.
+
+## The second blindness: six resumes the guard never opened
+
+On November 15 the next problem surfaced. The six PDF resumes under `public/` mentioned the legacy host in the header. The guard, at that exact moment, printed PASS.
+
+Two reasons stacked. The mundane one: the walk filtered by extension and `.pdf` was not on the text list, so the file never entered the count. The one that actually bites: even if it had, reading raw bytes would not help. The real content of a modern PDF does not appear in clear text. Streams are Flate compressed, fonts are subsets with a ToUnicode CMap, and what sits in the file are `Tj` and `TJ` operators pointing at hexadecimal glyphs. A byte grep does not find the string, it finds compressed noise.
+
+The fix was to accept PDF and hand the reading to something that knows how:
+
+```javascript
+const BINARY_SCAN_EXT = new Set([".pdf"]);
+
+function pdfText(file) {
+  try {
+    return execFileSync("pdftotext", [file, "-"], {
+      encoding: "utf8",
+      timeout: 20000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+```
+
+The detail worth more than the code is the `catch`. The temptation was to return an empty string, move on and print PASS. That would be a lie with the appearance of success: the guard did not read the file and was stamping it as clean. The function returns `null`, and the caller treats `null` as its own state, pushing the file into an unverifiable list.
+
+Three states, not two. PASS when it read and found nothing, FAIL when it read and found something, NOT VERIFIABLE when it could not read at all. The third does not block the run, but it never prints as clean: the guard exits rc=0 and writes in the log that the absence of a legacy host in that PDF was not proven. The difference between "it is clean" and "I do not know whether it is clean" has to be visible, otherwise the second becomes the first on the first busy day.
+
+## The third: CI did not have the tool
+
+With the guard fixed, it started answering NOT VERIFIABLE on every run. The `ubuntu-latest` image does not ship poppler. The guard was right and coverage was zero: the PDF path was never exercised, and the green job came from a route CI never walked.
+
+The November 15 commit added the step that installs `poppler-utils`, with `continue-on-error: true`. The reasoning sits in the workflow comment: apt and runner DNS had already taken down all three shards on November 11, with a red job and zero tests executed. If the install fails again, the job proceeds and the guard goes back to NOT VERIFIABLE, never PASS. Infrastructure failure becomes lack of proof, not proof of absence.
+
+## The fourth: the test that measured itself
+
+There was a 301 line test for this guard, quarantined at 39 out of 39 failing. The test reimplemented the legacy host regex and the extension sets inside itself, then compared that copy against its own cases. It never executed the script. If the test regex and the test expectation agreed, green, even with the guard broken on the outside.
+
+The replacement has 99 lines and no copied regex. It runs the real CLI in temporary directories, with `spawnSync` calling the script by path: html with a legacy host returns rc=1 and points at `index.html:2`; `vercel.com` is not confused with the `.app` host; a `.png` containing the text is ignored as binary; a nonexistent path does not become FAIL; and the last case runs the repository's own `public/` as the real gate. Eight of eight green, suite at 607 of 607.
+
+Measured just now: `public/` swept in 0.23 seconds, rc=0, all six resumes with zero occurrences of `vercel.app` and the canonical domain in the header.
+
+## What this changes
+
+The lesson is not about PDF. It is that a quality gate is obliged to declare its own ignorance. Every automated checker lives with the temptation to treat "I could not look" as "I looked and it is fine", because the second keeps the pipeline green and the first requires someone deciding what to do. The result is an approval stamp issued by a process that never opened the file. And a test that reimplements the rule measures the test: if the code's behaviour is what matters, the test has to run the code.
+
+The next step is for the guard to look at what the build produces, not only at what is versioned under `public/`. The same old host can come from a template, and then the source sweep misses it while the output sweep catches it. Until that exists, the current state is honest about what it covers and what it does not.

@@ -1,0 +1,65 @@
+---
+title: "O guard que dizia PASS sem ter lido o arquivo"
+description: "O jogo do terminal ainda anunciava o domínio antigo meses depois da migração. Criei um guard para essa classe de erro e ele passou a mentir de três formas: não olhava PDF, não conseguia ler o texto do PDF, e no CI não tinha a ferramenta para abrir o arquivo."
+category: samuel-projects
+date: 2026-11-17 12:00:00 -03:00
+pubDate: 2026-11-17 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ci-cd", "testing", "quality", "nextjs"]
+cover: /covers/portfolio-o-guard-que-dizia-pass-sem-ler.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+O jogo do terminal estava no ar há meses anunciando o endereço errado. No rodapé, em texto que qualquer visitante lia: "Site: samuelmedeiros.vercel.app" e, logo abaixo, "Todos disponíveis em: https://portifolio-30.vercel.app/games/...". A migração para o domínio próprio tinha acontecido muito antes. O arquivo morava em `public/games/terminal/index.html`, e essa pasta tem uma propriedade incômoda: nada ali passa pelo build do framework. Nenhuma varredura de `src/`, nenhum import, nenhuma checagem de tipos. O arquivo é copiado para a saída como está no disco, e sobreviveu a todas as varreduras porque nenhuma delas olhava para ele.
+
+A resposta foi o guard `check-legacy-hosts.mjs`, no PR #132: nenhum arquivo de texto em `public/` pode citar `*.vercel.app`. Usos intencionais do host antigo são legítimos, mas moram em `src/`, no `next.config.js`, no `vercel.json` e em `scripts/`, nunca na pasta servida ao visitante. O guard nasceu com prova de duas pontas: `public/` limpo devolvia rc=0, fixture suja devolvia rc=1 apontando arquivo e linha, e o arquivo do jogo no commit anterior ao conserto reprovou. Um gate que nunca foi visto reprovando não é um gate, é uma esperança.
+
+## A segunda cegueira: seis currículos que o guard não abria
+
+Em 15 de novembro apareceu o problema seguinte. Os seis currículos PDF em `public/` citavam o host legado no cabeçalho. O guard, no mesmo instante, imprimia PASS.
+
+Duas razões empilhadas. A banal: o walk filtrava por extensão e `.pdf` não estava na lista, então o arquivo nem entrava na conta. A que dá o nó: mesmo que estivesse, ler os bytes crus não resolveria. O conteúdo real de um PDF moderno não aparece em claro. Os streams são comprimidos com Flate, as fontes são subsets com ToUnicode CMap, e o que existe no arquivo são operadores `Tj` e `TJ` apontando para glifos em hexadecimal. Um grep de bytes não encontra a string, encontra ruído comprimido.
+
+A correção foi aceitar PDF e delegar a leitura a quem sabe fazer isso:
+
+```javascript
+const BINARY_SCAN_EXT = new Set([".pdf"]);
+
+function pdfText(file) {
+  try {
+    return execFileSync("pdftotext", [file, "-"], {
+      encoding: "utf8",
+      timeout: 20000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+```
+
+O detalhe que vale mais que o código é o `catch`. A tentação era devolver string vazia, seguir em frente e imprimir PASS. Seria mentira com aparência de sucesso: o guard não leu o arquivo e estava carimbando que ele estava limpo. A função devolve `null`, e o chamador trata `null` como estado próprio, jogando o arquivo numa lista de não verificáveis.
+
+Três estados, não dois. PASS quando leu e não achou, FAIL quando leu e achou, NAO VERIFICAVEL quando não conseguiu ler. O terceiro não bloqueia a rodada, mas nunca se imprime como limpo: o guard sai com rc=0 e escreve no log que a ausência de host legado naquele PDF não foi provada. A diferença entre "está limpo" e "não sei se está limpo" precisa ser visível, senão o segundo vira o primeiro no primeiro dia de pressa.
+
+## A terceira: o CI não tinha a ferramenta
+
+Consertado o guard, ele passou a responder NAO VERIFICAVEL em todos os runs. A imagem `ubuntu-latest` não traz poppler. O guard estava certo e a cobertura era zero: a parte de PDF nunca era exercitada, e o verde do job vinha de um caminho que o CI nem percorria.
+
+O commit de 15 de novembro adicionou o step que instala `poppler-utils`, com `continue-on-error: true`. A justificativa está no comentário do workflow: o apt e o DNS do runner já tinham derrubado os três shards em 11 de novembro, com job vermelho e zero teste executado. Se a instalação falhar de novo, o job segue e o guard volta a dizer NAO VERIFICAVEL, nunca PASS. Falha de infraestrutura vira falta de prova, não prova de ausência.
+
+## A quarta: o teste que media a si mesmo
+
+Existia um teste de 301 linhas para esse guard, quarentenado com 39 de 39 vermelho. O teste reimplementava a regex do host legado e os conjuntos de extensão dentro dele mesmo, e comparava essa cópia com os próprios casos. Não executava o script. Se a regex do teste e a expectativa do teste concordassem, verde, mesmo com o guard quebrado do lado de fora.
+
+O substituto tem 99 linhas e nenhuma regex copiada. Roda o CLI de verdade em diretórios temporários, com `spawnSync` chamando o script por caminho: html com host legado devolve rc=1 e aponta `index.html:2`; `vercel.com` não é confundido com o host `.app`; `.png` com o texto dentro é ignorado por ser binário; caminho inexistente não vira FAIL; e o último caso roda o `public/` do próprio repositório como gate real. Oito de oito verde, suíte em 607 de 607.
+
+Medido agora: `public/` varrido em 0,23 segundo, rc=0, os seis currículos com zero ocorrências de `vercel.app` e o domínio canônico no cabeçalho.
+
+## O que isso muda
+
+A lição não é sobre PDF. É que um gate de qualidade tem obrigação de declarar a própria ignorância. Todo verificador automático vive a tentação de tratar "não consegui olhar" como "olhei e está bom", porque o segundo deixa o pipeline verde e o primeiro exige alguém decidindo o que fazer. O resultado é um selo de aprovação emitido por um processo que nunca abriu o arquivo. E teste que reimplementa a regra mede o teste: se o comportamento do código é o que importa, o teste tem que executar o código.
+
+O próximo passo é o guard olhar também o que o build gera, não apenas o que está versionado em `public/`. O mesmo host antigo pode nascer de um template, e aí a varredura de origem não pega, pega a de saída. Enquanto isso não existe, o estado atual é honesto sobre o que cobre e sobre o que não cobre.
