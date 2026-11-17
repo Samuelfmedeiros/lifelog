@@ -91,7 +91,14 @@ PROJECT_STYLES = {
     "seguranca": {"prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper", "colors": ["#ef4444", "#fca5a5", "#fde68a"]},
     "lifelog": {"prompt_suffix": "Minimal flat illustration, one single large solid vertical page-card shape in vivid violet with a bold amber accent band across its lower third, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no lines, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#a855f7", "#fde68a"]},
     "estudos": {"prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
-    "yurumi": {"prompt_suffix": "Lush tropical rainforest scene with one single giant luminous mushroom as the hero element, its wide cap in deep emerald with soft teal bioluminescent gills and a thick organic pale stem, surrounded by broad fern leaves, moss-covered roots and hanging vines, warm golden light shafts breaking through the canopy, faint floating spores, rich emerald and teal palette with warm amber highlights, cinematic depth and atmosphere, no characters, no people, no animals, no mascots, clean composition, 16:9 wallpaper", "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
+    "yurumi": {"prompt_suffix": [
+            "Lush tropical rainforest scene with one giant bioluminescent mushroom as the hero element, wide emerald cap, glowing teal gills and a thick pale stem, ferns and moss-covered roots around it, golden light shafts through the canopy",
+            "Tropical rainforest waterfall falling over mossy black rocks into a jade pool, dense ferns and hanging vines framing the scene, mist rising and golden light shafts through the canopy",
+            "One colossal rainforest tree with wide buttress roots covered in moss and lichen, hanging vines and broad ferns at its base, warm sunbeams breaking through the dense canopy",
+            "A calm jade river winding through dense tropical jungle, giant broad leaves and fern fronds on both banks, low mist and warm golden light filtering through the trees",
+            "Floating luminous spores drifting between giant fern fronds and ancient moss-covered trunks in a dense rainforest, soft teal glow and warm golden light shafts",
+            "A rocky jungle clearing covered in moss and giant ferns, clusters of small glowing mushrooms and thick roots crossing the ground, warm golden light through the canopy haze",
+        ], "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
     "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
 }
 
@@ -118,6 +125,15 @@ COMPOSITIONS = [
 ]
 
 
+def _pick_suffix(style, slug):
+    """17/11/2026: estilo pode ter VARIAS cenas (lista). Escolha deterministica
+    por sha1 do slug — mesma capa, mesma cena, mas capas diferentes variam."""
+    s = style["prompt_suffix"]
+    if isinstance(s, str):
+        return s
+    idx = int(hashlib.sha1(slug.encode("utf-8"), usedforsecurity=False).hexdigest()[:6], 16) % len(s)
+    return s[idx]
+
 def build_prompt(slug, project, title):
     style = PROJECT_STYLES.get(project, PROJECT_STYLES["descobertas"])
     title_context = ""
@@ -137,7 +153,7 @@ def build_prompt(slug, project, title):
     mood = PROJECT_MOODS.get(project, "atmospheric, immersive, cinematic")
     return (
         f"Digital artwork. {title_context}"
-        f"{style['prompt_suffix']}. {composition}. "
+        f"{_pick_suffix(style, slug)}. {composition}. "
         f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
         "Centered composition: keep the subject inside the middle third of the frame, "

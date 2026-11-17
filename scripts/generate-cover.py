@@ -81,7 +81,14 @@ PROJECT_STYLES = {
         "colors": ["#1d4ed8", "#38bdf8", "#fde68a"],
     },
     "yurumi": {
-        "prompt_suffix": "Lush tropical rainforest scene with one single giant luminous mushroom as the hero element, its wide cap in deep emerald with soft teal bioluminescent gills and a thick organic pale stem, surrounded by broad fern leaves, moss-covered roots and hanging vines, warm golden light shafts breaking through the canopy, faint floating spores, rich emerald and teal palette with warm amber highlights, cinematic depth and atmosphere, no characters, no people, no animals, no mascots, clean composition, 16:9 wallpaper",
+        "prompt_suffix": [
+            "Lush tropical rainforest scene with one giant bioluminescent mushroom as the hero element, wide emerald cap, glowing teal gills and a thick pale stem, ferns and moss-covered roots around it, golden light shafts through the canopy",
+            "Tropical rainforest waterfall falling over mossy black rocks into a jade pool, dense ferns and hanging vines framing the scene, mist rising and golden light shafts through the canopy",
+            "One colossal rainforest tree with wide buttress roots covered in moss and lichen, hanging vines and broad ferns at its base, warm sunbeams breaking through the dense canopy",
+            "A calm jade river winding through dense tropical jungle, giant broad leaves and fern fronds on both banks, low mist and warm golden light filtering through the trees",
+            "Floating luminous spores drifting between giant fern fronds and ancient moss-covered trunks in a dense rainforest, soft teal glow and warm golden light shafts",
+            "A rocky jungle clearing covered in moss and giant ferns, clusters of small glowing mushrooms and thick roots crossing the ground, warm golden light through the canopy haze",
+        ],
         "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
@@ -197,7 +204,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
     prompt = (
         f"Digital artwork. "
         f"{title_context}"
-        f"{style['prompt_suffix']}. "
+        f"{_pick_suffix(style, slug)}. "
         f"{composition}. "
         f"Mood: {mood}. "
         f"Color palette: {', '.join(style['colors'])}. "
