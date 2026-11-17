@@ -1,0 +1,62 @@
+---
+title: "The rule the guard enforced and nobody had written"
+description: "An audit guard demanded four provenance fields on every work plan. I ran it against the archive and found that 1 of 500 plans complied — 0.2%. The cause was not laziness from whoever wrote the plans: the rule existed only on a branch that was never merged. What changes when the rule lands in the contract with a ceiling proportional to plan size, and why adherence went from 0.2% to 15% in three days."
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: estudos
+tags: ["estudos", "testing", "quality", "automation", "governance", "python"]
+cover: /covers/estudos-a-regra-que-o-guard-cobrava-e-ninguem-tinha-escrito.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The guard that approved everything
+
+Every work plan goes through a guard written in Python that does not judge merit: it judges provenance. For each source cited, it demands four things — a URL or path, an access date, the excerpt actually used, and a confidence level (high, medium or low). Without those, the source does not count as research, because what gets lost is not the text: it is the ability to walk the same path again later.
+
+I ran the guard against an arbitrary plan: exit code zero. Silence. Approved. I repeated it on three plans with none of the four fields, and all three passed. A guard that approves what it should reject is not rigour, it is decoration with a nice exit code.
+
+## What the measurement showed
+
+Before blaming the guard, I measured the archive. November held 909 written plans. The access-date field appeared in 4 of them — 0.4%. A formal research or sources section appeared in 144 — 15.8%. And 750 plans, or 82.5%, carried none of the three signals I was looking for: no date, no confidence, no research section. The narrowest cut, taken when the guard was born, was worse: 1 of 500 plans met the minimum. 0.2%.
+
+The explanation had two layers. The first was structural and correct: the guard keeps a baseline. On first run it records the moment the requirement started to apply and ignores everything written before that — a new rule does not work backwards. Right in intent, and disastrous in the first week: with no plan newer than the baseline there is nothing to measure, and the guard returns zero. Silence from compliance and silence from inertia are indistinguishable.
+
+The second layer was the real reason for the 0.2%: the rule was written nowhere. The guard enforced four fields that no contract document required — it lived on a branch commit that was never merged. The auditor was right, the archive was right, and the only place that could have made the habit enforceable said nothing. A guard enforcing a rule that does not exist can only produce two things: a false hit when it judges the past, or inertia when it respects the baseline.
+
+## How it was fixed
+
+The fix had two fronts, and the first one was not code.
+
+First the rule entered the contract, with a ceiling proportional to plan size. Demanding four fields per source is reasonable in a 20 KB plan and becomes paperwork in a 2 KB one. So the ceiling became explicit: a small plan records the full fields on the two sources that support the decision; a large plan records them on every source that influenced the result. The question that decides whether a source goes in is literal: did this source change anything in the plan? If I read it and nothing changed, it does not go in.
+
+Second, the guard adopted the same scale as the rule:
+
+```python
+def minimum_fields(bytes_do_plano: int) -> int:
+    # a small plan is not a form: 3 of 4 fields already prove research happened
+    # a large plan carries the full requirement
+    return 3 if bytes_do_plano <= 4096 else 4
+```
+
+And the baseline, which had been the source of the silence, became an explicit function instead of an implicit behaviour:
+
+```python
+def inside_window(caminho: str, baseline_instant: float) -> bool:
+    return os.path.getmtime(caminho) >= baseline_instant
+```
+
+With that, the guard stopped mixing two questions: is there a new plan to measure, and does the new plan comply. If there is no new plan, it says so when asked with detail, instead of returning a mute zero. If there is one and it fails, it prints exactly which fields are missing and exits with code 1.
+
+The third adjustment was about alert repetition. The first version stored the list of already-warned plans permanently: it shouted once and then went quiet forever, even with every gap still open. An alert that speaks once is not an alert, it is a vent. Now the state records when each plan was warned and the warning recurs every three days while the gap exists, and the plan drops out of the list on its own once it is fixed.
+
+## What this changes
+
+I measured again today: 48 plans written after the baseline, 7 compliant, 15%. Five times the earlier 0.2%, and still bad — 85% fail. The difference is that the number now exists. Before there was a pretty rule in a document nobody consulted and a guard that slept; real adherence was invisible. Now the distance between what I say I do and what I actually record shows up as a number, and a number that shows up is a number that demands.
+
+The engineering lesson holds beyond this case. A written rule is not an executed rule, and the only way to know the difference is to measure adherence before writing more rules. Had I started with the guard instead of measuring the archive, I would have concluded the problem was the discipline of whoever writes the plans — and I would have written a harsher alert about a contract that required nothing. The defect sat in the distance between two documents, not in anyone's discipline.
+
+## Next step
+
+The next measurement compares next week's adherence against these 15%. If it rises, the proportional ceiling was right and what is missing is habit. If it stalls, the rule is miscalibrated and the place to fix is the rule, not the alert. What I am not going to do is write a third rule before knowing the effect of the second.

@@ -5,7 +5,7 @@ date: 2026-10-23 08:00:00 -03:00
 pubDate: 2026-10-23 08:00:00 -03:00
 project: yurumi
 tags: ["yurumi", "configuration", "secrets", "python", "testing"]
-cover: /covers/yurumi-a-config-que-dava-razao-ao-arquivo.webp
+cover: /covers/yurumi-a-config-que-dava-razao-ao-arquivo-6f501fca.webp
 featured: false
 hidden: false
 lang: 'en'
@@ -40,7 +40,7 @@ return keys
 
 An asymmetry helped hide it: only names ending in `_API_KEY` or `_TOKEN` come from the environment, while any name comes from a file. So a file could inject names the environment would never provide and, on top of that, overwrite exactly the filtered keys. In practice the process had the final word only when the file said nothing about the subject — which is the opposite of having priority.
 
-Commit `07c20b8`, from 23 October, settles it with six lines in and four out of `core/config.py`. No refactor: the environment loop moves to the end of the function, with a comment that explains the ordering instead of leaving it implicit. Precedence stated in prose became precedence stated in code.
+Commit `74c0d36`, from 23 October, settles it with six lines in and four out of `core/config.py`. No refactor: the environment loop moves to the end of the function, with a comment that explains the ordering instead of leaving it implicit. Precedence stated in prose became precedence stated in code.
 
 ## The test that only proved itself on the right machine
 
@@ -54,7 +54,7 @@ There is a detail here worth more than the fix itself. Both assertions are still
 
 The pattern repeated in the configuration tests. `test_defaults_quando_sem_env_sem_yaml` cleared four variables before checking defaults — vector store address, backend, user identifier and the config file path — while `get_config()` reads roughly fifteen, the embedder URL among them. In CI, where nothing is exported, the test passes. In a shell that loads the service variables, the default comes out polluted and the test fails outside CI. Green on the runner, red on the machine, and neither state saying anything about the code.
 
-The cure landed the same day, in commit `14c9f58`: a `_limpa_env_yurumi()` helper that walks `os.environ` and drops every variable carrying the `YURUMI_` prefix. Not a list of four names that ages with each new feature — the whole prefix. With that the suite meant something again: 3717 tests, zero failures, measured on the working machine rather than only in CI.
+The cure landed the same day, in commit `6d0a19d`: a `_limpa_env_yurumi()` helper that walks `os.environ` and drops every variable carrying the `YURUMI_` prefix. Not a list of four names that ages with each new feature — the whole prefix. With that the suite meant something again: 3717 tests, zero failures, measured on the working machine rather than only in CI.
 
 The same commit had to clean up the trail. The new consumption panel for the local router, 564 fresh lines in `core/usage.py`, added its own HTTP read surface; the test counting `urlopen` calls needed a new baseline, and `bandit` flagged B310 until the exception was justified with the real reason — the read targets a localhost service. An exception accepted without a written reason is an exception that does not exist.
 

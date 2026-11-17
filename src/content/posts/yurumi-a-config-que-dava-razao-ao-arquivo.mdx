@@ -5,7 +5,7 @@ date: 2026-10-23 08:00:00 -03:00
 pubDate: 2026-10-23 08:00:00 -03:00
 project: yurumi
 tags: ["yurumi", "configuration", "secrets", "python", "testing"]
-cover: /covers/yurumi-a-config-que-dava-razao-ao-arquivo.webp
+cover: /covers/yurumi-a-config-que-dava-razao-ao-arquivo-6f501fca.webp
 featured: false
 hidden: false
 lang: 'pt'
@@ -40,7 +40,7 @@ return keys
 
 Havia uma assimetria que ajudou a esconder o problema: do ambiente só entram chaves terminadas em `_API_KEY` ou `_TOKEN`, dos arquivos entra qualquer nome. O arquivo podia injetar nomes que o ambiente nunca forneceria e, de quebra, sobrescrever justamente as chaves filtradas. Na prática, o processo tinha a palavra final apenas quando o arquivo não dizia nada sobre o assunto — o contrário de ter prioridade.
 
-O commit `07c20b8`, de 23 de outubro, resolve com seis linhas entrando e quatro saindo de `core/config.py`. O laço do ambiente é movido para o fim da função, com um comentário que explica a ordem em vez de deixá-la implícita. Precedência declarada em prosa virou precedência declarada em código.
+O commit `74c0d36`, de 23 de outubro, resolve com seis linhas entrando e quatro saindo de `core/config.py`. O laço do ambiente é movido para o fim da função, com um comentário que explica a ordem em vez de deixá-la implícita. Precedência declarada em prosa virou precedência declarada em código.
 
 ## O teste que só provava na máquina certa
 
@@ -54,7 +54,7 @@ As duas asserções, porém, continuam cercadas por `if os.environ.get("NINEROUT
 
 O padrão se repetiu nos testes de configuração. `test_defaults_quando_sem_env_sem_yaml` limpava quatro variáveis antes de conferir os defaults — endereço do banco vetorial, backend, identificador de usuário e o caminho do arquivo de config — enquanto `get_config()` lê cerca de quinze, entre elas a URL do embedder. No CI, onde nada está exportado, o teste passa. Num shell que carrega as variáveis do serviço, o default vem poluído e o teste quebra fora do CI. Verde no runner, vermelho na máquina, e nenhum dos dois estados dizendo algo sobre o código.
 
-A cura veio no mesmo dia, no commit `14c9f58`: uma função `_limpa_env_yurumi()` que varre `os.environ` e remove toda variável com prefixo `YURUMI_`. Não uma lista de quatro nomes que envelhece a cada feature nova — o prefixo inteiro. Com isso a suíte voltou a significar algo: 3717 testes, zero falhas, medidos na máquina de trabalho e não só no CI.
+A cura veio no mesmo dia, no commit `6d0a19d`: uma função `_limpa_env_yurumi()` que varre `os.environ` e remove toda variável com prefixo `YURUMI_`. Não uma lista de quatro nomes que envelhece a cada feature nova — o prefixo inteiro. Com isso a suíte voltou a significar algo: 3717 testes, zero falhas, medidos na máquina de trabalho e não só no CI.
 
 O mesmo commit ajustou o rastro: o painel de consumo do roteador, com 564 linhas novas em `core/usage.py`, adicionou superfície própria de leitura HTTP; o teste que conta chamadas de `urlopen` ganhou baseline novo e o `bandit` acusou B310 até a exceção ser justificada com o motivo real — a leitura é de um serviço em localhost. Exceção sem motivo escrito é exceção que não existe.
 

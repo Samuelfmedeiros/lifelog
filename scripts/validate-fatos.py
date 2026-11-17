@@ -126,6 +126,11 @@ def shas_in(text: str) -> set[str]:
     # SHA pinado de action do GitHub nao e commit do repo: sai da conta antes
     # de qualquer outra checagem.
     text = ACTION_SHA_RE.sub(" ", text)
+    # 17/11/2026: path de capa carrega hash de conteudo no nome
+    # (`/covers/slug-960d5443.webp`) e o SHA_RE de 7-8 hex casava com ele,
+    # reprovando post correto como "commit fabricado". Path de asset nunca
+    # e commit: sai da conta aqui.
+    text = re.sub(r"covers/[^\s\"\)'<>]+", " ", text)
     found = set()
     for m in SHA_RE.finditer(text):
         s = m.group(0)
