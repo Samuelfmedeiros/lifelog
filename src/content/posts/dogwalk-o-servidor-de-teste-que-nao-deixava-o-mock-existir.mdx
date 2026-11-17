@@ -1,0 +1,71 @@
+---
+title: "O servidor de teste que não deixava o mock existir"
+description: "Um teste de regressão visual que dependia de ver o erro de login parou de ser confiável porque o servidor de preview respondia 502 na própria rota que o mock devia interceptar. A config passou a escolher o servidor conforme o teste, e a mensagem de verificação do Turnstile deixou de descrever o sistema para dizer o que o usuário precisa fazer."
+category: samuel-projects
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "playwright", "e2e", "testing", "ci-cd", "vite"]
+cover: /covers/dogwalk-o-servidor-de-teste-que-nao-deixava-o-mock-existir.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O teste que só passa quando o ambiente colabora
+
+A suíte end-to-end do Dogwalk tem 41 arquivos de spec. Um deles é de regressão visual: abre páginas em viewport fixo, tira screenshot e compara com a baseline. Seis casos, e um deles é o mais frágil de todos — o de erro de login. Ele precisa de uma coisa específica para funcionar: uma resposta 401 da rota de autenticação.
+
+O app não devolve 401 sozinho no ambiente local. Então o teste intercepta a chamada de rede e responde no lugar do backend. É o jeito comum de fazer isso com Playwright, e a lógica no `tests/e2e/visual-regression.spec.js` ficou assim:
+
+```javascript
+await page.route('**/auth/login', route =>
+  route.fulfill({
+    status: 401,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'Credenciais inválidas' }),
+  })
+)
+```
+
+No papel, o teste está isolado: nenhuma requisição sai da máquina, nada depende do backend estar de pé. Na prática, ele só passou a ser confiável depois de mudar o servidor onde a página é servida.
+
+## O 502 que chegava antes do mock
+
+A config do Playwright sobe um servidor sozinho quando ninguém está escutando na porta. E esse servidor era sempre o mesmo: build de produção seguido de preview estático. A escolha tinha motivo — o dev server compila rotas sob demanda e cria corrida com as esperas fixas que existiam nos specs, gerando falhas que não tinham nada a ver com o que estava sendo testado. O preview de produção é determinístico.
+
+Determinístico e incompleto. O preview é só um servidor de arquivos estáticos: ele não tem proxy de API e não sabe o que fazer com um `POST /auth/login`. Medido em 15 de novembro, o que a página recebia naquela rota era um 502. O mock do Playwright, nesse cenário, não se comportava de forma confiável — a tela que o screenshot capturava não era a de credencial inválida, era outra, com outro texto e outra altura de card. A comparação então acusava uma diferença que não existia no produto.
+
+Esse é o pior tipo de teste: ele falha apontando para a interface quando o problema está no servidor de teste. E é pior ainda porque às vezes passa. O mesmo spec, rodando contra o ambiente externo, funciona — ali existe backend de verdade. O sinal ficava embaralhado entre "produto quebrado" e "ambiente errado", e a cada rodada alguém precisava decidir qual dos dois era.
+
+## A config que passou a escolher o servidor
+
+A correção, no commit `9e11d4be`, foi tirar a decisão do acaso e colocar na config. O comando do servidor virou condicional: quando a variável `REQUIRE_API_MOCK` está em `1`, sobe o dev server; no resto, continua o preview de produção.
+
+```javascript
+command: process.env.REQUIRE_API_MOCK === '1'
+  ? 'pnpm build && pnpm dev --port 5173 --host'
+  : 'pnpm build && pnpm preview --port 5173 --strictPort',
+```
+
+O dev server tem o que faltava ao preview: proxy de API. Com ele, a rota de autenticação existe e responde, e o `page.route` volta a interceptar o que deveria. O teste que depende de mock pede o ambiente que suporta mock; o resto da suíte continua rodando no ambiente que dá determinismo.
+
+Dois detalhes entraram junto, e os dois importam. O primeiro: quando o alvo é externo — `PLAYWRIGHT_TEST_URL` definido, como no CI de deploy — o mock não faz sentido e o spec se auto-suspende em vez de falhar por motivo errado. O segundo: a espera cega de dois segundos antes de preencher o formulário saiu de cena, e quem manda o teste seguir agora é o alerta de erro aparecer e o botão sair do estado de carregamento. Essa espera não é preguiça de ajuste fino; é memória de um diagnóstico anterior: medir a tela no meio da transição dava 29.334 pixels de diferença, 3% da imagem, com o produto funcionando perfeitamente. O botão em estado de carregamento empurra o card alguns pixels para baixo, e o screenshot registrava isso como regressão.
+
+Ainda no mesmo arquivo existe outra decisão que nasceu de medição: um único worker. Com dois workers, quatro specs falhavam mesmo recebendo 120 segundos de timeout — a máquina compartilhada com treino satura a CPU e o renderer não acompanha. Com um worker, oito de oito ficaram verdes em 55 segundos. E o timeout do servidor de teste subiu para dez minutos porque, sob carga alta, o build passa dos cinco minutos e a suíte inteira morria antes do primeiro teste, com saída vazia.
+
+## A mesma falha, do outro lado da tela
+
+No mesmo dia, o commit `9220520b` mexeu em três arquivos para trocar uma string. O widget de verificação anti-bot, quando não carregava, exibia embaixo do aviso: "Usando modo de verificação alternativo". É uma frase verdadeira e inútil. Ela descreve o que o sistema está fazendo por dentro e não diz nada sobre o que a pessoa deve fazer.
+
+A versão nova diz: "A verificação não carregou. Recarregue a página ou desative bloqueadores de anúncio." Duas ações concretas, e uma delas é a causa mais provável do problema — bloqueador de anúncio derrubando o script de terceiro.
+
+É a mesma classe de erro do 502 no preview: um sistema que informa o próprio estado interno em vez de informar o que o outro lado precisa saber. O teste dizia "falhou" sem dizer em qual camada; a mensagem dizia "modo alternativo" sem dizer o que fazer. Nos dois casos o conserto não foi adicionar capacidade — foi fazer o sistema contar o que ele já sabia.
+
+## O que muda
+
+Um teste de interface que depende de mock precisa de um servidor compatível com mock, e isso não é escolha que se deixa implícita no arquivo de configuração. Quando o servidor de teste não suporta a rota, o teste não fica neutro: ele falha mentindo, e a mentira custa mais tempo do que a falha.
+
+Também ficou mais barato não depender de backend real para testar estado de erro. Antes, qualquer variação de ambiente virava vermelho no CI e o instinto era investigar a interface. Agora o ambiente do teste é declarado no próprio comando que o teste executou.
+
+O próximo passo é reduzir o número de specs que ainda dependem de ambiente implícito. A varredura de `tests/e2e/` mostra vários arquivos que assumem backend de pé e nenhum contrato escrito sobre isso. Enquanto a dependência não estiver declarada, a mesma confusão pode voltar em outro arquivo, com outra mensagem de erro e o mesmo custo de diagnóstico.

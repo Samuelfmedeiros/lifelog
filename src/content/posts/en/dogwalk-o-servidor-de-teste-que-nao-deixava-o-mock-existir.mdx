@@ -1,0 +1,71 @@
+---
+title: "The test server that would not let the mock exist"
+description: "A visual regression test that depended on seeing the login error stopped being trustworthy because the preview server answered 502 on the very route the mock was supposed to intercept. The config now picks the server according to the test, and the Turnstile message stopped describing the system to say what the user must do."
+category: samuel-projects
+date: 2026-11-17 16:00:00 -03:00
+pubDate: 2026-11-17 16:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "playwright", "e2e", "testing", "ci-cd", "vite"]
+cover: /covers/dogwalk-o-servidor-de-teste-que-nao-deixava-o-mock-existir.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The test that only passes when the environment cooperates
+
+The Dogwalk end-to-end suite has 41 spec files. One of them is visual regression: it opens pages at a fixed viewport, takes a screenshot and compares it against a baseline. Six cases, and one of them is the fragile one — the login error case. It needs one very specific thing to work: a 401 response from the authentication route.
+
+The app does not return 401 by itself in the local environment. So the test intercepts the network call and answers in place of the backend. That is the usual way to do it with Playwright, and the logic in `tests/e2e/visual-regression.spec.js` ended up like this:
+
+```javascript
+await page.route('**/auth/login', route =>
+  route.fulfill({
+    status: 401,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'Credenciais inválidas' }),
+  })
+)
+```
+
+On paper the test is isolated: no request leaves the machine, nothing depends on the backend being up. In practice it only became reliable after changing the server that hosts the page.
+
+## The 502 that arrived before the mock
+
+The Playwright config starts a server on its own when nothing is listening on the port. And that server was always the same one: production build followed by static preview. The choice had a reason — the dev server compiles routes on demand and races against the fixed waits the specs used to have, producing failures that had nothing to do with what was being tested. The production preview is deterministic.
+
+Deterministic and incomplete. The preview is just a static file server: it has no API proxy and does not know what to do with a `POST /auth/login`. Measured on November 15, what the page received on that route was a 502. The Playwright mock, in that scenario, did not behave reliably — the screen captured by the screenshot was not the invalid credentials one, it was another, with different text and a different card height. The comparison then reported a difference that did not exist in the product.
+
+That is the worst kind of test: it fails pointing at the interface while the problem sits in the test server. And it is worse still because it sometimes passes. The same spec, running against the external environment, works — a real backend exists there. The signal was scrambled between "broken product" and "wrong environment", and every run somebody had to decide which of the two it was.
+
+## The config that started choosing the server
+
+The fix, in commit `9e11d4be`, was to take the decision away from chance and put it in the config. The server command became conditional: when the `REQUIRE_API_MOCK` variable is `1`, it starts the dev server; otherwise it keeps the production preview.
+
+```javascript
+command: process.env.REQUIRE_API_MOCK === '1'
+  ? 'pnpm build && pnpm dev --port 5173 --host'
+  : 'pnpm build && pnpm preview --port 5173 --strictPort',
+```
+
+The dev server has what the preview lacked: an API proxy. With it the authentication route exists and answers, and `page.route` intercepts what it should again. The test that depends on a mock asks for the environment that supports mocks; the rest of the suite keeps running in the environment that gives determinism.
+
+Two details came along, and both matter. The first: when the target is external — `PLAYWRIGHT_TEST_URL` set, as in the deploy CI — the mock makes no sense and the spec suspends itself instead of failing for the wrong reason. The second: the blind two-second wait before filling the form is gone, and what tells the test to move on now is the error alert showing up and the button leaving the loading state. That wait is not fussiness; it is the memory of an earlier diagnosis: measuring the screen mid-transition produced 29,334 pixels of difference, 3% of the image, with the product working perfectly. The button in its loading state pushes the card down a few pixels, and the screenshot recorded that as a regression.
+
+Still in the same file there is another decision born from measurement: a single worker. With two workers, four specs failed even when given 120 seconds of timeout — the machine, shared with training jobs, saturates the CPU and the renderer cannot keep up. With one worker, eight out of eight went green in 55 seconds. And the test server timeout went up to ten minutes because, under heavy load, the build takes more than five minutes and the whole suite died before the first test, with empty output.
+
+## The same failure, on the other side of the screen
+
+On the same day, commit `9220520b` touched three files to swap one string. The anti-bot verification widget, when it failed to load, displayed under the warning: "Using alternative verification mode". It is a true and useless sentence. It describes what the system is doing internally and says nothing about what the person should do.
+
+The new version says: "The verification did not load. Reload the page or disable ad blockers." Two concrete actions, and one of them is the most likely cause — an ad blocker taking down the third-party script.
+
+It is the same class of error as the 502 in the preview: a system that reports its own internal state instead of reporting what the other side needs to know. The test said "failed" without saying in which layer; the message said "alternative mode" without saying what to do. In both cases the fix was not adding capability — it was making the system say what it already knew.
+
+## What changes
+
+A UI test that depends on a mock needs a server compatible with mocks, and that is not a choice to leave implicit in the configuration file. When the test server does not support the route, the test does not stay neutral: it fails by lying, and the lie costs more time than the failure.
+
+It also became cheaper not to depend on a real backend to test the error state. Before, any environment variation turned the CI red and the instinct was to investigate the interface. Now the test environment is declared in the very command the test executed.
+
+The next step is to reduce the number of specs that still depend on an implicit environment. A sweep through `tests/e2e/` shows several files that assume a backend is up and no written contract about it. While the dependency stays undeclared, the same confusion can come back in another file, with another error message and the same diagnostic cost.
