@@ -81,7 +81,7 @@ PROJECT_STYLES = {
         "colors": ["#1d4ed8", "#38bdf8", "#fde68a"],
     },
     "yurumi": {
-        "prompt_suffix": "Minimal flat illustration, one single large solid rounded node-cluster shape in deep emerald green made of three bold linked circles joined by thick bars, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper",
+        "prompt_suffix": "Lush tropical rainforest scene with one single giant luminous mushroom as the hero element, its wide cap in deep emerald with soft teal bioluminescent gills and a thick organic pale stem, surrounded by broad fern leaves, moss-covered roots and hanging vines, warm golden light shafts breaking through the canopy, faint floating spores, rich emerald and teal palette with warm amber highlights, cinematic depth and atmosphere, no characters, no people, no animals, no mascots, clean composition, 16:9 wallpaper",
         "colors": ["#b98a5e", "#22d3ee", "#0b1424"],
     },
     "descobertas": {
