@@ -1,0 +1,65 @@
+---
+title: "The gatekeeper that blocked the right code"
+description: "A hook meant to keep secrets out of the repository rejected, twice, a commit that carried no secret at all — first by confusing parsing with assignment, then by breaking under four layers of quoting. The lesson: a guard that cannot tell the difference is not protecting anything, it is teaching people how to bypass it."
+date: 2026-11-15 12:08:00 -03:00
+pubDate: 2026-11-17 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "security", "secrets", "secret-scanning", "git", "quality"]
+cover: /covers/capivara-o-porteiro-que-barrou-o-codigo-certo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The guardian nobody tests
+
+Every serious repository has a gatekeeper at the door: a checker that runs before each commit and blocks what should not get in. API keys, database passwords, environment files. Capivara has had one of those for months, and for a long time it worked for the most fragile of reasons — nobody had touched it.
+
+On Friday, November 13, the gatekeeper rejected a legitimate commit. The message was the usual one, and there was no secret anywhere in the diff. What there was, instead, was a line that **read** a variable name in order to compare it. A piece of validation logic that did roughly this: if the audited file's line starts with a credential identifier, treat it as a special case. The project's visual auditor inspects code, and to inspect code it has to quote variable names.
+
+The hook does not tell the difference. It matches a shape — credential identifier followed by an equals sign or a colon — and any line that fits the shape is treated as an assignment. The parsing line fit the shape. Commit dead.
+
+## The line between parsing and assigning
+
+Here is the detail that made the case worth fixing: **a real assignment never has a quote before the identifier**. When you write `SECRET_KEY = "..."`, the identifier stands bare. When you write `if line.startswith("CAPIVARA_SECRET=")`, the identifier sits inside a string — it is the data being compared, not the target of a write.
+
+The fix in commit `cbc2b20` was that rule and nothing else: an identifier inside quotes is a compared or parsed string, so it may pass. Everything else in the filter stayed the same, and it still blocks what matters. Seven cases were exercised during validation: the parsing case went through, and three forms of literal assignment stayed blocked — including the YAML shape with a colon and the typed Python annotation.
+
+Worth underlining what the fix did **not** do: it did not shorten the pattern list, did not allow `.env`, did not skip any file. It changed one context condition — the presence of a quote — and kept the rest. A guard that only knows how to loosen up when it becomes inconvenient is decoration; a guard that reads context keeps guarding.
+
+## The fix that lived outside the repository
+
+That episode was round two. The same correction commit recorded a quieter problem: the filter existed **outside any repository**, next to two other quality checkers. Had a cleanup wiped that directory, the fix would have evaporated. The reference version was brought into the project, with a README that ties the two copies together and a comparison command that proves, by empty diff, that they have not diverged.
+
+This is the kind of debt that never shows up in a report: security code that exists in a single place, with no copy in the repository and no history. It cannot be reviewed, cannot be audited, and there is no way to know when it changed.
+
+## When the gatekeeper breaks the door
+
+Two days later the problem stopped being a false positive and became an outage. A new filter was added to the block that ran **inside** the hook manager's configuration file, and the script died on the spot with an unexpected end-of-file while looking for a closing quote. The inline block had accumulated four layers of quoting — single quotes inside double quotes inside a multi-line YAML block. Each new layer worked on its own and broke the previous one.
+
+The result: every commit in the project started failing. Not just the commit with a secret. All of them.
+
+The fix in `1b0902c` was to take the script out of the YAML and give it a file of its own. Sixty-two lines of shell, while the configuration file lost forty-nine to gain thirteen. The difference is not cosmetic: a separate script can be syntax-checked before it runs, which a block buried in YAML cannot. And, more importantly, it can be tested with cases.
+
+```bash
+# the contract the filter now follows, written at the top of the file
+#   .env                 -> blocked (except .env.example)
+#   hardcoded literal    -> blocked
+#   environment read     -> allowed
+#   control-flow line    -> not an assignment
+#   test placeholder     -> allowed
+```
+
+Five filters, each with a stated reason: environment reads, identifiers inside quotes, test or CI placeholders, control-flow lines (`if`, `while`, `assert`, `return`, `and`, `or`, `not`) and comments. Every one of them exists because a real case knocked on the door and was classified wrong.
+
+## What this changes
+
+A secret guard has two possible failures and both are serious for opposite reasons. The first is letting through what it should block — the obvious failure, the one everybody fears. The second is blocking what should pass, and that one is more insidious because the effect is not a leak: it is **erosion of the habit**. Let the gatekeeper be wrong two or three times and the team learns the bypass route, and from then on the protection exists on paper and nowhere else.
+
+That is why the November 15 commit went in with verification disabled and manual validation — both recorded in the commit message, no disguise. When the guardian is broken, the honest choice is to admit the door is open for a few hours and check by hand; the dishonest one is to pretend it is working. What supports the honest option is the test: six cases on one side (allowed) and three on the other (blocked), plus the full set of staged files, with the backend suite closing 246 green tests in the same tree.
+
+The rule that remains is simple and applies to any checker, not just a secret hook: **a guard needs tests on both sides**. Test only what it blocks and you do not know whether it blocks too much. Test only what it allows and you do not know whether it allows what it should not.
+
+## Next step
+
+What is missing is the step that turns this episode into a mechanism: a verification suite for the hook itself, versioned with the project, running the same cases every time someone touches the rules. As long as testing is manual and memory-dependent, the next new filter breaks the gatekeeper the same way — and then the problem is no longer the pattern it matches, it is the absence of a net underneath.

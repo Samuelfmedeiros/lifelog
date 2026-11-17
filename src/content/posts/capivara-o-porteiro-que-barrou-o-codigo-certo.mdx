@@ -1,0 +1,65 @@
+---
+title: "O porteiro que barrava o código certo"
+description: "Um hook que impedia segredo de entrar no repositório bloqueou, por duas vezes, commit sem nenhum segredo: primeiro por confundir parsing com atribuição, depois por quebrar com quatro camadas de aspas. A lição que ficou: guard que não sabe distinguir não protege, só ensina a passar por cima."
+date: 2026-11-15 12:08:00 -03:00
+pubDate: 2026-11-17 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "security", "secrets", "secret-scanning", "git", "quality"]
+cover: /covers/capivara-o-porteiro-que-barrou-o-codigo-certo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O guardião que ninguém testa
+
+Todo repositório sério tem um porteiro na porta de entrada: um verificador que roda antes de cada commit e bloqueia o que não deveria entrar. Chave de API, senha de banco, arquivo de ambiente. O Capivara tem um desses há meses, e durante muito tempo ele funcionou pelo motivo mais frágil possível: ninguém tinha mexido nele.
+
+Na sexta-feira, 13 de novembro, o porteiro barrou um commit legítimo. A mensagem era a de sempre — "Commit abortado" — e não havia nenhum segredo no diff. O que havia era uma linha que **lia** um nome de variável para comparar. Um trecho de verificação que fazia algo do tipo: se a linha do arquivo auditado começa com o identificador de uma credencial, trate como caso especial. O auditor de visão do projeto analisa código, e para analisar precisa citar nomes de variáveis.
+
+O hook não distingue. Ele casa um padrão — identificador de credencial seguido de sinal de igual ou dois-pontos — e qualquer linha que obedeça à forma é tratada como atribuição. A linha que fazia parsing obedecia à forma. Commit morto.
+
+## A diferença que separa parsing de atribuição
+
+Aqui está o detalhe que fez o caso valer o conserto: **atribuição real nunca tem aspas antes do identificador**. Quando você escreve `SECRET_KEY = "..."`, o identificador está nu. Quando você escreve `if line.startswith("CAPIVARA_SECRET=")`, o identificador está dentro de uma string — ele é o dado que está sendo comparado, não o alvo de uma escrita.
+
+O conserto do commit `cbc2b20` foi essa regra, e só ela: identificador entre aspas é string comparada ou parseada; logo, pode passar. Fora isso, o filtro continua igual — e continua bloqueando o que importa. Na validação, sete casos foram exercitados: o parsing passou, e três formas de atribuição literal seguiram barradas, incluindo o formato em que a chave aparece em YAML com dois-pontos e o formato tipado de Python.
+
+Vale sublinhar o que o conserto **não** fez: não afrouxou a lista de padrões, não permitiu `.env`, não ignorou arquivo nenhum. Mudou uma condição de contexto — a presença de aspas — e manteve o resto. Guard que só sabe afrouxar quando incomoda vira enfeite; guard que sabe olhar o contexto continua guardando.
+
+## O fix que vivia fora do repositório
+
+Esse episódio foi o segundo round. No mesmo commit da correção ficou registrado outro problema, mais silencioso: o filtro existia **fora de qualquer repositório**, junto de outros dois verificadores de qualidade. Se uma limpeza apagasse aquele diretório, o conserto evaporava. A versão de referência foi trazida para o projeto, com um README que amarra as duas cópias e um comando de comparação que prova, por diff vazio, que não há divergência entre elas.
+
+Esse é o tipo de dívida que não aparece em relatório: código de segurança que existe em um só lugar, sem cópia no repositório, sem histórico. Não há como revisar, não há como auditar, não há como saber quando mudou.
+
+## Quando o porteiro quebra e derruba a porta
+
+Dois dias depois, o problema deixou de ser falso positivo e virou indisponibilidade. Um filtro novo foi adicionado ao bloco que rodava **dentro** do arquivo de configuração do gerenciador de hooks, e o script morreu na hora: `EOF inesperado enquanto procurava por "\""`. O bloco inline tinha acumulado quatro camadas de quoting — aspas simples dentro de duplas dentro de um bloco de YAML de múltiplas linhas. Cada camada nova funcionava sozinha e quebrava a anterior.
+
+Resultado: todo commit do projeto passava a falhar. Não só o commit com segredo. Todos.
+
+O conserto do `1b0902c` foi tirar o script de dentro do YAML e dar a ele um arquivo próprio. São 62 linhas de shell, e o arquivo de configuração perdeu 49 para ganhar 13. A diferença não é cosmética: um script separado pode ser validado por análise de sintaxe antes de rodar, coisa que um bloco embutido em YAML não permite. E, principalmente, pode ser testado com casos.
+
+```bash
+# o contrato que o filtro passou a respeitar, por escrito no topo do arquivo
+#   .env                 -> bloqueia (menos .env.example)
+#   literal hardcoded    -> bloqueia
+#   leitura de ambiente  -> permitido
+#   linha de controle    -> não é atribuição
+#   placeholder de teste -> permitido
+```
+
+Cinco filtros, cada um com um motivo declarado: leitura de ambiente, identificador entre aspas, placeholder de teste ou CI, linha de controle (`if`, `while`, `assert`, `return`, `and`, `or`, `not`) e comentário. Cada um deles existe porque um caso real bateu na porta e foi classificado errado.
+
+## O que isso muda
+
+Um guard de segredo tem duas falhas possíveis e as duas são graves por motivos opostos. A primeira é deixar passar o que devia barrar — a falha óbvia, a que todo mundo teme. A segunda é barrar o que devia passar, e essa é mais insidiosa porque o efeito não é vazamento: é **erosão do hábito**. Basta o porteiro errar duas ou três vezes para o time aprender o caminho de contorno, e a partir daí a proteção existe no papel e não existe na prática.
+
+Foi por isso que o commit de 15 de novembro foi feito com a verificação desligada e validação manual — as duas coisas registradas na mensagem do commit, sem disfarce. Quando o guardião está quebrado, a escolha honesta é assumir que a porta está aberta por algumas horas e validar à mão; a desonesta é fingir que ele está funcionando. O que sustenta a segunda opção é o teste: seis casos exercitados de um lado (permitido) e três do outro (bloqueado), mais o conjunto inteiro de arquivos preparados para o commit, com a suíte do backend fechando 246 testes verdes na mesma árvore.
+
+A regra que sobra é simples e vale para qualquer verificador, não só para hook de segredo: **um guard precisa de teste dos dois lados**. Se você só testa o que ele bloqueia, não sabe se ele bloqueia demais. Se só testa o que ele libera, não sabe se ele libera o que não devia.
+
+## Próximo passo
+
+O que falta é o passo que transforma esse episódio em mecanismo: uma suíte de verificação do próprio hook, versionada junto do projeto, rodando nos mesmos casos toda vez que alguém tocar nas regras. Enquanto o teste for manual e a memória de quem testou, o próximo filtro novo quebra o porteiro do mesmo jeito — e aí o problema não é mais o padrão que ele casa, é a ausência de rede embaixo.
