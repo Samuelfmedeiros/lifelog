@@ -1,0 +1,81 @@
+---
+title: "The guard that existed, ran, and nobody called"
+description: "A defender that detected the right problem was never executed by anything. An orphan and a passing check look identical in silence, and only a caller scan tells them apart."
+date: 2026-11-15 18:40:00 -03:00
+pubDate: 2026-11-18 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "detection", "monitoring", "observability", "audit"]
+cover: /covers/seguranca-o-guarda-que-ninguem-chamava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The alarm that was unplugged
+
+I had a guard that did exactly what it was supposed to do. It compared a critical configuration against the expected state, found the divergence, and returned the right verdict. The catch is that nobody called it: it was not in any schedule, not referenced by any other script, not listed in any service unit. It sat on disk, passed its own test, and the world carried on as if the check were being performed.
+
+I found it while looking at something else. The symptom was not an incident, it was an absence: a verification I was certain ran on its own every night and that, once I searched for the caller, did not exist. The question stopped being "does this guard work?" and became "how many others are in the same spot?".
+
+That is the right question, because the answer changes the mental model. A broken guard makes noise. An orphan guard makes no noise at all, and it is indistinguishable from a guard that passed.
+
+## The first measurement was wrong for a silly reason
+
+I wrote a scan that looked, for every guard on disk, at who referenced it anywhere in the system: schedule definitions, other scripts, service units, system cron files. Name found nowhere meant orphan.
+
+The first version counted eleven orphans. Eleven felt low, but the number was not obviously wrong, and that is where most bad measurements survive. So I went and read my own measuring code and found the hole: every guard mentions its own name. In the shebang, in the docstring, in the usage message, in the header comment. The check for "does this name appear anywhere?" was almost always true because the guard's own file was inside the corpus.
+
+The fix was a line of reasoning, not a line of code: each guard must be evaluated against the corpus **without itself**.
+
+```python
+def corpus(excluir: str | None = None) -> str:
+    # Every text that could CALL a guard.
+    # `excluir` drops the guard itself: without it, its own name
+    # in the shebang and docstring makes "not referenced" always false.
+    partes = []
+    for caminho in call_sites():
+        if excluir and os.path.samefile(caminho, excluir):
+            continue
+        partes.append(read(caminho))
+    return "\n".join(partes)
+
+def is_orphan(guard: str) -> bool:
+    nome = os.path.basename(guard).removesuffix(".py")
+    return nome not in corpus(excluir=guard)
+```
+
+With the hole closed, the number jumped from eleven to forty-three. Four times the first reading, and all forty-three were real.
+
+## Forty-three, and not all the same
+
+Orphan is not a synonym for defect. The scan classified each one by what it actually does when executed: half returned a clean verdict and were merely candidates to be wired in; four blew up on run, hunting for a config file or a code reference that no longer exists; eleven were corpses from the previous era of the system, depending on binaries and paths from another operating system; and six were not guards at all but tools that require an argument and should never live in a schedule.
+
+The split matters because the actions are opposite. A functional orphan asks to be wired in, a dead one asks to be discarded, a broken one asks to be fixed before anything else. Treating all forty-three as "the same pile" would guarantee that none of them moved.
+
+The second hole was in the classifier. It flagged as an accusation any output containing certain alarm words, including a result that returned an empty key of problems. The word was there, the problem was not. I fixed the rule: a marker inside a data-structure key, or with an empty value, is not an accusation.
+
+```python
+def classify(saida: str, rc: int) -> str:
+    if rc != 0:
+        return "BROKEN"
+    # An empty JSON key mentions the alarm word and accuses nothing.
+    if re.search(r'"[^"]*(falha|erro|quebrad)[^"]*"\s*:\s*(\{\s*\}|\[\s*\]|0)\b', saida):
+        return "FUNCTIONAL"
+    if ALARM_MARKER.search(saida):
+        return "ACCUSES"
+    return "FUNCTIONAL"
+```
+
+## The bug that surfaced on the way
+
+Halfway through the audit, a schedule guard accused in the small hours that a routine had not run "by the morning slot", a slot that had not arrived yet. The guard was technically correct and completely useless: it compared the present against a future commitment.
+
+That kind of false alarm is worse than no alarm, and the reason is behavioural. An alarm that shouts out of turn trains the person receiving it to ignore it. After three pointless warnings, the fourth, the true one, is read as noise. The cure was simple: a slot that has not come due is not an absence, it is silence.
+
+## Why this is the centre of the problem, not a detail
+
+The whole detection architecture I built rests on a silent premise: somebody is executing the check. If that premise falls, everything else collapses invisibly, and the worst symptom is precisely the green.
+
+I tested the measurer across the four possible branches, forcing an accusation case, a healthy case, a breakage case and an empty-key case. All classified correctly. A silent guard and a blind guard produce the same output, so only a negative test proves that the silence is compliance and not blindness.
+
+What is in place now is a sweep that only speaks when it finds an accusation or a broken guard, and that never wires anything in on its own: wiring is a decision, not a side effect. What remains open is the decision I could not make alone: which of the functional ones deserve a scheduled slot. Every one wired in is more noise in a channel that already competes with the rest of the system, and noise is exactly what trains someone to ignore an alarm.

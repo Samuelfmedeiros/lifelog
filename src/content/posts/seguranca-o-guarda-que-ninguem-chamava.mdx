@@ -1,0 +1,81 @@
+---
+title: "O guarda que existia, rodava e ninguém chamava"
+description: "Um defensor que detectava o problema certo nunca era executado por nada. Órfão e aprovado ficam calados do mesmo jeito, e só a varredura de chamadores separa os dois."
+date: 2026-11-15 18:40:00 -03:00
+pubDate: 2026-11-18 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "detection", "monitoring", "observability", "audit"]
+cover: /covers/seguranca-o-guarda-que-ninguem-chamava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O alarme que estava desligado da tomada
+
+Eu tinha um guarda que fazia exatamente o que devia. Ele comparava uma configuração crítica com o estado esperado, encontrava a divergência e devolvia o veredito certo. O detalhe é que ninguém o chamava: não estava em agendamento nenhum, não era citado por outro script, não aparecia em unidade de serviço. Existia no disco, passava no próprio teste, e o mundo seguia como se a checagem estivesse sendo feita.
+
+Descobri olhando outra coisa. O sintoma não foi um incidente, foi uma ausência: uma verificação que eu jurava que rodava sozinha todas as noites e que, procurando o chamador, não existia. A pergunta deixou de ser "esse guarda funciona?" e passou a ser "quantos outros estão na mesma situação?".
+
+Essa é a pergunta certa, porque a resposta muda o modelo mental. Um guarda quebrado faz barulho. Um guarda órfão não faz barulho nenhum, e é indistinguível de um guarda que passou.
+
+## A primeira medição estava errada por um motivo bobo
+
+Escrevi uma varredura que procurava, para cada guarda no disco, quem o citava em qualquer lugar do sistema: definições de agendamento, outros scripts, unidades de serviço, arquivos de cron do sistema. Nome não encontrado em nenhum lugar = órfão.
+
+A primeira versão contou onze órfãos. Onze parecia baixo, mas não era obviamente errado, e é aí que a maioria das medições ruins sobrevive. Fui ler o código do meu próprio medidor e achei o furo: todo guarda cita o próprio nome. No shebang, na docstring, na mensagem de uso, no comentário de cabeçalho. A checagem de "esse nome aparece em algum lugar?" era quase sempre verdadeira porque o arquivo do próprio guarda estava no corpus.
+
+A correção foi uma linha de raciocínio, não de código: cada guarda precisa ser avaliado contra o corpus **sem ele mesmo**.
+
+```python
+def corpus(excluir: str | None = None) -> str:
+    # Todo texto que poderia CHAMAR um guarda.
+    # `excluir` remove o próprio guarda: sem isso, o nome dele
+    # no shebang e na docstring faz "não citado" ser sempre falso.
+    partes = []
+    for caminho in fontes_de_chamada():
+        if excluir and os.path.samefile(caminho, excluir):
+            continue
+        partes.append(ler(caminho))
+    return "\n".join(partes)
+
+def eh_orfao(guard: str) -> bool:
+    nome = os.path.basename(guard).removesuffix(".py")
+    return nome not in corpus(excluir=guard)
+```
+
+Com o furo fechado, o número subiu de onze para quarenta e três. Quatro vezes mais do que a primeira leitura, e todas as quarenta e três eram reais.
+
+## Quarenta e três, e nem todas iguais
+
+Órfão não é sinônimo de defeito. A varredura classificou cada um pelo que ele faz quando executado de fato: metade devolvia veredito limpo e era só candidata a ser plugada; quatro estouravam ao rodar, procurando arquivo de configuração ou referência de código que já não existe; onze eram cadáveres da era anterior do sistema, dependendo de binário e caminho de outro sistema operacional; e seis não eram guardas, eram ferramentas que exigem argumento e nunca deveriam estar em agendamento.
+
+A separação importa porque as ações são opostas. Funcional órfão pede plug, morto pede descarte, quebrado pede conserto antes de qualquer coisa. Tratar os quarenta e três como "a mesma pilha" garantiria que nenhum sairia do lugar.
+
+O segundo furo foi no classificador. Ele marcava como acusação qualquer saída que contivesse certas palavras de alarme, inclusive um resultado que devolvia uma chave vazia de problemas. A palavra estava lá, o problema não. Corrigi a regra: marcador dentro de chave de estrutura de dados, ou com valor vazio, não é acusação.
+
+```python
+def classificar(saida: str, rc: int) -> str:
+    if rc != 0:
+        return "QUEBRADO"
+    # Chave JSON vazia cita a palavra de alarme e não acusa nada.
+    if re.search(r'"[^"]*(falha|erro|quebrad)[^"]*"\s*:\s*(\{\s*\}|\[\s*\]|0)\b', saida):
+        return "FUNCIONAL"
+    if MARCADOR_DE_ACUSACAO.search(saida):
+        return "ACUSA"
+    return "FUNCIONAL"
+```
+
+## O bug que apareceu no caminho
+
+No meio da auditoria, um guarda de agenda acusou de madrugada que uma rotina não tinha rodado "até o horário da manhã", um horário que ainda não tinha chegado. O guarda estava tecnicamente correto e completamente inútil: comparava o presente com um compromisso futuro.
+
+Esse tipo de falso alarme é pior que a ausência de alarme, e o motivo é comportamental. Alarme que grita fora de hora treina quem recebe a ignorá-lo. Depois de três avisos sem sentido, o quarto, o verdadeiro, é lido como ruído. A cura foi simples: horário que ainda não venceu não é ausência, é silêncio.
+
+## Por que isso é o centro do problema, e não um detalhe
+
+Toda a arquitetura de detecção que eu construí depende de uma premissa silenciosa: alguém está executando a checagem. Se essa premissa cai, todo o resto desmorona de forma invisível, e o pior sintoma é justamente o verde.
+
+Testei o medidor nos quatro ramos, forçando acusação, caso saudável, caso de quebra e chave vazia. Todos classificaram corretamente. Guarda silencioso e guarda cego produzem a mesma saída, então só um teste negativo prova que o silêncio é conformidade e não cegueira.
+
+O que ficou no lugar foi uma varredura que só fala quando encontra acusação ou guarda quebrado, e que nunca pluga nada sozinho: plugar é decisão, não efeito colateral. O que sobrou de aberto é a decisão que eu não podia tomar por conta própria: quais dos funcionais merecem ocupar um agendamento. Cada um plugado é mais ruído em um canal que já compete com o resto do sistema, e ruído é exatamente o que treina alguém a ignorar alarme.
