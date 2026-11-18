@@ -1,0 +1,70 @@
+---
+title: "Yurumi: the backup that existed but was not up to date"
+description: "The backup health check counted snapshots and reported green. The mirror had more snapshots than the primary and its newest one was two days old: counting proved existence, not freshness. Six fixes in six days to separate the two."
+date: 2026-11-18 12:00:00 -03:00
+pubDate: 2026-11-18 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "backup", "integrity", "monitoring", "ops", "python"]
+cover: /covers/yurumi-o-backup-que-existia-e-nao-estava-atualizado.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The green nobody had a reason to doubt
+
+The Yurumi backup verifier runs every two hours and stays silent when everything is fine. It existed precisely so I would not have to open the snapshot directory by hand. On the night of November 17 it was quiet as always, and the backup was two days behind.
+
+The Qdrant mirror had **12 snapshots** and the primary had **9**. If the check were just a count, the number said the mirror was even more complete than the source. That is not the honest comparison: the newest snapshot on the mirror was from **Nov 15 at 21:36**, and the newest on the primary was from **Nov 17 at 06:42**. Thirty-three hours of backup sitting on hot disk with no corresponding cold copy. The health check looked at the count, the count was good, and the alarm slept.
+
+The cause was not in the verifier. The hourly job that copies the primary repository to the mirror had been failing because the primary repository was unreachable, and the disk was full. The copy never ran, and the verifier kept counting old snapshots as if they were progress.
+
+## The full disk that came from copying what it should not
+
+The disk filled for a banal and expensive reason: the hourly package copied the **entire Qdrant binary storage**, 29 GB, every hour. With a retention of 14 packages, that is a ceiling of roughly **406 GB per destination**. Two disks hit 100%.
+
+What makes it worse is that this binary never needed to be copied. The Qdrant state already had two protection paths of its own: an hourly JSON export and a daily snapshot in the restic repository. The storage binary is precisely the thing that is not portable across database versions. It was being copied out of inertia.
+
+The fix was to narrow the package's list of volatile directories:
+
+```python
+_VOLATILE_DIRS = ("backups", "pytest-tmp", "qdrant-storage")
+
+def _is_volatile_part(name: str) -> bool:
+    """Path component the backup package does NOT copy."""
+    return name in _VOLATILE_DIRS or name.startswith("qdrant-storage")
+```
+
+After that, the hourly package went back to the size it should have, the disks started breathing again and the primary repository became reachable. But unblocking the cause does not unblock the mirror: rsync still had two defects of its own.
+
+## The rsync that started over every time
+
+The mirror copies 2.3 GB concentrated in three large files. The subprocess had a time budget, and when it was exceeded rsync exited without keeping what it had already transferred. The measured result was the mirror stopping **twice in a row at 169 of 172 files**, always with the same three large ones missing, always starting over on the next run.
+
+A file larger than the time budget would never finish. The cure was to ask rsync to keep and resume the partial:
+
+```python
+["rsync", "-r", "--size-only", "--partial",
+ "--partial-dir=.rsync-partial",
+ f"--timeout={max(60, seg // 10)}", src, dst]
+```
+
+The `--partial-dir` has a second function that is not obvious: it keeps the in-progress file out of the destination directory count. Without it, the verifier read half a file as if it were a complete one.
+
+Then came the third defect, the most expensive in resources. Without `-t`, rsync does not preserve mtime on the destination, and its quick check compares size plus mtime. Since the destination mtime never matched the source, **it re-copied 4.2 GB on every tick**: more than 30 minutes of transfer, load between 20 and 45, and on one occasion two rsync processes copying the same snapshot. The snapshot is immutable once created, so equal size means equal content, and `--size-only` solves it without inventing risk.
+
+## A false alarm is also a defect
+
+The first noise was structural. The NTFS mirror takes about 25 minutes to copy 172 entries, and the verifier runs every two hours. Backups are born in the early morning, around 02:26 and 03:22, and the verifier ran in the same cycle while the mirror did not exist yet. Measured result: **two failures per night**, all false. The cure was to distinguish "has not copied yet" from "is not going to copy": if the package is less than 1.5 hours old, a missing mirror is an unverifiable state, not a failure.
+
+The second was subtler. Comparing primary and secondary while rsync is writing produces a number that is not state, it is copy progress. Measured over three consecutive reads: **82, 95 and 99 files out of 140**. The same backup, three different diagnoses. The solution was to scan the process table and suppress only the mirror line when a live rsync exists for that destination. With no active rsync, the alert keeps coming out, because then the failure is real.
+
+The underlying fix is the one that closes the loop: the verifier stopped counting snapshots and started comparing the **date of the newest snapshot on each side**, requiring at most 24 hours of lag. The snapshot directory mtime is written by restic itself at write time, so it is the closest evidence of "when this was actually copied".
+
+## What changes
+
+Existing and up to date are two different properties, and the second is the only one that matters when you need to restore. A verifier that measures the first produces a green nobody has a reason to doubt, which is worse than a red.
+
+It also became clear that a backup has three states, not two. There is the complete backup, the backup in progress and the backup that is not going to happen. Treating the second as a failure generates alarms the operator learns to ignore, and an ignored alarm is the same as a disabled one.
+
+The next step is to run a real restore from the mirror, not from the primary. Until the restore passes using the cold copy, everything measured so far is about the health of the copy, not about the ability to go back.

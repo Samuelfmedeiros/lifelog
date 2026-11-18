@@ -1,0 +1,70 @@
+---
+title: "Yurumi: o backup que existia e não estava atualizado"
+description: "O health do backup contava snapshots e dava verde. O espelho tinha mais snapshots que o primário e o mais recente dele era de dois dias antes: contagem provava existência, não atualidade. Seis correções em seis dias para separar as duas coisas."
+date: 2026-11-18 12:00:00 -03:00
+pubDate: 2026-11-18 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "backup", "integrity", "monitoring", "ops", "python"]
+cover: /covers/yurumi-o-backup-que-existia-e-nao-estava-atualizado.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O verde que ninguém tinha motivo para duvidar
+
+O verificador de backup do Yurumi roda a cada duas horas e é silencioso quando está tudo bem. Ele existia justamente para eu não precisar abrir diretório de snapshot na mão. Na noite de 17 de novembro, ele estava calado como sempre, e o backup estava com dois dias de atraso.
+
+O espelho do Qdrant tinha **12 snapshots** e o primário **9**. Se a checagem fosse só contar, o número dizia que o espelho estava até mais completo que a origem. A comparação honesta não é essa: o snapshot mais recente do espelho era de **15/11 às 21:36**, e o mais recente do primário, de **17/11 às 06:42**. Ou seja, 33 horas de backup existindo em disco quente e nenhuma cópia fria correspondente. O health olhava a contagem, a contagem estava boa, e o alarme dormia.
+
+A causa não estava no verificador. O job horário que copia o repositório primário para o espelho vinha falhando porque o repositório primário estava inacessível, e o disco estava cheio. A cópia nunca rodava, e o verificador continuava contando snapshots antigos como se fossem progresso.
+
+## O disco cheio que veio de copiar o que não devia
+
+O disco encheu por um motivo banal e caro: o pacote horário copiava o **storage binário do Qdrant inteiro**, 29 GB, a cada hora. Com retenção de 14 pacotes, isso é um teto de cerca de **406 GB por destino**. Dois discos chegaram a 100%.
+
+O detalhe que torna o erro pior é que aquele binário nunca precisou ser copiado. O estado do Qdrant já tinha dois caminhos próprios de proteção: export em JSON de hora em hora e snapshot diário no repositório restic. O binário de storage é justamente o que não é portável entre versões do banco. Estava sendo copiado por inércia.
+
+A correção foi estreitar a lista de diretórios voláteis do pacote:
+
+```python
+_VOLATILE_DIRS = ("backups", "pytest-tmp", "qdrant-storage")
+
+def _is_volatile_part(name: str) -> bool:
+    """Componente de caminho que o pacote do backup NAO copia."""
+    return name in _VOLATILE_DIRS or name.startswith("qdrant-storage")
+```
+
+Depois disso, o pacote horário voltou a ter o tamanho que deveria ter, os discos voltaram a respirar e o repositório primário voltou a ficar acessível. Só que destravar a causa não destrava o espelho: o rsync ainda tinha dois defeitos próprios.
+
+## O rsync que recomeçava do zero toda vez
+
+O espelho copia 2,3 GB concentrados em três arquivos grandes. O subprocesso tinha orçamento de tempo e, quando estourava, o rsync saía sem preservar o que já tinha transferido. O resultado medido foi o espelho parando **duas vezes seguidas em 169 de 172 arquivos**, sempre com os mesmos três grandes faltando, sempre recomeçando do zero na execução seguinte.
+
+Um arquivo maior que o orçamento de tempo nunca terminaria. A cura foi pedir ao rsync que preserve e retome o parcial:
+
+```python
+["rsync", "-r", "--size-only", "--partial",
+ "--partial-dir=.rsync-partial",
+ f"--timeout={max(60, seg // 10)}", src, dst]
+```
+
+O `--partial-dir` tem uma segunda função que não é óbvia: mantém o arquivo em andamento fora da contagem do diretório de destino. Sem isso, o verificador lia meio arquivo como se fosse um arquivo completo.
+
+E aí apareceu o terceiro defeito, o mais caro em recurso. Sem `-t`, o rsync não preserva o mtime no destino, e o quick-check dele compara tamanho mais mtime. Como o mtime de destino nunca coincidia com o da origem, **ele recopiava 4,2 GB em todo tick**: mais de 30 minutos de transferência, load entre 20 e 45, e em uma ocasião dois rsync copiando o mesmo snapshot. O snapshot é imutável depois de criado, então tamanho igual significa conteúdo igual, e `--size-only` resolve sem inventar risco.
+
+## O alarme falso também é um defeito
+
+O primeiro ruído era estrutural. O espelho em NTFS leva cerca de 25 minutos para copiar 172 entradas, e o verificador roda a cada duas horas. Os backups nascem de madrugada, por volta de 02:26 e 03:22, e o verificador rodava no mesmo ciclo em que o espelho ainda nem existia. Resultado medido: **duas falhas por noite**, todas falsas. A cura foi distinguir "ainda não copiou" de "não vai copiar": se o pacote tem menos de 1,5 hora de idade, a ausência do espelho é estado não verificável, não falha.
+
+O segundo era mais sutil. Comparar primário e secundário enquanto o rsync escreve produz um número que não é estado, é progresso de cópia. Medido em três leituras seguidas: **82, 95 e 99 arquivos de 140**. O mesmo backup, três diagnósticos diferentes. A solução foi varrer a tabela de processos e suprimir apenas a linha de espelho quando existe um rsync vivo para aquele destino. Sem rsync ativo, o alerta continua saindo, porque aí a falha é real.
+
+A correção de fundo é a que fecha o ciclo: o verificador deixou de contar snapshots e passou a comparar a **data do snapshot mais recente de cada lado**, exigindo no máximo 24 horas de atraso. O mtime do diretório do snapshot é gravado pelo próprio restic no momento da gravação, então é a evidência mais próxima de "quando isso foi realmente copiado".
+
+## O que muda
+
+Existir e estar atualizado são duas propriedades diferentes, e a segunda é a única que importa quando você precisa restaurar. Um verificador que mede a primeira produz um verde que ninguém tem motivo para duvidar, o que é pior que um vermelho.
+
+Também ficou claro que o backup tem três estados, não dois. Existe o backup completo, o backup em andamento e o backup que não vai acontecer. Tratar o segundo como falha gera alarme que o operador aprende a ignorar, e alarme ignorado é o mesmo que alarme desligado.
+
+O próximo passo é rodar uma restauração de verdade a partir do espelho, não do primário. Enquanto o restore não passar usando a cópia fria, tudo o que foi medido até aqui é sobre a saúde da cópia, não sobre a capacidade de voltar atrás.
