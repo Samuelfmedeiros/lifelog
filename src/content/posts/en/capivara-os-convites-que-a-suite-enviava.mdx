@@ -1,0 +1,82 @@
+---
+title: "The invites my test suite actually sent — 410 emails and a 72% bounce rate"
+description: "The Capivara test routine created real invites, and the invite endpoint really sent email. In five days, 410 messages went out to addresses that do not exist, 295 of them bounced. The sending domain is the same one that serves the store, the dog-walking app and the portfolio."
+date: 2026-11-18 12:00:00 -03:00
+pubDate: 2026-11-18 12:00:00 -03:00
+project: capivara
+tags: ["capivara", "email", "resend", "testing", "fastapi", "quality"]
+cover: /covers/capivara-os-convites-que-a-suite-enviava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## A button that really sent email
+
+Capivara is the hub I use to run the rest of my stack. One of its screens handles invitations: I type an address, the system creates an invite with a token and an expiry date, and the email with the link goes out immediately. Small flow — but a flow with an external side effect. It talks to an email provider, and providers charge, dearly, for bad behaviour.
+
+On November 15th I opened the provider dashboard and found 410 messages leaving the invite sender between the 10th and the 15th. All of them addressed to fixtures: `list-a@`, `delete-me@`, `invited@`, `perm-invited@`. Of those 410, 295 came back as bounces — a 72% failure rate. The cadence was roughly 71 seconds between one message and the next.
+
+It was not an attack and not a leaked credential. It was me running the test suite.
+
+## The full path, from test to inbox
+
+The backend suite exercises the invite flow end to end: it POSTs to the endpoint, checks the response, validates the token, verifies permissions. And the endpoint, by design, calls the email sender whenever the request carries an address.
+
+The email service, in turn, reads the provider API key from the process environment at import time. The suite inherited the same environment as the development machine — including the config file holding the production key. So every run of the suite became a batch of real sends to mailboxes that do not exist.
+
+The number that closes the case is the interval. Seventy-one seconds is about how long one full pass of the suite takes. The defect was not intermittent: it was *on* for five days, once per run, with nobody noticing, because the tests passed.
+
+## Why a 72% bounce rate is worse than it sounds
+
+A bounce is not an error in my code captured in my log — it is an event written into the reputation of the **sending domain**. And that domain is shared: it is the same one delivering mail for the store, the dog-walking app and the portfolio. There is no per-account reputation; there is per-domain reputation.
+
+Providers read a high bounce rate as the classic signature of a purchased list. The penalty escalates: spam classification first, temporary sender blocking next, and at the extreme the domain gets suspended. When that happens, the ones who stop receiving email are not the tests. They are the customers.
+
+And the worst part is the detection asymmetry. A test that sends mail to a non-existent address and gets a 202 back stays green — the provider accepts the message and only discovers the bounce seconds later, on its side. The success comment lives on my side; the bounce lives on someone else's dashboard.
+
+## Two barriers, at different layers
+
+The fix was not one thing but two, each covering a different failure class.
+
+The first barrier removes the cause: the suite stops holding the key. Before the first import of the email service, the test environment pops the variable. Order matters more than it looks — the service reads the key at import, not per call, so popping it later buys nothing:
+
+```python
+# in the test config, before importing the email service
+os.environ.pop("RESEND_API_KEY", None)
+```
+
+Without a key the service falls back to logging: it builds the body, writes it to the log and returns False. The flow under test is unchanged, the email never leaves.
+
+The second barrier matters more, because it does not depend on environment discipline: the service itself refuses test destinations, even if somebody runs the suite with the real key in hand — which sooner or later somebody will.
+
+```python
+_TEST_LABELS = {"test", "teste", "invalid", "example", "localhost", "local"}
+_TEST_DOMAINS = {"test.com", "example.com", "example.org", "example.net"}
+
+def is_test_destination(address: str) -> bool:
+    domain = (address or "").rsplit("@", 1)[-1].lower().strip()
+    if not domain:
+        return False
+    if domain in _TEST_DOMAINS:
+        return True
+    return any(label in _TEST_LABELS for label in domain.split("."))
+```
+
+The label list mirrors the domains reserved by RFC 2606 and RFC 6761: `test`, `invalid`, `example`, `localhost`. Those cannot exist by definition, so they keep the promise of never delivering — every address under them is a guaranteed bounce. `example.org` and `example.net` joined the list because they are reserved too and showed up in the fixtures.
+
+## The detail that would have let the next 410 through
+
+The first version of the guard checked the domain suffix against `.test`. Looks right, is not: `list-a@test.com` ends in `.com`. There, `.com` is the TLD and `test` is the second level — `endswith(".test")` never fires. This is the kind of mistake that survives code review, because the intent is correct and the expression is wrong.
+
+The working guard compares **label by label** instead of testing the whole domain against a list: it splits the domain on dots and checks whether any part is a reserved label. That covers `test.com`, `something.test` and `test.example.org`. It was validated against five addresses — three fixtures returning True, a regular address and one on the production domain returning False.
+
+## What actually changed
+
+The backend came out at 246 passing tests after the change. The test that specifically exercises the provider path stopped using a fixture address and switched to a real domain with the HTTP call mocked — its job is to verify the request shape, not the delivery, so nothing needs to leave the machine for it to be worth something.
+
+The transferable lesson is bigger than the bug. A test environment should not hold production credentials, but "should not" is not a control: when the credential is there, the only reliable barrier is the one inside the code that produces the side effect. The test is not the place to prevent a send; the email service is. Tests forget, configs leak, people run things with the real key to debug — and the destination guard holds in every one of those cases.
+
+## Next step
+
+What is still missing is the measurement: tracking the bounce rate per sender in the provider dashboard and turning it into an alert instead of a lucky discovery. A guard prevents the next wrong send; it does not prove the domain reputation recovered after five days of 72% bounces. That number needs a chart, not a memory.
