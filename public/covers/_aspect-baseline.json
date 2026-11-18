@@ -1,8 +1,9 @@
 {
   "nota": "acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.",
-  "atualizado": "2026-11-17",
-  "total": 1,
+  "atualizado": "2026-11-18",
+  "total": 2,
   "legacy": [
-    "public/covers/afiliado-pet-quanto-paga-de-verdade-2026-v2.webp"
+    "public/covers/afiliado-pet-quanto-paga-de-verdade-2026-v2.webp",
+    "public/covers/capivara-os-convites-que-a-suite-enviava.webp"
   ]
 }
