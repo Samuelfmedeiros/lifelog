@@ -1,0 +1,84 @@
+---
+title: "O teste que exigia o vazamento"
+description: "Um NameError silencioso no webhook de assinatura, uma marca de idempotência gravada cedo demais e um teste que exigia o token de redefinição no HTML."
+category: samuel-projects
+date: 2026-11-18 08:00:00 -03:00
+project: arachne
+tags: [arachne, stripe, testing, webhook, backend]
+cover: /covers/arachne-o-teste-que-exigia-o-vazamento.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## O relatório abriu com uma conta, não com um bug
+
+Na madrugada de 18 de novembro o critic do Arachne fechou a rodada com score 65 e nove falhas: nove lugares onde alguma coisa não provava o que dizia provar. Três mereciam parar tudo — um erro de nome numa rota que só executa quando alguém paga, um teste que exigia no HTML justamente o dado que a rota deixara de devolver, e um teste de cobrança que passava sem limpar uma das três configurações do caminho de pagamento.
+
+## O caminho do dinheiro não sabia o nome do plano
+
+O webhook de assinatura recebe um evento do Stripe a cada mudança de estado. Quando o status vira `active`, o handler atualiza o registro local e sincroniza o plano do workspace do dono — e é a segunda parte que libera o produto para quem acabou de pagar.
+
+```python
+sub.status = status
+db_session.commit()          # a assinatura já está gravada aqui
+
+ws_plan_type = "pro"
+if plan and plan.name:       # NameError: `plan` nunca foi lido do banco
+    if "enterprise" in plan.name.lower():
+        ws_plan_type = "enterprise"
+    elif "pro" in plan.name.lower():
+        ws_plan_type = "pro"
+```
+
+A variável `plan` não existia no escopo: ninguém a tinha carregado. Em Python isso não é condição falsa, é `NameError`, levantado na primeira linha que toca o nome. E a ordem agrava: o `commit` acontece antes do bloco quebrado. Quando a exceção sobe, o pagamento já está registrado, o status já é `active`, e o workspace continua no plano anterior. O cliente vê a tela de cobrança dizendo que deu certo; o produto entrega uma conta sem a capacidade paga.
+
+Havia um agravante na retentativa. Antes de despachar o evento, o webhook grava uma chave de idempotência no Redis com `nx=True` e validade de sete dias. Intenção certa, ordem errada: a chave entra antes do handler e nunca é removida quando ele falha. O Stripe reenvia o evento, a segunda tentativa cai no ramo de duplicado e não executa nada. Um erro transitório vira perda definitiva, carimbada como já processada.
+
+## O que o linter viu antes do teste
+
+O achado não veio de usuário reclamando: veio do Ruff, regra F821, nome indefinido, na união dos caminhos que o CI cobre. Barato de corrigir, caro de descobrir tarde — o nome estava ali desde que o bloco foi escrito, invisível porque nenhum teste exercitava `status == "active"` de ponta a ponta.
+
+A correção carrega o plano antes de usá-lo, a partir do `plan_id` que a própria assinatura guarda:
+
+```python
+ws_plan_type = "pro"
+plan = db_session.get(Plan, sub.plan_id) if sub.plan_id else None
+if plan and plan.name:
+    if "enterprise" in plan.name.lower():
+        ws_plan_type = "enterprise"
+```
+
+O Ruff voltou a passar em tudo. Passar no linter, porém, não é funcionar — e o segundo achado mostra por quê.
+
+## O teste que pedia o dado vazado
+
+A rota de redefinição de senha foi endurecida para nunca devolver o token na resposta — devolvê-lo no HTML permitiria trocar a senha de qualquer e-mail que passasse por ali. O teste que cobria a rota afirmava o contrário:
+
+```python
+# antes: o teste exigia o token na página
+assert r.status_code == 200 and "Token" in r.text
+
+# depois: o teste proíbe o token na página
+assert r.status_code == 200
+assert "reset-password?token=" not in r.text
+assert "Token" not in r.text
+```
+
+O teste passava porque a vulnerabilidade existia, e falharia depois da correção. Um teste assim é pior que nenhum: trava a correção e faz quem conserta achar que quebrou algo certo. Reescrevi a asserção para o contrato novo, e o arquivo fechou com 29 testes passando.
+
+## Três ids, um esquecido
+
+O terceiro era silencioso de outro jeito. O teste do plano local do Mercado Pago garante que o caminho não entra em pré-aprovação quando a configuração não está definida. Três identificadores podem ligar esse caminho; o teste zerava dois e esquecia o terceiro, passando por sorte de ordem de execução. Com os três zerados, os 11 testes passam pelo motivo certo.
+
+## O que isso muda
+
+Falha que deixa o sistema meio-certo é a que demora mais a aparecer. Assinatura em `active` com workspace no plano antigo não gera erro visível: o cliente não reclama no primeiro dia, o painel de cobrança está correto, o log tem um aviso que ninguém lê. Quem pegou não foi monitoramento melhor, foi um linter barato rodando nos caminhos que o teste não toca.
+
+E teste só vale pelo contrato que afirma: uma asserção que exige o token na resposta é a promessa de que o vazamento continua.
+
+## Próximo passo
+
+O NameError está corrigido, mas a ordem da idempotência continua errada: marcar antes de executar transforma qualquer exceção em evento perdido por sete dias. O próximo passo é gravar a marca só depois do handler concluir, ou removê-la no `except`, e escrever o teste de integração que falta — evento `active` entrando pelo webhook e terminando com o workspace no plano pago. Até lá, o caminho do dinheiro está coberto por um linter, não por uma prova.

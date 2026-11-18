@@ -1,0 +1,84 @@
+---
+title: "The test that demanded the leak"
+description: "A silent NameError inside the subscription webhook, an idempotency key written too early and a test that required the password reset token in the HTML."
+category: samuel-projects
+date: 2026-11-18 08:00:00 -03:00
+project: arachne
+tags: [arachne, stripe, testing, webhook, backend]
+cover: /covers/arachne-o-teste-que-exigia-o-vazamento.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## The report opened with a score, not a bug
+
+In the early hours of November 18 the Arachne critic closed its run with a score of 65 and nine failures. None of them were about formatting: all nine were places where something did not prove what it claimed to prove. Three were worth stopping everything for — a name error inside a route that only runs when someone pays, a test that demanded in the HTML exactly the value the route had just stopped returning, and a billing test that passed without clearing one of the three settings that decide which payment path gets used.
+
+## The money path did not know the plan name
+
+The subscription webhook receives an event from Stripe every time a subscription changes state. When the status becomes `active`, the handler updates the local record and syncs the owner's workspace plan. The first part is plain database work. The second is what actually unlocks the product for someone who just paid.
+
+```python
+sub.status = status
+db_session.commit()          # the subscription is already saved here
+
+ws_plan_type = "pro"
+if plan and plan.name:       # NameError: `plan` was never loaded from the database
+    if "enterprise" in plan.name.lower():
+        ws_plan_type = "enterprise"
+    elif "pro" in plan.name.lower():
+        ws_plan_type = "pro"
+```
+
+The variable `plan` did not exist in that scope: nothing had loaded it. In Python that is not a falsy condition, it is a `NameError`, raised on the first line that touches the name. And the ordering turns the bug into damage — the subscription `commit` happens before the broken block. When the exception rises, the payment is already recorded, the status is already `active`, and the workspace stays on the previous plan. The customer sees a checkout screen saying it worked; the product delivers an account without the capability that was paid for.
+
+There was a second problem waiting on the retry path. Before dispatching the event, the webhook writes an idempotency key into Redis with `nx=True` and a seven-day expiry. Right intention, wrong order: the key is written before the handler runs and is never removed when it fails. Stripe retries the event, the second attempt lands in the duplicate branch, returns success and executes nothing. A transient code error becomes permanent loss, stamped as already processed.
+
+## What the linter saw before any test did
+
+The finding did not come from a complaining user: it came from Ruff, rule F821, undefined name, across the union of paths the CI covers. Cheap to fix, expensive to discover late — the missing name had been there since the upgrade block was written, invisible because no test exercised the `status == "active"` branch end to end.
+
+The fix loads the plan before using it, from the `plan_id` the subscription already stores:
+
+```python
+ws_plan_type = "pro"
+plan = db_session.get(Plan, sub.plan_id) if sub.plan_id else None
+if plan and plan.name:
+    if "enterprise" in plan.name.lower():
+        ws_plan_type = "enterprise"
+```
+
+Ruff went back to all checks passing. Passing the linter, however, is not the same as working — and the second finding shows why.
+
+## The test that asked for the leaked value
+
+The password reset route had been hardened to never return the token in the response. Returning it in the HTML would allow anyone to change the password of any e-mail address that passed through there. The test covering that route asserted the opposite:
+
+```python
+# before: the test required the token on the page
+assert r.status_code == 200 and "Token" in r.text
+
+# after: the test forbids the token on the page
+assert r.status_code == 200
+assert "reset-password?token=" not in r.text
+assert "Token" not in r.text
+```
+
+The test passed because the vulnerability existed, and it would start failing after the fix. A test like that is worse than none, because it blocks the correction: whoever fixes it sees red and may conclude they broke something that was right. I rewrote the assertion to state the new contract, and that file closed with 29 passing tests.
+
+## Three ids, one forgotten
+
+The third finding was silent in a different way. The local plan test for Mercado Pago must guarantee the path does not enter pre-approval when the setting is not defined. Three identifiers can turn that path on; the test cleared two and forgot the third. It passed because of execution order, not because of a contract. With all three cleared, the 11 tests in that file pass for the right reason.
+
+## What this changes
+
+A failure that leaves the system half-right is the one that takes longest to find. A subscription in `active` with the workspace on the old plan produces no visible error: the customer does not complain on day one, the billing dashboard is correct, the log has a warning nobody reads. What caught it was not better monitoring, it was a cheap linter running on the paths the test suite never touches.
+
+And a test is only worth the contract it asserts. An assertion that requires the token in the response is not coverage: it is a promise that the leak continues.
+
+## Next step
+
+The NameError is fixed, but the idempotency ordering is still wrong: marking before executing turns any exception into a lost event for seven days. The next move is to write the key only after the handler completes, or remove it in the `except`, and to write the missing integration test — an `active` event entering through the webhook and finishing with the workspace on the paid plan. Until that test exists, the money path is covered by a linter, not by proof.
