@@ -1,0 +1,80 @@
+---
+title: "The four test files that were testing the wrong route"
+description: "The portfolio suite had 599 green tests and four files that never exercised the code they claimed to cover. One called GET on a route that only exports POST. Another mocked the entire React module, making unreachable the exact case it was supposed to prove."
+category: samuel-projects
+date: 2026-11-18 16:00:00 -03:00
+pubDate: 2026-11-18 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ci-cd", "testing", "quality", "nextjs"]
+cover: /covers/portfolio-os-testes-que-nunca-rodaram.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+The portfolio suite closed green. 599 tests passing, no alarms. And yet four test files in that directory never reached the code they claimed to cover: they broke earlier, while building the test itself. The files existed, the green existed, and the coverage was fiction. The fix landed in commit `6295d61`, 358 new lines across four files.
+
+## The mock that could not exist
+
+The loudest case was the route that serves the mini-games. The test did `import * as fs from 'fs'`, registered `vi.mock('fs')` and then tried to overwrite the method directly on the module namespace:
+
+```ts
+import * as fs from 'fs'
+vi.mock('fs')
+const mockReadFileSync = vi.fn()
+fs.readFileSync = mockReadFileSync   // in ESM the namespace is frozen
+```
+
+In an ES module the exported namespace is read-only. The assignment throws `TypeError: Cannot assign to property 'readFileSync' of [object Module]` and kills the whole file before the first `it`. Thirteen tests lived there — all announced, none executed. What showed up in the report was a test-infrastructure failure, easy to file as noise and move on, which is exactly what happened for far too long.
+
+The replacement uses `vi.hoisted` with a factory, so the mocks exist before the import hoisting and are injected through the module's return value instead of by assignment:
+
+```ts
+const mocks = vi.hoisted(() => ({
+  readFileSync: vi.fn(),
+  existsSync: vi.fn(),
+}))
+
+vi.mock('fs', () => ({
+  default: { existsSync: mocks.existsSync, readFileSync: mocks.readFileSync },
+  readFileSync: mocks.readFileSync,
+}))
+```
+
+## Three ways of testing something that is not there
+
+The second file mocked `next/server` without exporting `NextRequest`, producing `No "NextRequest" export is defined on the "next/server" mock`. Worse: it mocked two internal modules the route never imports. The contact-notification route ships its own rate limiter and calls `fetch` directly, yet the test replaced a shared limiter that never entered the scene. Seven cases failed before any assertion about validation, escaping or throttling.
+
+The third called `GET` on a route that only exports `POST`. The error was literally `GET is not a function` — the route had been rewritten at some point, the test had not, and nobody noticed because the file still counted as "route coverage".
+
+The fourth was the quietest. The mount-hook test replaced the entire React module, including `useSyncExternalStore`, with a version that always returned the client snapshot. That made the server-rendering case — the hook's whole reason to exist — unreachable: the test failed with `expected true to be false`, and the message implied a bug in the hook when the bug was in the mock.
+
+## What the route actually does
+
+Rewriting the tests against the real route forced a look at what it really does. The games route sanitises the slug before touching disk:
+
+```ts
+const sanitized = slug
+  .replace(/\.\.\//g, "")
+  .replace(/\.\.\\/g, "")
+  .replace(/\//g, "")
+  .replace(/\\/g, "")
+
+if (sanitized !== slug) {
+  return new NextResponse("Invalid game slug", { status: 400 })
+}
+```
+
+It also carries an anti-regression guard born from a real incident: back in September a commit wrote a game's `index.html` as base64 and the endpoint started returning the encoded string with HTTP 200 and `Content-Type: text/html`. The games stayed broken for three weeks without a single log signal. The guard now reads the first bytes and refuses to serve anything that does not start with `<`. None of that was covered — the test died before reaching it.
+
+The new set verifies traversal rejection with `../` and with `..\`, missing consent returning 400, request throttling returning 429, a missing PDF returning 404, filename by locale and by résumé variant, HTML escaping on form fields, and the download record sent to the internal logging service with the received user agent.
+
+## What changes
+
+Four files, 26 tests that now actually run. The full suite closes at 599 and lint is clean. The gain is not the number — it is that the number finally means something.
+
+The lesson travels beyond this repository: a test that fails to boot is not coverage, it is noise wearing coverage's clothes. Counting test files and counting green cases does not prove the code was exercised; what proves it is the test failing when the code breaks. Before trusting green, the uncomfortable question is worth asking: has this test ever been seen failing?
+
+## Next step
+
+Run the same audit over the remaining routes that still lack a contract test, starting with the ones that write data outward — the ones calling an external service with not a single case verifying what leaves this side.

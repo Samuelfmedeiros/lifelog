@@ -1,0 +1,80 @@
+---
+title: "Os quatro arquivos de teste que testavam a rota errada"
+description: "A suíte do portfólio tinha 599 testes verdes e quatro arquivos que nunca exercitavam o código que diziam cobrir. Um deles chamava GET numa rota que só exporta POST. Outro mockava o módulo de React inteiro, tornando inalcançável justamente o caso que precisava provar."
+category: samuel-projects
+date: 2026-11-18 16:00:00 -03:00
+pubDate: 2026-11-18 16:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "ci-cd", "testing", "quality", "nextjs"]
+cover: /covers/portfolio-os-testes-que-nunca-rodaram.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+A suíte do portfólio fechava verde. Ao todo, 599 testes passando, e nenhum alarme. Mesmo assim, quatro arquivos de teste daquele diretório nunca chegaram a exercitar o código que diziam cobrir: eles quebravam antes, na montagem do próprio teste. O número de arquivos estava lá, o verde estava lá, e a cobertura era ficção. O conserto entrou no commit `6295d61`, com 358 linhas novas distribuídas em quatro arquivos.
+
+## O mock que não podia existir
+
+O caso mais gritante era o da rota que serve os jogos. O teste fazia `import * as fs from 'fs'`, registrava `vi.mock('fs')` e depois tentava substituir o método direto no namespace do módulo:
+
+```ts
+import * as fs from 'fs'
+vi.mock('fs')
+const mockReadFileSync = vi.fn()
+fs.readFileSync = mockReadFileSync   // em ESM: namespace é congelado
+```
+
+Em módulo ES o namespace exportado é somente leitura. A atribuição estoura `TypeError: Cannot assign to property 'readFileSync' of [object Module]` e mata o arquivo inteiro antes do primeiro `it`. Treze testes viviam ali, todos anunciados, nenhum executado. O sintoma que aparecia no relatório era uma falha de infraestrutura de teste, fácil de classificar como ruído e seguir adiante — que é exatamente o que aconteceu por tempo demais.
+
+A troca foi para `vi.hoisted` com uma factory, de modo que os mocks existam antes do hoisting dos imports e sejam injetados pelo retorno do módulo, não por atribuição:
+
+```ts
+const mocks = vi.hoisted(() => ({
+  readFileSync: vi.fn(),
+  existsSync: vi.fn(),
+}))
+
+vi.mock('fs', () => ({
+  default: { existsSync: mocks.existsSync, readFileSync: mocks.readFileSync },
+  readFileSync: mocks.readFileSync,
+}))
+```
+
+## Três formas de testar o que não existe
+
+O segundo arquivo mockava `next/server` sem exportar `NextRequest` e devolvia o erro `No "NextRequest" export is defined on the "next/server" mock`. Pior: ele mockava dois módulos internos que a rota não importa. A rota de notificação de contato tem rate limiter próprio e chama `fetch` direto; o teste, no entanto, substituía um limitador compartilhado que nunca entrava em cena. Sete casos falhavam antes de chegar em qualquer asserção sobre validação, escaping ou limite de requisições.
+
+O terceiro chamava `GET` numa rota que exporta apenas `POST`. O erro era literalmente `GET is not a function` — a rota tinha sido reescrita em algum momento, o teste não, e ninguém notou porque o arquivo continuava contando como "cobertura da rota".
+
+O quarto era o mais silencioso de todos. O teste do hook de montagem substituía o módulo de React inteiro, inclusive `useSyncExternalStore`, por uma versão que devolvia sempre o snapshot de cliente. Com isso, o caso de renderização no servidor — que é a razão de existir do hook — tornava-se inalcançável: o teste falhava com `expected true to be false` e a mensagem sugeria um bug no hook, quando o bug estava no mock.
+
+## O que a rota realmente faz
+
+Reescrever os testes contra a rota real obrigou a olhar o que ela faz de fato. A rota dos jogos sanitiza o slug antes de tocar no disco:
+
+```ts
+const sanitized = slug
+  .replace(/\.\.\//g, "")
+  .replace(/\.\.\\/g, "")
+  .replace(/\//g, "")
+  .replace(/\\/g, "")
+
+if (sanitized !== slug) {
+  return new NextResponse("Invalid game slug", { status: 400 })
+}
+```
+
+Ela também carrega uma guarda antirregressão nascida de um incidente real: em setembro, um commit gravou o `index.html` de um jogo em base64 e o endpoint passou a devolver a string codificada com HTTP 200 e `Content-Type: text/html`. Os jogos ficaram quebrados por três semanas sem um único sinal no log. A guarda atual lê os primeiros bytes e recusa servir o que não começa com `<`. Nada disso estava coberto — o teste morria antes.
+
+O novo conjunto verifica rejeição de traversal com `../` e com `..\`, consentimento ausente devolvendo 400, limite de requisições devolvendo 429, PDF inexistente devolvendo 404, nome de arquivo por locale e por variante de currículo, escaping de HTML nos campos do formulário e o registro do download no serviço interno de log com o user agent recebido.
+
+## O que muda
+
+Quatro arquivos, 26 testes que agora executam de verdade. A suíte completa fecha em 599 e o lint sai limpo. O ganho não é o número — é que o número passou a significar alguma coisa.
+
+A lição vale além deste repositório: um teste que falha ao montar não é cobertura, é ruído com aparência de cobertura. Contar arquivos de teste e contar casos verdes não prova que o código foi exercitado; o que prova é o teste falhar quando o código quebra. Antes de confiar no verde, vale a pergunta incômoda: este teste já foi visto reprovando alguma vez?
+
+## Próximo passo
+
+Aplicar a mesma auditoria nas rotas restantes que ainda não têm teste de contrato, começando pelas que gravam dado para fora — as que chamam serviço externo e não têm um caso sequer verificando o que sai daqui.
