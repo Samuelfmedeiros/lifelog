@@ -51,7 +51,7 @@ Sem referência guardada, o `map.off` do cleanup não tinha o que remover. E no 
 
 ## Defeito três: objeto novo nas dependências
 
-O efeito recebia entre as dependências um objeto de cores montado no corpo do componente. Em React, dependência é comparada por referência: objeto literal recriado a cada render é sempre "diferente", então o efeito rodava de novo sempre. E rodar de novo significa, neste caso, remover três camadas e a fonte e criar tudo outra vez.
+O efeito recebia nas dependências um objeto de cores montado no corpo do componente. Em React, dependência é comparada por referência: objeto literal recriado a cada render é sempre "diferente", então o efeito rodava de novo sempre. E rodar de novo significa, neste caso, remover três camadas e a fonte e criar tudo outra vez.
 
 Medido antes do conserto: **3 `addSource` em 3 renders**. Cada recriação descarta estilo e obriga o motor gráfico a reprocessar o GeoJSON inteiro — por isso o mapa ficava lento sem que nenhum contador de requisição acusasse nada.
 
