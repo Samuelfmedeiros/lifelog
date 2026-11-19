@@ -1,0 +1,72 @@
+---
+title: "O cache que congelava a capa: quando renomear virou mudança de contrato"
+description: "Trocar a imagem no mesmo caminho não muda nada para quem já baixou. O nome passou a carregar hash do conteúdo, e dois consumidores quebraram no mesmo instante."
+date: 2026-11-17 16:30:00 -03:00
+pubDate: 2026-11-19 08:00:00 -03:00
+project: lifelog
+tags: [lifelog, cache, webp, http, vitest]
+cover: /covers/lifelog-o-cache-que-congelava-a-capa.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+A capa é a primeira coisa que carrega num card, e por muito tempo foi a única parte do site que eu conseguia trocar sem que ninguém visse a troca. Eu regerava a arte, conferia o arquivo novo no disco, fazia o build, abria a mesma URL e recebia os bytes antigos de volta. O arquivo estava certo. O caminho é que mentia: ele afirmava que o conteúdo era o de sempre.
+
+## O sintoma que eu tratei como detalhe
+
+A primeira reescrita aconteceu em 09/11, na capa de um post sobre o forgetgate. O nome era `<slug>.webp` e o conteúdo foi substituído por uma arte nova. Nada mudou na tela. O caminho continuava idêntico, então havia uma cópia pronta para responder sem perguntar ao servidor. A saída daquele dia foi manual e óbvia: renomear para `-v2` e apontar o `cover:` do frontmatter para o nome novo.
+
+Funcionou, e virou hábito. Hoje existem treze arquivos com sufixo `-vN` no diretório de capas, cinco deles em `-v2`. É a assinatura de uma decisão tomada caso a caso: cada rework exige que alguém lembre de que o nome precisa mudar, escolha o próximo número livre e não erre o caminho nos dois idiomas do mesmo post.
+
+## O número que eu nunca tinha medido
+
+O problema nunca foi o navegador guardar arquivo. Foi eu tratar cache como detalhe de infraestrutura e não como parte do contrato da URL. Medido hoje numa capa antiga e numa capa com hash, o cabeçalho é o mesmo: `max-age=14400` com `stale-while-revalidate=86400`.
+
+Traduzindo: quatro horas de validade e até um dia servindo cópia velha enquanto revalida em segundo plano. Para uma correção de capa, isso é a diferença entre "já corrigi" e "o leitor passou o dia inteiro na arte errada". Em algum momento a regra de borda era ainda mais dura, e foi sob essa regra que o sufixo numerado nasceu.
+
+## A troca de critério
+
+Em 17/11 o nome do arquivo passou a carregar hash do conteúdo: oito dígitos hexadecimais depois do slug, calculados sobre os bytes da imagem. Duas propriedades caem de graça e não dependem de disciplina de ninguém:
+
+- conteúdo igual, nome igual, cache aproveitado;
+- conteúdo diferente, nome diferente, URL diferente, cache furado por construção.
+
+São seis capas nesse formato hoje, todas do projeto Yurumi. Todas conferidas em 2100x900 lendo o cabeçalho do arquivo, não o frontmatter, porque o frontmatter pode estar certo enquanto o WebP está quadrado.
+
+## Renomear asset é mudança de contrato
+
+Renomear um arquivo parece operação local. Não é. Todo consumidor que monta o caminho a partir do slug quebra no mesmo instante, e os consumidores não estão todos no mesmo lugar.
+
+O primeiro foi o teste de regressão que guarda a proporção das capas curadas. Ele procurava o arquivo como `<slug>.webp` e, com o hash no nome, passou a acusar capa faltando para arquivos que estavam ali, íntegros, no lugar de sempre. A cura foi resolver o nome em vez de assumir o formato:
+
+```ts
+function resolveCover(slug: string): string | null {
+  const plain = join(COVERS, `${slug}.webp`);
+  if (existsSync(plain)) return plain;
+  const hashed = readdirSync(COVERS).filter((f) =>
+    new RegExp(`^${slug}-[0-9a-f]{8}\\.webp$`).test(f),
+  );
+  return hashed.length ? join(COVERS, hashed.sort().at(-1) as string) : null;
+}
+```
+
+O segundo foi mais silencioso e mais grave: o validador que confere se um post cita commit que existe de verdade. Ele varria o texto atrás de hashes de sete a oito caracteres, e o nome da capa passou a casar com esse padrão. Post correto reprovado como commit fabricado, por causa de um caminho de imagem. A cura foi excluir a classe inteira de caminho de asset antes da varredura:
+
+```python
+# o nome da capa carrega hash de conteudo e o padrao de SHA casava com ele,
+# reprovando post correto como "commit fabricado". Caminho de asset nunca e commit.
+text = re.sub(r"covers/[^\s\"\)'<>]+", " ", text)
+```
+
+Dois consumidores, dois defeitos, os dois nascidos do mesmo rename. Um ficou vermelho na hora; o outro reprovou conteúdo válido na rodada seguinte.
+
+## O que isso muda
+
+A pergunta "o nome do arquivo está certo?" deixa de existir como passo manual. O nome passa a ser derivado do conteúdo, então o estado impossível, bytes novos no caminho velho, some por construção. Num diretório com trezentas e dez capas, isso é a diferença entre depender da memória de quem editou e depender da regra.
+
+Fica também a lição que serve fora daqui: antes de renomear, vale listar quem lê aquele caminho. Testes, validadores, frontmatter, camada de cache. O rename em si leva um segundo; descobrir os consumidores depois é o que custa caro.
+
+## Próximo passo
+
+As treze capas com sufixo numerado continuam no acervo pelo critério antigo, e migrar cada uma para hash de conteúdo exige o mesmo cuidado que a primeira: atualizar o `cover:` no par de idiomas, rodar os gates de conteúdo e proporção, e só então remover o nome numerado. O critério a partir daqui é um só: ou o nome carrega o hash do conteúdo, ou é um arquivo que ninguém tocou desde que nasceu.

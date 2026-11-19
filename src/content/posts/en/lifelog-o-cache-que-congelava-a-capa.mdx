@@ -1,0 +1,72 @@
+---
+title: "The cache that froze the cover: when a rename becomes a contract change"
+description: "Swapping the image at the same path changes nothing for anyone who already downloaded it. The filename now carries a content hash, and two consumers broke instantly."
+date: 2026-11-17 16:30:00 -03:00
+pubDate: 2026-11-19 08:00:00 -03:00
+project: lifelog
+tags: [lifelog, cache, webp, http, vitest]
+cover: /covers/lifelog-o-cache-que-congelava-a-capa.webp
+featured: false
+hidden: true
+lang: en
+---
+
+The cover is the first thing that loads on a card, and for a long time it was the only part of the site I could replace without anyone noticing the replacement. I regenerated the artwork, checked the new file on disk, ran the build, opened the same URL and got the old bytes back. The file was correct. The path was lying: it kept claiming the content was the same as always.
+
+## The symptom I filed as a detail
+
+The first rework happened on 11/09, on the cover of a post about the forgetgate. The filename was `<slug>.webp` and the contents were replaced with new artwork. Nothing changed on screen. The path stayed identical, so there was a ready answer available without ever asking the server. That day the fix was manual and obvious: rename to `-v2` and point the frontmatter `cover:` at the new name.
+
+It worked, and it became a habit. There are thirteen files with a `-vN` suffix in the covers directory today, five of them `-v2`. That is the signature of a decision made case by case: every rework requires somebody to remember the name must change, pick the next free number and get the path right in both languages of the same post.
+
+## The number I had never measured
+
+The problem was never the browser keeping a file. It was me treating cache as an infrastructure detail instead of part of the URL contract. Measured today on an old cover and on a hashed one, the header is the same: `max-age=14400` with `stale-while-revalidate=86400`.
+
+In plain terms: four hours of validity and up to a full day serving a stale copy while revalidating in the background. For a cover correction, that is the difference between "already fixed" and "the reader spent the whole day on the wrong artwork". At some point the edge rule was even harsher, and the numbered suffix was born under that rule.
+
+## Changing the criterion
+
+On 11/17 the filename started carrying a content hash: eight hexadecimal digits after the slug, computed over the image bytes. Two properties come for free and depend on nobody's discipline:
+
+- same content, same name, cache reused;
+- different content, different name, different URL, cache busted by construction.
+
+Six covers use that format today, all from the Yurumi project. All verified at 2100x900 by reading the file header rather than the frontmatter, because the frontmatter can be right while the WebP itself is square.
+
+## Renaming an asset is a contract change
+
+Renaming a file looks like a local operation. It is not. Every consumer that builds the path from the slug breaks at the same instant, and the consumers are not all in the same place.
+
+The first was the regression test that guards the aspect ratio of the curated covers. It looked for the file as `<slug>.webp`, and with the hash in the name it started reporting missing covers for files that were right there, intact, where they had always been. The fix was to resolve the name instead of assuming the shape:
+
+```ts
+function resolveCover(slug: string): string | null {
+  const plain = join(COVERS, `${slug}.webp`);
+  if (existsSync(plain)) return plain;
+  const hashed = readdirSync(COVERS).filter((f) =>
+    new RegExp(`^${slug}-[0-9a-f]{8}\\.webp$`).test(f),
+  );
+  return hashed.length ? join(COVERS, hashed.sort().at(-1) as string) : null;
+}
+```
+
+The second was quieter and worse: the validator that checks whether a post cites a commit that actually exists. It scanned the text for seven- and eight-character hashes, and the cover filename started matching that pattern. A correct post rejected as a fabricated commit, because of an image path. The fix was to strip the whole class of asset paths before the scan:
+
+```python
+# the cover name carries a content hash and the SHA pattern matched it,
+# flagging a correct post as a fabricated commit. Asset paths are never commits.
+text = re.sub(r"covers/[^\s\"\)'<>]+", " ", text)
+```
+
+Two consumers, two defects, both born from the same rename. One turned red immediately; the other rejected valid content on the next run.
+
+## What this changes
+
+The question "is the filename right?" stops existing as a manual step. The name is derived from the content, so the impossible state, new bytes at the old path, disappears by construction. In a directory with three hundred and ten covers, that is the difference between relying on the memory of whoever edited last and relying on the rule.
+
+There is also the lesson that travels outside this repo: before renaming, list who reads that path. Tests, validators, frontmatter, the cache layer. The rename itself takes a second; discovering the consumers afterwards is what costs.
+
+## Next step
+
+The thirteen covers with a numbered suffix are still in the archive under the old criterion, and migrating each one to a content hash demands the same care as the first: update the `cover:` line in both languages, run the content and aspect gates, and only then delete the numbered name. From here on the criterion is single: either the name carries the content hash, or it is a file nobody has touched since it was born.
