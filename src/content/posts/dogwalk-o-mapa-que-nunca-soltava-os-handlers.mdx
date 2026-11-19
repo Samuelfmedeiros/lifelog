@@ -1,0 +1,82 @@
+---
+title: "O mapa que nunca soltava os handlers — três defeitos no mesmo efeito"
+description: "O mapa da busca desenhava os clusters certinho e falhava em silêncio: cada desmontagem deixava listeners presos, cada render recriava a fonte e as camadas, e dois catch vazios escondiam tudo."
+date: 2026-11-19 12:00:00 -03:00
+pubDate: 2026-11-19 12:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react", "mapbox-gl", "cleanup", "debugging", "frontend", "performance"]
+cover: /covers/dogwalk-o-mapa-que-nunca-soltava-os-handlers.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O mapa desenhava certo e esquecia de soltar
+
+A tela de busca do Dogwalk tem mapa. Cada passeador disponível é um ponto, pontos próximos viram um agrupamento com contagem, e clicar no agrupamento dá zoom na área.
+
+Duas coisas começaram a aparecer juntas, e nenhuma dava erro. Depois de trocar o filtro, clicar num agrupamento levava o zoom para um lugar que não correspondia ao que estava na tela. E o mapa ia ficando mais pesado conforme a navegação continuava — arrastar respondia cada vez pior. Console limpo, suíte verde, nenhum aviso.
+
+O defeito morava numa única unidade de efeito que monta a camada de agrupamentos em React com MapLibre GL. E não era um defeito: eram três, empilhados no mesmo lugar.
+
+## Defeito um: o cleanup fora do escopo
+
+O efeito registrava dois listeners de click — um para o círculo do agrupamento, outro para o ponto individual — e devolvia a função de limpeza. O detalhe é onde cada coisa morava:
+
+```jsx
+try {
+  const handleClusterClick = (ev) => { /* zoom na área do cluster */ };
+  map.on('click', 'clusters-circles', handleClusterClick);
+} catch (err) {
+  // nada
+}
+
+return () => {
+  // mesma função? aqui ela não existe
+  map.off('click', 'clusters-circles', handleClusterClick);
+};
+```
+
+A função de limpeza está **fora** do bloco `try`, então quando ela rodava o nome `handleClusterClick` já não estava no escopo. Toda desmontagem estourava `ReferenceError` — e o corpo do cleanup estava embrulhado num `try/catch` cujo `catch` não fazia nada além de um comentário. Resultado: nenhum listener de click saía do mapa, nunca. Cada desmontagem deixava um par de handlers presos em camadas que já tinham sido destruídas.
+
+## Defeito dois: handler anônimo não tem como sair
+
+Os dois listeners de cursor — `mouseenter` e `mouseleave` para trocar o cursor no hover — eram funções anônimas escritas direto na chamada:
+
+```jsx
+map.on('mouseenter', 'clusters-circles', () => { map.getCanvas().style.cursor = 'pointer'; });
+```
+
+Sem referência guardada, o `map.off` do cleanup não tinha o que remover. E no MapLibre, `off` recebendo função nova é **no-op silencioso**: compara por referência, não encontra nada e não reclama. Esse par só custava cursor fantasma — mas era o mesmo padrão do defeito um.
+
+## Defeito três: objeto novo nas dependências
+
+O efeito recebia entre as dependências um objeto de cores montado no corpo do componente. Em React, dependência é comparada por referência: objeto literal recriado a cada render é sempre "diferente", então o efeito rodava de novo sempre. E rodar de novo significa, neste caso, remover três camadas e a fonte e criar tudo outra vez.
+
+Medido antes do conserto: **3 `addSource` em 3 renders**. Cada recriação descarta estilo e obriga o motor gráfico a reprocessar o GeoJSON inteiro — por isso o mapa ficava lento sem que nenhum contador de requisição acusasse nada.
+
+## O que os três faziam juntos
+
+Separados, cada um é chato. Juntos, produzem o pior tipo de bug: **handler que sobrevive à camada e fecha sobre o dado antigo**. Clicar num agrupamento depois de trocar o filtro disparava um handler criado com a lista anterior de passeadores, mandando o mapa para uma coordenada fora do recorte. Nada quebrava. O mapa mentia.
+
+## O conserto: referência guardada, ordem certa, memo por conteúdo
+
+Três mudanças cirúrgicas no mesmo efeito, no commit `517645b9`:
+
+1. As **seis** funções passaram a ser nomeadas e guardadas numa ref, montada antes dos registros. O cleanup lê da ref em vez de ler variável de escopo — o problema de escopo deixa de existir.
+2. A limpeza passou a chamar `off` **antes** de `removeLayer`. Com listener vivo apontando para camada removida, o MapLibre dispara em objeto morto.
+3. O objeto de cores virou memoização por conteúdo, e o callback de click de agrupamento passou para uma ref no padrão "guardar a última" — identidade estável, sem reiniciar o efeito.
+
+E o `catch` do cleanup parou de ser mudo: em desenvolvimento ele avisa qual etapa falhou.
+
+## A prova e a lição
+
+- `eslint` voltou a **RC=0**; antes acusava **2 `no-undef`** — os mesmos dois nomes que o cleanup tentava usar fora do escopo. O linter já sabia do bug e ninguém tratava aquilo como erro de build.
+- Testes do componente: **12/12**, com três casos novos — cleanup remove os seis listeners, remove as três camadas e a fonte, e re-render com os mesmos dados não recria nada.
+- Suíte: **3051 testes** (eram 3048). Build RC=0. `addSource` **1 por render** (eram 3).
+
+A lição é sobre silêncio, não sobre mapa. Dois `catch` vazios transformaram um erro de escopo em comportamento aceitável: o app continuava desenhando, então ninguém olhou. E o detector mais barato já apontava o problema.
+
+## Próximo passo
+
+Varrer os outros pontos que registram listener em objeto de mapa com uma pergunta: **a função que sai é a mesma que entrou?** Onde a resposta depender de escopo de bloco ou função inline, vai para referência guardada. Uma auditoria de uma pergunta só, que pega a classe inteira.

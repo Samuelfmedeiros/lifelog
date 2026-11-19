@@ -1,0 +1,57 @@
+---
+title: "O contador que ficou cego depois do restart"
+description: "Um processo ocioso zerou 9 destilados do histórico. O fix com max() criou o defeito seguinte: o incremento de um processo novo desaparecia."
+date: 2026-11-19 12:00:00 -03:00
+pubDate: 2026-11-19 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "observability", "python", "persistence", "testing", "quality"]
+cover: /covers/descobertas-o-contador-que-ficou-cego.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O problema
+
+Um contador de observabilidade só existe porque alguém precisou responder uma pergunta objetiva, do tipo "a destilação de memória está funcionando agora?", sem abrir três terminais e correlacionar log de três serviços. No Yurumi esse contador é um arquivo JSON pequeno, atualizado a cada lote de trabalho, com quatro números: quantas memórias foram destiladas, quantas ficaram cruas por limiar, quantas ficaram cruas por falha da cadeia de modelos e quantas ficaram cruas por erro de parse.
+
+O primeiro defeito apareceu em 09/11/2026. O watcher acumulava 9 destilações e o arquivo refletia isso. Um processo novo subiu às 14:06, não tinha nada para fazer, e gravou o próprio estado zerado por cima do arquivo. O histórico de 9 destilações virou zero em uma escrita. A checagem de saúde, que lia aquele arquivo, passou a responder "nenhuma escrita desde o start" com o sistema trabalhando normalmente. Não era um erro de cálculo: era evidência de trabalho real sendo apagada por um processo ocioso.
+
+## O que aconteceu
+
+O primeiro conserto parecia óbvio: se a escrita não pode reduzir o que já está no disco, então leia o disco e escreva o maior valor de cada contador. A leitura já fazia exatamente isso, e a escrita passou a fazer o mesmo. O flush deixou de sobrescrever e passou a fundir.
+
+Junto com esse conserto veio o segundo problema, que só apareceu porque a correção entrava no mesmo caminho de código. A função que incrementa os contadores já segura o lock do módulo quando chama o flush. O flush, na versão nova, adquiria o mesmo lock outra vez. Um `threading.Lock` do Python não é reentrante: a thread travava para sempre, sem exceção, sem log, sem timeout. O processo ficava vivo, mudo e sem gravar nada. A correção foi tentar o lock sem bloquear e, quando ele já estiver na mão do chamador, usar o dicionário direto sob o lock que já existe.
+
+O terceiro defeito é o mais interessante, porque nasceu da própria cura. O `max()` resolve o caso do processo ocioso, mas cria um ponto cego depois de qualquer restart. Medido em 19/11/2026: o disco tinha 6 em falhas de cadeia. Um processo novo fez uma tentativa, falhou, incrementou o contador local para 1 e gravou `max(1, 6) = 6`. O incremento existia na memória e desaparecia no disco. O contador só voltaria a subir quando o processo passasse de 6, ou seja, depois da sétima falha do processo novo.
+
+Esse é o pior tipo de defeito de observabilidade: não dá erro, não gera alerta e não quebra teste nenhum. Ele só faz o painel mentir para o lado tranquilo.
+
+## Como foi resolvido
+
+A regra que fecha os três casos é assimétrica de propósito: a leitura pega o maior valor de cada contador, e a escrita soma ao disco apenas o delta que este processo publicou desde o último flush. Somar os contadores locais inteiros contaria a mesma escrita duas vezes. Fazer `max()` engolia o incremento de quem chegou depois. O delta é a única conta que preserva histórico e credita trabalho novo.
+
+```python
+local_k = int(local.get(k) or 0)
+anterior = int(_ULTIMO_FLUSH.get(k) or 0)
+delta = local_k - anterior
+if delta < 0:
+    delta = 0
+merged[k] = int(disco.get(k) or 0) + delta
+```
+
+O `_ULTIMO_FLUSH` guarda, por processo, o que já foi publicado. Ele só é atualizado depois que a gravação termina, então o próximo delta começa do zero de forma correta. O delta nunca fica negativo: se o dicionário local for reiniciado por qualquer motivo, a conta vira zero em vez de subtrair do histórico.
+
+A gravação também não é mais direta no arquivo final. Ela escreve num temporário, chama `fsync`, e só então faz `os.replace`. Um processo morto no meio do flush deixa o arquivo anterior intacto, nunca um JSON pela metade que faria a leitura seguinte explodir.
+
+A cobertura veio na forma de um teste que reproduz o caso medido, com o disco alto e um processo novo incrementando de um em um. A suíte inteira do arquivo de contadores passa com 7 testes, e o caso do processo ocioso que zera o histórico continua coberto desde a primeira rodada.
+
+## O que isso muda
+
+Contador que zera no restart é pior do que contador nenhum. Sem contador, ninguém confia no painel. Com contador que zera, alguém confia no painel e conclui que o sistema está parado quando ele está trabalhando, ou o contrário, dependendo do lado do erro.
+
+O padrão que ficou registrado vale para qualquer arquivo de estado compartilhado entre processos: leitura por máximo, escrita por delta, gravação atômica. Três linhas de regra que custaram dois defeitos e uma thread travada para aparecer.
+
+## Próximo passo
+
+Procurar o mesmo formato em outros contadores do projeto: qualquer lugar que faça `max()` na escrita, ou que grave o estado local inteiro por cima de um arquivo compartilhado, tem o mesmo ponto cego esperando o próximo restart. A varredura é simples, o difícil é lembrar de fazer antes de o painel mentir outra vez.

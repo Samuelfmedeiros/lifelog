@@ -1,0 +1,57 @@
+---
+title: "The counter that went blind after the restart"
+description: "An idle process wiped 9 destillations from the history. The max() fix created the next defect: a new process increment vanished."
+date: 2026-11-19 12:00:00 -03:00
+pubDate: 2026-11-19 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "observability", "python", "persistence", "testing", "quality"]
+cover: /covers/descobertas-o-contador-que-ficou-cego.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The problem
+
+An observability counter only exists because somebody needed an objective answer to a question like "is memory distillation working right now?" without opening three terminals and correlating logs from three services. In Yurumi that counter is a small JSON file, rewritten after every batch of work, with four numbers: how many memories were destilled, how many stayed raw because of a threshold, how many stayed raw because the model chain returned nothing, and how many failed to parse.
+
+The first defect showed up on 09/11/2026. The watcher had accumulated 9 destillations and the file reflected exactly that. A new process started at 14:06, had nothing to do, and wrote its own zeroed state over the file. Nine destillations of history became zero in a single write. The health check that reads that file started answering "no writes since start" while the system was working normally. It was not a math error: it was real work being erased by an idle process.
+
+## What happened
+
+The first fix looked obvious: if a write must never reduce what is already on disk, then read the disk and write the highest value for each counter. The read path already did exactly that, so the write path was changed to match. The flush stopped overwriting and started merging.
+
+That fix brought the second problem along, because the correction landed on the same code path. The function that increments the counters already holds the module lock when it calls the flush. The new flush acquired that same lock again. A Python `threading.Lock` is not reentrant: the thread blocked forever, with no exception, no log, no timeout. The process stayed alive, silent, and wrote nothing at all. The cure was to try the lock without blocking, and when the caller already holds it, read the dictionary directly under the lock that already exists.
+
+The third defect is the interesting one, because it was born from the cure itself. `max()` handles the idle process, but it creates a blind spot after any restart. Measured on 19/11/2026: the disk had 6 chain failures. A new process made one attempt, got nothing back, bumped its local counter to 1, and wrote `max(1, 6) = 6`. The increment existed in memory and vanished on disk. The counter would only rise again once the process passed 6, which means after the seventh failure of the new process. Through six consecutive failures the dashboard showed exactly the same number as before.
+
+This is the worst kind of observability defect: it raises no error, sends no alert, breaks no test. It just makes the dashboard lie in the reassuring direction.
+
+## How it was fixed
+
+The rule that closes all three cases is deliberately asymmetric: reads take the highest value for each counter, and writes add to the disk only the delta this process has published since its last flush. Summing the whole local counters would count the same write twice. Plain `max()` swallowed the increment of whoever arrived later. The delta is the only arithmetic that keeps history and credits new work.
+
+```python
+local_k = int(local.get(k) or 0)
+anterior = int(_ULTIMO_FLUSH.get(k) or 0)
+delta = local_k - anterior
+if delta < 0:
+    delta = 0
+merged[k] = int(disco.get(k) or 0) + delta
+```
+
+`_ULTIMO_FLUSH` holds, per process, what has already been published. It is updated only after the write finishes, so the next delta starts from zero correctly. The delta is clamped at zero: if the local dictionary is reset for any reason, the math becomes zero instead of subtracting from history.
+
+The write itself no longer touches the final file directly. It writes to a temporary file, calls `fsync`, and only then calls `os.replace`. A process that dies mid-flush leaves the previous file intact, never a half-written JSON that would make the next read explode.
+
+Coverage came as a test that reproduces the measured case, with a high value on disk and a new process incrementing one at a time. The whole counter test file passes with 7 tests, and the idle-process case that wipes history has been covered since the first round.
+
+## What this changes
+
+A counter that resets on restart is worse than no counter at all. Without a counter nobody trusts the dashboard. With a resetting counter, someone trusts the dashboard and concludes the system is stopped while it is working, or the opposite, depending on which way the error points.
+
+The pattern now on record applies to any state file shared between processes: read by maximum, write by delta, persist atomically. Three lines of rule that cost two defects and one deadlocked thread to surface.
+
+## Next step
+
+Look for the same shape in the other counters of the project: any place that uses `max()` on write, or writes its whole local state over a shared file, carries the same blind spot waiting for the next restart. The sweep itself is easy; the hard part is remembering to do it before the dashboard lies again.
