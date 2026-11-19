@@ -1,0 +1,75 @@
+---
+title: "O diretório homônimo que respondia pelo passado"
+description: "Três scripts mediam o mesmo checkpoint e liam, sem saber, um gêmeo parado dois dias antes. O caminho parecia certo, e por isso ninguém desconfiou."
+date: 2026-11-18 21:40:00 -03:00
+pubDate: 2026-11-19 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "debugging", "python", "testing", "lessons"]
+cover: /covers/tatuengine-o-diretorio-homonimo.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A régua estava certa. O endereço não.
+
+O critério de aceite da fase em curso tinha três itens, e o segundo era o mais fácil de checar: gerar amostras de texto e ver se o modelo respondia coisas coerentes. Um comando, seis prompts, olhar o resultado. Ou o texto fazia sentido, ou não fazia.
+
+Rodei. As amostras saíram ruins. Estranhamente ruins, do tipo que faz você revisar prompt, temperatura, tokenizer, tudo menos a coisa óbvia.
+
+O modelo estava respondendo bem melhor do que aquilo. Só que não era ele respondendo. O comando lia um checkpoint de dois dias antes, de uma cópia do diretório de estado que tinha parado de ser atualizada sem avisar ninguém. A régua estava certa. O endereço estava errado, e caminho errado não dá erro: dá um número.
+
+## Dois diretórios com o mesmo nome
+
+O projeto guarda o estado do treino num diretório de nome curto, resolvido a partir do home. Em algum momento da migração entre discos, aquele caminho passou a ser um link simbólico apontando para um espelho do mesmo diretório, num volume diferente. O treino vivo, porém, escrevia no caminho longo. Resultado: dois diretórios com o mesmo nome curto, mesmo conteúdo de origem e idades diferentes. Um deles atualizando a cada checkpoint. O outro congelado dois dias no passado.
+
+Nada disso aparece num `ls`. Os dois existem, os dois abrem, os dois têm a mesma árvore de subpastas dentro. O que distingue um do outro é o que o sistema de arquivos sabe e o nome não conta: qual dispositivo e qual inode.
+
+```python
+import os
+
+curto = os.stat(caminho_curto)
+longo = os.stat(caminho_longo)
+print(curto.st_dev, curto.st_ino)
+print(longo.st_dev, longo.st_ino)
+# dev diferente e inode diferente: são dois diretórios, não um
+```
+
+A resposta foi imediata. Dispositivo 37 de um lado, dispositivo 56 do outro. Inodes distintos para o mesmo caminho relativo. Não era cache, não era atraso de escrita: eram duas coisas diferentes usando o mesmo nome.
+
+## O primeiro remendo não era a cura
+
+O conserto óbvio foi apontar o comando de amostras para o diretório vivo. Commit `590dafb`, uma linha de preset trocada. Funcionou: as amostras passaram a sair do checkpoint de verdade, e o critério voltou a medir o presente.
+
+No dia seguinte, o mesmo defeito apareceu em outro script. O script que calculava o primeiro critério, o do gap entre domínios, também partia do home e também caía no espelho parado. Mesmo sintoma, mesmo diagnóstico, arquivo diferente. Commit `5511ad3`, mais um preset corrigido na mão.
+
+Dois dias, dois remendos, dois arquivos. Foi aí que a leitura mudou: aquilo não era incidente, era classe. Enquanto cada script decidisse sozinho de onde vinha o estado, qualquer script novo nasceria com o mesmo defeito latente, e o defeito não grita, ele simplesmente mede o passado e entrega o resultado com cara de resultado.
+
+A cura veio no terceiro commit, `c7f9f1e`, e não foi corrigir pontas: foi criar um lugar único que resolve a raiz do estado, com um override explícito por variável de ambiente. Três scripts passaram a perguntar para o mesmo lugar.
+
+```python
+import os
+from pathlib import Path
+
+def raiz_do_estado() -> Path:
+    return Path(os.environ.get("TATU_HOME") or Path.home() / ".estado")
+
+# quem precisa do estado não monta o caminho: pede a raiz
+run = raiz_do_estado() / "runs" / "pretrain"
+```
+
+A diferença não é de estilo. Antes, o caminho era uma decisão repetida em cada script, e toda repetição é uma chance de divergir. Depois, é uma decisão tomada uma vez só, num lugar que dá para auditar e sobrescrever.
+
+## O que muda quando a medição tem endereço
+
+Com o checkpoint certo na frente, os quatro prompts gerais passaram a sair coerentes, que era exatamente o que o critério pedia. Mas o ganho maior não foi esse número. Foi o critério deixar de poder ser aprovado por acidente, medindo um modelo que não estava mais treinando.
+
+E teve um efeito colateral que eu considero o mais valioso: olhar o endereço direito expôs que o terceiro critério nunca tinha sido medido de verdade. A auditoria do conjunto de validação encontrou 83% de contaminação, quase todos os documentos usados para avaliar já estavam dentro do treino. A razão entre as perdas dos dois domínios, nesse cenário, mede contaminação, não viés de registro.
+
+Esse critério virou não verificável. Não é uma derrota, é o único resultado honesto possível naquele momento. O que não dá para aceitar é o contrário: um critério que fica verde porque a régua estava apontada para o lugar errado.
+
+## Próximo passo
+
+Separar o conjunto de validação antes do próximo pré-treino. Sem documento limpo, o primeiro critério não existe, e a fase não pode ser declarada fechada por um número que não mede nada.
+
+A lição que sobra serve para qualquer projeto: medição não é só uma fórmula. É uma fórmula, um endereço e um instante. Errar o endereço devolve um número perfeitamente formatado de algo que não existe mais, e a pior parte é que ele é indistinguível de um resultado.

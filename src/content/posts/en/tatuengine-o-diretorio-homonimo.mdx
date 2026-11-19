@@ -1,0 +1,75 @@
+---
+title: "The lookalike directory that answered for the past"
+description: "Three scripts measured the same checkpoint and silently read a twin frozen two days back. The path looked right, which is why nobody doubted it."
+date: 2026-11-18 21:40:00 -03:00
+pubDate: 2026-11-19 16:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "debugging", "python", "testing", "lessons"]
+cover: /covers/tatuengine-o-diretorio-homonimo.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The ruler was right. The address was not.
+
+The acceptance criteria for the current phase had three items, and the second one was the easiest to check: generate sample text and see whether the model answers something coherent. One command, six prompts, look at the output. Either the text makes sense or it does not.
+
+I ran it. The samples came out bad. Strangely bad, the kind that sends you reviewing prompt, temperature, tokenizer, anything except the obvious thing.
+
+The model was answering much better than that. It just was not the model answering. The command was reading a checkpoint from two days earlier, out of a copy of the state directory that had quietly stopped being updated. The ruler was right. The address was wrong, and a wrong path never raises an error: it returns a number.
+
+## Two directories with the same name
+
+The project keeps training state in a short-named directory resolved from home. Somewhere during the migration between disks, that path became a symbolic link pointing at a mirror of the same directory on a different volume. The live training run, however, wrote to the long path. Result: two directories with the same short name, the same origin, and different ages. One updating at every checkpoint. The other frozen two days in the past.
+
+None of this shows up in an `ls`. Both exist, both open, both carry the same tree of subfolders inside. What separates them is what the filesystem knows and the name does not say: which device and which inode.
+
+```python
+import os
+
+short = os.stat(short_path)
+long_ = os.stat(long_path)
+print(short.st_dev, short.st_ino)
+print(long_.st_dev, long_.st_ino)
+# different dev and different inode: two directories, not one
+```
+
+The answer was immediate. Device 37 on one side, device 56 on the other. Distinct inodes for the same relative path. Not cache, not a delayed write: two different things sharing a name.
+
+## The first patch was not the cure
+
+The obvious fix was pointing the sampling command at the live directory. Commit `590dafb`, one preset line swapped. It worked: samples started coming from the real checkpoint, and the criterion measured the present again.
+
+The next day the same defect showed up in another script. The one that computed the first criterion, the domain gap, also started from home and also landed on the frozen mirror. Same symptom, same diagnosis, different file. Commit `5511ad3`, another preset fixed by hand.
+
+Two days, two patches, two files. That is when the reading changed: this was not an incident, it was a class. As long as every script decided on its own where the state lived, any new script would be born with the same latent defect, and the defect does not shout. It simply measures the past and hands back the result looking like a result.
+
+The cure came in the third commit, `c7f9f1e`, and it was not fixing endpoints: it was creating a single place that resolves the state root, with an explicit environment variable override. Three scripts started asking the same place.
+
+```python
+import os
+from pathlib import Path
+
+def state_root() -> Path:
+    return Path(os.environ.get("TATU_HOME") or Path.home() / ".state")
+
+# whoever needs the state does not build the path: it asks for the root
+run = state_root() / "runs" / "pretrain"
+```
+
+The difference is not stylistic. Before, the path was a decision repeated in every script, and every repetition is a chance to diverge. After, it is a decision made once, in a place you can audit and override.
+
+## What changes when a measurement has an address
+
+With the right checkpoint in front, the four general prompts started coming out coherent, which was exactly what the criterion asked for. But the bigger gain was not that number. It was the criterion no longer being passable by accident, by measuring a model that had stopped training.
+
+And there was a side effect I consider the most valuable one: looking at the right address exposed that the third criterion had never really been measured. The validation set audit found 83% contamination, nearly every document used for evaluation was already inside the training data. The ratio between the losses of the two domains, in that scenario, measures contamination, not register bias.
+
+That criterion became not verifiable. That is not a defeat, it is the only honest result available at that moment. What is unacceptable is the opposite: a criterion that turns green because the ruler was pointed at the wrong place.
+
+## Next step
+
+Set aside the validation set before the next pretraining run. Without a clean document, the first criterion does not exist, and the phase cannot be closed on a number that measures nothing.
+
+The lesson that remains applies to any project: a measurement is not just a formula. It is a formula, an address, and an instant. Get the address wrong and you get a perfectly formatted number about something that no longer exists, and the worst part is that it is indistinguishable from a result.
