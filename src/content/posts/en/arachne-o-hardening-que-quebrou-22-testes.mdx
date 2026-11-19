@@ -1,0 +1,70 @@
+---
+title: "The hardening that broke 22 tests"
+description: "A security patch that swapped the HTTP client of twenty routes passed review, lint and build. The full suite reported 22 failures, 20 of them mine. The worst group was not the one failing loudly, it was the one still green while testing nothing."
+category: samuel-projects
+date: 2026-11-19 08:00:00 -03:00
+pubDate: 2026-11-19 08:00:00 -03:00
+project: arachne
+tags: [arachne, security, testing, python, ci]
+cover: /covers/arachne-o-hardening-que-quebrou-22-testes.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The patch was right. The suite disagreed
+
+In the early hours of November 9th, Arachne took the most aggressive commit of the month: `c7bbfb5f`, a security hardening pass that touched twenty route modules at once. The idea was simple and defensible. Every outbound HTTP call would go through a central client that validates the destination before opening a connection. Every upload would pass a gate before reaching the parser, because a file extension does not see a renamed executable.
+
+The patch compiled. Lint passed. Build passed. Then I ran the full suite and it returned 22 failures.
+
+## 3,276 tests, 198 files, 22 red
+
+The Arachne backend holds 3,276 test functions spread across 198 files. That is large enough to be slow and small enough that nobody runs it before every commit, which is exactly the problem.
+
+Before fixing anything, I did the one thing that separates diagnosis from panic: I ran the same 22 failures on `master`, in a separate worktree, without my patch. Result: 20 failed because of me, 2 failed on their own. The latter were an OCR test depending on an external binary installed on the machine, already red before I touched the keyboard.
+
+That measurement changed the size of the problem. Twenty failures I caused are twenty failures I can explain. Two inherited failures are a separate problem with a separate owner, and they must not contaminate the diagnosis.
+
+## Five groups, five different causes
+
+Commit `50d07816` closed the twenty. None of the causes was exotic; all of them were refactoring debt.
+
+The first group was the cheapest: eight orphan imports. The swap to the central client left `import httpx` behind in eight files, and ruff flagged F401 in every one. One of them was not even a real import, it was an availability check disguised as one, and it became a comment.
+
+The second group was the most embarrassing. In two upload routes I placed the gate before the size check. Consequence: a 200 MB file did not get "too large" (413), it got "invalid type" (422), because the gate looked at the first bytes of that garbage and recognised nothing. The client read the wrong message and went off debugging the wrong thing. Validation order is API contract:
+
+```python
+if len(content) > MAX_BYTES:        # 413 first
+    raise HTTPException(413, "file_too_large")
+
+gate(content)                        # 422 after
+```
+
+The third group is the one that actually matters. Eleven tests, nine in one file and two in another, patched `httpx.Client` directly. While the code called `httpx` by hand, the patch worked. After the swap, the code called the central client and the patch became orphaned: the mock was never applied, the call went to the real network, hit a host that does not exist and came back 502.
+
+```python
+# the test kept patching the HTTP client directly
+with patch("httpx.Client") as mock_client:
+    ...
+
+# while the code already called the central client
+with safe_client(timeout=15) as client:
+    ...
+```
+
+This is the worst kind of failure, because it is the only one that can slip by unnoticed: an orphaned patch does not break the test, it simply stops testing. The test becomes a network measurement dressed as a unit test, and the outcome starts depending on DNS mood. Here it failed and warned me. On another day, with a stable network and a similar response, it would have stayed green while lying.
+
+The fourth group came from inside the central client itself. It called `.request()` on the inner client, and test fakes that implement only `get` and `head` raised `AttributeError`. The fix was shape tolerance: try `request`, fall back to the verb when the client has no `request`. A test substitute should not have to implement the whole interface to prove one path.
+
+The fifth was the same theme one level down: a response fake had no `status_code`. The central client needs the code to decide whether a hop is a redirect, and without the field it had nothing to decide with. The fake gained `status_code` defaulting to 200 and a `url`.
+
+## What this changes
+
+The lesson is not "test more". It is that **a security patch is a refactor**, and refactoring leaves three predictable debts: imports left behind, mocks pointing at the old seam, and changed error precedence. None of the three shows up in the build. None shows up in lint. All three show up in the full suite.
+
+The second lesson is about where a test touches the code. If a test patches a third-party library instead of the boundary of the system itself, it is not testing the system. It is testing the library, and only for as long as nobody changes the call. When the seam moves, the test does not complain. It switches itself off in silence.
+
+## Next step
+
+The seam now has a name and a single location, and that is an advantage: it can be watched. The next step is a guard test that fails whenever any test goes back to patching the HTTP client directly instead of the boundary, so the next refactor cannot quietly disable eleven tests.

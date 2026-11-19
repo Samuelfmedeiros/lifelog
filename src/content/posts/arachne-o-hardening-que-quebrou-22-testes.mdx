@@ -1,0 +1,70 @@
+---
+title: "O hardening que quebrou 22 testes"
+description: "Um patch de segurança que trocou o cliente HTTP de vinte rotas passou na revisão, no lint e no build. A suíte completa acusou 22 falhas: 20 eram minhas. O pior grupo não era o que falhava alto, era o que continuava verde sem testar nada."
+category: samuel-projects
+date: 2026-11-19 08:00:00 -03:00
+pubDate: 2026-11-19 08:00:00 -03:00
+project: arachne
+tags: [arachne, security, testing, python, ci]
+cover: /covers/arachne-o-hardening-que-quebrou-22-testes.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O patch estava certo. A suíte discordou
+
+Na madrugada de 9 de novembro, o Arachne recebeu o commit mais agressivo do mês: `c7bbfb5f`, hardening de segurança que tocou vinte módulos de rota de uma vez. A ideia era simples e defensável. Toda chamada HTTP de saída passaria a sair por um cliente central, que valida o destino antes de abrir conexão. Todo upload passaria por um gate antes de chegar ao parser, porque extensão de arquivo não vê executável renomeado.
+
+O patch compilou. O lint passou. O build passou. E aí eu rodei a suíte completa, e ela devolveu 22 falhas.
+
+## 3.276 testes, 198 arquivos, 22 vermelhos
+
+O backend do Arachne tem 3.276 funções de teste espalhadas em 198 arquivos. É uma suíte grande o suficiente para ser lenta e pequena o suficiente para ninguém rodar antes de cada commit — o que é exatamente o problema.
+
+Antes de sair consertando, fiz a única coisa que separa diagnóstico de desespero: rodei as mesmas 22 falhas em `master`, num worktree separado, sem o meu patch. Resultado: 20 falhavam por minha causa, 2 falhavam por conta própria — um teste de OCR que depende de um binário externo instalado na máquina e que já estava vermelho antes de eu encostar no teclado.
+
+Essa medição mudou o tamanho do problema. Vinte falhas que eu causei são vinte falhas que eu sei explicar. Duas falhas herdadas são um problema separado, com dono separado, que não pode contaminar o diagnóstico.
+
+## Cinco grupos, cinco causas diferentes
+
+O commit `50d07816` fechou os vinte. Nenhuma das causas era exótica; todas eram dívida de refatoração.
+
+O primeiro grupo era o mais barato: oito imports órfãos. O swap para o cliente central deixou `import httpx` para trás em oito arquivos, e o ruff acusou F401 em todos. Um deles nem era import de verdade — era um teste de disponibilidade disfarçado, que virou comentário.
+
+O segundo grupo era o mais embaraçoso. Em duas rotas de upload eu colocava o gate antes da checagem de tamanho. Consequência: um arquivo de 200 MB não recebia "grande demais" (413), recebia "tipo inválido" (422), porque o gate olhava os primeiros bytes daquele lixo e não reconhecia nada. O cliente via a mensagem errada e ia depurar a coisa errada. Ordem de validação é contrato de API:
+
+```python
+if len(content) > MAX_BYTES:        # 413 primeiro
+    raise HTTPException(413, "file_too_large")
+
+gate(content)                        # 422 depois
+```
+
+O terceiro grupo é o que interessa de verdade. Onze testes — nove num arquivo, dois em outro — patcheavam `httpx.Client` diretamente. Enquanto o código chamava `httpx` na mão, o patch funcionava. Depois do swap, o código passou a chamar o cliente central e o patch ficou órfão: o mock nunca era aplicado, a chamada saía para a rede real, batia num host que não existe e voltava 502.
+
+```python
+# o teste continuava patcheando o cliente HTTP direto
+with patch("httpx.Client") as mock_client:
+    ...
+
+# enquanto o código já chamava o cliente central
+with safe_client(timeout=15) as client:
+    ...
+```
+
+Esse é o pior tipo de falha, porque é o único que pode passar despercebido: um patch órfão não quebra o teste, ele só para de testar. O teste vira uma medição de rede disfarçada de teste de unidade, e o resultado passa a depender do humor do DNS. Aqui ele falhou e me avisou; em outro dia, com rede estável e resposta parecida, teria ficado verde mentindo.
+
+O quarto grupo veio de dentro do próprio cliente central. Ele chamava `.request()` do cliente interno, e os fakes de teste que implementam só `get` e `head` estouravam `AttributeError`. A correção foi tolerância de forma: tenta `request`, cai para o verbo quando o cliente não tem `request`. Um substituto de teste não deveria precisar implementar a interface inteira para provar um caminho.
+
+O quinto era o mesmo tema um nível abaixo: um fake de resposta não tinha `status_code`. O cliente central precisa do código para decidir se um salto é redirect ou não, e sem o campo ele não tinha como decidir nada. O fake ganhou `status_code` com padrão 200 e um `url`.
+
+## O que isso muda
+
+A lição que ficou não é "teste mais". É que **patch de segurança é refatoração**, e refatoração deixa três dívidas previsíveis: import para trás, mock apontando para a emenda antiga e precedência de erro alterada. Nenhuma das três aparece no build. Nenhuma aparece no lint. As três aparecem na suíte completa.
+
+E a segunda lição é sobre onde o teste encosta no código. Se o teste patcheia uma biblioteca de terceiros em vez da fronteira do próprio sistema, ele não está testando o sistema — está testando a biblioteca, e só enquanto ninguém trocar a chamada. Quando a emenda muda de lugar, o teste não acusa; ele se desliga em silêncio.
+
+## Próximo passo
+
+A emenda agora tem nome e lugar único, e isso é uma vantagem: dá para vigiar. O próximo passo é um teste de guarda que falhe quando qualquer teste voltar a patchear o cliente HTTP direto em vez da fronteira — assim a próxima refatoração não consegue desligar onze testes sem que alguém perceba.
