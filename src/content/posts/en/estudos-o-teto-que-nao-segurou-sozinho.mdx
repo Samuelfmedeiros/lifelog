@@ -1,0 +1,78 @@
+---
+title: "One hundred and thirteen files two days after the rule"
+description: "I set a 4 KB ceiling per document and 15 per day. Two days later came the record: 113 files. What changed behavior was the meter, not the rule."
+date: 2026-11-19 12:00:00 -03:00
+pubDate: 2026-11-19 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "documentation", "quality", "automation", "observability", "python"]
+cover: /covers/estudos-o-teto-que-nao-segurou-sozinho.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The problem
+
+I used to measure my work by the amount of documentation left on disk. Every investigation ended with a plan file written in a hurry, between 5 and 8 KB, listing what I had tried, what had not worked and what was still pending. It looked like discipline: everything recorded, nothing lost.
+
+On November 11 the plans archive gained 120 files and 763 KB in a single day. The average per file landed at 6.4 KB. Disk is cheap and that was never the problem. What is expensive is context: when I need the plan for one task, I have 120 candidates from that same day, all with similar names.
+
+## What happened
+
+The next day I wrote the rule. A 4 KB ceiling per document, a budget of 15 per day, and one question to answer before opening the editor: does the value of this task live in the record or in the knowledge? If it lives in the knowledge, the destination is not a file.
+
+I counted the whole series today, using the date in each filename, to see what the rule actually did:
+
+| Day | Files |
+|-----|-------|
+| 11/08 | 44 |
+| 11/09 | 116 |
+| 11/10 | 90 |
+| 11/11 | 120 |
+| 11/12 | 102 |
+| 11/13 | 72 |
+| 11/14 | 113 |
+| 11/15 | 16 |
+| 11/16 | 12 |
+| 11/17 | 33 |
+| 11/18 | 30 |
+| 11/19 | 15 (partial) |
+
+The naive reading stops on the 13th. It fell from 102 to 72, a drop of 30 files, and I could have closed the subject claiming the rule worked. On the 14th there were 113 files, the second highest number of the series, two days after the rule. The hypothesis died there.
+
+What I had changed was the text of the contract, not my behavior. A rule written in a document only I read buys nothing beyond the feeling of having solved something: it does not show up in the middle of the task, it does not interrupt anything, it does not charge anyone. On the 14th I was writing exactly as before, with the beautiful rule three paragraphs away.
+
+## How it was fixed
+
+Three changes, and none of them was writing more rules.
+
+The first was classifying by destination before writing. Diagnosis, investigation, an incidental finding and a one line fix go to the system knowledge: agent memory, a reusable skill, a reference base. Project delivery, a plan someone needs to approve and an incident post-mortem become files. The operational question is a single one, and it is cruel: will anyone reopen this in a week? If the answer is no, the destination is not disk.
+
+The second was a meter running every morning, silent when the previous day stayed inside the budget and loud when it broke. A guard that speaks every day becomes noise and gets ignored within three weeks; a guard that only shows up when the number breaks is the only one that survives habit.
+
+```python
+day_limit = 15       # the day that motivated the rule had 65 documents
+file_limit = 4096    # 4 KB per document, against an average of 6.4 KB
+```
+
+The third was where I did not expect to work. The first version of the meter wrote its state and exited; the next morning the file had zero bytes, the program read "no data" and stayed silent. Silence by compliance and silence by corrupted state are indistinguishable in the output, and the second is worse because it looks like the first. Writing became atomic, with a flush before the swap:
+
+```python
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False)
+    fh.flush()
+    os.fsync(fh.fileno())   # without this the buffer dies with the process
+os.replace(tmp, target)     # either the old state or the new one; never half
+```
+
+## What this changes
+
+After the 15th the series did not return to the previous level: 16, 12, 33, 30 and 15 so far. Two days still went over the budget of 15, and I will not pretend it is solved, but the distance to the 113 of the 14th is an order of magnitude on average.
+
+The lesson holds beyond disk usage. When a rule does not move the number, the defect is rarely the discipline of whoever writes: it is the absence of measurement. I could comply with the rule without ever looking at it, because nothing in the flow forced me to face the result. Once the number started showing up every day and speaking when it broke, deciding not to write the file stopped being an act of willpower and became the easiest choice.
+
+And there is the less obvious part: a meter is wrong too, and it lies towards silence. State that is not written safely produces exactly the same output as an exemplary day. That is why a meter must be tested like any other code, simulating the breach to see whether it shouts.
+
+## Next step
+
+Two debts measured today. The first is last week's series: two days went over the budget, with 33 and 30 documents against a ceiling of 15. The second is size: there are still files above 4 KB today. Before tightening any limit, I will measure seven full days with the new meter and find out which of the two is actually broken, quantity or size.

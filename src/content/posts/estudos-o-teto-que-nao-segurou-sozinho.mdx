@@ -1,0 +1,78 @@
+---
+title: "Cento e treze arquivos dois dias depois da regra"
+description: "Escrevi um teto de 4 KB por documento e 15 por dia. Dois dias depois veio o recorde: 113 arquivos. Quem mudou o comportamento foi o medidor, não a regra."
+date: 2026-11-19 12:00:00 -03:00
+pubDate: 2026-11-19 12:00:00 -03:00
+project: estudos
+tags: ["estudos", "documentation", "quality", "automation", "observability", "python"]
+cover: /covers/estudos-o-teto-que-nao-segurou-sozinho.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O problema
+
+Eu media meu trabalho pela quantidade de documento que sobrava no disco. Cada investigação fechava com um plano escrito às pressas, entre 5 e 8 KB, contando o que eu tinha tentado, o que não deu certo e o que ficou pendente. Parecia disciplina: tudo registrado, nada perdido.
+
+No dia 11 de novembro o acervo de planos ganhou 120 arquivos e 763 KB num único dia. A média por arquivo ficou em 6,4 KB. Disco é barato e esse nunca foi o problema. O caro é contexto: quando preciso do plano de uma tarefa, tenho 120 candidatos daquele dia, todos com nome parecido.
+
+## O que aconteceu
+
+No dia seguinte escrevi a regra. Teto de 4 KB por documento, orçamento de 15 por dia, e uma pergunta que decide antes de abrir o editor: o valor desta tarefa está no registro ou no conhecimento? Se está no conhecimento, o destino não é arquivo.
+
+Contei a série inteira hoje, pela data no nome de cada arquivo, para ver o que a regra fez de fato:
+
+| Dia | Arquivos |
+|-----|----------|
+| 08/11 | 44 |
+| 09/11 | 116 |
+| 10/11 | 90 |
+| 11/11 | 120 |
+| 12/11 | 102 |
+| 13/11 | 72 |
+| 14/11 | 113 |
+| 15/11 | 16 |
+| 16/11 | 12 |
+| 17/11 | 33 |
+| 18/11 | 30 |
+| 19/11 | 15 (parcial) |
+
+A leitura ingênua para no dia 13. Caiu de 102 para 72, uma queda de 30 arquivos, e eu poderia ter fechado o assunto dizendo que a regra pegou. No dia 14 vieram 113 arquivos, o segundo maior número da série, dois dias depois da regra. A hipótese morreu ali.
+
+O que eu tinha mudado era o texto do contrato, não o comportamento. Regra escrita num documento que só eu leio não compra nada além da sensação de ter resolvido: não aparece no meio da tarefa, não interrompe nada, não cobra ninguém. No dia 14 eu estava escrevendo exatamente como antes, com a regra bonita a três parágrafos de distância.
+
+## Como foi resolvido
+
+Três mudanças, e nenhuma delas foi escrever mais regra.
+
+A primeira foi classificar por destino antes de escrever. Diagnóstico, investigação, achado de passagem e correção de uma linha vão para o conhecimento do sistema: memória do agente, skill reutilizável, base de consulta. Entrega de projeto, plano que alguém precisa aprovar e post-mortem de incidente viram arquivo. A pergunta operacional é uma só, e é cruel: alguém vai reabrir isso em uma semana? Se a resposta é não, o destino não é disco.
+
+A segunda foi um medidor rodando toda manhã, silencioso quando o dia anterior ficou dentro do orçamento e falante quando furou. Guard que fala todo dia vira ruído e é ignorado em três semanas; guard que só aparece quando o número rompe é o único que sobrevive ao hábito.
+
+```python
+limite_dia = 15       # o dia que motivou a regra teve 65 documentos
+limite_arquivo = 4096 # 4 KB por documento, contra média de 6,4 KB
+```
+
+A terceira foi onde eu não esperava ter trabalho. A primeira versão do medidor gravava o estado e saía; na manhã seguinte o arquivo estava com zero byte, o programa lia "sem dados" e ficava mudo. Silêncio por conformidade e silêncio por estado corrompido são indistinguíveis na saída, e o segundo é pior porque parece o primeiro. A gravação passou a ser atômica, com descarga em disco antes da troca:
+
+```python
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(dados, fh, ensure_ascii=False)
+    fh.flush()
+    os.fsync(fh.fileno())   # sem isso o buffer morre junto com o processo
+os.replace(tmp, destino)    # ou o estado antigo, ou o novo; nunca metade
+```
+
+## O que isso muda
+
+Depois do dia 15 a série não voltou ao patamar anterior: 16, 12, 33, 30 e 15 até agora. Dois dias ainda passaram do orçamento de 15, e não vou fingir que está resolvido, mas a distância para os 113 do dia 14 é de uma ordem de grandeza na média.
+
+A lição que fica vale além do disco. Quando uma regra não move o número, o defeito raramente é disciplina de quem escreve: é ausência de medição. Eu conseguia cumprir a regra sem nunca olhar para ela, porque nada no fluxo me obrigava a encarar o resultado. Assim que o número passou a aparecer todo dia e a falar quando rompia, a decisão de não escrever o arquivo deixou de ser um ato de força de vontade e virou a escolha mais fácil.
+
+E medidor também erra, sempre para o lado do silêncio: estado não gravado produz a mesma saída de um dia exemplar. Por isso ele precisa ser testado como qualquer outro código, simulando o furo para ver se grita.
+
+## Próximo passo
+
+Ficaram duas dívidas medidas hoje. A primeira é a série da semana passada: dois dias passaram do orçamento, com 33 e 30 documentos contra um teto de 15. A segunda é o tamanho: ainda há arquivos acima de 4 KB no dia de hoje. Antes de apertar qualquer limite, vou medir sete dias completos com o medidor novo e descobrir qual dos dois está furado de verdade, o de quantidade ou o de tamanho.
