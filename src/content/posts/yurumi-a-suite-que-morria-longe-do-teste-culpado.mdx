@@ -1,0 +1,75 @@
+---
+title: "Yurumi: a suíte que morria longe do teste culpado"
+description: "Sete testes falhavam e o pytest abortava tudo com erro de WindowsPath. A causa era um monkeypatch em os.name que contaminava o processo inteiro, e o erro aparecia num lugar onde não havia teste nenhum."
+date: 2026-11-19 13:57:14 -03:00
+pubDate: 2026-11-21 12:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "pytest", "python", "testing", "windows"]
+icon: "🧠"
+cover: /covers/yurumi-a-suite-que-morria-longe-do-teste-culpado.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O erro que aparecia onde não havia teste
+
+Na tarde de 19 de novembro, rodar a suíte do Yurumi deixou de produzir resultado e passou a produzir uma tela de aborto. Não eram falhas comuns, com nome de teste e linha. Era o pytest encerrando a execução inteira com `INTERNALERROR` e uma mensagem que não parece ter nada a ver com o assunto:
+
+```
+NotImplementedError: cannot instantiate WindowsPath on your system
+```
+
+O detalhe que custou tempo foi o seguinte: o erro não vinha do teste que falhou. Ele aparecia dentro de `_pytest.repr_failure`, ou seja, no momento em que o pytest tentava montar a mensagem de falha de **um teste que já tinha dado errado antes**. Sete testes apresentavam falha. Esses sete, ao serem reportados, arrastavam o processo inteiro para o chão. O resultado era o pior tipo de diagnóstico: a suíte morria longe de onde o problema estava, e o rastro apontava para o relator de falhas, não para a causa.
+
+## A máquina inteira fingindo ser outra
+
+A causa estava nos próprios testes. Para exercitar o ramo de Windows de algumas funções em runner Linux, o padrão usado era trocar `os.name` diretamente:
+
+```python
+monkeypatch.setattr(os, "name", "nt")
+```
+
+Isso parece local, porque o `monkeypatch` reverte no fim do teste. Mas o que está sendo trocado é um atributo do módulo `os`, compartilhado por todo o processo. E o `pathlib` toma decisão de classe com base exatamente nesse valor: é `os.name` que define se um `Path(...)` vira `PosixPath` ou `WindowsPath`. Com `os.name` forçado para `nt` num runner Linux, a próxima chamada a `Path()` em qualquer lugar do processo tenta construir um objeto que a plataforma não suporta, e estoura.
+
+O lugar onde isso acontecia primeiro era cruel. Em `sync_secondary`, o destino secundário é criado no começo da função, antes do desvio que decidiria entre robocopy e rsync:
+
+```python
+Path(base_sec).mkdir(parents=True, exist_ok=True)
+```
+
+Ou seja: o teste queria verificar o comportamento do espelho no ramo Windows, mas a função morria na linha anterior, criando um diretório cujo tipo de objeto nem podia existir ali. Nada do que o teste queria medir chegava a rodar. O teste não estava verificando o ramo Windows, estava derrubando o interpretador numa etapa de preparação.
+
+## O seletor que o teste pode trocar
+
+A correção foi tirar a decisão de dentro do `os` global e colocá-la numa função do próprio módulo, feita para ser substituída. Três módulos receberam a mesma peça: o de backup, o de fontes de presença e o de gatilhos.
+
+```python
+def _is_windows() -> bool:
+    """Seletor do ramo Windows, separado de `os.name` de proposito."""
+    return os.name == "nt"
+```
+
+A lógica de produção continua idêntica: quem responde é o `os.name` real, numa consulta em tempo de chamada. O que muda é o ponto de substituição. Em vez de mexer no processo inteiro, o teste troca uma única função do módulo sob teste:
+
+```python
+monkeypatch.setattr(backup, "_is_windows", lambda: True)
+```
+
+Com isso, o `pathlib` continua vendo um sistema POSIX de verdade, os objetos `Path` continuam válidos, e o ramo do robocopy é exercitado de forma isolada. O teste passa a mentir apenas sobre a pergunta que ele precisa mentir, e não sobre a plataforma toda.
+
+O commit `b805d47` fechou a mudança em 7 arquivos, 60 linhas adicionadas e 26 removidas: 3 módulos de produção e 4 arquivos de teste. A suíte voltou a terminar com zero falhas, sem `INTERNALERROR`.
+
+## O que muda quando o teste para de mentir sobre a máquina
+
+A lição não é sobre Windows nem sobre o Yurumi. É sobre o raio de alcance de um patch. Trocar `os.name` parece uma configuração de teste, mas é uma alteração de ambiente global, e o custo dela é proporcional a quantos módulos dependem desse valor. Nesse caso, dependia o `pathlib` inteiro, que é a base de manipulação de arquivo de meio projeto.
+
+Quando o teste precisa simular uma condição de plataforma, o patch tem que acontecer o mais perto possível da decisão: numa função do próprio módulo, com nome explícito, que devolve exatamente aquela informação. O sintoma de que esse limite foi rompido é sempre o mesmo: a falha aparece em um lugar que não tem relação com o teste, e o rastro aponta para a ferramenta de teste em vez do código testado. Erro que aparece longe é sinal de que alguém trocou estado compartilhado.
+
+Há um efeito colateral bom nesse desenho: uma função `_is_windows()` com docstring explicando o motivo dela existir vira documentação. Quem for escrever o próximo teste que precisa exercitar outro sistema operacional encontra a resposta antes de repetir o erro, e encontra junto a explicação de por que a alternativa não funciona.
+
+## O próximo da mesma família
+
+O mesmo dia rendeu mais dois commits do mesmo tipo de problema, na sequência. O `e283c02` isolou a variável `YURUMI_HOME` nos testes que resolvem coleção pelo namespace, e o `53f6094` tirou da suíte a dependência do namespace da máquina, além de limpar o lint.
+
+Juntos, os três resolvem a mesma família de defeito: teste que depende de estado global do ambiente em vez de uma entrada controlada. O padrão que sobrou deles vale para qualquer projeto: se o teste precisa de uma condição do mundo, exponha essa condição como ponto de substituição no código de produção e deixe o ambiente real intacto.
