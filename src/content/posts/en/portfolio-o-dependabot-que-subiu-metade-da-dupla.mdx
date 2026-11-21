@@ -1,0 +1,65 @@
+---
+title: "Dependabot bumped half of the pair and all three shards died before the first test"
+description: "The PR looked like a plain bump: the library went to 1.65, the binary stayed on 1.63, and the three CI shards died before running a single test."
+date: 2026-11-16 09:24:00 -03:00
+pubDate: 2026-11-21 08:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "playwright", "ci-cd", "testing", "dependencies", "debugging"]
+cover: /covers/portfolio-o-dependabot-que-subiu-metade-da-dupla.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The PR that looked like just a number
+
+Monday, November 16, 09:24. A dependabot pull request: `@playwright/test` from 1.63.0 to 1.65.0. One version number, one lockfile, not a single line of application code. That is the kind of PR you approve on autopilot, because the question it seems to ask is "may I update a tool?" and not "may I break the suite?".
+
+I approved it. The portfolio test workflow runs across three parallel shards, each carrying a third of the specs. All three came back red in under a minute, with one line in the log, repeated on all three machines:
+
+```text
+Playwright Test did not expect test.describe() to be called here.
+```
+
+No tests executed. It was not a failing assertion: the shards aborted on the very first thing they did. The error fires when the runner imports the first spec and finds `describe`, before registering anything at all. Fourteen spec files, zero tests executed, and a report with no failure to read, because there was no test.
+
+## The tool is not one package, it is two
+
+Here is the detail that turns a routine bump into an incident. Playwright on Node is not a single dependency: it is two, and they reference each other.
+
+- `playwright` is the package that ships the runner and browser automation, the one the repository's audit scripts import when they need to launch Chromium and take a screenshot.
+- `@playwright/test` is the library the specs import `test` and `expect` from.
+
+The portfolio specs import from `@playwright/test`. Two internal audit scripts, the bug hunter and the visual audit, import `chromium` from `playwright`. So the same process loads the runner from one package and the assertion API from the other. Dependabot bumped only the half with the at sign in the name. The lockfile kept 1.63 on one side and 1.65 on the other, and `pnpm test:e2e` started resolving `test` and `expect` from a different installation than the one executing the suite.
+
+There was a third leg to the mess: the accessibility plugin, the bridge between axe and Playwright, was resolved against `playwright-core` 1.65.0 while the rest of the set still pointed at 1.63.
+
+What makes this error expensive is the message. It does not say "there are two installed versions". It says you called `test.describe` in the wrong place, and the docs list exactly that as the most likely cause: a config file importing the test API. The natural instinct is to open the spec that failed. Except the spec did not change. The PR diff contains no test file at all. The clue that matters lives in the lockfile, not in the code.
+
+## The fix came in two steps
+
+The first step fixed nothing: it prevented repetition. On November 17 (commit `a115364`) both packages were moved into the same dependabot group, with the error text recorded in the comment so whoever reads that file in three months understands why the group exists:
+
+```yaml
+groups:
+  playwright:
+    patterns:
+      - "playwright"
+      - "@playwright/test"
+```
+
+Grouping does not repair a lockfile that is already broken: it only guarantees the next bump arrives paired. The real fix came on November 19 (commit `ae66141`), pinning both to the same version, 1.65.1, with the lockfile resolving a single `playwright-core`. After that, the three shards went back to actually running tests.
+
+The same morning produced a cousin of this problem. Another commit (`0b8cd3f`) bumped Next from 16.4.4 to 16.4.6 because the build aborted on first execution with `SecurityFatalError`. Ten minutes earlier, a third commit (`67e8332`) added six contract tests for the security headers in the config, taking the suite to 639 green. Three environment fixes in one night: the project was right, the surroundings were not.
+
+## Why this changes how you read CI
+
+Red does not always mean a broken test. Here CI was red with zero tests executed, which is a completely different piece of information from "the suite failed". Anyone reading only the badge colour treats both as the same event and goes looking for a bug in the wrong place.
+
+It cuts the other way too: green after the fix does not prove the suite passed before, it proves it ran now. The distinction between "ran and passed" and "never got to run" has to live in the report.
+
+And there is a lesson about tool dependencies. An application library breaks the product when it updates. A test tool breaks the ability to know whether the product is broken, which is worse: the alarm goes silent exactly on the day you needed it.
+
+## Next step
+
+The dependabot group covers the future, not the present. What is missing is a ten-line test that reads the lockfile and fails when the two resolved Playwright versions diverge, running in the same lint job. That way the error arrives with a name, instead of showing up three days later disguised as a badly written spec.

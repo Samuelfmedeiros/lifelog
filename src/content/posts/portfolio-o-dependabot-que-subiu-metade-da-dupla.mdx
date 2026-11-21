@@ -1,0 +1,65 @@
+---
+title: "O dependabot subiu metade da dupla e os três shards morreram antes do primeiro teste"
+description: "O PR parecia só um bump: a lib foi para 1.65, o binário ficou em 1.63, e os três shards do CI morreram antes de executar um único teste."
+date: 2026-11-16 09:24:00 -03:00
+pubDate: 2026-11-21 08:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "playwright", "ci-cd", "testing", "dependencies", "debugging"]
+cover: /covers/portfolio-o-dependabot-que-subiu-metade-da-dupla.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O PR que parecia só um número
+
+Segunda-feira, 16 de novembro, 09:24. Um pull request do dependabot: `@playwright/test` de 1.63.0 para 1.65.0. Um número de versão, um lockfile, nenhuma linha de código de aplicação. Esse é o tipo de PR que a gente aprova no automático, porque a pergunta que ele faz parece ser "posso atualizar uma ferramenta?" e não "posso quebrar a suíte?".
+
+Aprovei. O workflow de testes do portfólio roda em três shards paralelos, cada um com um terço dos specs. Os três voltaram vermelhos em menos de um minuto, e o log tinha uma linha só, repetida nas três máquinas:
+
+```text
+Playwright Test did not expect test.describe() to be called here.
+```
+
+Nenhum teste executado. Não foi uma asserção falhando: os shards abortaram na primeira coisa que fizeram. O erro acontece quando o runner importa o primeiro spec e encontra `describe`, antes de registrar qualquer coisa. Catorze arquivos de spec, zero testes executados, e o relatório sem uma única falha para ler, porque não houve teste nenhum.
+
+## A ferramenta não é um pacote, são dois
+
+Aqui está o detalhe que transforma um bump de rotina em incidente. O Playwright no Node não é uma dependência: são duas, e elas se referenciam.
+
+- `playwright` é o pacote que traz o runner e a automação de navegador, o que os scripts de auditoria do repositório importam quando querem subir um Chromium e tirar print.
+- `@playwright/test` é a biblioteca de onde os specs importam `test` e `expect`.
+
+Os specs do portfólio importam de `@playwright/test`. Dois scripts internos de auditoria, o de caça a bugs e o de auditoria visual, importam `chromium` de `playwright`. Ou seja: o mesmo processo carrega o runner de um pacote e a API de asserção do outro. O dependabot subiu só a metade que tem arroba no nome. O lockfile ficou com 1.63 de um lado e 1.65 do outro, e o `pnpm test:e2e` passou a resolver `test` e `expect` de uma instalação diferente da que estava executando a suíte.
+
+Tinha uma terceira perna nessa confusão: o plugin de acessibilidade, a ponte entre o axe e o Playwright, estava resolvido contra o `playwright-core` na 1.65.0 enquanto o resto do conjunto apontava para 1.63.
+
+O que torna esse erro caro é a mensagem. Ela não diz "existem duas versões instaladas". Ela diz que você chamou `test.describe` no lugar errado, e a documentação lista como causa mais provável justamente isso: arquivo de configuração importando a API de teste. O instinto natural é abrir o spec que falhou. Só que o spec não mudou. O diff do PR não tem nenhum arquivo de teste dentro. A pista que importa está no lockfile, não no código.
+
+## O conserto foi em dois tempos
+
+O primeiro passo não corrigiu nada: impediu a repetição. Em 17 de novembro (commit `a115364`), os dois pacotes passaram a viver no mesmo grupo do dependabot, com o texto do erro registrado no comentário, para quem ler o arquivo daqui a três meses entender por que o grupo existe:
+
+```yaml
+groups:
+  playwright:
+    patterns:
+      - "playwright"
+      - "@playwright/test"
+```
+
+Agrupar não conserta o lockfile que já está quebrado: só garante que o próximo bump chegue casado. O conserto real veio em 19 de novembro (commit `ae66141`), fixando os dois na mesma versão, 1.65.1, com o lockfile resolvendo um único `playwright-core`. Depois disso, os três shards voltaram a rodar testes de verdade.
+
+Na mesma manhã apareceu um primo desse problema. Outro commit (`0b8cd3f`) subiu o Next de 16.4.4 para 16.4.6 porque o build abortava na primeira execução com `SecurityFatalError`. Dez minutos antes, um terceiro commit (`67e8332`) adicionou seis testes de contrato para os headers de segurança da configuração, e a suíte foi para 639 verdes. Três consertos de ambiente na mesma madrugada: o projeto estava certo, o entorno é que não estava.
+
+## Por que isso muda a leitura do CI
+
+Vermelho nem sempre é teste quebrado. Nesse caso o CI estava vermelho com zero testes executados, o que é uma informação completamente diferente de "a suíte reprovou". Quem olha só a cor do badge trata os dois como o mesmo evento e vai procurar bug no lugar errado.
+
+Também vale para o outro lado: verde depois do conserto não prova que a suíte passou antes, prova que ela rodou agora. A distinção entre "executou e passou" e "não chegou a executar" precisa estar no relatório.
+
+E fica a lição sobre dependências de ferramenta. Uma biblioteca de aplicação quebra o produto quando atualiza. Uma ferramenta de teste quebra a capacidade de saber se o produto está quebrado, que é pior: o alarme fica mudo no dia em que você mais precisava dele.
+
+## Próximo passo
+
+O grupo no dependabot resolve o futuro, não o presente. O que falta é um teste de dez linhas que leia o lockfile e falhe quando as duas versões resolvidas de Playwright divergirem, rodando no mesmo job de lint. Assim o erro sai com nome e sobrenome, em vez de aparecer disfarçado de spec mal escrito três dias depois.
