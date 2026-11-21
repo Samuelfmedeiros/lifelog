@@ -1,0 +1,68 @@
+---
+title: "The auditor that gave a perfect score without looking at the screen"
+description: "The dashboard's visual audit gate printed a full score without capturing a single image: stale PNG, wrong interpreter and a prompt that invited false positives."
+date: 2026-11-21 08:00:00 -03:00
+pubDate: 2026-11-21 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "vlm", "quality-gate", "fail-closed", "wcag", "testing"]
+cover: /covers/capivara-o-auditor-que-dava-nota-100-sem-olhar.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The dashboard I thought was being reviewed
+
+Capivara has a visual auditor. It opens the logged-in dashboard, captures the screen on desktop and mobile in the light theme, sends the image to a vision model and returns two things: a score from 0 to 100 and a description of the defect when one exists. The gate only releases with a full score and no findings.
+
+For weeks that was comfort. "The screen was looked at" became part of the closing ritual. On Friday, 14/11, while running the auditor inside a worktree, the score came back 100 and I almost moved on. That time I read stderr: the capture had failed. No image had been opened, and the score was still full.
+
+## The evidence was from another day
+
+The first defect sat in the part doing the heavy lifting. The auditor decided whether a screenshot existed by checking whether the file was present in the directory. Simple, and wrong. When the capture fails, the old PNG stays right there. In that case the files were from 13/11 at 21:37, and the model audited yesterday's screen, printing 100 as if it were today's.
+
+The fix swapped the question. It stopped being "does the file exist?" and became "did this run produce an image?".
+
+```python
+shots = capture(tok)
+if not shots:
+    print("VLM_SCORE=0")
+    print("VLM_INCONCLUSIVE=capture nao produziu nenhuma imagem")
+    return
+
+for png in shots:
+    idade = _t0 - os.path.getmtime(png)
+    if idade > 0:              # file from a previous run
+        problems.append(f"screenshot OBSOLETO: {os.path.basename(png)}")
+        continue
+```
+
+`capture()` now returns an empty list when there was no real capture, and the image list is only accepted if the mtime belongs to this run. A stale file became an explicit defect instead of evidence.
+
+## The wrong interpreter
+
+The second defect explained why the capture failed exactly inside the worktree. `capture()` called `sys.executable`, meaning the interpreter running the script itself, the backend virtualenv. But Playwright does not live there: it lives in the agent's environment. The result was a `ModuleNotFoundError` on every run, zero captured images, and the old PNG covering the hole with a full score.
+
+The fix was an explicit interpreter order: a dedicated environment variable first, then the agent's environment, and only then the current interpreter. And the capture started being measured by the TEXT of the output, with the navigation script printing `LOGADO` or `NAO_LOGADO` per viewport, instead of being inferred from a file sitting in a folder.
+
+The proof came from three scenarios, all measured. Normal path: logged capture on desktop and mobile, score 100 auditing an image from that same run. Playwright broken (interpreter without the library): score 0 and the inconclusive marker. Application down: score 0 and inconclusive. Before the fix, all three returned 100.
+
+## The prompt that asked for the defect
+
+The third problem was above the capture code, in the text sent to the model. The prompt asked, across three items, whether there was "text with very low contrast", expecting Yes or No per item.
+
+Two consequences showed up in the measurement. First, the model echoed the wording ("invisible or with low contrast? yes") and the heuristic reading the answer found the prompt's own term, producing a finding like `mobile.png: illegible:` with no element described. Second, asking "is contrast low?" about a 10px grey footer induces a "yes" even when the measurement contradicts it: both text levels it pointed at were at 6.68:1 and 4.86:1, above the AA minimum.
+
+The new prompt asks for one line in the format `PROBLEM: <element>, <defect>` or `OK`, with a closed list of four real defects (missing text, clipped text, overlapping text, broken card) and an explicit statement that discreet secondary text is not a defect if it can be read. Before: score 50 with a meaningless finding. After: score 100 with an empty defect field.
+
+And when the finding was real, measurement confirmed it. The dashboard footer sat at 3.33:1, alpha 0.50 over the light background, below the 4.5:1 minimum for small text. It moved to alpha 0.62 and 4.86:1, commit `98612bf`.
+
+## What this changes
+
+A gate that cannot say "I did not see" turns absence of evidence into approval. The failure mode was never the model being wrong: it was the pipeline treating a run with nothing in hand as success. Now the scenarios without capture exit with score zero and the inconclusive marker, and the report separates "I audited and it is fine" from "I did not audit".
+
+The question that now applies to any gate of this kind: when the source of evidence disappears, does it close or open? If it opens, it is not a gate, it is decoration with a green output.
+
+## Next step
+
+Run the auditor across both theme variants and the dashboard routes that changed this week, now with the inconclusive verdict kept apart from the approved one, and sweep the sibling gates for the same pattern: approving on file existence instead of evidence from this run.

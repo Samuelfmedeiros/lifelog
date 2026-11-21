@@ -1,0 +1,69 @@
+---
+title: "O auditor que dava nota 100 sem olhar a tela"
+description: "O auditor visual do painel dava nota 100 sem ter capturado imagem: PNG de outro dia, interpretador errado e prompt que induzia falso positivo."
+date: 2026-11-21 08:00:00 -03:00
+pubDate: 2026-11-21 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "vlm", "quality-gate", "fail-closed", "wcag", "testing"]
+cover: /covers/capivara-o-auditor-que-dava-nota-100-sem-olhar.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O painel que eu achava que estava sendo revisado
+
+O Capivara tem um auditor visual. Ele abre o dashboard logado, captura a tela no desktop e no mobile do tema claro, manda a imagem para um modelo de visão e devolve duas coisas: uma nota de 0 a 100 e a descrição do defeito quando existe. O gate só libera com nota cheia e sem achado.
+
+Durante semanas isso foi conforto. "A tela foi olhada" virou parte do ritual de fechamento. Na sexta 14/11, ao rodar o auditor num worktree, a nota veio 100 e eu quase segui adiante. Dessa vez eu li o stderr: a captura tinha falhado. Nenhuma imagem havia sido aberta, e mesmo assim a nota era cheia.
+
+## A prova era de outro dia
+
+O primeiro defeito estava no que fazia o trabalho pesado. O auditor decidia se havia screenshot olhando se o arquivo existia no diretório. Simples e errado. Quando a captura falha, o PNG antigo continua lá. Naquele caso os arquivos eram de 13/11 às 21:37, e o modelo auditou a tela de ontem imprimindo nota 100 como se fosse a de hoje.
+
+A correção foi trocar a pergunta. Deixou de ser "o arquivo existe?" e passou a ser "esta execução produziu imagem?".
+
+```python
+shots = capture(tok)
+if not shots:
+    print("VLM_SCORE=0")
+    print("VLM_INCONCLUSIVE=capture nao produziu nenhuma imagem")
+    return
+
+for png in shots:
+    idade = _t0 - os.path.getmtime(png)
+    if idade > 0:              # arquivo de execução anterior
+        problems.append(f"screenshot OBSOLETO: {os.path.basename(png)}")
+        continue
+```
+
+O `capture()` agora devolve lista vazia quando não houve captura real, e a lista de imagens só é aceita se o mtime for desta execução. Arquivo velho virou defeito explícito, não evidência.
+
+## O interpretador errado
+
+O segundo defeito explicava por que a captura falhava justo no worktree. O `capture()` chamava `sys.executable`, ou seja, o interpretador que estava rodando o próprio script, o venv do backend. Só que o Playwright não está nesse ambiente: ele vive no venv do agente. Resultado, `ModuleNotFoundError` em toda rodada, zero imagem capturada, e o PNG antigo cobrindo o buraco com nota cheia.
+
+O ajuste foi ordem explícita de interpretador: variável de ambiente dedicada, depois o venv do agente, e só no fim o interpretador atual. E a captura passou a ser medida pelo TEXTO da saída, com o script de navegação imprimindo `LOGADO` ou `NAO_LOGADO` para cada viewport, em vez de ser inferida pela existência de arquivo na pasta.
+
+A prova veio em três cenários, todos medidos. Com o caminho normal: captura logada no desktop e no mobile, nota 100 auditando imagem da própria rodada. Com o Playwright quebrado (interpretador sem a biblioteca): nota 0 e marca de inconclusivo. Com a aplicação fora do ar: nota 0 e inconclusivo. Antes do fix, os três cenários davam 100.
+
+## O prompt que pedia o defeito
+
+O terceiro problema estava acima do código de captura, no texto enviado ao modelo. O prompt perguntava, em três itens, se havia "texto com contraste muito baixo" e esperava Sim ou Não por item.
+
+Duas consequências apareceram na medição. Primeiro, o modelo ecoava o enunciado ("invisível ou com baixo contraste? sim") e a heurística que lia a resposta encontrava o termo do próprio prompt, gerando um achado do tipo `mobile.png: ilegível:` sem descrever elemento nenhum. Segundo, perguntar "tem contraste baixo?" sobre um rodapé cinza de 10px induz o "sim" mesmo quando a medição desmente: os dois níveis de texto apontados estavam em 6,68:1 e 4,86:1, ambos acima do mínimo AA.
+
+O prompt novo pede uma linha no formato `PROBLEMA: <elemento>, <defeito>` ou `OK`, com lista fechada de quatro defeitos reais (texto sumido, cortado, sobreposto, card quebrado) e a negativa explícita de que texto secundário discreto não é defeito se dá para ler. Antes: nota 50 com achado vazio de sentido. Depois: nota 100 com campo de defeito vazio.
+
+E quando o achado era verdadeiro, a medição confirmou. O rodapé do dashboard estava em 3,33:1, alpha 0,50 sobre o fundo claro, abaixo do mínimo de 4,5:1 para texto pequeno. Subiu para alpha 0,62 e 4,86:1, commit `98612bf`.
+
+## O que isso muda
+
+Gate que não sabe dizer "não vi" transforma ausência de evidência em aprovação. O modo de falha nunca foi o modelo errar: era o pipeline tratar como sucesso a rodada em que não tinha nada na mão. Agora os cenários sem captura saem com nota zero e a marca de inconclusivo, e o relatório separa "auditei e está bom" de "não auditei".
+
+A pergunta que passou a valer para qualquer gate deste tipo: quando a fonte de evidência some, ele fecha ou abre? Se abre, não é gate, é decoração com saída verde.
+
+## Próximo passo
+
+Rodar o auditor nas duas variações de tema e nas rotas do painel que mudaram na semana, agora com veredito inconclusivo separado do aprovado, e varrer os gates irmãos atrás do mesmo padrão: aprovar por existência de arquivo em vez de evidência desta execução.
+
