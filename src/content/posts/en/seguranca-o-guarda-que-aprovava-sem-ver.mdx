@@ -1,0 +1,78 @@
+---
+title: "The guard that approved because it could not see the process"
+description: "A sandbox hid the central process PID, the config it read was the wrong file and the routes table arrived empty. The guard still said OK."
+date: 2026-11-21 14:30:00 -03:00
+pubDate: 2026-11-21 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "sandbox", "process", "observability", "systemd"]
+cover: /covers/seguranca-o-guarda-que-aprovava-sem-ver.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The green that came from silence
+
+A single-instance guard has one simple job: make sure exactly one central process is alive and that no other profile has opened a parallel one. It runs, it looks, it answers. The interesting part is what it answers when it cannot look.
+
+That is what happened today. The guard printed OK and, inside the parentheses, the real reason: no live process visible. The next sentence said the watchdog would handle the restart. In other words, it was not claiming the instance was unique. It was claiming it saw no instance at all and calling that health. Two very different statements, spelled with the same two letters.
+
+## What was actually going on
+
+The central process runs as a system service on the host, and the session executing the guard lives inside a Flatpak sandbox. The `/proc` of the sandbox cannot see host processes. It is not a missing permission and not a read error: it is a different namespace. The guard was reading an empty process table by construction and concluding absence.
+
+The process was alive the whole time. The system's own durable state file recorded PID 3998309 and the state "running", with no restart requested. The guard had that information one file away and preferred the source that lied.
+
+The second defect was about addresses. The guard built the route table by reading the config of the canonical profile, and that file simply does not contain the routes key, confirmed today with a direct search. The real block lives in the multiplexer's root config, a 183,195-byte file where the key appears three times and only one of them is the gateway block, with 14 chat-to-profile routes. The old code read the wrong file, fell into a broad `except Exception` and carried on with an empty list. An empty list, for an auditor, has to be a failure. There it was routine.
+
+There is a third detail, the quietest one: the fallback parser, the one that kicks in when the YAML library is unavailable. It broke out of its loop on the first unindented line, which is exactly the block header. So even with the right file it would return zero routes. Three paths, one single outcome, and none of them made noise.
+
+The cost of this never shows up in an error log, it shows up in file size. The guard went from 15,943 to 20,151 bytes in a single day, 26 percent more, chasing behaviour nobody had measured for weeks.
+
+## How it was fixed
+
+Three corrections, in the order information enters.
+
+The first is accepting the second source. If the sandbox `/proc` is blind to the host, the truth comes from durable state, with a liveness proof executed on the host. A dead PID or a state other than "running" never becomes a process.
+
+```python
+def process_state():
+    try:
+        state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None                    # no state means NOT MEASURED
+    pid = state.get("pid")
+    if not isinstance(pid, int) or state.get("gateway_state") != "running":
+        return None                    # stopped or dead: do not invent a process
+    alive = subprocess.run(
+        ["flatpak-spawn", "--host", "kill", "-0", str(pid)],
+        capture_output=True, timeout=10,
+    ).returncode == 0
+    return (pid, alive, bool(state.get("restart_requested")))
+```
+
+The second is resolving the config through a declared chain instead of hardcoding a path. Root first, profile second, and abort when neither contains the key. Aborting is the correct behaviour: a route auditor that did not find the routes must not continue with a plausible table.
+
+```python
+for candidate in (ROOT / "config.yaml", ROOT / "profiles" / PROFILE / "config.yaml"):
+    try:
+        text = candidate.read_text(encoding="utf-8")
+    except OSError:
+        continue
+    if "profile_routes" in text:
+        break
+else:
+    raise SystemExit("route table missing: audit NOT MEASURED")
+```
+
+The third is parser scope. It only enters the gateway block, it accepts a list item that carries the key on the same line, and it does not treat an identically named key from another section as if it were the route table.
+
+## What this changes
+
+The lesson is not about sandboxing or YAML. It is about the boundary between three states that must stay separate: failure, when the tool tried and could not; unavailability, when the tool is not there; and not measured, when the check was skipped or looked in the wrong place. Collapsing all three into "ok" produces a false green, and a false green is worse than red, because red gets opened.
+
+The rule that stayed: a guard that did not see must say it did not see and exit with an error code. Silence is not approval. It is the easiest answer to write and the most expensive one to trust.
+
+## Next step
+
+The next stage is cross-checking. The guard already knows the durable-state PID and the table of 14 real routes. What is missing is requiring both sides to agree with each other and with what each profile actually serves, and making the divergence show up as a named failure, with chat and profile on the same line. As long as verification runs on one side only, the guard can still be right by luck.

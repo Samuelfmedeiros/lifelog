@@ -1,0 +1,78 @@
+---
+title: "O guarda que aprovava por não enxergar o processo"
+description: "O sandbox escondia o PID do processo central, o config lido era o arquivo errado e a tabela de rotas chegava vazia. O guarda dizia OK."
+date: 2026-11-21 14:30:00 -03:00
+pubDate: 2026-11-21 16:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "sandbox", "process", "observability", "systemd"]
+cover: /covers/seguranca-o-guarda-que-aprovava-sem-ver.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O verde que vinha do silêncio
+
+Um guarda de instância única tem uma tarefa simples: garantir que existe exatamente um processo central vivo e que nenhum perfil abriu um processo paralelo. Ele roda, olha e responde. O problema é o que ele responde quando não consegue olhar.
+
+Foi o que aconteceu hoje. O guarda imprimiu OK e escreveu, entre parênteses, o motivo real: nenhum processo vivo visível. A frase seguinte dizia que o watchdog cuidaria do restart. Ou seja, ele não estava afirmando que a instância era única. Estava afirmando que não viu instância nenhuma e chamando isso de saúde. Duas coisas bem diferentes, escritas com as mesmas duas letras.
+
+## O que estava acontecendo de fato
+
+O processo central roda como serviço do sistema no host, e a sessão que executa o guarda vive em um sandbox Flatpak. O `/proc` de dentro do sandbox não enxerga os processos do host. Não é permissão faltando, não é erro de leitura: é um namespace diferente. O guarda lia uma tabela de processos vazia por construção e concluía ausência.
+
+O processo estava vivo o tempo todo. O arquivo de estado durável do próprio sistema registrava o PID 3998309 e o estado "running", com restart não solicitado. O guarda tinha essa informação a um arquivo de distância e preferiu a fonte que mentia.
+
+O segundo defeito era de endereço. O guarda montava a tabela de rotas lendo o config do perfil canônico, e esse arquivo simplesmente não tem a chave de rotas, confirmado hoje com uma busca direta. O bloco real vive no config raiz do multiplexador, um arquivo de 183.195 bytes onde a chave aparece três vezes e só uma delas é o bloco do gateway, com 14 rotas de chat para perfil. O código antigo lia o arquivo errado, caía em um `except Exception` amplo e seguia com a lista vazia. Lista vazia, para um auditor, tem que ser falha. Ali era rotina.
+
+Tem um terceiro detalhe, o mais silencioso: o parser de reserva, aquele que entra quando a biblioteca de YAML não está disponível. Ele quebrava o laço na primeira linha sem indentação, que é exatamente o cabeçalho do bloco. Resultado: mesmo no arquivo certo, ele sairia com zero rotas. Três caminhos, um único desfecho, e nenhum deles produzia barulho.
+
+O custo disso não aparece em log de erro, aparece em tamanho de arquivo. O guarda passou de 15.943 para 20.151 bytes em um dia, mais 26 por cento, atrás de um comportamento que ninguém mediu durante semanas.
+
+## Como foi resolvido
+
+Três correções, na ordem em que a informação entra.
+
+A primeira é aceitar a segunda fonte. Se o `/proc` do sandbox é cego para o host, a verdade vem do estado durável, com prova de vida feita no host. PID morto ou estado diferente de "running" nunca viram processo.
+
+```python
+def estado_do_processo():
+    try:
+        estado = json.loads(CAMINHO_ESTADO.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None                    # sem estado, a resposta e NAO MEDIDO
+    pid = estado.get("pid")
+    if not isinstance(pid, int) or estado.get("gateway_state") != "running":
+        return None                    # parado ou morto: nao inventa processo
+    vivo = subprocess.run(
+        ["flatpak-spawn", "--host", "kill", "-0", str(pid)],
+        capture_output=True, timeout=10,
+    ).returncode == 0
+    return (pid, vivo, bool(estado.get("restart_requested")))
+```
+
+A segunda é resolver o config por cadeia declarada, em vez de cravar um caminho. Raiz primeiro, perfil depois, e aborto quando nenhum dos dois tem a chave. Abortar é o comportamento certo: um auditor de rotas que não achou as rotas não deve continuar com uma tabela plausível.
+
+```python
+for candidato in (RAIZ / "config.yaml", RAIZ / "profiles" / PERFIL / "config.yaml"):
+    try:
+        texto = candidato.read_text(encoding="utf-8")
+    except OSError:
+        continue
+    if "profile_routes" in texto:
+        break
+else:
+    raise SystemExit("tabela de rotas ausente: auditoria NAO MEDIDA")
+```
+
+A terceira é escopo do parser. Ele só entra no bloco do gateway, aceita item de lista com chave na mesma linha e não trata a chave homônima de outra seção como se fosse a tabela de rotas.
+
+## O que isso muda
+
+A lição não é sobre sandbox nem sobre YAML. É sobre a fronteira entre três estados que precisam ficar separados: falha, quando a ferramenta tentou e não conseguiu; indisponibilidade, quando ela não está lá; e não medido, quando a checagem foi pulada ou olhou para o lugar errado. Colapsar os três em "ok" produz verde falso, e verde falso é pior que vermelho, porque o vermelho alguém abre.
+
+A regra que ficou: guarda que não viu tem que dizer que não viu e sair com código de erro. Silêncio não é aprovação, é a resposta mais fácil de escrever e a mais cara de confiar.
+
+## Próximo passo
+
+A próxima etapa é a comparação cruzada. O guarda já conhece o PID do estado durável e a tabela de 14 rotas reais. Falta exigir que os dois lados batam entre si e com o que cada perfil realmente serve, e que a divergência apareça como falha nominal, com o chat e o perfil na mesma linha. Enquanto a verificação for de um lado só, o guarda continua podendo acertar por sorte.
