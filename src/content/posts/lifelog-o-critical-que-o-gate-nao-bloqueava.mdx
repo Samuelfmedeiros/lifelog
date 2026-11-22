@@ -1,0 +1,76 @@
+---
+title: "O critical que o gate não bloqueava: 39 vulnerabilidades e um deploy verde"
+description: "O step de auditoria dizia que bloqueava o build em caso de CVE. Tinha continue-on-error desde sempre. Quando o pnpm audit apontou um RCE de CVSS 9.8 no Astro, o deploy passou reto."
+date: 2026-11-22 16:00:00 -03:00
+pubDate: 2026-11-22 16:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "security", "dependencies", "ci-cd", "supply-chain"]
+cover: /covers/lifelog-o-critical-que-o-gate-nao-bloqueava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+
+## O comentário que mentia há meses
+
+O step de auditoria de dependências do pipeline tinha esta linha acima do comando:
+
+```yaml
+- name: SCA - Auditoria de dependencias (pnpm audit)
+  # Fase 5.1: bloqueia build se biblioteca tiver CVE conhecida
+  continue-on-error: true
+  run: pnpm audit || echo "audit encontrou vulnerabilidades (nao bloqueia deploy)"
+```
+
+Ler as duas linhas juntas já deveria doer. O comentário afirma que o build para quando aparece CVE conhecida; a linha seguinte garante que ele nunca pare, e o `|| echo` fecha o assunto com um aviso simpático no log. Três mecanismos independentes de neutro. O gate existia, aparecia verde em toda run, e não era capaz de reprovar nada.
+
+Rodei o audit por conta própria e o número que voltou não era de projeto saudável: **39 vulnerabilidades, sendo 1 crítica e 14 altas**, com `rc=1`. O deploy tinha ido para produção com esse retrato na mesma semana.
+
+## O critical tinha nome, nota e data
+
+A crítica era o próprio framework do site. O advisory **GHSA-26w7-cxv4-gfx2** descreve execução remota de código na otimização de imagens AVIF: CVSS **9.8**, vetor `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`: rede, sem autenticação, sem interação do usuário, impacto total em confidencialidade, integridade e disponibilidade. Afetava todas as versões anteriores a 7.2.8, com correção publicada em 7.2.8.
+
+O projeto declarava `"astro": "^7.1.6"` desde julho. O advisory saiu em **8 de setembro**; o upgrade só aconteceu em **22 de novembro**. Setenta e cinco dias em que o lock instalado podia ser explorado por uma imagem processada no build. Não é teórico: otimização de imagem é exatamente o tipo de etapa que recebe arquivo de fora: um `.avif` enviado, baixado ou gerado por terceiro passa pelo otimizador.
+
+E o pior detalhe: o `pnpm audit` sabia. Ele cuspiu o critical no log em todas as execuções do período. Ninguém olhou porque o step era verde por construção.
+
+## O upgrade, medido antes e depois
+
+O conserto foi de versão, não de código: `astro 7.1.6 → 7.4.13`. A comparação que importa está nos números, não no changelog:
+
+- antes: **39 vulnerabilidades** (1 critical, 14 high, `rc=1`)
+- depois: **15 vulnerabilidades** (0 critical, 6 high)
+- build: **1311 páginas**, `exit 0`
+
+No mesmo dia entrou `vitest 4.1.10 → 4.1.12`, que fechou mais três: de 15 para 12. As seis altas que restaram têm endereço conhecido e nenhuma é runtime: ficam em `eslint`, `minimatch`, `nanoid` e `js-yaml`, todas devDependency de build e teste. Isso muda a decisão: falha em ferramenta que só roda no build não para um deploy, mas não fica sem prazo.
+
+## O gate aprendeu a reprovar uma coisa só
+
+Com o audit limpo de critical, dava para endurecer sem quebrar o pipeline. Mas endurecer o quê? O lint estático (`eslint-plugin-security`) rodava com `continue-on-error: true` e `|| echo`: mesma estrutura decorativa. Medi antes de mexer: `30 problems (0 errors, 30 warnings)`, `rc=0`. Trinta avisos de "Generic Object Injection Sink" que ninguém ia consertar hoje, e zero erros reais.
+
+Isso permitiu a mudança que faz o gate valer algo:
+
+```yaml
+- name: SAST - Lint estatico com eslint-plugin-security
+  # Medido em 22/11/2026: rc=0, 0 erros / 30 warnings. Seguro bloquear:
+  # warning nao derruba, erro real (bug de seguranca) para o deploy.
+  run: pnpm lint
+```
+
+Sem `continue-on-error`, sem `|| echo`. Warning continua passando: aviso é dívida, não bloqueio. Erro derruba. E o audit ficou não-bloqueante, mas agora com o motivo escrito ao lado em vez de uma promessa vazia: as seis altas são devDependency, e o step vira bloqueante quando essa lista zerar.
+
+## O ID que eu colei errado
+
+O commit do upgrade citou, no corpo da mensagem, o advisory `GHSA-mh32-jxcr-mh9f` como sendo o RCE do AVIF. Fui conferir na API do GitHub: esse ID é outro problema: XSS por injeção de atributo em nome de tag dinâmica, severidade **low**, corrigido em 7.4.5. O RCE é `GHSA-26w7-cxv4-gfx2`, critical.
+
+O erro é o de sempre: citei de memória um identificador que tinha acabado de ler. Número de advisory, hash de commit e versão de patch têm a mesma regra: se não foi copiado da fonte na hora, não entra no texto. A consequência prática é que qualquer auditoria futura que seguir o ID do commit vai encontrar um XSS baixo onde havia um RCE de 9.8, e vai concluir que o problema era menor do que foi.
+
+## Por que isso importa mais que a CVE
+
+A vulnerabilidade foi fechada com uma linha de `package.json`. O que ficou de pé é o problema estrutural: **gate que não pode falhar não é gate**. Um `continue-on-error: true` sobrevive a refatoração, a revisão de PR e a troca de pessoa, porque no log tudo continua verde. O mesmo padrão estava em três lugares, cada um com seu disfarce: `continue-on-error` no audit e no lint, `|| true` no bandit e no opengrep.
+
+O que protege é o gate ter um caminho real para o `exit 1` e alguém saber qual é esse caminho. Se o número de vulnerabilidades cai de 39 para 12 num dia e o único efeito visível é um comentário novo no YAML, o próximo critical passa exatamente igual.
+
+Próximo passo: as seis altas restantes viram uma lista fechada com data de saída. Enquanto elas existirem, o audit fica em modo report com o número impresso em toda run; quando zerarem, o `continue-on-error` sai e a auditoria passa a bloquear junto com o lint.
+
