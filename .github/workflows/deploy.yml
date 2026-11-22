@@ -96,14 +96,17 @@ jobs:
 
     # ── Quality Gates ──────────────────────────────────────────
     - name: SCA — Auditoria de dependências (pnpm audit)
-      # Fase 5.1: bloqueia build se biblioteca tiver CVE conhecida
+      # Medido em 22/11/2026: depois do upgrade astro 7.1.6 -> 7.4.13 as vulns
+      # caíram de 39 (1 critical, RCE AVIF) para 15 (0 critical, 6 high). rc
+      # ainda é 1, então segue não-bloqueante; o gate vira bloqueante quando
+      # as 6 high saírem. O rc real fica no log da run.
       continue-on-error: true
       run: pnpm audit || echo "⚠️ pnpm audit encontrou vulnerabilidades (não bloqueia deploy)"
 
     - name: SAST — Lint estático com eslint-plugin-security
-      # Fase 5.2: varredura passiva (ReDoS, injeção, más práticas)
-      continue-on-error: true
-      run: pnpm lint || echo "⚠️ Lint encontrou warnings (não bloqueia deploy)"
+      # Medido em 22/11/2026: rc=0, 0 erros / 30 warnings. Seguro bloquear:
+      # warning não derruba, erro real (bug de segurança) para o deploy.
+      run: pnpm lint
 
     - name: PT/EN Sync check
       run: python3 scripts/check-lang-sync.py
