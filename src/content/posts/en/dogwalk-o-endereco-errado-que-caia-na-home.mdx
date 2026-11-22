@@ -1,0 +1,84 @@
+---
+title: "The wrong address that landed on the home page"
+description: "Every broken campaign link on Dogwalk rendered the home page with a 200. Once a real 404 went in, the guard running ahead of the router started killing the brand new aliases."
+date: 2026-11-22 18:00:00 -03:00
+pubDate: 2026-11-22 18:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react-router", "seo", "observability", "http", "redirect"]
+cover: /covers/dogwalk-o-endereco-errado-que-caia-na-home.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The 200 that hid the broken link
+
+Dogwalk's site is a SPA. The router mounts the routes, anything that matches none of them falls into a catch-all, and the catch-all rendered the home page. It worked that way for months and nobody complained, because the screen looked right: the page loaded, the menu appeared, the layout was coherent.
+
+The problem was the HTTP status. To the browser, to the search engine and to any monitoring script, `/cadastro` was a valid page serving the home. It was not. It was an address that did not exist, answering with success, forever.
+
+While a broken link came from someone typing the wrong thing, the cost was low. The real cost showed up when broken links started coming from campaigns: an ad pointing at `/cadastro`, an email button pointing at `/seja-walker`, an organic post pointing at `/buscar`. None of the three existed, all three landed on the home page with a 200, and the only way to notice was for a human to open the link and find it odd.
+
+Conversion lost in silence is the worst kind of defect: no alert, no complaint, nothing in the error log.
+
+## What the router said and what the visitor saw
+
+The fix on November 22 started with the obvious part: give names to the routes the campaigns were already using. Nine slugs went in as aliases, each redirecting to the real route that already existed. No new page, no new logic, just pointing the old address at the right place:
+
+```jsx
+{/* Campaign aliases: slugs used in ads/external links
+    that did not exist and fell into the catch-all. Kept here
+    so the old link keeps converting. */}
+<Route path="/cadastro" element={<Navigate to="/signup/tutor" replace />} />
+<Route path="/buscar" element={<Navigate to="/search" replace />} />
+<Route path="/seja-walker" element={<Navigate to="/signup/walker" replace />} />
+```
+
+The second move was replacing the catch-all. Instead of rendering the home for any unknown path, it started rendering a real error page: an explicit 404, `noindex, follow` so the search engine would not index junk, and visible exits for whoever arrived through an old link. Thirteen tests came with it, between the new page and the regression of each alias.
+
+On paper the whole thing was solved in one commit.
+
+## When the fix created the next defect
+
+It was not. The site has a layer that runs before the router: the edge function that decides, for every request, whether it is an API call, an asset, a known page or an invalid path. It sees the original pathname before any application JavaScript exists.
+
+That layer had a soft 404 guard. Its rule is simple and correct: an unknown path never reaches the asset server, it leaves as a 404 straight away. The problem is that "unknown" was measured against a list that did not include the nine new slugs. So a request for `/cadastro` died at the edge with a 404 before React Router had any chance to see the alias and redirect.
+
+Result of the first commit: the aliases existed in the code and did not work in production. The campaign link was still broken, now with an honest 404 instead of a misleading 200. Better than before, still wrong.
+
+The cure was repeating the nine slugs in the second list. Two layers, two lists, the same decision made in two places that do not know each other:
+
+```js
+// Exact paths that are SPA PAGES, even though they share a prefix with the API.
+// E.g. '/search' is a page, '/search/walkers' is an API call.
+export const SPA_EXACT_PATHS = ['/search', '/meet-greet', '/chat', '/settings', '/walk-now', ...]
+```
+
+The guard test started covering all nine, seventeen out of seventeen green. It worked, and it left a design smell on record: every new slug now has to be remembered in two files, and whoever forgets the second one watches the link break with nothing breaking.
+
+## The error that existed without saying where
+
+The third loose end showed up the same day, and this one is about measurement. The edge traffic counter records 5xx responses in a per-day aggregate. That day the aggregate said seven error responses, and none of them appeared in the API logs. Seven errors that happened outside the backend, with no record of which address produced them.
+
+Knowing that an error happened and not knowing where is almost the same as not knowing. The fix was to give the counter a key: each 5xx now increments a record per normalized route plus status. The detail that makes this work in production is the normalization, because a key per raw URL would explode the cardinality in the edge storage:
+
+```js
+export function chaveDetalhe5xx(path, status) {
+  const segs = String(path || '/').split('?')[0].split('/').filter(Boolean).slice(0, 2);
+  // ids/uuid viram placeholder para nao explodir a cardinalidade do KV
+  const norm = segs.map((s) => (/^[0-9a-f-]{8,}$/i.test(s) || /^\d+$/.test(s) ? ':id' : s));
+  return `${norm.join('/') || 'raiz'}:${status}`;
+}
+```
+
+The first two segments are enough to identify the route family, and anything that looks like an identifier becomes `:id`. Nine tests cover the function. The next 5xx will arrive with an address, not as a guess.
+
+## What changes
+
+Three defects in one chain, and not one of them showed up as an error: a false success hiding a broken link, a legitimate 404 erasing a brand new redirect, and a counter that knew the quantity without knowing the place.
+
+The lesson goes past Dogwalk. First: answering 200 for something that does not exist is a product decision disguised as a technical detail. Second: when two layers make the same decision about the same request, the order between them is part of the contract and needs a test. Third: an aggregate metric is there to turn the light on, not to find the switch.
+
+## Next step
+
+Fold the two known-route lists into a single source, imported by both the application and the edge function. As long as they are two hand-written copies, every new alias is a chance for a silently broken link, and the guard that protects today is the same one that takes it down tomorrow.

@@ -1,0 +1,84 @@
+---
+title: "O endereço errado que caía na home e ninguém percebia"
+description: "Todo link de campanha quebrado do Dogwalk virava a home com status 200. Quando o 404 explícito entrou, o guard que roda antes do roteador passou a matar os aliases recém-criados."
+date: 2026-11-22 18:00:00 -03:00
+pubDate: 2026-11-22 18:00:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "react-router", "seo", "observability", "http", "redirect"]
+cover: /covers/dogwalk-o-endereco-errado-que-caia-na-home.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O 200 que escondia o link quebrado
+
+O site do Dogwalk é uma SPA. O roteador monta as rotas, o resto do caminho que não casa com nenhuma delas cai num catch-all, e o catch-all renderizava a home. Foi assim por meses e ninguém reclamou, porque o resultado na tela parecia certo: a página carregava, o menu aparecia, o visual era coerente.
+
+O problema é que a resposta HTTP era 200. Para o navegador, para o buscador e para qualquer script de monitoramento, `/cadastro` era uma página válida que serve a home. Não era. Era um endereço que não existia, respondendo com sucesso, para sempre.
+
+Enquanto o link quebrado vinha de alguém digitando errado, o custo era baixo. O custo real apareceu quando os links quebrados passaram a vir de campanha: anúncio apontando para `/cadastro`, botão de e-mail apontando para `/seja-walker`, post orgânico apontando para `/buscar`. Nenhum dos três existia, os três caíam na home com 200, e a única forma de descobrir era alguém abrir o link e estranhar.
+
+Conversão perdida em silêncio é o pior tipo de defeito: não gera alerta, não gera reclamação, não aparece em log de erro.
+
+## O que o roteador dizia e o que o visitante via
+
+O conserto de 22 de novembro começou pelo óbvio: dar nome às rotas que as campanhas usavam. Nove slugs entraram como aliases, cada um redirecionando para a rota real que já existia. Nada de página nova, nada de lógica nova, só apontar o endereço antigo para o lugar certo:
+
+```jsx
+{/* Aliases de campanha: slugs usados em anúncio/link externo
+    que não existiam e caíam no catch-all. Mantidos aqui para
+    que o link antigo continue convertendo. */}
+<Route path="/cadastro" element={<Navigate to="/signup/tutor" replace />} />
+<Route path="/buscar" element={<Navigate to="/search" replace />} />
+<Route path="/seja-walker" element={<Navigate to="/signup/walker" replace />} />
+```
+
+O segundo movimento foi trocar o catch-all. Em vez de renderizar a home para qualquer caminho desconhecido, ele passou a renderizar uma página de erro de verdade: código 404 explícito, `noindex, follow` para o buscador não indexar lixo, e saídas visíveis para quem chegou ali por link velho. Junto entraram treze testes, entre a página nova e a regressão de cada alias.
+
+No papel, o assunto estava resolvido em um commit.
+
+## Quando o conserto criou o defeito seguinte
+
+Não estava. O site tem uma camada que roda antes do roteador: a função de borda que decide, para cada requisição, se aquilo é chamada de API, asset, página conhecida ou caminho inválido. Ela intercepta o pathname original antes de qualquer JavaScript da aplicação existir.
+
+Essa camada tinha um guard de soft 404. A regra dele é simples e correta: caminho desconhecido não chega no asset server, sai 404 na hora. O problema é que "desconhecido" era medido contra uma lista que não incluía os nove slugs novos. Então a requisição para `/cadastro` morria na borda com 404 antes de o React Router ter chance de ver o alias e redirecionar.
+
+Resultado do primeiro commit: os aliases existiam no código e não funcionavam em produção. O link de campanha continuava quebrado, agora com 404 honesto em vez de 200 enganoso. Melhor que antes, e ainda errado.
+
+A cura foi repetir os nove slugs na segunda lista. Duas camadas, duas listas, a mesma decisão tomada em dois lugares que não se conhecem:
+
+```js
+// Paths exatos que são PÁGINAS SPA, apesar de compartilharem prefixo com API.
+// Ex: '/search' é página, '/search/walkers' é API.
+export const SPA_EXACT_PATHS = ['/search', '/meet-greet', '/chat', '/settings', '/walk-now', ...]
+```
+
+O teste do guard passou a cobrir os nove, dezessete de dezessete verdes. Funcionou, e ficou registrado o cheiro de projeto: todo slug novo agora precisa ser lembrado em dois arquivos, e quem esquecer o segundo vê o link quebrar sem ver nada quebrar.
+
+## O erro que existia sem dizer onde
+
+No mesmo dia apareceu a terceira ponta, e essa é sobre medição. O contador de tráfego da borda registra 5xx num agregado por dia. Naquele dia o agregado marcava sete respostas de erro, e nenhuma delas aparecia nos logs da API. Sete erros que aconteceram fora do backend, sem registro de qual endereço os produziu.
+
+Saber que houve erro e não saber onde é quase não saber. A correção foi dar chave ao contador: cada 5xx passou a incrementar um registro por rota normalizada mais o status. O detalhe que faz isso funcionar em produção é a normalização, porque uma chave por URL crua explodiria em cardinalidade no armazenamento de borda:
+
+```js
+export function chaveDetalhe5xx(path, status) {
+  const segs = String(path || '/').split('?')[0].split('/').filter(Boolean).slice(0, 2);
+  // ids/uuid viram placeholder para nao explodir a cardinalidade do KV
+  const norm = segs.map((s) => (/^[0-9a-f-]{8,}$/i.test(s) || /^\d+$/.test(s) ? ':id' : s));
+  return `${norm.join('/') || 'raiz'}:${status}`;
+}
+```
+
+Os primeiros dois segmentos bastam para identificar a família da rota, e qualquer coisa que pareça identificador vira `:id`. Nove testes cobrem a função. O próximo 5xx vai chegar com endereço, não como palpite.
+
+## O que muda
+
+Três defeitos na mesma cadeia, e nenhum deles aparecia como erro: um sucesso falso que escondia link quebrado, um 404 legítimo que apagava um redirecionamento recém-criado, e um contador que sabia a quantidade sem saber o lugar.
+
+O que aprendi vale além do Dogwalk. Primeiro: responder 200 para o que não existe é uma decisão de produto disfarçada de detalhe técnico. Segundo: quando duas camadas tomam a mesma decisão sobre a mesma requisição, a ordem entre elas é parte do contrato e precisa de teste. Terceiro: métrica agregada serve para acender a luz, não para achar o interruptor.
+
+## Próximo passo
+
+Unificar as duas listas de rotas conhecidas numa fonte só, importada tanto pela aplicação quanto pela função de borda. Enquanto forem duas cópias escritas à mão, todo alias novo é uma chance de link quebrado silencioso, e o guard que hoje protege é o mesmo que amanhã derruba.
