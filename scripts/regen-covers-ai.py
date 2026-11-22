@@ -303,6 +303,20 @@ def generate(slug, force=True):
 
 
 if __name__ == "__main__":
+    # --help/-h NAO pode gerar capa: sem este guard o script caia na lista
+    # default e sobrescrevia 4 capas versionadas do acervo (medido 22/11/2026:
+    # rodar "--help" reescreveu a-historia-do-estudos, a-historia-do-seguranca,
+    # dogwalk-o-backup-que-mentia e lifelog-a-saga-da-animacao-de-tema).
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print("uso: python3 scripts/regen-covers-ai.py <slug> [<slug> ...]")
+        print("     (sem argumentos regenera as capas de referencia listadas abaixo)")
+        print("     slugs default:", ", ".join([
+            "a-historia-do-seguranca",
+            "a-historia-do-estudos",
+            "lifelog-a-saga-da-animacao-de-tema-o-desfecho",
+            "dogwalk-o-backup-que-mentia",
+        ]))
+        sys.exit(0)
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if args:
         slugs = args
