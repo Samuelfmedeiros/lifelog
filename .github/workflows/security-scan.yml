@@ -16,11 +16,15 @@ jobs:
         with:
           fetch-depth: 0
       - name: Gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
+        # Binario OSS gitleaks v8.28.0 — SHA-256 fixado; substitui a action
+        # que exigia licenca paga. Sem token interpolado no scan.
+        run: |
+          set -euo pipefail
+          curl -sSL -o gitleaks.tgz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          echo "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --exit-code 1 .
   bandit-opengrep:
     runs-on: [self-hosted, linux, x64]
     steps:
