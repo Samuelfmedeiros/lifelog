@@ -1,0 +1,63 @@
+---
+title: "The admin claim that doubled as a key to the private network"
+description: "An admin claim used to open private addresses by itself. The decision became a single fail-closed function with an explicit scope or a named allowlist."
+date: 2026-11-21 14:00:00 -03:00
+pubDate: 2026-11-22 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "security", "auth", "api", "pytest", "audit"]
+cover: /covers/arachne-o-admin-que-abria-a-rede-privada.webp
+featured: false
+hidden: true
+lang: en
+---
+
+Arachne's SSRF guard had exactly one exception, and that exception was a boolean. Any request carrying the admin claim stopped being refused for internal destinations: private ranges, loopback, the network's own panel. The rule that looked reasonable in the first version, "whoever administers can go anywhere", turned into a door nobody had to unlock.
+
+## The guard was fine; the source of the boolean was not
+
+The destination guard did its job. What failed was where the permission to cross it came from. The decision was taken in two places, both derived from the same claim: one on the JWT path, another on the API key path. In both the outcome was the same, and administrative identity became network access.
+
+That has a short name: confusing who the caller is with where the caller may go. Identity authorization answers "who is calling". Destination authorization answers "may this call reach that address". They are independent questions, and the code treated them as one.
+
+The November 21 audit rated the finding low, and the rating is right: no known exploit, no exposed data. The problem is the kind of failure. It does not show up in a unit test, because the natural test asks "can an admin access it?" and the correct answer, in the author's head, was yes. The test confirms the wrong intention.
+
+## What was done
+
+The consolidation landed in commit `5db60726`, which joined waves 7, 8 and 9 of resource-owner isolation. The part that matters here is narrow: permission for the private network stopped being computed at each entry point and moved into a single function, with two possible paths and denial as the default.
+
+The first path is an explicit scope on the credential. It is not inherited from a role and not inferred from a group: it is declared on the key or the token, and whoever issues the credential knows they issued that capability. The second is administrative, but it goes through a named list configured by the operator. Being an admin is not enough; the identity must be on the list, and the list holds identities, not address ranges.
+
+The shape of the decision came out like this, in summary:
+
+```python
+def private_network_allowed(identity, scopes, operator_allowlist):
+    if "dedicated-scope" in scopes:
+        return True
+    if identity.is_admin and identity.email in operator_allowlist:
+        return True
+    return False
+```
+
+Three lines, and order matters: anything that does not match one of the two paths falls through to `False`. The previous version did the opposite without writing it down, starting open and only closing when the claim was missing.
+
+One detail became a test requirement: the private-network exception does not touch the cloud metadata address protection. That block is absolute and stays absolute, regardless of scope, role or list. A new grant that relaxed the whole guard would have traded a small problem for a serious one.
+
+## The tests the change demanded
+
+The work was not the function, it was the matrix. Four isolation test files, one per wave, total 29 cases: six in wave 4, two in wave 5, seven in wave 6 and fourteen in wave 7. The focused suite finished with 141 green tests in the same run.
+
+What they cover says more about the defect than the diff. Admin alone is denied. Explicit scope is allowed. Admin with the allowlist is allowed. Non-admin on the allowlist is denied. Master key alone is denied. Key with explicit scope is allowed. Each row is an attempt to bring the shortcut back, and the test exists to stop the next refactor from reintroducing it silently.
+
+Wave 7 added cases that are not about access, they are about trace. When a denial happens, the event must go out with the required fields and with the identifier masked, and it must not carry the name or the content of the knowledge base that was targeted. A log that records the content of the denied resource turns the audit trail into a slow leak: it sits on disk, someone else reads it, it shows up on a dashboard.
+
+## What changes from here
+
+The first consequence was operational and showed up the same day: installations that depended on the old behaviour started receiving the default block. Anyone who needs to reach an internal service now declares it, either as a scope on the credential or as an identity on the list. The permission still exists, but it has to be written, and writing leaves a trace.
+
+The second one is worth more than this project. "Admin" is an application role, not a network address. Every time a role becomes an infrastructure shortcut, the system loses the ability to answer where a call was authorized to go. Fail-closed only works when the question is asked in the right place.
+
+The third is about tenant isolation. The same round standardised the response for another owner's resource as 404 instead of 403. The choice is deliberate: 403 confirms the resource exists and that you may not see it, which is already information. 404 returns the same thing an invented identifier returns, and the difference between existing and nonexistent stops being an oracle.
+
+## Next step
+
+Close the detection debt. Commit `f31a91a5` replaced the secrets scanner with an open-source tool that carries no paid licence, and pinned the workflow actions by commit hash instead of a moving tag. Dependency scanning stays in the pipeline with the recorded exceptions. What remains open is the residual risk noted in the review and the check of the modules that went untouched this round, each one with the same question: who controls this value, and what does it decide.

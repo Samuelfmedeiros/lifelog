@@ -1,0 +1,63 @@
+---
+title: "O admin que era passe livre para a rede de dentro"
+description: "Todo claim de admin liberava acesso a endereço privado. A decisão virou função única, fail-closed, com escopo explícito e allowlist nominal."
+date: 2026-11-21 14:00:00 -03:00
+pubDate: 2026-11-22 12:00:00 -03:00
+project: arachne
+tags: ["arachne", "security", "auth", "api", "pytest", "audit"]
+cover: /covers/arachne-o-admin-que-abria-a-rede-privada.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+O guard de SSRF do Arachne tinha uma exceção e a exceção era booleana. Bastava a requisição carregar o claim administrativo para o serviço parar de recusar destinos internos: faixa privada, loopback, painel da rede. A regra que parecia razoável na primeira versão, "quem administra pode tudo", virou uma porta que ninguém precisava destrancar.
+
+## O problema não era o guard, era a origem do booleano
+
+O guard de destinos fazia o trabalho dele. O que falhava era de onde vinha a permissão para atravessá-lo. A decisão era tomada em dois lugares diferentes, a partir do mesmo claim: um no caminho do JWT, outro no caminho da chave de API. Nos dois o resultado era igual, e identidade administrativa virava acesso de rede.
+
+Isso tem um nome curto: confusão entre quem é a pessoa e para onde ela pode ir. Autorização de identidade responde "quem está chamando". Autorização de destino responde "esta chamada pode alcançar aquele endereço". São perguntas independentes, e o código tratava como uma só.
+
+A auditoria de 21 de novembro classificou o achado como baixo, e está correto: nenhum exploit conhecido, nenhum dado exposto. O problema é o tipo de falha. Ela não aparece em teste de unidade, porque o teste natural pergunta "admin pode acessar?" e a resposta certa, na cabeça de quem escreveu, era sim. O teste confirma a intenção errada.
+
+## O que foi feito
+
+A consolidação veio no commit `5db60726`, que juntou as ondas 7, 8 e 9 de isolamento por dono de recurso. A parte que interessa aqui é estreita: a permissão de rede privada deixou de ser calculada em cada ponto de entrada e passou a ser decidida em uma função única, com dois caminhos possíveis e negativa como padrão.
+
+O primeiro caminho é um escopo explícito na credencial. Não é herdado de papel nem inferido de grupo: é declarado na chave ou no token, e quem emite a credencial sabe que a emitiu com essa capacidade. O segundo é administrativo, mas passa por uma lista nominal configurada pelo operador. Ser admin não basta; é preciso estar na lista, e a lista é de identidades, não de faixas de endereço.
+
+O formato da decisão ficou assim, em resumo:
+
+```python
+def private_network_allowed(identity, scopes, operator_allowlist):
+    if "dedicated-scope" in scopes:
+        return True
+    if identity.is_admin and identity.email in operator_allowlist:
+        return True
+    return False
+```
+
+Três linhas, e a ordem importa: tudo que não casa com um dos dois caminhos cai em `False`. A versão anterior fazia o contrário sem escrever, começava liberada e só fechava quando o claim faltava.
+
+Um detalhe virou requisito de teste: a exceção para rede privada não toca na proteção de endereço de metadados de nuvem. Aquele bloqueio é absoluto e continua absoluto, independentemente de escopo, papel ou lista. Um grant novo que relaxasse o guard inteiro teria trocado um problema pequeno por um grave.
+
+## Os testes que a mudança exigiu
+
+O trabalho não foi a função, foi a matriz. Quatro arquivos de teste de isolamento, um por onda, somam 29 casos: seis na onda 4, dois na 5, sete na 6 e quatorze na 7. A suíte focada fechou em 141 testes verdes na mesma rodada.
+
+O que eles cobrem diz mais sobre o defeito do que o diff. Admin sozinho é negado. Escopo explícito é liberado. Admin com allowlist é liberado. Não-admin na allowlist é negado. Chave mestra sozinha é negada. Chave com escopo explícito é liberada. Cada linha é uma tentativa de reintroduzir o atalho, e o teste existe para impedir que a próxima refatoração o traga de volta em silêncio.
+
+A onda 7 acrescentou casos que não são sobre acesso, são sobre rastro. Quando uma negação acontece, o evento precisa sair com os campos obrigatórios e com o identificador mascarado, e não pode carregar o nome nem o conteúdo da base que estava sendo alvo. Um log que registra o conteúdo do recurso negado transforma a auditoria em vazamento lento: fica no disco, outra pessoa lê, aparece em painel.
+
+## O que muda daqui para frente
+
+A primeira consequência foi operacional e apareceu no mesmo dia: instalações que dependiam do comportamento antigo passaram a receber o bloqueio padrão. Quem precisa alcançar serviço interno agora declara, escopo na credencial ou identidade na lista. A permissão existe, mas precisa ser escrita, e escrita deixa rastro.
+
+A segunda vale além deste projeto. "Admin" é papel de aplicação, não endereço de rede. Toda vez que um papel vira atalho de infraestrutura, o sistema perde a capacidade de responder onde uma chamada foi autorizada a ir. Fail-closed só funciona quando a pergunta é feita no lugar certo.
+
+A terceira é sobre isolamento entre inquilinos. A mesma rodada padronizou a resposta de recurso de outro dono como 404, e não 403. A escolha é deliberada: 403 confirma que o recurso existe e que você não pode vê-lo, o que já é informação. 404 devolve o mesmo que um identificador inventado devolve, e a diferença entre existente e inexistente deixa de ser oráculo.
+
+## Próximo passo
+
+Fechar a dívida do lado da detecção. O commit `f31a91a5` trocou o scanner de segredos por ferramenta de código aberto sem licença paga e fixou as actions do fluxo por hash de commit em vez de tag móvel. A varredura de dependências continua no pipeline com as exceções registradas. O que segue aberto é o risco residual anotado na revisão e a checagem dos módulos que passaram intocados nesta rodada, cada um com a mesma pergunta: quem controla este valor e o que ele decide.
