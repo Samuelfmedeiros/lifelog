@@ -1,0 +1,68 @@
+---
+title: "O checkpoint que mentia: um serviço vivo e 252 minutos de falso alarme"
+description: "Um monitor reprovava a cada 6 horas um serviço que estava vivo. O sinal de vida era um arquivo que só mudava quando chegava mensagem, e em outro caminho."
+date: 2026-11-22 05:28:00 -03:00
+pubDate: 2026-11-23 12:00:00 -03:00
+project: descobertas
+tags: ["descobertas", "systemd", "observability", "debugging", "monitoring", "yurumi"]
+cover: /covers/descobertas-o-checkpoint-que-mentia.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O alarme que chegava de seis em seis horas
+
+A cada seis horas o verificador de saúde do agente abria o relatório com a mesma frase: watcher parado há 252 minutos. Do outro lado, o serviço estava de pé desde as 13:29, sem nenhum restart, e escrevia uma linha de log a cada 30 segundos. Um dos dois estava errado, e não era o serviço.
+
+Esse tipo de divergência é pior do que uma falha comum, porque ensina a ignorar o monitor. Depois de três ciclos assim, a linha vermelha vira paisagem, e no dia em que o processo realmente morrer ninguém vai olhar.
+
+## O que estava sendo medido
+
+O verificador tinha uma noção razoável de "está vivo": olhar a idade de um arquivo de checkpoint. A ideia é boa para quem acompanha ingestão incremental, porque o checkpoint avança conforme o trabalho é processado. O problema é que esse arquivo só é gravado quando chega mensagem nova por grupo. Grupo calado significa checkpoint parado, mesmo com o processo girando normalmente.
+
+Ou seja: o sinal escolhido media movimento de dados, não existência de processo. Num domingo silencioso os dois divergem por horas, e é justamente quando ninguém está olhando para separar uma coisa da outra.
+
+A ordem de grandeza do erro fica clara no número: 252 minutos de "parado" contra um serviço ativo desde as 13:29 daquele mesmo dia. O processo não tinha morrido em momento nenhum.
+
+```python
+# criterio errado: age(checkpoint) responde "houve mensagem nova?"
+if age(checkpoint) > 180 * 60:
+    report("watcher parado")
+
+# criterio certo: age(log) responde "o processo ainda esta girando?"
+if age(log) > 10 * 60:
+    report("watcher parado")
+```
+
+## A correção que separa as duas perguntas
+
+O conserto foi trocar a fonte do sinal, não o limite. A verificação de vida passou a olhar o mtime do log do loop, com tolerância de 10 minutos: folga suficiente para um tick lento sem transformar atraso em falha. A idade do checkpoint continuou no relatório, mas rebaixada ao papel dela, que é provar que a ingestão andou, não que o processo existe.
+
+Quando não há log nenhum, o critério antigo volta a valer como fallback. Preferi esse caminho a inventar um "estado desconhecido" que ninguém sabe interpretar às 3 da manhã.
+
+O commit que fechou isso (`f8ef32b`, 21/11 às 14:04) mexeu em 2 arquivos, com 81 linhas adicionadas e 9 removidas, e trouxe três casos de teste novos: checkpoint velho com log fresco passa, log velho reprova, ausência de log cai no fallback. A suíte do próprio arquivo fechou 6 de 6, e o recorte do gate fechou 65 de 65.
+
+## O segundo defeito, escondido atrás do primeiro
+
+No dia seguinte apareceu a camada de baixo, e ela era pior: quem gravava o checkpoint e quem lia o checkpoint não usavam o mesmo caminho. O valor padrão do gravador tinha ficado no formato herdado da migração, um diretório no estilo Windows dentro do perfil do usuário, enquanto o leitor procurava no diretório de estado do agente, no padrão POSIX. Resultado: um arquivo era escrito num lugar e a medição olhava outro. Nenhum dos dois errava; os dois estavam certos sobre arquivos diferentes.
+
+Esse tipo de bug sobrevive bem porque não explode. Não há exceção, não há erro 500, não há linha de erro no log. Há só um indicador que envelhece sozinho para sempre, e um relatório que aprende a mentir com cara de dado.
+
+O commit `1d4a79c` (22/11 às 05:28) unificou a fonte do caminho, com 4 arquivos e 136 linhas adicionadas contra 11 removidas. No mesmo pacote entraram três correções menores que também vinham se acumulando em silêncio:
+
+- leitura de configuração com três tentativas e log em nível alto quando o arquivo falha, porque antes um erro de I/O devolvia dicionário vazio e o cliente seguia adiante sem credencial, com sintoma final de 401 sem causa aparente;
+- log de sincronização uma vez por processo, no lugar de repetir o mesmo aviso em looping: eram cerca de 35 mil linhas por dia para dizer a mesma coisa;
+- reciclagem programada do loop em 1h50, antes do teto duro de 2h do gerenciador de serviços. Morrer por timeout era registrado como falha a cada ciclo e alimentava o monitor com um "lento" que nunca existiu.
+
+## O que fica
+
+Duas regras que eu deveria ter escrito antes de escrever a primeira linha de código de monitoramento.
+
+Um sinal de vida precisa ser o artefato que muda sempre: o tick, a linha de log, o heartbeat. O que muda apenas quando há trabalho mede carga, não existência. Confundir os dois produz alarme em dia calmo e silêncio no dia em que o processo morre, que é exatamente o inverso do que se quer.
+
+E caminho de estado tem que ter fonte única, lida literalmente pelo mesmo código que escreve. Duplicar o caminho em dois módulos é criar dois sistemas que só coincidem por sorte, e a sorte acaba no dia da migração.
+
+## Próximo passo
+
+O estado atual, medido agora: o watcher escrevendo a cada 30 segundos, com a última linha às 12:04, checkpoint de 7 bytes atualizado às 08:46 de hoje e o caminho do checkpoint declarado no próprio ambiente do serviço, o que fecha a porta para o gravador voltar ao endereço antigo quando a unidade for recriada. O próximo item é aplicar o mesmo critério aos outros dois monitores que ainda tratam idade de artefato como prova de vida.
