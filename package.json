@@ -16,25 +16,27 @@
     "lint": "eslint src/ e2e/ --max-warnings 50"
   },
   "dependencies": {
-    "@astrojs/mdx": "^7.0.5",
+    "@astrojs/mdx": "^7.0.8",
     "@astrojs/rss": "^4.0.19",
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.5",
     "astro": "^7.4.13",
     "fuse.js": "^7.5.0",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.5"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
+    "@astrojs/check": "^0.9.12",
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/typography": "^0.5.20",
     "@vitest/coverage-v8": "^4.1.12",
-    "astro-eslint-parser": "^3.0.0",
-    "eslint": "^10.8.0",
-    "eslint-plugin-astro": "^3.0.1",
-    "eslint-plugin-security": "^4.0.1",
-    "playwright": "^1.62.1",
-    "typescript-eslint": "^8.65.0",
+    "astro-eslint-parser": "^3.2.0",
+    "eslint": "^10.15.0",
+    "eslint-plugin-astro": "^3.2.1",
+    "eslint-plugin-security": "^4.2.1",
+    "playwright": "^1.65.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0",
     "vitest": "^4.1.12"
   },
   "engines": {
