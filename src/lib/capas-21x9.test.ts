@@ -142,5 +142,8 @@ describe('capas 21/9', () => {
       if (!d || d.h === 0 || Math.abs(d.w / d.h - 21 / 9) > 0.05) novas.push(rel);
     }
     expect(novas).toEqual([]);
-  });
+    // Varredura de ~1300 posts x leitura de cabecalho de cada capa: 9,2s medidos no
+    // runner (run 45228055867). O teto padrao de 5s do vitest derrubava o main por
+    // tempo, nao por capa fora de 21/9.
+  }, 30_000);
 });
