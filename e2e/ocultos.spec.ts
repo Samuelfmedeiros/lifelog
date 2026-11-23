@@ -169,7 +169,13 @@ test.describe('Verificacao de ocultos no frontend', () => {
     const raw = await fs.readFile(file, 'utf-8');
     const json = raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1);
     const posts = JSON.parse(json);
-    expect(posts.length).toBeGreaterThan(0);
+    // Fila vazia e estado LEGITIMO: quando o Samuel publica o ultimo post oculto,
+    // o gen-ocultos.mjs grava `export default []` de proposito (medido 22/11 21:5x:
+    // o release do dogwalk zerou a fila e o teste acusou falha de dado sendo que o
+    // dado estava certo). O invariante que este teste protege so faz sentido com
+    // post na fila, entao ele e checado como vazio-permitido; o que NAO pode voltar
+    // e o card sem cover quando existe post.
+    test.skip(posts.length === 0, 'fila de ocultos vazia: nenhum post pendente para validar cover');
     for (const post of posts) {
       expect(Object.prototype.hasOwnProperty.call(post, 'cover')).toBe(true);
     }
