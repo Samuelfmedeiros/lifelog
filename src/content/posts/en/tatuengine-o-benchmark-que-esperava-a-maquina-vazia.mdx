@@ -1,0 +1,78 @@
+---
+title: "The benchmark was waiting for an empty machine that never came"
+description: "Two engine numbers were wrong by construction: one measured on a single thread while twelve sat idle, another that never got measured at all."
+date: 2026-11-23 00:07:00 -03:00
+pubDate: 2026-11-23 08:20:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "benchmark", "performance", "build", "metrics"]
+cover: /covers/tatuengine-o-benchmark-que-esperava-a-maquina-vazia.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The number would not add up
+
+On the night of November 22 into the 23rd I made three commits in a row on TatuEngine. None of them touched the model, the training or the weight format. All three touched the same thing: the ruler I use to measure the engine.
+
+The first symptom was not an error, it was an inconsistency. Same binary, same weight file, same machine, and numbers that disagreed with each other depending on the time of day. When three measurements of the same object disagree, the natural suspicion falls on the object. This time the object was stable and the three measurements were badly built.
+
+## The parallelism that lived in the code and not in the binary
+
+The first finding was embarrassing. The code around the heaviest loops already carried the compiler's parallelism directive. Someone, at some point, wrote that block ready to run on several cores.
+
+What did not exist was the link. No build target pulled in the parallelism library, so the directive never entered the compilation: it is conditional and, without the flag, the block compiles in sequential form. No notice, no warning, no error. The result was that the most expensive multiplication in the engine ran on one thread with twelve idle cores on the machine.
+
+The 21:07 commit on November 22 made a small, boring correction, the kind that does not look like engineering work: locate the package in the build system and link the library to the target. Measured afterwards, in the same process and under the same load, the engine went from 2.3 to 6.4 tokens per second. Numerical parity stayed identical, and that mattered more than speed: had the output changed, the gain would have come from doing something else.
+
+The lesson kept: a directive in the code is not parallelism in the binary. They are two different places, and only the second one counts.
+
+## The benchmark that waited for the machine to go idle
+
+The second finding was worse, because it affected the tool that judges every other number.
+
+The measurement script had a maximum-load parameter defaulting to 4.0. Before measuring, it looped waiting for the system load average to fall below a threshold, and the threshold was the smaller of that parameter and 35% of the cores, something close to four. If it did not drop within forty minutes, it exited with an error code without measuring anything.
+
+On this host the load average lives between 45 and 60, almost all of it from processes of other domains with no relation to the engine. The limit of four was never going to be reached. The script spent the night waiting for an empty machine that never went empty and died twice without producing a measurement. In a report, that shows up as a measurement failure, not as the bias it actually was.
+
+```python
+limite = args.max_load if args.max_load > 0 else float(nproc)
+
+t0 = time.time()
+while True:
+    load = os.getloadavg()[0]
+    if load <= limite:
+        break
+    if time.time() - t0 > args.espera:
+        return 2          # exited without measuring
+    time.sleep(15)
+```
+
+The fix, in the 00:07 commit on November 23, had three parts. The limit became the core count by default: it accepts a busy machine, but never more than one process per core. Measurement started pinning one thread by default, because measuring with twelve threads on this host is measuring the neighbours' load; the same command varied by more than twofold depending on the hour. And the system load started being written next to the result.
+
+```python
+ap.add_argument("--threads", type=int, default=1,
+                help="OMP_NUM_THREADS for the measurement; 1 = plan criterion")
+```
+
+That last point is what changed daily use the most. A number on its own says nothing. With the load beside it, you can tell "the engine got slower" apart from "the machine was busy" without archaeology.
+
+## The gain that did not survive the A/B
+
+The third commit of the night is the most instructive, because it documents a defeat.
+
+I implemented an alternative path for the multiplication, expecting it to cost less CPU per token than the default one. It was numerically equivalent, and the equivalence was checked before any conclusion. In the A/B inside the same binary, turned on and off by environment variable, the new path came out slower than the path that already existed.
+
+The decision was to keep it available behind a flag and not make it the default. The reason is written in the commit itself: converting the compact format into bytes before multiplying costs more than it saves, in the current state of the code. If that conversion is ever done differently the arithmetic may flip, but that is a hypothesis, and a hypothesis does not become a default without measurement.
+
+## Why this matters more than the number
+
+The three commits did not make the engine faster by themselves. They made the engine measurable, which is different and comes first.
+
+Before that night I had a binary without real parallelism, a script that refused to measure on this host, and the intuition that a more compact path was a faster path. Three things producing numbers that looked like results. Now there is real parallelism, there is measurement that runs on a busy machine and records the context, and there is evidence that the most obvious optimization lost to the one already in place.
+
+## Next step
+
+Repeat the pair of measurements in an idle window and compare it against the two previous nights. Only after that comparison will I decide which path becomes the default; today the default is still the one that won the A/B, and the alternative stays off until evidence says otherwise.
+
+The lesson that remains is not about C++ or about benchmarks. It is that an instrument without a test for the instrument turns into opinion with decimal places.
