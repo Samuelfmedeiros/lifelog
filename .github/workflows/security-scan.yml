@@ -69,7 +69,12 @@ jobs:
           echo "bandit:  $(command -v bandit || echo AUSENTE)"
           echo "opengrep: $(command -v opengrep || echo AUSENTE)"
       - name: Bandit scan (se houver Python)
+        # 23/11/2026 — o step anterior exporta PATH dentro do PROPRIO shell; cada
+        # step do Actions abre shell novo, entao o `bandit` de ~/.local/bin
+        # continuava invisivel aqui e o job morria com "comando nao encontrado"
+        # (exit 127, run 45091418815). PATH repetido neste step resolve.
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           if find . -name "*.py" -not -path "*/node_modules/*" | grep -q .; then
             bandit -q -r . -x "*/tests/*,*/node_modules/*" --severity-level medium
           else
