@@ -1,0 +1,66 @@
+---
+title: "A função que existia em um arquivo e faltava no outro"
+description: "Seis cenas novas de capa entraram em dois scripts irmãos. Um recebeu o helper, o outro só a chamada: sete dias compilando e quebrando na primeira execução."
+date: 2026-11-24 11:14:00 -03:00
+pubDate: 2026-11-24 13:45:00 -03:00
+project: lifelog
+tags: [lifelog, python, hash, webp, debugging]
+cover: /covers/lifelog-a-funcao-que-faltava-no-arquivo-certo.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+O gerador de capas do site vive em dois arquivos que são quase a mesma pessoa. Um é o script antigo, documentado no README, com 339 linhas. O outro é o que a rotina de fato chama, com 334 linhas. Os dois carregam a própria cópia da tabela de estilos por projeto — a mesma dupla de cores, o mesmo sufixo de prompt, os mesmos seis enquadramentos de composição. Duplicar aquilo parecia barato porque as capas mudam pouco. Na semana passada a conta chegou.
+
+## O que foi feito no dia 17
+
+O estilo do projeto yurumi tinha um único sufixo de prompt: uma cena de selva com um cogumelo bioluminescente. Em 17 de novembro, às 15h14, o commit `e16d32d` trocou isso por **seis** cenas — cachoeira, árvore com raízes tabulares, rio de água esverdeada, esporos flutuando, clareira com fungos pequenos — e passou a escolher uma delas pelo slug do post. A intenção era boa: doze capas do mesmo projeto pareciam a mesma imagem reciclada, e a variação por slug resolve isso sem ninguém escolher à mão.
+
+O bloco de estilos foi atualizado nos dois scripts, porque os dois têm o bloco. A função que faz a escolha, `_pick_suffix`, foi escrita em um deles. No outro, a chamada entrou sozinha no meio da montagem do prompt:
+
+```
+f"{_pick_suffix(style, slug)}. "
+```
+
+E a definição não entrou. Não é impressão: `git show e16d32d -- scripts/generate-cover.py | grep -c "def _pick_suffix"` devolve zero. O arquivo passou a chamar uma função que só existia do lado de lá.
+
+## Sete dias compilando
+
+O detalhe que fez isso ficar quieto tanto tempo é que a falha não é de sintaxe. `py_compile` no arquivo devolve sucesso. Um `NameError` só nasce quando aquela linha executa, e ela executa exatamente uma vez por capa — no meio da montagem do prompt, depois de ler o frontmatter e antes de chamar a API de imagem.
+
+Entre 17 e 24 de novembro entraram 28 capas novas no diretório de imagens. Todas saíram do script que tinha o helper. O arquivo quebrado era o que ficou para trás: o README ainda o descreve como "geração de capa AI via Cloudflare Worker", mas a rotina diária já tinha migrado para o outro. Ninguém notou porque o caminho quebrado não era o caminho usado. O código estava morto, e código morto quebrado não faz barulho — faz barulho no dia em que alguém o chama.
+
+## O segundo problema, no mesmo lugar
+
+Ao consertar, apareceu o problema vizinho. A escolha de composição — seis enquadramentos como "low-angle heroic perspective" e "dutch angle tilt" — usava `hash(slug) % 6`. `hash()` de string em Python é estável dentro de um processo e aleatório entre processos: o interpretador sorteia uma semente a cada execução, a não ser que `PYTHONHASHSEED` esteja fixo. Ou seja, gerar a capa duas vezes podia escolher enquadramentos diferentes sem que nada no repositório tivesse mudado.
+
+Medido, com o mesmo slug e oito sementes diferentes, `hash(slug) % 6` devolveu quatro valores distintos: 1, 2, 4 e 5. A mesma medição com md5 devolveu 2 nas oito. É a diferença entre "variação" e "sorteio": variação é o que eu quero entre projetos; sorteio é o que eu não quero entre duas execuções do mesmo projeto.
+
+O commit `6029c20`, de 24 de novembro às 11h14, fecha os dois: 17 linhas inseridas, 1 removida. O helper entra no arquivo que não tinha, e o `hash()` sai dos dois pontos.
+
+```python
+def _pick_suffix(style, slug):
+    """prompt_suffix pode ser string ou lista de variacoes.
+
+    Escolha DETERMINISTICA por slug (md5, nao hash() — hash() muda a cada
+    processo por PYTHONHASHSEED e a mesma capa sairia diferente a cada run).
+    """
+    sfx = style.get("prompt_suffix", "")
+    if isinstance(sfx, (list, tuple)):
+        if not sfx:
+            return ""
+        idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(sfx)
+        return sfx[idx]
+    return sfx
+```
+
+## O que isso muda
+
+A capa agora é função do slug e de mais nada. O mesmo post gera o mesmo prompt em qualquer máquina, em qualquer dia, sem depender de semente de interpretador. Quando a arte precisa mudar de verdade, quem muda é o conteúdo, e o nome do arquivo carrega o hash do conteúdo — o que também resolve o cache imutável que já me custou uma tarde.
+
+Mas o conserto barato não é o aprendizado caro. A causa raiz não foi `hash()`, foi a tabela de estilos copiada em dois arquivos. Quando o dado (as seis cenas) e o código que o interpreta (o helper) moram em cópias separadas, atualizar metade é uma questão de tempo: o próximo que editar o bloco vai editar o que estiver aberto na tela. Compilar verde não diz nada sobre isso, porque a função que falta não é erro de sintaxe — é erro de execução, e só na linha exata.
+
+## Próximo passo
+
+Juntar os estilos numa fonte única, lida pelos dois scripts, e um teste que monta o prompt de todos os projetos sem chamar a API de imagem. Se a chamada existir sem a definição, o teste morre em um segundo, no CI, em vez de morrer na sétima capa de um domingo. Depois disso, a duplicação dos dois arquivos pode até continuar existindo — mas sem carregar dado dentro.

@@ -1,0 +1,66 @@
+---
+title: "The function that existed in one file and was missing in the other"
+description: "Six new cover scenes went into two sibling scripts. One got the helper, the other only the call: seven days compiling and breaking on the first run."
+date: 2026-11-24 11:14:00 -03:00
+pubDate: 2026-11-24 13:45:00 -03:00
+project: lifelog
+tags: [lifelog, python, hash, webp, debugging]
+cover: /covers/lifelog-a-funcao-que-faltava-no-arquivo-certo.webp
+featured: false
+hidden: true
+lang: en
+---
+
+The cover generator for this site lives in two files that are almost the same person. One is the old script, the one the README documents, at 339 lines. The other is what the daily routine actually calls, at 334 lines. Both carry their own copy of the per-project style table: the same colour pair, the same prompt suffix, the same six composition framings. Duplicating that looked cheap because covers change rarely. Last week the bill arrived.
+
+## What happened on the 17th
+
+The yurumi project style had a single prompt suffix: a jungle scene with one bioluminescent mushroom. On 17 November, at 15:14, commit `e16d32d` replaced that with **six** scenes — a waterfall, a tree with buttress roots, a jade river, drifting spores, a clearing with small glowing mushrooms — and started picking one per post by slug. The intent was sound: twelve covers from the same project looked like the same image recycled, and per-slug variation fixes that without anyone choosing by hand.
+
+The style block was updated in both scripts, because both scripts own the block. The function that performs the pick, `_pick_suffix`, was written in one of them. In the other, only the call landed, in the middle of the prompt assembly:
+
+```
+f"{_pick_suffix(style, slug)}. "
+```
+
+The definition did not. This is not a hunch: `git show e16d32d -- scripts/generate-cover.py | grep -c "def _pick_suffix"` returns zero. The file began calling a function that only existed on the other side.
+
+## Seven days of compiling
+
+The detail that kept this quiet for so long is that the failure is not syntactic. `py_compile` on the file succeeds. A `NameError` is only born when that line executes, and it executes exactly once per cover — in the middle of building the prompt, after reading the frontmatter and before calling the image API.
+
+Between 17 and 24 November, 28 new covers landed in the images directory. Every one of them came from the script that had the helper. The broken file was the one left behind: the README still describes it as "AI cover generation via Cloudflare Worker", but the daily routine had already moved to the other one. Nobody noticed because the broken path was not the used path. Dead code that is broken makes no noise — it makes noise the day someone calls it.
+
+## The second problem, in the same place
+
+Fixing one exposed its neighbour. The composition pick — six framings such as "low-angle heroic perspective" and "dutch angle tilt" — used `hash(slug) % 6`. Python's string `hash()` is stable inside a process and random across processes: the interpreter picks a seed on every start unless `PYTHONHASHSEED` is pinned. So generating the same cover twice could select different framings with nothing in the repository having changed.
+
+Measured, with the same slug and eight different seeds, `hash(slug) % 6` returned four distinct values: 1, 2, 4 and 5. The same measurement with md5 returned 2 on all eight. That is the difference between variation and a coin toss: variation is what I want between projects; a coin toss is what I do not want between two runs of the same project.
+
+Commit `6029c20`, on 24 November at 11:14, closes both: 17 lines inserted, 1 removed. The helper enters the file that lacked it, and `hash()` leaves both call sites.
+
+```python
+def _pick_suffix(style, slug):
+    """prompt_suffix may be a string or a list of variations.
+
+    DETERMINISTIC choice by slug (md5, not hash() — hash() changes per
+    process via PYTHONHASHSEED and the same cover would differ on every run).
+    """
+    sfx = style.get("prompt_suffix", "")
+    if isinstance(sfx, (list, tuple)):
+        if not sfx:
+            return ""
+        idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(sfx)
+        return sfx[idx]
+    return sfx
+```
+
+## What this changes
+
+The cover is now a function of the slug and nothing else. The same post produces the same prompt on any machine, on any day, with no dependence on an interpreter seed. When the artwork really has to change, the content changes, and the filename carries the content hash — which also settles the immutable cache that already cost me an afternoon.
+
+But the cheap fix is not the expensive lesson. The root cause was not `hash()`, it was the style table copied across two files. When the data (the six scenes) and the code that interprets it (the helper) live in separate copies, updating half of it is a matter of time: the next person to edit the block edits whichever copy is open on screen. A green compile says nothing about this, because a missing function is not a syntax error — it is a runtime error, on the exact line.
+
+## Next step
+
+Move the styles into a single source read by both scripts, plus a test that builds the prompt for every project without calling the image API. If the call exists without the definition, the test dies in one second, in CI, instead of dying on the seventh cover of a Sunday. After that the two files can keep existing as twins — as long as they stop carrying data inside.
