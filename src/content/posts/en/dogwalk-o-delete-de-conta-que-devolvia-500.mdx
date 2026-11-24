@@ -1,0 +1,67 @@
+---
+title: "The account deletion that returned 500: when erasing becomes anonymizing"
+description: "The account deletion endpoint in Dogwalk returned 500 for any tutor who had ever booked a walk. The cause was a foreign key, and the fix changed the meaning of delete itself: instead of destroying the row, the pet is now anonymized."
+date: 2026-11-23 19:05:51 -03:00
+pubDate: 2026-11-24 16:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, lgpd, privacy, fastapi, postgres, testing]
+icon: "🐶"
+cover: /covers/dogwalk-o-delete-de-conta-que-devolvia-500.webp
+featured: false
+hidden: true
+lang: en
+---
+
+## The button that only existed on paper
+
+Every product that stores personal data needs an account deletion button. It is the first thing a privacy review asks about, and the simplest promise to make: the user asks to leave, the account disappears. In Dogwalk that button had existed since the first version of the backend, with the right HTTP verb and a proud comment claiming it was LGPD compliant.
+
+It had never been exercised against an account with history. In the automated suite, the happy path created a user, called the endpoint, got a 200 and passed. Green and false: none of those tests created a pet before requesting deletion.
+
+The test that found the problem was not a test. It was a real pipeline script running against production with a temporary account, doing what an actual tutor does in the order they do it: sign up, add a pet, book a walk, and only then decide to leave. The answer was a 500.
+
+## What the foreign key was telling me
+
+The error was not in the endpoint. It was in the database, and the database was right. The `bookings_pet_id_fkey` constraint prevents a booking row from pointing at a pet that no longer exists. The endpoint deleted the pet first, the booking became a broken reference, Postgres refused the operation, and the tutor got a server error instead of confirmation.
+
+The bookings table is not the tutor's personal data. It is business record: the history of a service that happened, information the walker on the other side also has a legitimate interest in keeping. Deleting the pet destroyed that record. Keeping the pet meant retaining the dog's name, breed, health notes and photo of a person who asked to leave.
+
+The way out was not to pick a side. It was to notice that "delete" and "anonymize" are different operations, and that privacy law asks for the second one when a business relationship exists. The row stays to preserve referential integrity; everything that identifies someone comes out of it.
+
+Commit `3ab9bc67`, from November 23, replaced the delete with an update using fixed values:
+
+```python
+await db.execute(
+    sql_update(Pet)
+    .where(Pet.tutor_id.in_(profile_ids))
+    .values(
+        name="[Pet removed]",
+        breed=None,
+        notes=None,
+        avatar_url=None,
+        is_active=False,
+    )
+)
+```
+
+Five fields, all of them carrying personal information about the animal. The row remains, the booking stays intact, and anyone reading that walk's history sees a pet without identity.
+
+## The order of operations matters more than the code
+
+Anonymizing the pet is not enough: its health records are genuinely sensitive data and can be destroyed, because no business record depends on them. The endpoint deletes the health files first, anonymizes the pet, clears the walker's blocked dates, and only then touches bookings and walks, always respecting the direction of the foreign keys.
+
+That order had already bitten the project before. On September 7 there was a first emergency fix in the same endpoint: business keys point at the profile identifier, not the user identifier, so filters found no rows and the constraint blew up. Two defects in the same place, months apart, with the same root cause: nobody had exercised the full path with real linked data.
+
+The lesson is not about SQL, it is about which kind of test finds this bug. A unit test mocks the database layer and never sees the constraint. What shipped with the fix was a regression test that creates tutor, pet and booking, calls the deletion and checks the five pet properties afterwards. The backend gate closed with 256 tests passing and 1 skipped.
+
+## The report was wrong about the login
+
+The same run produced a second finding. The script reported that login was broken in production. It was not: the test account used a password that appears in public breach lists, and Cloudflare's edge protection blocks that kind of password before the request reaches the application. The 502 the script saw was the proxy returning the edge error.
+
+A classic false positive, and the wider lesson is that the measurement instrument also needs testing. Had I believed the report, I would have spent the afternoon chasing a bug that did not exist. The fix was to create the temporary account on the spot, with a password that is in no breach list.
+
+## Why this changes the design of the product
+
+Treating deletion as selective anonymization solves today and raises a question for tomorrow: I need to know, for every field I create, whether it is personal data or business record. That is a modelling decision, not a code decision, and it has to be made when the column is born. A new field that carries identifying information and stays out of the anonymization list turns account deletion into a leak with a compliance stamp on it.
+
+The next step is to move that classification into the schema, marking each column as personal or business, and generate the anonymization update from that marking instead of keeping it hand-written. As long as it is manual, every new migration is a chance to forget a field.

@@ -1,0 +1,67 @@
+---
+title: "O delete de conta que devolvia 500: quando apagar vira anonimizar"
+description: "O endpoint de exclusão de conta do Dogwalk devolvia 500 para qualquer tutor que já tivesse agendado um passeio. A causa era uma chave estrangeira, e a correção mudou a própria definição de apagar: em vez de destruir a linha, o pet passou a ser anonimizado."
+date: 2026-11-23 19:05:51 -03:00
+pubDate: 2026-11-24 16:00:00 -03:00
+project: dogwalk
+tags: [dogwalk, lgpd, privacy, fastapi, postgres, testing]
+icon: "🐶"
+cover: /covers/dogwalk-o-delete-de-conta-que-devolvia-500.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+## O botão que existia no papel
+
+Todo produto que guarda dado de pessoa precisa de um botão de exclusão de conta. É a primeira coisa que uma revisão de privacidade pergunta, e a promessa mais simples de fazer: o usuário pede para sair, a conta some. No Dogwalk, esse botão existia desde o começo do backend, com o verbo HTTP certo e um comentário orgulhoso dizendo que era compatível com a LGPD.
+
+Ele nunca tinha sido exercitado contra uma conta com histórico. Nos testes automatizados, o caminho feliz criava um usuário, chamava o endpoint, recebia 200 e passava. Bonito, verde e falso: nenhum desses testes criava um pet antes de pedir a exclusão.
+
+O teste que descobriu o problema não era um teste. Era um script de pipeline real, rodando contra o ambiente de produção com uma conta temporária, fazendo o que um tutor de verdade faz na ordem em que ele faz: cadastra, adiciona um pet, agenda um passeio, e só então decide sair da plataforma. A resposta foi um 500.
+
+## O que a chave estrangeira estava dizendo
+
+O erro não era do endpoint. Era do banco, e o banco estava certo. A restrição `bookings_pet_id_fkey` impede que uma linha de agendamento aponte para um pet que não existe mais. O endpoint apagava o pet primeiro, o agendamento virava referência quebrada, o Postgres recusou a operação e o tutor recebeu um erro de servidor no lugar da confirmação.
+
+A tabela de agendamentos não é dado pessoal do tutor: é registro de negócio, histórico de um serviço que existiu, informação que o walker do outro lado também tem interesse legítimo em manter. Apagar o pet destruía esse registro. Preservar o pet significava manter o nome do cachorro, a raça, as observações de saúde e a foto de uma pessoa que pediu para sair.
+
+A saída não estava em escolher um dos dois lados. Estava em perceber que "apagar" e "anonimizar" são operações diferentes, e que a LGPD pede a segunda quando existe vínculo de negócio. A linha continua existindo para preservar a integridade referencial; o que sai dela é tudo que identifica alguém.
+
+O commit `3ab9bc67`, de 23 de novembro, trocou o delete por um update com valores fixos:
+
+```python
+await db.execute(
+    sql_update(Pet)
+    .where(Pet.tutor_id.in_(profile_ids))
+    .values(
+        name="[Pet removido]",
+        breed=None,
+        notes=None,
+        avatar_url=None,
+        is_active=False,
+    )
+)
+```
+
+Cinco campos, todos os que carregavam informação pessoal do animal. A linha permanece, o agendamento permanece íntegro, e quem consultar o histórico daquele passeio vê um pet sem identidade.
+
+## A ordem das operações importa mais que o código
+
+Não basta anonimizar o pet: os registros de saúde dele são dado sensível de verdade e podem ser destruídos, porque nenhum registro de negócio depende deles. O endpoint apaga primeiro as fichas de saúde, anonimiza o pet, limpa as datas de indisponibilidade do walker e só no fim mexe em agendamentos e passeios, respeitando a direção das chaves estrangeiras.
+
+Essa ordem já tinha mordido o projeto antes. Em 07 de setembro houve um primeiro conserto de emergência no mesmo endpoint: as chaves de negócio apontam para o identificador de perfil e não para o de usuário, então os filtros não encontravam linha nenhuma e a restrição estourava. Dois defeitos no mesmo lugar, com meses de diferença e a mesma causa de fundo: ninguém tinha exercitado o caminho completo com dados reais.
+
+O aprendizado não é sobre SQL, é sobre o tipo de teste que encontra esse bug. Um teste unitário mocka a camada de banco e nunca vê a restrição. O que entrou junto com a correção foi um teste de regressão que cria tutor, pet e agendamento, chama a exclusão e verifica as cinco propriedades do pet depois da operação. O gate do backend fechou com 256 testes passando e 1 pulado.
+
+## O relatório estava errado sobre o login
+
+A mesma rodada trouxe um segundo achado. O script reportou que o login estava quebrado em produção. Não estava: a conta de teste usava uma senha que aparece em listas públicas de credenciais vazadas, e a proteção de borda da Cloudflare bloqueia esse tipo de senha antes de a requisição chegar na aplicação. O 502 que o script viu era o proxy devolvendo o erro do edge.
+
+Isso é falso positivo clássico de ferramenta de verificação, e a lição é mais larga: o instrumento de medição também precisa ser testado. Se eu tivesse acreditado no relatório, teria passado a tarde caçando um bug de autenticação inexistente. A correção foi usar uma conta temporária criada na hora, com senha que não está em vazamento nenhum.
+
+## Por que isso muda o desenho do produto
+
+Tratar exclusão como anonimização seletiva resolve o presente e abre uma pergunta para o futuro: eu preciso saber, para cada campo que criar, se ele é dado pessoal ou registro de negócio. É decisão de modelagem, não de código, e tem que ser tomada quando a coluna nasce. Um campo novo que carregue informação identificável e fique fora da lista de anonimização transforma a exclusão de conta em vazamento com carimbo de conformidade.
+
+O próximo passo é levar essa classificação para o schema, marcando cada coluna como pessoal ou de negócio, e gerar o update de anonimização a partir dessa marcação em vez de mantê-lo escrito à mão. Enquanto for manual, toda migração nova é uma chance de esquecer um campo.
