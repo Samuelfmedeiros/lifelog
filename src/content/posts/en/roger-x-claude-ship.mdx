@@ -1,13 +1,13 @@
 ---
 title: "Roger vs. Claude Ship: the reviewer that measures before it approves"
-description: "Anthropic launched Claude Ship on 11/23. Roger already ran evidence-gated review: certificate APTO 110/110 and selftest 46/46, measured 11/24."
+description: "Anthropic launched Claude Ship on 11/23. Roger already ran evidence-gated review: certificate APTO 100/100 and selftest 46/46, measured 11/24."
 date: 2026-11-23 12:00:00 -03:00
 pubDate: 2026-11-24
 project: descobertas
 tags: [descobertas, agents, code-review, llm, testing]
 cover: '/covers/roger-x-claude-ship.webp'
 featured: false
-hidden: true
+hidden: false
 lang: 'en'
 ---
 
@@ -40,12 +40,12 @@ It is worth being precise about what existed before Ship, and where that is docu
 
 One methodological note: the versioned repository starts on **10/15**, because of a restore. The September dates come from the live engine header (`loop_orchestrator_unified.py`, lines 66–76), not from a commit. So the accurate phrasing is "documented since 09/02", never "committed on 09/02". That distinction matters when someone audits this later.
 
-And the day after the launch, **11/24**, Roger gained what was missing for the comparison to be fair:
+And the day after the launch, **11/24**, Roger gained what was missing to complete the comparison:
 
 - `review_comments[]` — every finding with **file:line** and severity **Important / Nit / Pre-existing**;
 - an approval policy in **observe-only**: it suggests, it does not approve;
 - a comparator, to measure Roger against another reviewer on the same diff;
-- a `roger-qualidade.py` certificate: **APTO 110/110**, selftest **46/46**, **10 new tests**. Measured on 11/24.
+- a `roger-qualidade.py` certificate: **APTO 100/100**, selftest **46/46**, **10 new tests**. Measured on 11/24.
 
 ## 4. Side by side
 
@@ -65,7 +65,7 @@ And the day after the launch, **11/24**, Roger gained what was missing for the c
 
 **Human decision by architecture, not by configuration.** Roger does not approve, push, merge or deploy. It is not a checkbox someone unticks on a settings screen — the absence of those capabilities *is* the design.
 
-**Verdict with evidence, fail-closed.** The score runs from 0 to 100 and every gap arrives with file:line. When measurement fails, the result is a block — 110/110 on the certificate and 46/46 on the selftest, measured 11/24, not a README promise.
+**Verdict with evidence, fail-closed.** The score runs from 0 to 100 and every gap arrives with file:line. When measurement fails, the result is a block — 100/100 on the certificate and 46/46 on the selftest, measured 11/24, not a README promise.
 
 **Predictable cost.** There is no per-agent charge. The spend is the model I already pay for, and the number does not move because the repository grew or because someone opened one more PR.
 
@@ -80,6 +80,6 @@ The path now is running the comparator on real diffs and publishing the result w
 <Terminal commands={[
   { cmd: 'sed -n "66,76p" loop_orchestrator_unified.py', description: 'Engine header: v2 lineage (09/02) and v3 (09/03)' },
   { cmd: 'sed -n "4903,4995p" loop_orchestrator_unified.py', description: '_anexar_estado_main — real conflict via merge-tree, merge stays human' },
-  { cmd: 'python3 roger-qualidade.py --atestado', description: 'Quality certificate: APTO 110/110, measured 11/24' },
+  { cmd: 'python3 roger-qualidade.py --atestado', description: 'Quality certificate: APTO 100/100, measured 11/24' },
   { cmd: 'jq ".[-1].review_comments" state/roger.json', description: 'Latest findings with file:line and severity' }
 ]} />

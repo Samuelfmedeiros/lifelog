@@ -1,13 +1,13 @@
 ---
 title: "Roger × Claude Ship: o review que mede antes de aprovar"
-description: "A Anthropic lançou o Claude Ship em 23/11. O Roger já fazia review com evidência e fail-closed: atestado APTO 110/110 e selftest 46/46, medido em 24/11."
+description: "A Anthropic lançou o Claude Ship em 23/11. O Roger já fazia review com evidência e fail-closed: atestado APTO 100/100 e selftest 46/46, medido em 24/11."
 date: 2026-11-23 12:00:00 -03:00
 pubDate: 2026-11-24
 project: descobertas
 tags: [descobertas, agents, code-review, llm, testing]
 cover: '/covers/roger-x-claude-ship.webp'
 featured: false
-hidden: true
+hidden: false
 lang: 'pt'
 ---
 
@@ -40,12 +40,12 @@ Vale ser preciso sobre o que existia antes do Ship, e sobre onde isso está docu
 
 Uma nota de método: o repositório versionado começa em **15/10**, por causa de um restore. As datas de setembro vêm do cabeçalho do motor vivo (`loop_orchestrator_unified.py`, linhas 66–76), não de commit. Então o certo é "documentado desde 02/09", nunca "commitado em 02/09". A diferença importa quando alguém for auditar isso depois.
 
-E no dia seguinte ao lançamento, **24/11**, o Roger ganhou o que faltava para a comparação ficar honesta:
+E no dia seguinte ao lançamento, **24/11**, o Roger ganhou o que faltava para fechar a comparação:
 
 - `review_comments[]` — cada apontamento com **arquivo:linha** e severidade **Important / Nit / Pre-existing**;
 - política de aprovação em **observe-only**: ele sugere, não aprova;
 - um comparador, para medir Roger contra outro revisor no mesmo diff;
-- atestado `roger-qualidade.py`: **APTO 110/110**, selftest **46/46**, **10 testes novos**. Medido em 24/11.
+- atestado `roger-qualidade.py`: **APTO 100/100**, selftest **46/46**, **10 testes novos**. Medido em 24/11.
 
 ## 4. Lado a lado
 
@@ -65,7 +65,7 @@ E no dia seguinte ao lançamento, **24/11**, o Roger ganhou o que faltava para a
 
 **Decisão humana por arquitetura, não por configuração.** O Roger não aprova, não faz push, não mergeia, não deploya. Não é uma caixa que alguém desmarca numa tela de settings — a ausência dessas capacidades é o desenho.
 
-**Veredito com evidência e fail-closed.** A nota vai de 0 a 100 e cada gap vem com arquivo:linha. Quando a medição falha, o resultado é bloqueio — 110/110 no atestado e 46/46 no selftest, medidos em 24/11, não uma promessa de README.
+**Veredito com evidência e fail-closed.** A nota vai de 0 a 100 e cada gap vem com arquivo:linha. Quando a medição falha, o resultado é bloqueio — 100/100 no atestado e 46/46 no selftest, medidos em 24/11, não uma promessa de README.
 
 **Custo previsível.** Não há cobrança por agente. O gasto é o modelo que eu já pago, e o número não muda porque o repositório cresceu ou porque alguém abriu mais um PR.
 
@@ -80,6 +80,6 @@ O caminho agora é rodar o comparador em diffs reais e publicar o resultado com 
 <Terminal commands={[
   { cmd: 'sed -n "66,76p" loop_orchestrator_unified.py', description: 'O cabeçalho do motor: linhagem v2 (02/09) e v3 (03/09)' },
   { cmd: 'sed -n "4903,4995p" loop_orchestrator_unified.py', description: '_anexar_estado_main — conflito real com merge-tree, merge segue humano' },
-  { cmd: 'python3 roger-qualidade.py --atestado', description: 'Atestado de qualidade: APTO 110/110, medido em 24/11' },
+  { cmd: 'python3 roger-qualidade.py --atestado', description: 'Atestado de qualidade: APTO 100/100, medido em 24/11' },
   { cmd: 'jq ".[-1].review_comments" state/roger.json', description: 'Últimos apontamentos com arquivo:linha e severidade' }
 ]} />
