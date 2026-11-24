@@ -1,0 +1,85 @@
+---
+title: "Roger vs. Claude Ship: the reviewer that measures before it approves"
+description: "Anthropic launched Claude Ship on 11/23. Roger already ran evidence-gated review: certificate APTO 110/110 and selftest 46/46, measured 11/24."
+date: 2026-11-23 12:00:00 -03:00
+pubDate: 2026-11-24
+project: descobertas
+tags: [descobertas, agents, code-review, llm, testing]
+cover: '/covers/roger-x-claude-ship.webp'
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## 1. The day Anthropic shipped a reviewer
+
+On November 23 Anthropic launched **Claude Ship**: Code Review in GA, PR Steward and Approvals in beta, all of it inside GitHub and the Team and Enterprise plans.
+
+It is a good package. Polished, with auto-fix ready to go — PR Steward pushes the fix, Approvals approves it, and the check run shows up on the pull request like any other gate. If you have never built a code reviewer, you look at that and assume the problem is solved.
+
+I looked at it and recognized most of the parts. They had been running here for months.
+
+## 2. Context: why Roger exists
+
+Roger came out of the delivery loop for my projects. The problem was never "have an AI reviewer" — it was having a reviewer that works on **any** of my repositories, with no GitHub App, no Team plan, no shipping code into someone else's infrastructure, and no per-agent token bill for models I already run locally.
+
+It is the engine that closes the cycle: it takes the delivery, runs the critic, measures, scores, attaches evidence and decides whether the thing may move forward. When it may not, it does not fix it. It explains it — cause, suggested correction, rollback — for a person to decide.
+
+That last sentence is the whole architecture. It is not a setting you can flip off in a panel.
+
+## 3. What was already in the code — with dates
+
+It is worth being precise about what existed before Ship, and where that is documented.
+
+- **09/02 — v2**: campaign branch, KB, regressions. The reviewer stopped being a script with an opinion and became a cycle with memory of what had already failed.
+- **09/03 — v3**: A+B+C panel, auto-heal, coverage. The engine learned to recover from a stuck phase instead of dying quietly.
+- **11/02 — `_anexar_estado_main`** (lines 4903–4995 of the engine): measures **real** conflict with `merge-tree`, classifies what arrived as delivery, dirt or resurrection, and recommends. The merge stays human.
+- **11/10 — dual axis Standards × Spec, fail-closed**: two independent evaluation axes. If one of them cannot measure, the verdict is not "approved with reservations" — it is blocked.
+
+One methodological note: the versioned repository starts on **10/15**, because of a restore. The September dates come from the live engine header (`loop_orchestrator_unified.py`, lines 66–76), not from a commit. So the accurate phrasing is "documented since 09/02", never "committed on 09/02". That distinction matters when someone audits this later.
+
+And the day after the launch, **11/24**, Roger gained what was missing for the comparison to be fair:
+
+- `review_comments[]` — every finding with **file:line** and severity **Important / Nit / Pre-existing**;
+- an approval policy in **observe-only**: it suggests, it does not approve;
+- a comparator, to measure Roger against another reviewer on the same diff;
+- a `roger-qualidade.py` certificate: **APTO 110/110**, selftest **46/46**, **10 new tests**. Measured on 11/24.
+
+## 4. Side by side
+
+| | Claude Ship | Roger |
+|---|---|---|
+| Where it runs | GitHub + Anthropic infrastructure | self-hosted, any repository |
+| Review | inline AI review on the PR | deterministic critic + evidence gate (0–100 score, gaps with file:line) |
+| Fixing | PR Steward pushes the corrections | no self-fix: handoff with cause, correction and rollback |
+| Approval | Approvals can approve (enforce) | suggests only (observe); a human decides |
+| Billing | organization tokens | zero per agent — the LLMs I already have |
+| Audit trail | check run on GitHub | local state + JSONL + certificate |
+| Lock-in | GitHub App, Team/Enterprise plan | none |
+
+## 5. Why Roger wins
+
+**Sovereignty.** It runs on my machine. No GitHub App, no Team plan, no installing an app on someone else's repository just to review my own code.
+
+**Human decision by architecture, not by configuration.** Roger does not approve, push, merge or deploy. It is not a checkbox someone unticks on a settings screen — the absence of those capabilities *is* the design.
+
+**Verdict with evidence, fail-closed.** The score runs from 0 to 100 and every gap arrives with file:line. When measurement fails, the result is a block — 110/110 on the certificate and 46/46 on the selftest, measured 11/24, not a README promise.
+
+**Predictable cost.** There is no per-agent charge. The spend is the model I already pay for, and the number does not move because the repository grew or because someone opened one more PR.
+
+**Auditable and reversible.** State, JSONL, locks, backup and rollback. I can reconstruct why a delivery passed, exactly what changed and how to undo it.
+
+Ship has polish and auto-fix ready to use, and that is a real advantage for anyone living inside GitHub. The difference here is not having more features — it is having less surface for automatic decisions and more predictability about what happens to my code.
+
+## 6. Next steps
+
+The path now is running the comparator on real diffs and publishing the result with its measurement date — including the cases where Roger is wrong. After that, the goal is closing the observe-only loop with a divergence history: how many suggestions the human accepted, how many were rejected, and why. A reviewer that only reports wins is not auditable. It is marketing.
+
+<Terminal commands={[
+  { cmd: 'sed -n "66,76p" loop_orchestrator_unified.py', description: 'Engine header: v2 lineage (09/02) and v3 (09/03)' },
+  { cmd: 'sed -n "4903,4995p" loop_orchestrator_unified.py', description: '_anexar_estado_main — real conflict via merge-tree, merge stays human' },
+  { cmd: 'python3 roger-qualidade.py --atestado', description: 'Quality certificate: APTO 110/110, measured 11/24' },
+  { cmd: 'jq ".[-1].review_comments" state/roger.json', description: 'Latest findings with file:line and severity' }
+]} />
