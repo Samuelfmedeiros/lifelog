@@ -1,0 +1,72 @@
+---
+title: "O currículo que qualquer visitante baixava sem deixar rastro"
+description: "Quatro variantes do PDF do currículo respondiam 200 direto do CDN, fora do fluxo de consentimento e fora do registro de downloads. O guard existia desde setembro — mas reconhecia nomes, não a família."
+date: 2026-11-24 01:05:00 -03:00
+pubDate: 2026-11-24 01:05:00 -03:00
+project: portfolio
+tags: ["portfolio", "seguranca", "lgpd", "privacidade", "nextjs", "proxy"]
+cover: /covers/portfolio-o-curriculo-que-qualquer-um-baixava.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## Quatro endereços que respondiam sem passar pelo portão
+
+Na madrugada de 22 de novembro de 2026, uma varredura de rotas no Portfólio encontrou quatro arquivos que respondiam `200` com `Content-Type: application/pdf` diretamente do CDN. Não eram páginas, não eram erros de cache: eram as variantes do meu currículo, servidas como arquivo estático, sem passar pelo fluxo que o site usa para entregá-lo.
+
+Os tamanhos medidos naquele momento foram 21.025, 20.918, 19.717 e 19.762 bytes. Quatro arquivos distintos, quatro respostas diretas. O download legítimo do currículo passa por um `POST` que registra consentimento e grava a solicitação; o que a varredura encontrou era o mesmo PDF chegando por uma porta lateral, sem consentimento registrado, sem registro de download e sem qualquer sinal de que alguém havia baixado.
+
+O detalhe que dói: existia um guard para exatamente isso. Ele só não cobria os nomes novos.
+
+## O guard que já tinha sido furado uma vez
+
+A primeira versão do guard nasceu em 7 de setembro de 2026, quando descobri que os PDFs respondiam direto do CDN. A solução da época foi simples e óbvia: uma lista com os dois nomes de arquivo que existiam e um `matcher` restrito a esses caminhos.
+
+Seis dias depois, em 13 de setembro, a lista estava sendo furada pelo caminho mais banal possível: percent-encoding. O mesmo arquivo, com uma letra codificada no nome do caminho, respondia `200` com 70.968 bytes e um MD5 idêntico ao do arquivo do repositório. O `matcher` comparava o caminho cru; qualquer re-encoding do mesmo nome escapava dele, e o guard nem era invocado. Comparar strings exatas com um caminho que o servidor normaliza depois é apostar que ninguém vai codificar nada — aposta perdida por definição.
+
+A cura daquela vez foi estrutural: o guard passou a rodar em toda requisição, sem `matcher` restritivo, e a comparação deixou de olhar o caminho cru. O caminho passou a ser normalizado por decodificação repetida até o ponto fixo, com colapso de segmentos `.` e `..`, barras duplicadas reduzidas e tudo em minúsculas. Assim, `/public/…`, `/%2e%2e/…` e qualquer variante codificada caem na mesma forma canônica antes de serem comparados.
+
+```ts
+function normalizar(caminho: string): string {
+  let atual = caminho
+  let anterior = ''
+  while (atual !== anterior) {        // decodifica até parar de mudar
+    anterior = atual
+    atual = decodeURIComponent(atual)
+  }
+  return colapsarSegmentos(atual).toLowerCase()
+}
+```
+
+## O que os nomes novos tinham de diferente
+
+O furo de 22 de novembro não foi de encoding. Foi de vocabulário.
+
+As variantes novas colocaram o segmento da especialidade antes do ano: uma para dados, uma para full stack, e as versões em inglês de cada uma. O guard ainda tinha duas listas — uma de nomes exatos e uma expressão regular que exigia o ano logo depois do sobrenome. Os quatro nomes novos simplesmente não casavam com nenhuma das duas. O guard não estava quebrado; estava desatualizado, que é pior, porque passa em todos os testes e dá a sensação de cobertura.
+
+A correção foi trocar a pergunta. Em vez de "este nome está na lista?", o guard passou a perguntar "este nome pertence à família do currículo?". O teste é feito sobre o basename já normalizado: começa com a família do currículo e termina em `.pdf`. Qualquer variante futura, com qualquer sufixo de especialidade, cai na mesma regra sem precisar de uma linha nova.
+
+```ts
+// regra por família: sobrevive a variantes que ainda não existem
+const CV_PDF_PATTERN = /^samuel[_\-\s]?andrade.*\.pdf$/
+
+// a regex antiga exigia o ano logo depois do sobrenome
+const regexAntiga = /^samuel_andrade(_resume)?_2026/
+```
+
+O contrato de regressão cresceu junto. O teste que protege essa decisão passou a cobrir os dez vetores com encoding no caminho, as variantes da versão em inglês e os quatro nomes novos que a varredura encontrou. Medido hoje: `npx playwright test cv-direct-pdf-guard --list` lista 17 testes nesse arquivo — e a primeira asserção é de vida, justamente para que um servidor morto não transforme bloqueio em passe vazio.
+
+## Por que isso importa mais do que parece
+
+Um currículo é feito para ser lido. O objetivo do guard nunca foi esconder o PDF: é garantir que o download passe pelo fluxo que registra consentimento, guarda a solicitação e dispara a notificação. Um arquivo estático entregue direto pelo CDN cumpre a primeira parte e ignora as outras duas — e ninguém fica sabendo que o download aconteceu.
+
+Isso é o tipo de falha que não aparece em revisão de código nem em teste de unidade, porque o código está correto. O que está errado é a premissa: a de que a lista de nomes de hoje descreve os arquivos de amanhã. Guard por lista envelhece a cada arquivo novo; guard por família envelhece só quando o formato inteiro muda.
+
+A prova final não é teste verde no CI: é a resposta da produção. Medido hoje com `curl` no domínio próprio, os quatro PDFs das variantes novas e a versão com letra codificada no caminho respondem `404` com `0 bytes` — nenhum byte de PDF saindo do CDN. O contrato novo entrou sem quebrar nenhum dos testes que já existiam, que é a única prova que importa para saber se ele cabe no projeto.
+
+## O próximo passo
+
+A regra por família precisa sair do caso isolado e virar critério: qualquer arquivo estático que só deveria existir atrás de um fluxo com consentimento tem que ser protegido por padrão, não por lista de nomes. O próximo trabalho é varrer o restante dos assets públicos com essa pergunta e transformar cada resposta em contrato de teste — antes que o próximo nome novo apareça.

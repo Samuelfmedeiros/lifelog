@@ -1,0 +1,72 @@
+---
+title: "The résumé anyone could download without leaving a trace"
+description: "Four variants of the résumé PDF answered 200 straight from the CDN, outside the consent flow and outside the download log. The guard existed since September — it recognized names, not the family."
+date: 2026-11-24 01:05:00 -03:00
+pubDate: 2026-11-24 01:05:00 -03:00
+project: portfolio
+tags: ["portfolio", "security", "lgpd", "privacy", "nextjs", "proxy"]
+cover: /covers/portfolio-o-curriculo-que-qualquer-um-baixava.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+import Terminal from '../../../components/TerminalWidget.astro'
+
+## Four addresses that answered without passing the gate
+
+In the early hours of November 22, 2026, a route sweep on the portfolio site found four files answering `200` with `Content-Type: application/pdf` directly from the CDN. They were not pages and not cache artifacts: they were variants of my résumé, served as static assets, skipping the flow the site uses to deliver it.
+
+The measured sizes at that moment were 21,025, 20,918, 19,717 and 19,762 bytes. Four distinct files, four direct responses. A legitimate résumé download goes through a `POST` that records consent and stores the request; what the sweep found was the same PDF arriving through a side door, with no consent on record, no download entry and no signal that anyone had taken it.
+
+The painful part: a guard for exactly this had existed since September. It just did not cover the new names.
+
+## The guard that had already been bypassed once
+
+The first version of the guard shipped on September 7, 2026, the day I found the PDFs answering directly from the CDN. The fix was obvious: a list with the two filenames that existed at the time and a matcher restricted to those paths.
+
+Six days later, on September 13, the list was being bypassed in the most banal way possible: percent-encoding. The same file, with one letter encoded in the path, answered `200` with 70,968 bytes and an MD5 identical to the copy in the repository. The matcher compared the raw path, so any re-encoding of the same filename escaped it and the guard was never even invoked. Comparing exact strings against a path the server normalizes later is a bet that nobody will ever encode anything — a bet lost by definition.
+
+That fix was structural. The guard started running on every request, with no restrictive matcher, and the comparison stopped looking at the raw path. Paths are now normalized by repeated decoding until they reach a fixed point, with `.` and `..` segments collapsed, duplicate slashes reduced and everything lowercased. `/public/…`, `/%2e%2e/…` and every encoded variant land on the same canonical form before any comparison happens.
+
+```ts
+function normalize(path: string): string {
+  let current = path
+  let previous = ''
+  while (current !== previous) {      // decode until it stops changing
+    previous = current
+    current = decodeURIComponent(current)
+  }
+  return collapseSegments(current).toLowerCase()
+}
+```
+
+## What the new names had in common
+
+The November 22 hole was not about encoding. It was about vocabulary.
+
+The new variants put the specialty segment before the year: one for data, one for full stack, plus the English versions of each. The guard still carried two lists — one of exact names and a regular expression that demanded the year immediately after the surname. None of the four new names matched either of them. The guard was not broken; it was out of date, which is worse, because it passes every test and creates the illusion of coverage.
+
+The fix changed the question. Instead of asking "is this name on the list?", the guard now asks "does this name belong to the résumé family?". The check runs on the already-normalized basename: it starts with the résumé family and ends in `.pdf`. Any future variant, with any specialty suffix, falls under the same rule without a new line of code.
+
+```ts
+// family rule: survives variants that do not exist yet
+const CV_PDF_PATTERN = /^samuel[_\-\s]?andrade.*\.pdf$/
+
+// the old regex demanded the year right after the surname
+const oldRegex = /^samuel_andrade(_resume)?_2026/
+```
+
+The regression contract grew with it. The test protecting that decision now covers the ten encoded-path vectors, the variants of the English version and the four new names the sweep found. Measured today: `npx playwright test cv-direct-pdf-guard --list` lists 17 tests in that file — and the very first assertion is a liveness check, precisely so a dead server cannot turn a block into a vacuous pass.
+
+## Why this matters more than it looks
+
+A résumé is meant to be read. The point of the guard was never to hide the PDF: it is to make sure the download goes through the flow that records consent, stores the request and fires the notification. A static file handed straight from the CDN does the first part and ignores the other two — and nobody learns that the download happened.
+
+This is the kind of failure that never shows up in code review or unit tests, because the code is correct. What is wrong is the premise: that today's list of names describes tomorrow's files. A list-based guard ages with every new file; a family-based guard ages only when the whole format changes.
+
+The final proof is not a green CI run: it is production's answer. Measured today with `curl` against the custom domain, the four PDFs of the new variants and the copy with an encoded letter in the path all answer `404` with `0 bytes` — not a single PDF byte leaving the CDN. The new contract landed without breaking any of the tests that already existed, which is the only proof that matters when deciding whether it fits the project.
+
+## What comes next
+
+The family rule has to leave the isolated case and become the criterion: any static file that should only exist behind a consent flow must be protected by pattern, not by name. The next task is to sweep the remaining public assets with that question and turn each answer into a test contract — before the next new filename shows up.
