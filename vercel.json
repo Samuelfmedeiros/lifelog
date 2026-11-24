@@ -3,6 +3,26 @@
   "buildCommand": "pnpm run build",
   "redirects": [
     {
+      "source": "/post/roger-x-claude-ship",
+      "destination": "/post/ai-teste-loop-x-claude-ship",
+      "permanent": true
+    },
+    {
+      "source": "/post/roger-x-claude-ship/",
+      "destination": "/post/ai-teste-loop-x-claude-ship",
+      "permanent": true
+    },
+    {
+      "source": "/en/post/roger-x-claude-ship",
+      "destination": "/en/post/ai-teste-loop-x-claude-ship",
+      "permanent": true
+    },
+    {
+      "source": "/en/post/roger-x-claude-ship/",
+      "destination": "/en/post/ai-teste-loop-x-claude-ship",
+      "permanent": true
+    },
+    {
       "source": "/post/ollama-truncation-loop",
       "destination": "/post/ollama-truncation-loop-4096",
       "permanent": true
@@ -73,8 +93,14 @@
       "source": "/ocultos/preview/:lang/:slug/",
       "destination": "/api/preview?lang=:lang&slug=:slug"
     },
-    { "source": "/analytics/op1.js", "destination": "https://openpanel.seu.pet/op1.js" },
-    { "source": "/api/op/:path*", "destination": "https://openpanel.seu.pet/api/:path*" }
+    {
+      "source": "/analytics/op1.js",
+      "destination": "https://openpanel.seu.pet/op1.js"
+    },
+    {
+      "source": "/api/op/:path*",
+      "destination": "https://openpanel.seu.pet/api/:path*"
+    }
   ],
   "headers": [
     {
