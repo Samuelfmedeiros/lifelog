@@ -1,0 +1,74 @@
+---
+title: "The backup that existed while the dashboard kept painting it red"
+description: "The backup ran at 3:20 AM, the file was in Drive, and the dashboard said red: the source of truth was the journal, which this host erases."
+category: samuel-projects
+date: 2026-11-22 10:42:00 -03:00
+pubDate: 2026-11-24 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "backup", "sqlite", "bash", "cron", "devops"]
+icon: "🐷"
+cover: /covers/capivara-o-backup-que-o-journal-esqueceu.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The red card on a Sunday morning
+
+Sunday morning, the Capivara dashboard opened with the backup card in red. The text said, in short, that there was no recent backup. Except the backup had run at 3:20 AM that same day, the 30 MB file was sitting in Drive, and the local copy was in the backup directory with a date and time in its name. The work was done. The dashboard was the one lying.
+
+That is the worst kind of alarm: it does not say something broke, it says the instrument broke. Once a dashboard screams for no reason, nobody believes it when it screams for a reason.
+
+## What was actually happening
+
+The health check looked for the string `R2 sync successful` in the systemd journal, within a 26 hour window. Found it, green. Did not find it, red. The catch is that this host keeps a short journal retention and runs vacuum.
+
+The measurement was direct: `journalctl -t capivara-backup` returned not a single line, while the file `capivara_20261124_032011.db` was right there, 31,264,768 bytes, replicated on the second disk copy. No error. The record had been deleted by the same system that was supposed to keep it.
+
+There was a second trap, older than the first. The script located `rclone` with `command -v`, and on this host the binary lives in `/usr/sbin`, which is not in the cron PATH. The result was an `exit 3` reporting "no rclone remote", even with the `gdrive:` remote configured and working. The error named the wrong cause: the remote was not missing, the binary was.
+
+And a third one, quieter. Remote retention ended with `|| true`. If the command failed, the failure was swallowed and the script moved straight to `exit 0`. Cleaning files older than 30 days could have never run, and the log claimed everything was fine.
+
+## The fix: durable state instead of volatile logs
+
+The fix in commit `89408cc` was to change the source of truth. The backup script itself now writes a JSON state file every time it finishes, success or failure:
+
+```bash
+status_json() {  # $1=ok|fail  $2=message
+  local st="$1" msg="$2"
+  printf '{"ts":"%s","status":"%s","file":"%s","remote":"%s","msg":"%s"}\n' \
+    "$(date -Iseconds)" "$st" "$(basename "${OUT:-}")" "${REMOTE:-}" \
+    "$(printf '%s' "$msg" | tr -d '"' | tr '\n' ' ')" \
+    > "$LOCAL_BACKUP_DIR/last-backup.json"
+}
+```
+
+The dashboard stopped interrogating the journal and started reading that file. The journal remains as a secondary trail, used only when the JSON is absent. And the reader checks the age of the record before trusting it, because an old backup with status `ok` is not a good backup:
+
+```python
+idade_h = (time.time() - datetime.fromisoformat(ts).timestamp()) / 3600
+if idade_h > max_age_hours:
+    return {"online": False, "error": f"ultimo backup tem {idade_h:.1f}h"}
+if st.get("status") == "ok":
+    return {"online": True, "detail": f"{st.get('file')} -> {st.get('remote')}"}
+```
+
+If the file is unreadable, the exception is not swallowed: it becomes the error text the card displays. A silent `except` here would have recreated exactly the problem the change was meant to solve.
+
+`rclone` is now resolved through a list of candidate paths, with distinct messages for "binary not found" and "binary found, but no remote". Remote retention replaced `|| true` with an explicit check: on failure it writes one journal line stating that old files are still there, without polluting the stdout of the silent job.
+
+## Redundancy while the offsite is unavailable
+
+The Google offsite was down with a revoked credential, so the only real protection was a single disk. Commit `c5d04d7` added a second physical copy on another disk, rotated over the same 7 slots as the local copy, without hiding the offsite result. Today's measured state: the file `capivara_20261124_032011.db` exists in both copies and the JSON records `status: ok` at 03:21, targeting `gdrive:Projetos/Capivara/backups`.
+
+## A test that only failed in the full suite
+
+The same commit carried an unrelated finding. The release suite had 6 tests ending in 401: the token was set through `os.environ.setdefault` at import time, and the `conftest` isolation wiped the variable before the test ran. The token now enters through a `monkeypatch` fixture, and the result went to 8 of 8. The health tests closed at 19 green cases, three of them covering a fresh JSON, an expired JSON and a failing JSON.
+
+## What this changes
+
+Monitoring that reads a volatile log measures the system's memory, not the work performed. The gap shows up on the day the log is erased, which is always the day someone needs it. A state file written by the producer of the event turns the dashboard into an observer of the fact itself.
+
+## Next step
+
+What remains is watching for the Google offsite to come back, since it is currently blocked by a revoked credential. The second disk copy covers redundancy in the meantime, but the goal is still three destinations: local, secondary disk and remote. When the offsite returns, the check is simple: the next backup JSON must record the remote target, and the file count in the bucket must grow.
