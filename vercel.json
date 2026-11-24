@@ -73,6 +73,46 @@
       "permanent": true
     },
     {
+      "source": "/terms",
+      "destination": "/en/terms",
+      "permanent": true
+    },
+    {
+      "source": "/terms/",
+      "destination": "/en/terms",
+      "permanent": true
+    },
+    {
+      "source": "/privacy",
+      "destination": "/en/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/privacy/",
+      "destination": "/en/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/en/termos",
+      "destination": "/termos",
+      "permanent": true
+    },
+    {
+      "source": "/en/termos/",
+      "destination": "/termos",
+      "permanent": true
+    },
+    {
+      "source": "/en/privacidade",
+      "destination": "/privacidade",
+      "permanent": true
+    },
+    {
+      "source": "/en/privacidade/",
+      "destination": "/privacidade",
+      "permanent": true
+    },
+    {
       "source": "/(.*)",
       "has": [
         {
