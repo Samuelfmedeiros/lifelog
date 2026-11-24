@@ -8,6 +8,7 @@ Uso:
   python3 generate_cover.py --all            # Gera capas para todos sem capa
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -148,6 +149,21 @@ def _extract_title_from_mdx(slug):
     return fm.get("title", None)
 
 
+def _pick_suffix(style, slug):
+    """prompt_suffix pode ser string ou lista de variacoes.
+
+    Escolha DETERMINISTICA por slug (md5, nao hash() — hash() muda a cada
+    processo por PYTHONHASHSEED e a mesma capa sairia diferente a cada run).
+    """
+    sfx = style.get("prompt_suffix", "")
+    if isinstance(sfx, (list, tuple)):
+        if not sfx:
+            return ""
+        idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(sfx)
+        return sfx[idx]
+    return sfx
+
+
 def generate_cover(slug, project="descobertas", title=None, force=False):
     """Generate cover image via Cloudflare Worker."""
     os.makedirs(COVERS_DIR, exist_ok=True)
@@ -183,7 +199,7 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "Low-angle heroic perspective, dramatic lighting, towering elements",
         "Dutch angle tilt, asymmetric balance, tension in framing",
     ]
-    comp_idx = hash(slug) % len(compositions)
+    comp_idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(compositions)
     composition = compositions[comp_idx]
 
     # --- Project-specific moods ---
