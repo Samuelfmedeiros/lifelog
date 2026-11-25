@@ -1,0 +1,60 @@
+---
+title: "Yurumi: o monitor que marcava o site saudável como fora"
+description: "Um health check abria ocorrência crítica em serviço que respondia normalmente: o probe usava o User-Agent padrão do urllib e a borda devolvia 403."
+date: 2026-11-24 13:46:30 -03:00
+pubDate: 2026-11-25 16:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "observability", "monitoring", "http", "python"]
+icon: "🧠"
+cover: /covers/yurumi-o-monitor-que-marcava-o-site-saudavel-como-fora.webp
+featured: false
+hidden: false
+lang: 'pt'
+---
+
+## O alerta que não batia com o site
+
+No dia 24 de novembro, o monitor de disponibilidade do Yurumi abriu ocorrência crítica para um serviço que respondia normalmente quando aberto no navegador. A mensagem era curta e categórica: `HTTP 403 (esperado 200)`. Quem lê isso conclui o óbvio, que o site caiu. Só que o site não tinha caído. A aplicação estava no ar, com banco e cache funcionando. O que falhava era a requisição do próprio monitor: ela batia na borda da infraestrutura e era recusada antes de chegar a qualquer processo da aplicação.
+
+É um defeito que não aparece como bug porque o sistema faz exatamente o que foi programado para fazer. O probe dispara a requisição, recebe 403, compara com 200 e abre incidente crítico. Nenhuma linha está errada isoladamente. O erro é a premissa de que a resposta descreve o serviço, quando ela descreve a interação entre o serviço e quem perguntou.
+
+## O caminho que a requisição percorre
+
+Um probe é uma entrada de configuração: endereço, método, tempo limite, teto de latência, status esperado e, opcionalmente, um trecho de texto que precisa aparecer no corpo. A execução devolve sempre o mesmo formato, com resultado, status, tempo em milissegundos e motivo da falha.
+
+A classificação era feita em degraus. Primeiro o status: se o código não é o esperado, a falha é do tipo `down`. Depois o conteúdo: se o texto esperado não está no corpo, o tipo é `error`. Depois o tempo: acima do teto, o tipo é `slow`. Configuração inválida vira `config` antes de qualquer chamada.
+
+O detalhe que faltava está na camada mais baixa, onde a requisição HTTP é de fato feita. Ela usa a biblioteca padrão do Python, com `urllib.request`, lê alguns kilobytes do corpo para inspeção e mede a duração com relógio monotônico. O problema era o que a biblioteca envia quando ninguém diz quem é o cliente: um identificador de programa, algo como `Python-urllib/3.x`, sem nenhuma semelhança com navegador.
+
+Bordas de proteção classificam esse identificador como tráfego automatizado e devolvem 403 sem encaminhar a requisição. A resposta é legítima, o serviço está intacto, e o monitor interpreta como queda. Daí em diante a sequência é automática: falha do tipo `down`, severidade crítica, ocorrência aberta, alguém acordado por causa de um site que nunca parou.
+
+## A correção de doze linhas
+
+A cura foi pequena e cirúrgica: o commit de 24 de novembro alterou doze linhas em um único arquivo do núcleo de operações e removeu uma. A primeira parte define uma constante com identificação de navegador, reaproveitável por todos os probes. A segunda monta o dicionário de cabeçalhos copiando o que veio na configuração, para não alterar a referência original por acidente. A terceira injeta a identificação padrão apenas quando o operador não definiu uma, comparando o nome do cabeçalho sem diferenciar maiúsculas de minúsculas.
+
+```python
+raw_headers = p.get("headers")
+headers: dict[str, str] = dict(raw_headers) if isinstance(raw_headers, dict) else {}
+if not any(str(k).lower() == "user-agent" for k in headers):
+    headers["User-Agent"] = _PROBE_UA
+```
+
+Essa condição é o ponto mais importante do trecho, e não é detalhe de estilo. Se o código sobrescrevesse sempre, um probe que precisa de identificação própria, como o de uma API que exige cliente registrado, passaria a mentir de outro jeito. O comportamento correto é ter um padrão razoável e deixar a decisão explícita do operador vencer o padrão.
+
+## A prova de que o cabeçalho sai
+
+Correção de observabilidade não se encerra no diff aprovado. Substituí a função que faz a chamada HTTP real por um dublê que apenas captura os cabeçalhos recebidos e devolve resposta fixa, e executei a função que monta o probe.
+
+O primeiro caso, sem cabeçalhos na configuração, terminou com resultado positivo, status 200 e 37 milissegundos simulados, e o dicionário capturado trazia a identificação de navegador completa. O segundo caso, com um cabeçalho próprio declarado, preservou exatamente o valor declarado.
+
+Separar a chamada HTTP numa função própria é o que permite testar sem rede. Monitor sem teste é gerador de incidente falso com boa redação.
+
+## O que isso muda
+
+A mudança de comportamento é pequena; a de diagnóstico é grande. Antes, duas categorias distintas chegavam com o mesmo nome. A primeira é a aplicação fora do ar, que exige reiniciar processo, olhar fila, olhar banco. A segunda é a requisição recusada na borda, que exige ajustar identidade, cabeçalho ou regra de firewall. Tratar a segunda como se fosse a primeira ensina o dono a ignorar o alerta.
+
+O espelho desse defeito merece registro. Se a borda devolvesse uma página de desafio com status 200 em vez de 403, o probe passaria a reportar tudo bem com a aplicação fora do ar. É por isso que exigir um trecho de texto no corpo, e não só o código de status, deixa de ser preciosismo: o código diz que alguém respondeu, o texto diz quem respondeu.
+
+## Próximo passo
+
+A lição serve para qualquer coletor de métrica. Todo monitor é um cliente, e todo cliente tem identidade; quando ele reporta queda, a primeira pergunta não é qual serviço caiu, e sim com que identidade ele se apresentou e quem decidiu se ele entra. O passo seguinte no Yurumi é registrar a categoria da falha de forma explícita na ocorrência, separando borda, aplicação e tempo, para que o alerta diga o que aconteceu em vez de apenas informar que algo deu errado.
