@@ -4,7 +4,7 @@
 // Por que (01/11/2026): /ocultos/preview/{pt,en}/<slug>/ era HTML estatico publico
 // — qualquer pessoa com o link lia o post oculto inteiro (200, ~55KB), sem segredo.
 //
-// Como fica: o HTML sai do build e vai para api/preview-data.mjs (bundle da
+// Como fica: o HTML sai do build e vai para data/preview-data.mjs (bundle da
 // function, server-side). O rewrite do vercel.json manda /ocultos/preview/** para
 // /api/preview, que exige o cookie de sessao (api/session) e so entao devolve o HTML.
 // Se um preview ficar em dist/, a Vercel serve o arquivo ANTES do rewrite — por isso
@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 const RAIZ = process.cwd();
 const DIR_PREVIEW = join(RAIZ, 'dist', 'ocultos', 'preview');
-const DESTINO = join(RAIZ, 'api', 'preview-data.mjs');
+const DESTINO = join(RAIZ, 'data', 'preview-data.mjs');
 const IDIOMAS = ['pt', 'en'];
 
 function paginas(lang) {
@@ -69,5 +69,5 @@ if (existsSync(DIR_PREVIEW)) {
 
 const slugs = [...new Set(Object.keys(mapa).map((k) => k.split('/')[1]))];
 console.log(
-  `gen-preview-data: ${total} preview(s) protegido(s) [${slugs.length} slug(s)] -> api/preview-data.mjs (${tamanhoKb} KB); dist/ocultos/preview removido.`,
+  `gen-preview-data: ${total} preview(s) protegido(s) [${slugs.length} slug(s)] -> data/preview-data.mjs (${tamanhoKb} KB); dist/ocultos/preview removido.`,
 );

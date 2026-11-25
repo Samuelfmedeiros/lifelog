@@ -8,7 +8,7 @@
 // O que ele NAO prova: que a Vercel aplica o rewrite. Isso roda em producao e e
 // conferido por scripts/check-ocultos-gate.mjs (curl na URL publica).
 //
-// Uso: node scripts/check-preview-gate.mjs   (precisa de api/preview-data.mjs, que
+// Uso: node scripts/check-preview-gate.mjs   (precisa de data/preview-data.mjs, que
 // sai do build — rode `pnpm build` antes).
 
 import { createServer } from 'node:http';
@@ -17,12 +17,12 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const RAIZ = process.cwd();
-const DADOS = join(RAIZ, 'api', 'preview-data.mjs');
+const DADOS = join(RAIZ, 'data', 'preview-data.mjs');
 const SEGREDO = 'segredo-de-teste-nao-e-o-de-producao';
 process.env.ADMIN_SECRET = SEGREDO;
 
 if (!existsSync(DADOS)) {
-  console.error('FALHA  api/preview-data.mjs nao existe — rode `pnpm build` antes.');
+  console.error('FALHA  data/preview-data.mjs nao existe — rode `pnpm build` antes.');
   process.exit(1);
 }
 

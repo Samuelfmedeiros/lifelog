@@ -7,10 +7,10 @@
 //
 // Por que nao e uma pagina estatica (01/11/2026): as rotas /ocultos/preview/**
 // eram HTML publico — quem tinha o link lia o post oculto inteiro. Agora o HTML
-// vive no bundle desta function (api/preview-data.mjs, gerado no build) e o
+// vive no bundle desta function (data/preview-data.mjs, gerado no build) e o
 // vercel.json reescreve /ocultos/preview/{pt,en}/<slug>/ para ca.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import PREVIEWS from './preview-data.mjs';
+import PREVIEWS from '../data/preview-data.mjs';
 
 const NOME_COOKIE = 'lifelog_ocultos';
 const MENSAGEM = 'lifelog-ocultos-v1';

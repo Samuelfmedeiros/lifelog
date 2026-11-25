@@ -22,10 +22,11 @@ function fixture(comDist = false, comDados = true) {
   const dir = mkdtempSync(join(tmpdir(), 'preview-gate-'));
   mkdirSync(join(dir, 'api'), { recursive: true });
   mkdirSync(join(dir, 'scripts'), { recursive: true });
+  mkdirSync(join(dir, 'data'), { recursive: true });
   cpSync(join(RAIZ, 'api', 'preview.mjs'), join(dir, 'api', 'preview.mjs'));
   cpSync(join(RAIZ, 'api', 'session.mjs'), join(dir, 'api', 'session.mjs'));
   if (comDados) {
-    writeFileSync(join(dir, 'api', 'preview-data.mjs'), '// fixture\nexport default {};\n', 'utf8');
+    writeFileSync(join(dir, 'data', 'preview-data.mjs'), '// fixture\nexport default {};\n', 'utf8');
   }
   if (comDist) {
     const pag = join(dir, 'dist', 'ocultos', 'preview', 'pt', 'post-falso');
@@ -71,7 +72,7 @@ describe('gen-preview-data.mjs', () => {
     expect(rc, out).toBe(0);
     expect(out.toLowerCase()).toContain('nenhum post oculto');
     // bundle vazio gerado, nao ausente
-    const dados = readFileSync(join(dir, 'api', 'preview-data.mjs'), 'utf8');
+    const dados = readFileSync(join(dir, 'data', 'preview-data.mjs'), 'utf8');
     expect(dados).toContain('export default {}');
   });
 
@@ -84,7 +85,7 @@ describe('gen-preview-data.mjs', () => {
     // trava dura que NAO afrouxa
     expect(existsSync(join(dir, 'dist', 'ocultos', 'preview'))).toBe(false);
     // e o HTML foi para o bundle servido so com cookie
-    const dados = readFileSync(join(dir, 'api', 'preview-data.mjs'), 'utf8');
+    const dados = readFileSync(join(dir, 'data', 'preview-data.mjs'), 'utf8');
     expect(dados).toContain('data-project');
     expect(dados).not.toContain('Gerado automaticamente');
   });
@@ -114,7 +115,7 @@ describe('check-preview-gate.mjs', () => {
     expect(out).toContain('dist/ocultos/preview nao existe no build');
   });
 
-  it('sem api/preview-data.mjs: falha dura (nao inventa slug)', () => {
+  it('sem data/preview-data.mjs: falha dura (nao inventa slug)', () => {
     const dir = novo(false, false);
     const { rc, out } = rodar(dir, 'check-preview-gate.mjs');
 
