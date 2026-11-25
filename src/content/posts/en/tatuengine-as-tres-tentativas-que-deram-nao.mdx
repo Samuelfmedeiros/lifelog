@@ -1,0 +1,70 @@
+---
+title: "The three attempts that said no, and the bottleneck that wasn't volume"
+description: "In a single day the data generator returned 26 valid pairs out of 200, then 182 out of 210, training ran to completion, and the evaluation stayed at 3 of 6 prompts. The negative result became a document instead of an excuse."
+category: samuel-projects
+date: 2026-11-24 23:30:00 -03:00
+pubDate: 2026-11-25 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "training", "quality", "ml"]
+cover: /covers/tatuengine-as-tres-tentativas-que-deram-nao.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The number nobody wanted to see
+
+TatuEngine's 120 million parameter model generates Portuguese text. It generates it badly. That is not a finishing touch: it is the difference between an artifact that is good for something and one that only passes tests. And the only way to find that out is not to read the code, it is to sit down and read the output.
+
+The evaluation set is deliberately small. Six fixed prompts, the kind anyone would write: an opening sentence about the country, a recipe request, a greeting, the start of a news piece. Each output is read and classified as coherent or not. Simple, boring and irreplaceable, because no loss metric tells you whether a sentence makes sense. The passing criterion asked for four out of six.
+
+The baseline measured before touching anything came out at two out of six. Four prompts wandered: repeating, changing subject, ending in the middle of an invented word. Two worked. It is the kind of result that explains why the engine passes integration tests and still looks broken to whoever talks to it.
+
+## Attempt one: two hundred requests, twenty six kept
+
+The first idea was the obvious one, and for that reason the dangerous one: if the model does not follow instructions, teach the model to follow instructions. That requires data, and instruction data is manufactured by asking a larger model to generate question and answer pairs. The idea is sound and the devil lives in the factory's quality control.
+
+The generator fired two hundred targets in parallel through a cloud provider's free route. It took about two minutes. Twenty six valid pairs came back. Twenty six out of two hundred, with four format errors in the middle. The rest arrived truncated, without the expected envelope, or with text that was not an answer to anything.
+
+The next step was training, and training refused to run. The input check counted the pairs and aborted with the message that twenty six was not enough. That refusal is worth more than it looks: the easy path at that moment was to fill the batch with whatever existed, run the job, and present a nice number of executed steps. Nothing was filled in by hand. No checkpoint was born, and no result was invented to close the phase.
+
+## Attempt two: eighty seven percent, and still not enough
+
+If the free route was the bottleneck, the next test was to change teachers. Same task, now with a large model served through a direct route, measured beforehand at about one second per response against nearly double on the previous one.
+
+Two hundred and ten targets, four workers, six minutes of wall clock. One hundred and eighty two valid pairs, eighty seven percent yield, with twenty eight errors of the "no JSON in the response" kind. The factory finally worked: it had been an infrastructure bottleneck, not a conceptual one.
+
+With enough data in hand, fine tuning ran end to end. Checkpoint saved, validation loss dropping to its best point and then rising, exactly the expected behaviour of a run that starts to memorize. All green on the inside.
+
+## What the evaluation said
+
+The tuned model was placed on the same six prompt bench, with the same sampling seed used for the baseline. Result: three out of six coherent. One prompt more than the baseline, and still one below the passing criterion.
+
+Here is the part that separates measurement from wishful thinking. Three is bigger than two, but it is not a significant difference: across different sampling turns, the baseline itself had already oscillated between two and three. Decoding has variance, and treating that oscillation as a gain is like celebrating a step of noise. Before any conclusion: the same harness, the same seed, and the honest question of whether the difference fits inside the variance.
+
+```python
+# The criterion is not "it improved", it is "it passed"
+def promote(baseline, candidate, prompts, required, repeats=3):
+    scores = [evaluate(candidate, prompts) for _ in range(repeats)]
+    best = max(scores)
+    if best < required:
+        return False, f"below the criterion ({best}/{len(prompts)})"
+    # a gain only counts if it leaves the baseline's own variance band
+    if best <= max(evaluate(baseline, prompts) for _ in range(repeats)):
+        return False, "inside the variance, not a gain"
+    return True, "apt"
+```
+
+The verdict was not to promote. The checkpoint stayed on disk as a reference, the result was written into a document, and the phase stayed open. No number was rounded up.
+
+## What was learned
+
+The technical conclusion is uncomfortable and useful: the bottleneck was not the volume of instruction pairs. Eighty seven percent yield from a factory that produces hundreds of pairs in six minutes is a lot of data, and the model trained on it did not improve in any defensible way. If the problem were quantity, this test would have shown it. It did not, so the next hypothesis has to be something else: distribution, format, or something deeper in the architecture.
+
+The second lesson is about process. A pipeline with three gates, each able to say no, produced three negatives in one day, and none of them turned into a post published with an invented number. A factory that rejects a bad batch, training that refuses to run on insufficient data, an evaluation that compares against the baseline's own variance: those three refusals are the reason the negative result is worth anything. A system that accepts everything informs nothing.
+
+In the following commits the same principle was hardened elsewhere: the single source guard started running in the parity job as well, and the quality gate started failing closed when it found an attestation from an older scale. The rule is always the same, and it is not about trusting the report: if the proof comes from another scale, it does not count, even when the printed number is the maximum.
+
+## Next step
+
+The two remaining hypotheses have different costs, and the cheap one comes first: change the distribution of the pairs and repeat the evaluation on the same six prompts, with the fixed seed and the variance measured before any conclusion. If it comes back at three out of six, the problem is not in the data, but in what a 120 million parameter model can represent in Portuguese on the current budget. At that point the decision stops being engineering and becomes scope, and that one belongs to the project owner, not to a nightly pipeline.

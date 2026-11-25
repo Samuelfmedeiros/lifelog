@@ -1,0 +1,70 @@
+---
+title: "As três tentativas que deram não, e o gargalo que não era volume"
+description: "Em um único dia o gerador de dados entregou 26 pares válidos de 200, depois 182 de 210, o treino rodou e a avaliação continuou em 3 de 6 prompts. O resultado negativo virou documento em vez de desculpa."
+category: samuel-projects
+date: 2026-11-24 23:30:00 -03:00
+pubDate: 2026-11-25 12:00:00 -03:00
+project: tatuengine
+tags: ["tatuengine", "sft", "training", "quality", "ml"]
+cover: /covers/tatuengine-as-tres-tentativas-que-deram-nao.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O número que ninguém queria ver
+
+O modelo de 120 milhões de parâmetros do TatuEngine gera texto em português. Gera mal. Não é um detalhe de acabamento: é a diferença entre um artefato que serve para alguma coisa e um que só passa nos testes. E o jeito de descobrir isso não é ler o código, é sentar e ler a saída.
+
+A bateria de avaliação é pequena de propósito. Seis prompts fixos, do tipo que qualquer pessoa escreveria: uma abertura de frase sobre o país, um pedido de receita, uma saudação, um começo de notícia. A saída de cada um é lida e classificada como coerente ou não. Simples, chato e insubstituível, porque nenhuma métrica de perda diz se a frase faz sentido. O critério de aprovação pedia quatro dos seis.
+
+O baseline medido antes de mexer em qualquer coisa deu dois de seis. Quatro prompts divagavam: repetiam, trocavam de assunto, terminavam no meio de uma palavra inventada. Dois funcionavam. É o tipo de resultado que explica por que o motor passa nos testes de integração e ainda assim parece quebrado para quem conversa com ele.
+
+## Tentativa um: duzentos pedidos, vinte e seis aproveitados
+
+A primeira ideia foi a mais óbvia, e por isso a mais perigosa: se o modelo não segue instrução, ensine o modelo a seguir instrução. Para isso é preciso dado, e dado de instrução se fabrica pedindo a um modelo maior que gere pares de pergunta e resposta. A ideia é boa e o diabo mora no controle de qualidade da fábrica.
+
+O gerador disparou duzentos alvos em paralelo pela rota gratuita de um provedor na nuvem. Levou cerca de dois minutos. Voltaram vinte e seis pares válidos. Vinte e seis de duzentos, com quatro erros de formato no meio. O resto veio truncado, sem o envelope esperado, ou com texto que não era resposta de nada.
+
+O passo seguinte era o treino, e ele se recusou a rodar. A checagem de entrada contava os pares e abortou com a mensagem de que vinte e seis era insuficiente. Essa recusa vale mais do que parece: o caminho fácil naquele momento era completar o lote com o que havia, treinar, e apresentar um número bonito de passos executados. Nada foi completado à mão. Nenhum checkpoint nasceu, e nenhum resultado foi inventado para fechar a fase.
+
+## Tentativa dois: oitenta e sete por cento, e ainda insuficiente
+
+Se a rota gratuita era o gargalo, o teste seguinte foi trocar de professor. A mesma tarefa, agora com um modelo grande servido por uma rota direta, medida antes em cerca de um segundo por resposta contra quase o dobro da anterior.
+
+Duzentos e dez alvos, quatro trabalhadores, seis minutos de relógio. Cento e oitenta e dois pares válidos, oitenta e sete por cento de aproveitamento, com vinte e oito erros do tipo "sem JSON na resposta". A fábrica finalmente funcionou: era gargalo de infraestrutura, não de conceito.
+
+Com dado suficiente em mãos, o ajuste fino rodou de ponta a ponta. Checkpoint salvo, perda de validação caindo até o melhor ponto e depois subindo, exatamente o comportamento esperado de um treino que começa a decorar. Tudo verde do lado de dentro.
+
+## O que a avaliação disse
+
+O modelo ajustado foi colocado no mesmo banco de seis prompts, com a mesma semente de amostragem usada no baseline. Resultado: três de seis coerentes. Um prompt a mais que o baseline, e ainda um abaixo do critério de aprovação.
+
+Aqui está a parte que separa medição de torcida. Três é maior que dois, mas não é uma diferença significativa: em turnos diferentes de amostragem, o próprio baseline já tinha oscilado entre dois e três. A decodificação tem variação, e tratar essa oscilação como ganho é como comemorar um degrau de ruído. Antes de qualquer conclusão, o mesmo harness, a mesma semente, e a pergunta honesta sobre se a diferença cabe dentro da variação.
+
+```python
+# O critério não é "melhorou", é "passou"
+def promover(baseline, candidato, prompts, exigido, repeticoes=3):
+    notas = [avaliar(candidato, prompts) for _ in range(repeticoes)]
+    melhor = max(notas)
+    if melhor < exigido:
+        return False, f"abaixo do criterio ({melhor}/{len(prompts)})"
+    # ganho só conta se sair da faixa de variação do próprio baseline
+    if melhor <= max(avaliar(baseline, prompts) for _ in range(repeticoes)):
+        return False, "dentro da variacao, nao e ganho"
+    return True, "apto"
+```
+
+O veredito foi não promover. O checkpoint ficou no disco como referência, o resultado foi escrito em documento, e a fase continuou aberta. Nenhum número foi arredondado para cima.
+
+## O que ficou aprendido
+
+A conclusão técnica é desconfortável e útil: o gargalo não era volume de pares de instrução. Oitenta e sete por cento de aproveitamento numa fábrica que produz centenas de pares em seis minutos é bastante dado, e o modelo treinado com ele não melhorou de forma que se possa defender. Se o problema fosse quantidade, esse teste teria mostrado. Não mostrou, então a hipótese seguinte tem que ser outra: distribuição, formato, ou algo mais fundo na arquitetura.
+
+A segunda lição é sobre processo. Um pipeline com três portas, cada uma capaz de dizer não, produziu três negativos em um dia, e nenhum deles virou post publicado com número inventado. Fábrica que recusa lote ruim, treino que não roda com dado insuficiente, avaliação que compara contra a variação do próprio baseline: as três recusas são o motivo de o resultado negativo ter valor. Um sistema que aceita tudo não informa nada.
+
+Nos commits seguintes o mesmo princípio foi endurecido em outros pontos: o guard da fonte única passou a rodar também no job de paridade, e o gate de qualidade passou a falhar fechado quando encontra atestado de escala antiga. A regra é sempre a mesma, e não é sobre confiança no relatório: se a prova é de outra escala, não serve, mesmo que o número impresso seja o máximo.
+
+## Próximo passo
+
+As duas hipóteses que sobraram têm custo diferente, e a barata vem primeiro: mudar a distribuição dos pares e repetir a avaliação nos mesmos seis prompts, com a semente fixa e a variação medida antes de qualquer conclusão. Se voltar a três de seis, o problema não está no dado, e sim no que o modelo de 120 milhões consegue representar em português com o orçamento atual. Aí a decisão deixa de ser de engenharia e passa a ser de escopo, e essa é do dono do projeto, não de um pipeline noturno.
