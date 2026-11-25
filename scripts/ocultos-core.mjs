@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(__dirname, '..');
 export const POSTS_DIR = join(ROOT, 'src', 'content', 'posts');
-export const DATA_PATH = join(ROOT, 'api', 'ocultos-data.mjs');
+export const DATA_PATH = join(ROOT, 'data', 'ocultos-data.mjs');
 
 const DATA_HEADER = '// Gerado automaticamente por scripts/gen-ocultos.mjs\n// NÃO editar manualmente\n\n';
 

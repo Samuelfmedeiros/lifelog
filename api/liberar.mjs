@@ -1,8 +1,8 @@
 // Vercel Function: POST /api/liberar
 // Libera um post oculto: flipa hidden:true -> hidden:false nos MDX (PT+EN)
-// E regenera api/ocultos-data.mjs — TUDO NUM ÚNICO COMMIT (Git Data API).
+// E regenera data/ocultos-data.mjs — TUDO NUM ÚNICO COMMIT (Git Data API).
 //
-// Por quê: o painel (/ocultos) lê api/ocultos-data.mjs do bundle. Se o commit
+// Por quê: o painel (/ocultos) lê data/ocultos-data.mjs do bundle. Se o commit
 // da liberação mexe só no frontmatter, o arquivo de dados fica stale no repo
 // e o painel segue listando post já público (bug de 08/09, fix manual 067da21).
 // Commit atômico = painel correto no MESMO deploy, sem race de CI.
@@ -11,7 +11,7 @@
 //   centralizado do Capivara — POST $LIFELOG_RELEASE_API_URL/api/lifelog/release
 //   { slug } com Bearer $LIFELOG_RELEASE_TOKEN.
 // MODE 2 (implementado aqui): GitHub Git Data API direta — UM commit atômico
-//   com os mdx (PT+EN e variantes) + api/ocultos-data.mjs.
+//   com os mdx (PT+EN e variantes) + data/ocultos-data.mjs.
 //
 // Requer ADMIN_SECRET (env na Vercel) via header Authorization: Bearer ***
 import { timingSafeEqual } from 'node:crypto';
@@ -106,13 +106,13 @@ async function releaseAtomic(base) {
 
     // 2) ocultos-data: remove entradas dos targets a partir do CONTEÚDO do main
     let dataSynced = false;
-    const dataFile = await committer.getFile('api/ocultos-data.mjs');
+    const dataFile = await committer.getFile('data/ocultos-data.mjs');
     if (dataFile.present) {
       try {
         const posts = core.parseOcultos(dataFile.content);
         const remaining = core.removePosts(posts, dataEntryPaths);
         if (remaining.length !== posts.length) {
-          files.push({ path: 'api/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
+          files.push({ path: 'data/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
         }
         dataSynced = true;
       } catch (e) {
@@ -129,7 +129,7 @@ async function releaseAtomic(base) {
           const cur = core.parseOcultos(dataFile.content);
           const remaining = core.removePosts(cur, dataEntryPaths);
           if (remaining.length !== cur.length) {
-            files.push({ path: 'api/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
+            files.push({ path: 'data/ocultos-data.mjs', content: core.serializeOcultos(remaining) });
           }
         } catch {
           // data ilegível → sem cura; self-heal do CI regenera no deploy.
@@ -145,7 +145,7 @@ async function releaseAtomic(base) {
     }
 
     // 4) Commit ÚNICO: mdx PT+EN + ocultos-data
-    const cureOnly = files.length === 1 && files[0].path === 'api/ocultos-data.mjs';
+    const cureOnly = files.length === 1 && files[0].path === 'data/ocultos-data.mjs';
     const message = cureOnly
       ? `chore(ocultos): sync data pós-liberação de ${base} (stale cure)`
       : `release(post): ${base} (PT+EN + ocultos-data)`;

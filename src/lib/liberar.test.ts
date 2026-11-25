@@ -211,7 +211,7 @@ describe('releaseAtomic — caminho feliz', () => {
       fs: {
         'src/content/posts/meu-post.mdx': mdxOculto('meu-post'),
         'src/content/posts/en/meu-post.mdx': mdxOculto('en-meu-post'),
-        'api/ocultos-data.mjs': DATA_OCULTOS,
+        'data/ocultos-data.mjs': DATA_OCULTOS,
       },
     })
     expect(res.status).toHaveBeenCalledWith(200)
@@ -230,7 +230,7 @@ describe('releaseAtomic — caminho feliz', () => {
       fs: {
         'src/content/posts/meu-post.mdx': mdxLiberado('meu-post'),
         'src/content/posts/en/meu-post.mdx': mdxLiberado('en-meu-post'),
-        'api/ocultos-data.mjs': `export default []`,
+        'data/ocultos-data.mjs': `export default []`,
       },
     })
     const payload = res.json.mock.calls[0][0]
@@ -241,7 +241,7 @@ describe('releaseAtomic — caminho feliz', () => {
   it('devolve 422 quando nenhum arquivo existe', async () => {
     const { res } = await chamaComCommits({
       body: { slug: 'nao-existe' },
-      fs: { 'api/ocultos-data.mjs': `export default []` },
+      fs: { 'data/ocultos-data.mjs': `export default []` },
     })
     expect(res.status).toHaveBeenCalledWith(422)
   })

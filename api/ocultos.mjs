@@ -3,7 +3,7 @@
 // (não depende do filesystem do deploy — roda em bundle Vercel/Astro)
 // Requer ADMIN_SECRET (env na Vercel) via header Authorization: Bearer ***
 import { timingSafeEqual } from 'node:crypto';
-import OCULTOS from './ocultos-data.mjs';
+import OCULTOS from '../data/ocultos-data.mjs';
 
 function secretOk(req) {
   const ADMIN_SECRET = process.env.ADMIN_SECRET;

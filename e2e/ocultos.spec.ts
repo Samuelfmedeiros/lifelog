@@ -165,7 +165,7 @@ test.describe('Verificacao de ocultos no frontend', () => {
     // aqui testaria o servidor errado. O que precisa ser verdade e o dado.
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const file = path.resolve(process.cwd(), 'api', 'ocultos-data.mjs');
+    const file = path.resolve(process.cwd(), 'data', 'ocultos-data.mjs');
     const raw = await fs.readFile(file, 'utf-8');
     const json = raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1);
     const posts = JSON.parse(json);
