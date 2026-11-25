@@ -74,7 +74,11 @@ function walkDir(dir) {
 }
 
 export function collectHidden() {
-  const posts = [];
+  // UM card por slug: PT e EN do MESMO post sao o mesmo item de fila (o
+  // endpoint /api/liberar ja publica os dois idiomas num commit atomico).
+  // Antes o coletor emitia uma entrada por arquivo, entao o painel listava o
+  // mesmo post duas vezes (PT e EN) e o Samuel lia isso como post duplicado.
+  const groups = new Map();
   for (const file of walkDir(POSTS_DIR)) {
     const raw = readFileSync(file, 'utf-8');
     const fm = parseFrontmatter(raw);
@@ -85,8 +89,39 @@ export function collectHidden() {
     const slug = (lang === 'en' ? parts.slice(1) : parts).join('/').replace(/\.mdx$/, '');
     const contentStart = raw.indexOf('---', 3);
     const content = contentStart !== -1 ? raw.slice(contentStart + 3).trim().slice(0, 30000) : '';
-    posts.push({ path: rel, slug, lang, title: fm.title || slug, date: fm.pubDate || fm.date || '', project: fm.project || '', cover: fm.cover || '', content });
+    const entry = {
+      path: rel,
+      slug,
+      lang,
+      title: fm.title || slug,
+      date: fm.pubDate || fm.date || '',
+      project: fm.project || '',
+      cover: fm.cover || '',
+      content,
+    };
+    const cur = groups.get(slug);
+    if (!cur) {
+      groups.set(slug, { ...entry, langs: [lang], paths: [rel], titles: { [lang]: entry.title }, contents: { [lang]: content } });
+      continue;
+    }
+    cur.langs.push(lang);
+    cur.paths.push(rel);
+    cur.titles[lang] = entry.title;
+    cur.contents[lang] = content;
+    // card mostra sempre a versao PT; se o hidden so existe em EN, usa EN
+    if (lang === 'pt') {
+      cur.path = entry.path;
+      cur.lang = 'pt';
+      cur.title = entry.title;
+      cur.content = entry.content;
+      if (entry.date) cur.date = entry.date;
+      if (entry.cover) cur.cover = entry.cover;
+      if (entry.project) cur.project = entry.project;
+    }
   }
+  const posts = [...groups.values()];
+  for (const p of posts) p.langs.sort(); // pt antes de en nunca importa; ordem estavel
+  posts.sort((a, b) => String(b.date).localeCompare(String(a.date)) || a.slug.localeCompare(b.slug));
   return posts;
 }
 

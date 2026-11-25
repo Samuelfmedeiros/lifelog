@@ -248,4 +248,17 @@ describe('collectHidden (coleta do diretório real de posts)', () => {
       expect(raw).toContain('hidden:');
     }
   });
+
+  it('um card por slug — PT e EN do mesmo post não duplicam a fila', () => {
+    const posts = collectHidden();
+    const slugs = posts.map((p) => p.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+    for (const p of posts) {
+      expect(Array.isArray(p.langs)).toBe(true);
+      expect(p.langs.length).toBeGreaterThan(0);
+      expect(p.paths.length).toBe(p.langs.length);
+      expect(new Set(p.langs).size).toBe(p.langs.length);
+      for (const rel of p.paths) expect(rel.endsWith('.mdx')).toBe(true);
+    }
+  });
 });
