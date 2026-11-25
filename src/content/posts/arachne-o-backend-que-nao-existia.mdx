@@ -1,0 +1,78 @@
+---
+title: "O backend de busca que não existia e a perna do sorteio"
+description: "A busca do Arachne tinha três backends na cadeia. O do meio não existe na versão da biblioteca, e o ddgs engolia o nome errado sem erro: a rotação dependia de sorte. Achei pelo teste que passava."
+category: samuel-projects
+date: 2026-11-23 10:30:00 -03:00
+pubDate: 2026-11-25 08:45:00 -03:00
+project: arachne
+tags: ["arachne", "search", "fallback", "cache", "python"]
+cover: /covers/arachne-o-backend-que-nao-existia.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A busca que respondia, mas respondia por acidente
+
+Existe uma classe de bug que não quebra nada: ela só faz o sistema funcionar por motivos errados. Você escreve uma cadeia de fallback, ela responde, os testes passam, e ninguém descobre que uma das pernas nunca existiu. O Arachne passou por isso na rota de busca web, e o detector não foi um alarme, foi um teste que começou a falhar de um jeito estranho.
+
+O sintoma de superfície: o DuckDuckGo, primeiro backend da cadeia, passou a estourar timeout em toda query. Medido em 23 de novembro, entre 6 e 8 segundos por chamada, invariavelmente. Retry no mesmo backend não cura backend morto, então a correção óbvia foi montar uma cadeia.
+
+## O que aconteceu
+
+A primeira versão da cadeia foi `ddg` para `bing` para `yahoo`, com circuit breaker de 10 minutos por backend. Parecia razoável. E respondia, o que é pior.
+
+O problema apareceu quando fui conferir o log de qual backend realmente serviu cada resultado. Com `backend='bing'`, o ddgs 9.16.1 devolve:
+
+```text
+bing - backends do not exist or are disabled.
+Available: brave, duckduckgo, grokipedia, mojeek, startpage, wikipedia, yahoo
+```
+
+E, em vez de levantar exceção, cai em `auto`. Ou seja: a chave inválida é tratada como ausente, o modo automático assume, e a resposta sai. A perna do meio da cadeia não era um fallback, era um sorteio. Funcionava quando o `auto` escolhia um motor que estava de pé, e ninguém tinha como saber a diferença pelo resultado.
+
+Havia mais dois detalhes no mesmo desenho. O primeiro: `region` é parâmetro que o ddgs repassa ao DuckDuckGo, então mandar região com `backend='bing'` continuava batendo no DDG, com o timeout de 8 segundos. O segundo: eu cacheava lista vazia. Zero resultado de backend barrado entrava no cache por 5 minutos e envenenava a query mesmo depois de a busca voltar.
+
+## Como foi resolvido
+
+A cura tem três camadas, e a mais importante é a que impede o retorno do mesmo defeito.
+
+A cadeia passou para nomes que existem de fato: `duckduckgo`, `yahoo`, `mojeek`, `startpage`, `wikipedia`. Nada inventado, nada presumido. E antes de qualquer busca, a cadeia é validada contra o registro da própria biblioteca:
+
+```python
+def _chain_valida(chain: tuple[str, ...]) -> tuple[str, ...]:
+    """Descarta backend que o ddgs não conhece."""
+    try:
+        from ddgs.engines import ENGINES
+        disponiveis = set(ENGINES.get("text", {}))
+    except Exception:
+        return chain
+    validos = tuple(b for b in chain if b in disponiveis)
+    invalidos = [b for b in chain if b not in disponiveis]
+    if invalidos:
+        logger.error(
+            f"backend(s) inexistente(s) na cadeia de busca: {invalidos}; "
+            f"válidos(={sorted(disponiveis)})"
+        )
+    return validos or ("auto",)
+```
+
+Nome errado agora grita no log em vez de virar silêncio. É a diferença entre um fallback e uma fantasia.
+
+O circuit breaker também mudou de forma. A primeira versão tinha cooldown fixo de 600 segundos e nenhum half-open: três falhas tiravam os três backends de cena por dez minutos e a busca travava, com `last_error` vazio porque nenhum backend chegou a ser tentado. Agora o cooldown começa em 60 segundos e cresce até 600; ao expirar, o backend volta como sonda com o contador zerado.
+
+O retry ficou onde faz sentido. Yahoo devolve "No results found" de forma intermitente, cerca de 2 em 12 chamadas sem padrão nenhum, e sem retry isso vira falha do serviço inteiro. Timeout, ao contrário, não é repetido: custa 6 segundos e não melhora em segundos. Então a regra é assimétrica de propósito.
+
+Por fim, o cache deixou de guardar lista vazia, e o fallback de último recurso é HTTP direto no HTML do DDG: a biblioteca é barrada por User-Agent, um navegador não é.
+
+## O que isso muda
+
+Depois da correção, a prova no container: DDG falhando, yahoo servindo 3 resultados em 1,6 segundo, em 2 de 2 queries, com `sources=['yahoo']` no log. Sem sorte envolvida.
+
+Mas o ganho real é outro. A busca deixou de mentir sobre si mesma. Antes, um resultado saía com etiqueta de backend que podia não ser o backend que respondeu. Agora o campo `engine` da resposta vem do motor que efetivamente serviu, e o log de uso é por workspace. Um fallback que não se identifica é pior que um fallback que falha: ele esconde o dado que você vai precisar no dia em que a busca começar a devolver coisa errada.
+
+E tem a lição que atravessa o projeto: o teste que passava era parte do problema. Um dos testes de rotação afirmava o nome literal do segundo backend, e continuava verde enquanto aquela perna era ficção. Quando o contrato mudou para "timeout rotaciona de backend", o teste caiu e foi reescrito para validar comportamento em vez de string: 17 passed. Teste que verifica o nome que você digitou confirma a sua memória, não o sistema.
+
+## Próximo passo
+
+O próximo passo é medir a cadeia em produção por uma semana, com o backend que serviu cada busca registrado, para saber se `mojeek` e `startpage` merecem continuar na cauda. Cadeia de fallback se poda por medição, não por simetria.
