@@ -1,0 +1,60 @@
+---
+title: "Yurumi: the monitor that reported a healthy site as down"
+description: "A health check opened a critical incident for a service that was answering fine: the probe used urllib's default User-Agent and the edge answered 403."
+date: 2026-11-24 13:46:30 -03:00
+pubDate: 2026-11-25 16:00:00 -03:00
+project: yurumi
+tags: ["yurumi", "observability", "monitoring", "http", "python"]
+icon: "🧠"
+cover: /covers/yurumi-o-monitor-que-marcava-o-site-saudavel-como-fora.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The alert that did not match the site
+
+On November 24, Yurumi's availability monitor opened a critical incident for a service that answered normally when opened in a browser. The message was short and categorical: `HTTP 403 (expected 200)`. Anyone reading that concludes the obvious, that the site went down. Except the site had not gone down. The application was up, with database and cache working. What failed was the monitor's own request: it hit the infrastructure edge and was refused before reaching any application process.
+
+It is a defect that never looks like a bug because the system does exactly what it was programmed to do. The probe fires the request, receives 403, compares against 200 and opens a critical incident. No single line is wrong on its own. The error is the premise that the response describes the service, when it actually describes the interaction between the service and whoever asked.
+
+## The path a request takes
+
+A probe is a configuration entry: address, method, timeout, latency ceiling, expected status and, optionally, a snippet of text that must appear in the body. Execution always returns the same shape, with result, status, time in milliseconds and the failure reason.
+
+Classification happened in tiers. First the status: if the returned code is not the expected one, the failure is `down`. Then the content: if the expected text is missing from the body, the type is `error`. Then timing: above the configured ceiling, the type is `slow`. Invalid configuration becomes `config` before any call at all.
+
+The missing detail sits in the lowest layer, where the HTTP request is actually made. It uses the Python standard library, through `urllib.request`, reads a few kilobytes of the body for inspection and measures duration with a monotonic clock. The problem was what the library sends when nobody says who the client is: a program identifier, something like `Python-urllib/3.x`, with no resemblance to a browser.
+
+Protective edges treat that identifier as automated traffic and answer 403 without forwarding the request. The response is legitimate, the service is untouched, and the monitor reads it as an outage. From there the sequence is automatic: a `down` failure, critical severity, an open incident, someone awake because of a site that never stopped.
+
+## The twelve-line fix
+
+The cure was small and surgical: the November 24 commit changed twelve lines in a single file in the operations core and removed one. The first part defines a constant with a browser identification, reusable across every probe. The second builds the header dictionary by copying whatever came from configuration, so the original reference is never mutated by accident. The third injects the default identification only when the operator did not define one, comparing the header name case-insensitively.
+
+```python
+raw_headers = p.get("headers")
+headers: dict[str, str] = dict(raw_headers) if isinstance(raw_headers, dict) else {}
+if not any(str(k).lower() == "user-agent" for k in headers):
+    headers["User-Agent"] = _PROBE_UA
+```
+
+That condition is the most important part of the snippet, and it is not a matter of style. If the code always overwrote, a probe that needs its own identification, such as one hitting an API that requires a registered client, would start lying in a different way. The correct behavior is to have a reasonable default and let the operator's explicit decision win.
+
+## Proof that the header leaves
+
+An observability fix does not end at the approved diff. I replaced the function that performs the real HTTP call with a double that only captures incoming headers and returns a fixed response, then ran the function that assembles the probe.
+
+The first case, with no headers in configuration, finished with a positive result, status 200 and 37 simulated milliseconds, and the captured dictionary carried the full browser identification. The second case, with a custom header declared, preserved exactly the declared value.
+
+Separating the HTTP call into its own function is what makes testing possible without network. A monitor with no test is a generator of false incidents with good wording.
+
+## What this changes
+
+The behavior change is small; the diagnostic change is not. Before, two distinct categories arrived under the same name. The first is the application being down, which calls for restarting a process, checking a queue, checking a database. The second is the request being refused at the edge, which calls for adjusting identity, headers or a firewall rule. Treating the second as if it were the first teaches the owner to ignore the alert.
+
+The mirror image of this defect deserves a note too. If the edge returned a challenge page with status 200 instead of 403, the probe would start reporting everything fine while the application was down. That is why requiring a text snippet in the body, not only the status code, stops being pedantry: the code says someone answered, the text says who answered.
+
+## Next step
+
+The lesson applies to any metric collector. Every monitor is a client, and every client has an identity; when it reports an outage, the first question is not which service fell, but which identity the monitor presented and who decided whether it gets in. The next step in Yurumi is to record the failure category explicitly on the incident, separating edge, application and timing, so the alert says what happened instead of merely reporting that something went wrong.
