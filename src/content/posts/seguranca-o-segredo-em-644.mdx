@@ -1,0 +1,71 @@
+---
+title: "O segredo em 644 que qualquer conta local podia ler"
+description: "Uma auditoria de metadado achou chaves em arquivos legíveis por qualquer usuário do host. O conteúdo estava certo, a permissão não."
+date: 2026-11-25 20:30:00 -03:00
+pubDate: 2026-11-26 08:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "hardening", "secrets", "devops"]
+icon: "🔒"
+cover: /covers/seguranca-o-segredo-em-644.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## A permissão que ninguém audita
+
+Toda auditoria de segurança que eu já vi começa pelo conteúdo: procurar chave no código, procurar senha no commit, procurar token em log. Quase nenhuma começa pelo metadado. Foi por isso que o achado mais desconfortável dos últimos dias veio de um comando de uma linha, desses que respondem antes de você terminar de ler a saída.
+
+O que apareceu: dez dos treze arquivos de configuração de perfil estavam em modo 644. O banco de dados do multiplexador de modelos estava em 755, e o diretório que o contém também.
+
+Traduzindo o modo: o dono lê e escreve, e todo o resto do sistema lê. No caso do diretório em 755, qualquer usuário local lista o conteúdo. Não é exploit remoto, não é buraco de firewall, não é CVE. É uma conta de serviço, um container com volume montado, um processo de terceiro rodando com outro usuário lendo a credencial que paga as chamadas de modelo. O vazamento não precisa de falha exótica, precisa de um `cat`.
+
+## Por que o default é sempre o pior possível
+
+A causa não é descuido de um dia. É a máscara de criação de arquivo. No host, `umask` responde `0022`.
+
+Com essa máscara, todo arquivo nasce 644 e todo diretório nasce 755. É o padrão das distribuições há décadas, e faz sentido para conteúdo público: código, documentação, página estática. Não faz sentido nenhum para arquivo que guarda credencial. Só que quem grava não sabe o que está gravando. Instalador de pacote, script de setup, extração de arquivo compactado, restauração de backup, cópia entre máquinas: todos respeitam o umask e nenhum pergunta se aquele YAML tem chave de API dentro.
+
+O resultado é uma classe de defeito que não aparece em teste, não aparece em log de erro e não quebra funcionalidade nenhuma. A aplicação continua funcionando perfeitamente. O arquivo está exatamente onde deveria estar, com o conteúdo exatamente certo, e legível para quem não devia.
+
+## Olhar o metadado, não o conteúdo
+
+A correção óbvia seria abrir cada arquivo e procurar padrão de chave. Ruim por três motivos: custa leitura de tudo, gera falso positivo em valor de exemplo, e coloca o segredo no buffer de um processo que não precisava vê-lo. Permissão é metadado: uma chamada de `stat` responde sem abrir o arquivo.
+
+O guarda ficou assim: lista fechada de alvos, um teste de bitmask, correção só quando existe bit de grupo ou de outros ligado.
+
+```python
+import os
+import stat
+
+def exposto(caminho: str) -> bool:
+    """Verdadeiro quando o arquivo e legivel fora do dono."""
+    modo = stat.S_IMODE(os.stat(caminho).st_mode)
+    return bool(modo & 0o077)
+```
+
+O `0o077` é a parte que importa. O teste não compara com o modo esperado: ele pergunta se existe qualquer acesso fora do dono. Arquivo 640, 604, 660, 777, todos casam. Comparar com 600 exato deixaria passar um 640, que já é leitura para o grupo. Testar o bit é mais estrito e mais fácil de explicar para quem chega depois.
+
+Três propriedades fizeram esse guarda durar mais de um dia, e nenhuma delas é sobre segurança em si.
+
+Idempotência: rodar dez vezes seguidas altera o disco uma vez. Sem isso não dá para colocar em agenda, porque cada execução vira ruído.
+
+Silêncio quando está limpo: código de saída zero e nenhuma linha impressa. Quando ele fala, é porque corrigiu algo, e sai com código diferente de zero. Um guarda que imprime "verificado, tudo certo" a cada hora treina o operador a ignorar a saída, e no dia em que ele tem algo a dizer ninguém lê.
+
+Lista fechada de alvos: varrer o diretório pessoal inteiro atrás de "arquivo que parece segredo" custa caro, gera falso positivo e quebra a cada layout novo. Os alvos são nomeados: as configurações dos perfis, os arquivos de ambiente, os diretórios do cofre local. Tipo novo de arquivo sensível entra na lista, não na heurística.
+
+## O que muda de fato
+
+Medido hoje: catorze arquivos de configuração, entre o raiz e os treze perfis, todos em 600. Vinte e seis arquivos de ambiente nos três conjuntos de alvos, todos restritos ao dono. O diretório do cofre em 700. A execução de hoje saiu silenciosa, código zero, nada a corrigir: o guarda saiu de reação e virou verificação.
+
+O número maior, porém, não é esse. É que permissão não volta sozinha. Cada atualização de ferramenta, cada pacote novo, cada restauração pode recriar o arquivo com o default da máscara. Correção pontual em permissão dura até a próxima gravação; o que dura é a checagem recorrente.
+
+Tem também o efeito colateral bom de trabalhar com metadado: a auditoria não depende de reconhecer o formato do segredo. Chave em YAML, em JSON, em banco SQLite, em arquivo de ambiente, tudo tem modo de arquivo. O que muda é a lista de alvos, não o teste.
+
+## O que ainda falta
+
+Duas coisas, e nenhuma é polimento.
+
+A primeira é fechar a origem, não só o sintoma. Os serviços que gravam esses arquivos deveriam subir com máscara restritiva, para o arquivo nascer 600 em vez de ser corrigido horas depois. Guarda que corrige é rede de proteção; máscara certa é a causa. Enquanto a origem ficar no default, o guarda vai continuar encontrando trabalho, o que é uma forma elegante de dizer que o problema segue aberto.
+
+A segunda é medir a lista. Hoje a auditoria cobre o que eu já sei que guarda segredo. O que ela não cobre é o arquivo sensível que eu não listei, e historicamente é sempre esse que sobra. Lista fechada protege contra o que está nela; o resto depende de alguém lembrar de acrescentar o alvo novo no mesmo dia em que o cria.
