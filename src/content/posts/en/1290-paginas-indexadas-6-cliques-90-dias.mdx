@@ -1,0 +1,101 @@
+---
+title: "1,290 pages indexed, 6 clicks in 90 days: I stopped blaming SEO and read the buckets"
+description: "Search Console showed 1,290 pages indexed and it looked like a good scoreboard. The number that mattered was right next to it: 6 clicks in 90 days. The diagnosis was not in the total, it was in the distribution of non-indexing reasons."
+date: 2026-11-25 15:20:00 -03:00
+pubDate: 2026-11-26 08:00:00 -03:00
+project: descobertas
+tags: [seo, search, analytics, metrics, descobertas]
+icon: "📊"
+cover: /covers/1290-paginas-indexadas-6-cliques-90-dias.webp
+featured: false
+hidden: true
+lang: en
+---
+
+## The number I used to read as a grade
+
+Search Console shows one number per domain: **indexed**. For a long time I read that number as a grade. This morning it said 1,290 and it looked good.
+
+Then I asked the other question: how many clicks did those 1,290 pages produce in the last 90 days?
+
+**Six.**
+
+Not six thousand. Six.
+
+Below is what I did next and what I would do differently if you are reading this before repeating the path.
+
+## A single number is not a diagnosis
+
+"Indexed / not indexed" is the summary of two long lists. Every row in the second list carries a `coverageState`, which is the reason Google gave. If you read only the total, you are reading a report card, not a report.
+
+So I grouped the states instead of summing them. Same data, one line per reason:
+
+```
+indexed ................................. 1290
+not indexed ............................. 1230
+  alternate page with proper canonical tag 1025
+  duplicate, Google chose different canonical 82
+  404 ..................................... 49
+  redirect ................................ 30
+  crawled, currently not indexed ........... 18
+  discovered, currently not indexed ........ 13
+  noindex .................................. 7
+  blocked by robots.txt .................... 6
+  soft 404 ................................. 2
+  blocked, other 4xx ....................... 1
+```
+
+2,520 known URLs. My five sitemaps declare 713 (593 blog, 84 store, 22 product site, 8 portfolio, 6 root). Which means: Google knows more URLs than I publish; the rest comes from links and cross-posts. That gap alone was worth knowing about.
+
+## Bucket by bucket, what each one actually means
+
+**1,025 "alternate page with proper canonical tag".** The biggest bucket and the least alarming. It means: this URL duplicates another, the canonical tag points to the right place, and Google agrees. It is the expected footprint of language versions, trailing-slash variants and cross-posts.
+
+To be precise: I did **not** measure the exact composition of those 1,025. I know what the bucket means, I do not know what is inside it. Claiming a cause would be inventing one, and inventing a cause for a big number is how you spend a week fixing the wrong thing.
+
+**82 "Google chose a different canonical".** The only bucket that is unambiguously a problem, and small enough to fix by hand. My page said "the canonical is A" and Google indexed B. Practical consequence: the URL you think ranks is not the one ranking. Your analytics, your internal links and your canonical tag all point at a page Google treats as a copy.
+
+Fixing order: open the 82 and ask, for each one, *why would Google prefer B?* Usually B is the version with real external links, or the one that answers 200 without redirect hops, or the one without boilerplate content.
+
+**95 URLs that should not be in a sitemap** (49 × 404, 30 × redirect, 7 × noindex, 6 × robots.txt, 2 × soft 404, 1 × other 4xx). Each one is a URL I asked Google to crawl and then refused to serve. A sitemap is a promise; 95 broken promises is crawl budget spent on nothing.
+
+**31 "crawled or discovered, not indexed"** (18 + 13). Google saw the page and decided it was not worth indexing. That is a content signal, not a technical one. Resubmitting the sitemap does not fix it.
+
+## The uncomfortable conclusion
+
+1,290 pages indexed and 6 clicks means indexing was never my bottleneck. Indexing is a *gate*, not a *channel*. Getting through the gate with 1,290 pages and harvesting 6 clicks in 90 days means the bottleneck lives somewhere else: nobody searches for what I wrote, or the title does not match the search, or the search has no volume.
+
+I had been treating "indexed" as a KPI because it was the number the panel put in the biggest font.
+
+## What I actually changed
+
+1. **Sitemap hygiene became a check, not a cleanup task.** Any URL in the sitemap that answers anything other than 200 leaves before the next deploy.
+2. **I audit the 82 divergent ones by hand, every month.** It is small enough. A swapped canonical is cheap to find and expensive to ignore.
+3. **I stopped reporting "indexed" on its own.** The report carries `indexed`, `clicks` and the main non-indexing reason. Three numbers, because one number hides the work.
+4. **I kept the raw rows.** A bucket is a view over data I still have, so next month I can ask another question without re-collecting anything.
+
+The code that made this possible is embarrassingly small. The work was deciding to look at the distribution instead of the total:
+
+```
+from collections import Counter
+
+states = [row["coverageState"] for row in inspection_rows]
+total = len(states)
+for state, n in Counter(states).most_common():
+    print(f"{n:5d}  {n/total:5.1%}  {state}")
+```
+
+That's it. No library, no dashboard, no vendor. If your panel shows a single number, group the rows yourself.
+
+## If you take only one thing
+
+A metric that only goes up is not measurement, it is mood. "Indexed pages" only goes up. "Clicks coming from indexed pages" can fall, and that is why it informs.
+
+Next time a panel hands you a green number, ask what the distribution behind it looks like. The distribution is the report. The total is the summary someone wrote so you would stop asking.
+
+---
+
+I build measurement gates for a living: checks that can actually fail, instead of dashboards that only go up. The same discipline is packaged here, if you want it as code instead of a post:
+
+- **[The agent that doesn't lie](https://skills.seu.pet/p/o-agente-que-nao-mente?utm_source=lifelog&utm_medium=article&utm_campaign=indexed-6-clicks-202611&utm_content=ebook)**: the ebook about why your AI approves a broken commit, and the checks that block it. R$ 37.
+- **[Full pack](https://skills.seu.pet/p/pack-completo?utm_source=lifelog&utm_medium=article&utm_campaign=indexed-6-clicks-202611&utm_content=pack)**: the four skills plus the ebook. R$ 147.
