@@ -159,7 +159,8 @@ def _pick_suffix(style, slug):
     if isinstance(sfx, (list, tuple)):
         if not sfx:
             return ""
-        idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(sfx)
+        # B324: MD5 usado apenas para escolha determinística, nunca segurança.
+        idx = int(hashlib.md5(slug.encode("utf-8"), usedforsecurity=False).hexdigest(), 16) % len(sfx)
         return sfx[idx]
     return sfx
 
@@ -199,7 +200,8 @@ def generate_cover(slug, project="descobertas", title=None, force=False):
         "Low-angle heroic perspective, dramatic lighting, towering elements",
         "Dutch angle tilt, asymmetric balance, tension in framing",
     ]
-    comp_idx = int(hashlib.md5(slug.encode("utf-8")).hexdigest(), 16) % len(compositions)
+    # B324: MD5 usado apenas para escolha determinística, nunca segurança.
+    comp_idx = int(hashlib.md5(slug.encode("utf-8"), usedforsecurity=False).hexdigest(), 16) % len(compositions)
     composition = compositions[comp_idx]
 
     # --- Project-specific moods ---
