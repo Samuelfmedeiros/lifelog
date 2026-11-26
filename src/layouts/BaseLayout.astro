@@ -269,11 +269,11 @@ const footerText = dataLocale === 'en'
     <header class="navbar">
       <nav class="navbar-inner" aria-label={locale === 'en' ? 'Main navigation' : 'Navegação principal'}>
         <div class="navbar-links">
-          <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio"><span class="nav-link-icon" aria-hidden="true">{t.nav.portfolioIcon}</span>{t.nav.portfolio}</a>
-          <a href={homeHref} class="navbar-link" data-i18n="nav.home">{t.nav.home}</a>
-          <a href={archiveHref} class="navbar-link" data-i18n="nav.archive"><span class="nav-link-icon" aria-hidden="true">{t.nav.archiveIcon}</span>{t.nav.archive}</a>
-          <a href={storeHref} target="_blank" rel="noopener" class="navbar-link" data-i18n="nav.store">{t.nav.store}</a>
-          <a href={aboutHref} class="navbar-link" data-i18n="nav.about"><span class="nav-link-icon" aria-hidden="true">{t.nav.aboutIcon}</span>{t.nav.about}</a>
+          <a href={portfolioHref} target="_blank" rel="noopener" class="navbar-link cta" data-i18n="nav.portfolio" data-analytics-id="nav.portfolio"><span class="nav-link-icon" aria-hidden="true">{t.nav.portfolioIcon}</span>{t.nav.portfolio}</a>
+          <a href={homeHref} class="navbar-link" data-i18n="nav.home" data-analytics-id="nav.home">{t.nav.home}</a>
+          <a href={archiveHref} class="navbar-link" data-i18n="nav.archive" data-analytics-id="nav.archive"><span class="nav-link-icon" aria-hidden="true">{t.nav.archiveIcon}</span>{t.nav.archive}</a>
+          <a href={storeHref} target="_blank" rel="noopener" class="navbar-link" data-i18n="nav.store" data-analytics-id="nav.store">{t.nav.store}</a>
+          <a href={aboutHref} class="navbar-link" data-i18n="nav.about" data-analytics-id="nav.about"><span class="nav-link-icon" aria-hidden="true">{t.nav.aboutIcon}</span>{t.nav.about}</a>
           <PalettePicker />
           {/* Toggle de idioma: mostra a OUTRA língua (destino). O idioma atual
               já é evidente pelo texto da página — Samuel 15/08/2026.
@@ -292,7 +292,8 @@ const footerText = dataLocale === 'en'
       </nav>
     </header>
 
-    <main class="max-w-6xl mx-auto px-4 py-8">
+    <!-- data-track-section: medido pelo modulo de engajamento (section_time). -->
+    <main class="max-w-6xl mx-auto px-4 py-8" data-track-section="conteudo">
       <slot />
     </main>
 
