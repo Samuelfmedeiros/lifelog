@@ -1,0 +1,194 @@
+---
+title: "Três consertos, uma causa — a página nova que herdou o layout e esqueceu as regras"
+description: "As páginas de tag saíram sem capa nenhuma, misturavam português com inglês na mesma listagem e jogavam de volta na home quem trocava de idioma. Três bugs que pareciam sem relação e vinham do mesmo lugar: a regra morava na home, não no componente."
+category: samuel-projects
+date: 2026-09-11 23:59:00 -03:00
+pubDate: 2026-09-12 16:00:00 -03:00
+project: lifelog
+tags: [lifelog, astro, i18n, frontend, testing, quality]
+cover: /covers/lifelog-tres-concertos-uma-causa.webp
+featured: false
+hidden: true
+---
+
+import Terminal from '../../components/TerminalWidget.astro'
+
+## A mesma reclamação, três vezes numa tarde
+
+No dia 11 de setembro eu corri atrás de três reclamações separadas sobre o LifeLog e consertei as três antes da noite acabar. Nenhuma delas parecia ter relação com as outras.
+
+A primeira: "os posts não têm capa nas páginas de tag". A segunda: cards em inglês aparecendo no meio de uma página em português. A terceira: "quando troco o idioma, o site me joga de volta para a home".
+
+Cada uma foi tratada como bug isolado no momento em que apareceu. Só enquanto escrevia o relatório daquele dia vi que eram o mesmo defeito três vezes. As três causas cabem numa frase: **toda página de listagem reimplementava a home em vez de reutilizar suas regras.**
+
+Este post é sobre essa classe de defeito, que passei a chamar de invariante órfão.
+
+## Primeira infração: a capa que nunca chegou
+
+O `PostCard` recebe a capa como prop. Quando a prop falta, ele desenha um placeholder com o ícone do projeto — um comportamento cortês, pensado para que um post sem arte não quebre o layout.
+
+```astro
+<!-- PostCard.astro -->
+<div class="cover-wrap">
+  {cover ? (
+    <img src={cover} alt={title} loading="lazy" class="cover-img" />
+  ) : (
+    <div class="cover-placeholder">
+      <span class="placeholder-icon"><ProjectIcon project={project} /></span>
+    </div>
+  )}
+</div>
+```
+
+A home passava `cover={post.data.cover}` desde que capa existia. As duas páginas de tag — `/tag/[slug]` e `/en/tag/[slug]` — passavam título, descrição, data, projeto, tags e slug. Não passavam capa.
+
+O resultado: 336 páginas de tag em português e 336 em inglês (o vocabulário canônico tem 345 slugs; nem todo termo tinha posts suficientes para gerar rota) mostrando nada além de um quadradinho com o ícone do projeto, enquanto a mesma lista na home vinha com arte.
+
+O conserto foram duas linhas em cada arquivo:
+
+```diff
+           slug={post.id}
++          icon={post.data.icon}
++          cover={post.data.cover}
+           locale={locale}
+```
+
+Commit `b4aace0`, 11 de setembro às 17:15.
+
+O que me incomoda não é o tamanho do conserto. É que nada reclamou. Build verde, rotas no ar, nenhum `undefined` no console. Uma prop opcional com um fallback bonitinho é **invisível quando falta** — exatamente o contrário do que eu queria que um fallback fosse.
+
+Um detalhe apareceu na auditoria: dos 152 posts em português, apenas 7 têm `icon:` no frontmatter. Então das duas props que adicionei, uma consertava o problema relatado e a outra entrou por simetria com a home, onde fica quase sempre vazia. Anotado como decisão para depois: se o ícone do card deveria vir do projeto em vez do post.
+
+## Segunda infração: dois idiomas na mesma janela
+
+Duas horas depois, com as capas finalmente no lugar, a página de tag ficou legível o suficiente para expor a vizinha. Em `/tag/arachne/`, cards em português e em inglês se alternavam lado a lado, contando a mesma história duas vezes.
+
+Isso não nasceu naquele dia. Estava ali desde que páginas de tag existiam. As capas são o que tornou visível: enquanto todo card usava o mesmo placeholder, os idiomas misturados passavam despercebidos.
+
+O conserto também foi uma linha por arquivo:
+
+```diff
+ const posts = allPosts
+-  .filter((p) => postIds.includes(p.id))
++  .filter((p) => postIds.includes(p.id) && !p.id.startsWith('en/'))
+   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+```
+
+Na página em inglês, a condição espelhada com `&& p.id.startsWith('en/')`.
+
+Vale registrar por que o filtro roda no **caminho do arquivo** e não num campo do frontmatter. A primeira tentativa de i18n usava `locale:` no YAML do post, e o Astro 7 reserva `locale` — o campo voltava `undefined` em todo post. O schema em `src/content.config.ts` declara `icon`, `cover`, `featured` e `hidden`; não tem sequer entrada para `lang`. Filtrar pelo prefixo `en/` do ID é a única fonte de verdade que nunca falhou, porque é o próprio sistema de arquivos. Um daqueles casos em que a solução burra vence a elegante por não depender de detalhe de framework.
+
+Commit `535ec0c`, 11 de setembro às 18:36, junto com dois asserts de regressão em `e2e/tags.spec.ts`: zero links `/en/post/` dentro da página em português, zero links `/post/` dentro da em inglês.
+
+Depois do build seguinte, `/tag/arachne/` tinha 21 cards, todos em português. O espelho em inglês do mesmo jeito — 21, sem nenhum link em português à vista.
+
+## Terceira infração: o atalho para a home
+
+Fechando a noite: o botão que alterna PT/EN sempre apontava para a home.
+
+Esse link de idioma mora no `BaseLayout`, compartilhado por todas as páginas do site. E estava escrito assim:
+
+```astro
+href={dataLocale === 'en' ? '/' : '/en/'}
+```
+
+Perfeitamente correto no dia em que só existiam home, arquivo e sobre. Virou teletransporte no momento em que o site cresceu para páginas de post e páginas de tag: você está em `/tag/yurumi/`, aperta EN, cai em `/en/`.
+
+O conserto tinha que derivar o destino do pathname atual, incluindo as exceções que o próprio site criou:
+
+```javascript
+const langHref = (() => {
+  const p = Astro.url.pathname;
+  const trailing = p.endsWith('/') ? '/' : '';
+  const norm = p.replace(/\/+$/, '') || '/';
+  if (dataLocale === 'en') {
+    const rest = norm === '/en' ? '/' : norm.slice(3);
+    const alias = { '/archive': '/arquivo', '/about': '/sobre' };
+    return alias[rest] || (rest === '/' ? '/' : rest + trailing);
+  }
+  if (norm === '/' || norm.startsWith('/ocultos')) return '/en/';
+  const alias = { '/arquivo': '/en/archive', '/sobre': '/en/about' };
+  return alias[norm] || ('/en' + norm + trailing);
+})();
+```
+
+Três coisas nesse bloco não são óbvias. Os aliases, porque `/arquivo` não se chama `/archive` em português. O caso `/ocultos`, porque essa área só existe em português — emitir `/en/ocultos` seria fabricar um 404 com as próprias mãos. E a barra final preservada, porque rotas canônicas carregam uma.
+
+Commit `8d4cb32`, 11 de setembro às 23:27, com um arquivo de regressão novinho cobrindo sete caminhos: tag PT→EN, tag EN→PT, uma página de post, os dois aliases, home em cada direção, e o fallback do painel de posts ocultos.
+
+No build seguinte, o `href` do botão em `/tag/arachne/` virou `/en/tag/arachne/`. Na versão em inglês, `/tag/arachne/`. Parecia óbvio demais para contar como conserto de dezoito linhas.
+
+## A quarta vez que essa família apareceu
+
+Antes daquela tarde, no dia 8 de setembro, o Roger tinha achado o mesmo formato de defeito nas mesmas páginas: o `getStaticPaths` das páginas de tag contava **todos** os posts, incluindo os `hidden: true` do pipeline. Um post oculto não ganhava rota própria, mas suas tags apareciam com contagens infladas e chips apontando para conteúdo que ainda não devia existir.
+
+Esse conserto chegou colado num commit sobre outra coisa (`bc02d2d`), o que diz muito sobre como achados assim costumam cair.
+
+Quatro incidentes, mesmo DNA:
+
+| Data | Superfície | O que falhou em propagar |
+|---|---|---|
+| 08/09 | páginas de tag | filtro de posts ocultos |
+| 11/09 17:15 | páginas de tag | props de capa e ícone |
+| 11/09 18:36 | páginas de tag | filtro de idioma |
+| 11/09 23:27 | layout global | destino relativo à página atual |
+
+Três dos quatro na mesma página. Não é sorte — é a página que mais cresceu herdando nada.
+
+## O padrão: invariantes que moram numa página
+
+O `PostCard` é compartilhado. O `BaseLayout` é compartilhado. O `TagCloud` é compartilhado. Só as **regras sobre quais posts entram numa lista e o que cada card precisa receber** moram copiadas e coladas dentro de cada arquivo de página.
+
+Tudo que é componente, eu reutilizo. Tudo que é invariante, eu reimplemento. Isso está de trás para frente.
+
+Os remédios que apliquei naquela mesma tarde foram documentação e testes, não arquitetura:
+
+- virou regra de projeto: qualquer página nova que renderize `<PostCard` passa o mesmo conjunto de props que a home passa (`icon`, `cover`, `index`) e copia o filtro de idioma;
+- qualquer superfície nova que liste posts filtra `hidden` no `getStaticPaths` **e** na lista renderizada;
+- cada um dos três consertos ganhou um assert de regressão, não só uma correção — um teste que falha se o próximo `filter()` nascer sem a condição de idioma.
+
+Isso evita repetição? Não. Evita repetição **silenciosa**, que era o que de fato acontecia.
+
+## Métricas
+
+| Item | Antes | Depois |
+|---|---|---|
+| páginas de tag em português com capa | 0 | 336 |
+| páginas de tag em inglês com capa | 0 | 336 |
+| idiomas misturados em `/tag/arachne/` | PT + EN | 21 cards, todos PT |
+| destino do botão de idioma | `/` ou `/en/` fixos | pathname atual, com aliases |
+| asserts de regressão nos 3 consertos | 0 | 9 (2 arquivos) |
+| linhas de código de produção nos 3 consertos | — | 24 |
+
+Vinte e quatro linhas de código de produção resolveram o que três relatos separados descreviam como três problemas. Isso é boa notícia e aviso ao mesmo tempo: um conserto de duas linhas é barato; descobrir que ele era necessário custou três reclamações de alguém de fato usando o site.
+
+## O que vem a seguir
+
+A regra escrita cobre o próximo trimestre. A estrutura cobre o próximo ano, e ela não existe ainda:
+
+1. **Um módulo único de listagem.** Uma função que recebe um locale e devolve uma lista já filtrada (não oculta, idioma certo) e já decorada (props de card completas). As páginas chamariam isso em vez de montar `filter` na mão.
+2. **Testes parametrizados por superfície.** Rodar os mesmos quatro asserts — capa presente, idioma puro, oculto ausente, botão de idioma apontando para a mesma página — contra toda página que lista posts, não só as que eu lembrei de escrever hoje.
+3. **Prop obrigatória quando a ausência significa esquecimento.** Tirar o `?` de `cover` no `PostCard`, mantendo o placeholder só para casos em que a ausência é uma decisão. Prop opcional demais é como um bug educado sobrevive.
+
+O item 3 é o mais barato e o mais chato: força auditar toda chamada de `<PostCard` no repositório de uma vez. Que é exatamente por isso que ele segue sendo adiado.
+
+<Terminal
+  title="the-three-offenses-audit"
+  commands={[
+    { cmd: 'git show --numstat b4aace0', output: '2\t0\tsrc/pages/en/tag/[slug].astro\n2\t0\tsrc/pages/tag/[slug].astro' },
+    { cmd: 'git show --numstat 535ec0c', output: '4\t1\te2e/tags.spec.ts\n1\t1\tsrc/pages/en/tag/[slug].astro\n1\t1\tsrc/pages/tag/[slug].astro' },
+    { cmd: 'git show --numstat 8d4cb32', output: '48\t0\te2e/lang-switch.spec.ts\n18\t1\tsrc/layouts/BaseLayout.astro' },
+    { cmd: 'ls dist/tag | wc -l', output: '336' },
+    { cmd: 'pnpm exec playwright test e2e/tags.spec.ts e2e/lang-switch.spec.ts', output: 'ok - 14 passed' },
+  ]}
+/>
+
+## O que fica
+
+**Um fallback elegante esconde uma regra que falta.** Um componente que sabe viver sem uma prop vai viver sem essa prop para sempre, e ninguém será avisado.
+
+**Consertar um bug pode ser o que revela o próximo.** Os idiomas misturados nas páginas de tag existiam havia semanas; só ficaram legíveis quando as capas entraram.
+
+**Um controle que mora num layout global não pode apontar para um lugar fixo.** Quanto mais alto na árvore um componente está, mais ele precisa perguntar onde está em vez de assumir.
+
+E a lição que amarra as três: um invariante que mora numa página específica não se propaga — ele se repete. Toda superfície nova é uma chance nova de esquecer a regra, e a conta chega como reclamação de leitor, nunca como erro de build.

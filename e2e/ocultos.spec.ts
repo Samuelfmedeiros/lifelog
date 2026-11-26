@@ -8,9 +8,10 @@ const __dirname = dirname(__filename);
 
 const SECRET = 'segredo-de-teste';
 const POSTS_DIR = join(__dirname, '..', 'src', 'content', 'posts');
+const POSTS_EN_DIR = join(POSTS_DIR, 'en');
 
-function frontmatter(file: string): Record<string, string> {
-  const raw = readFileSync(join(POSTS_DIR, file), 'utf-8').replace(/\r\n/g, '\n');
+function frontmatterDe(dir: string, file: string): Record<string, string> {
+  const raw = readFileSync(join(dir, file), 'utf-8').replace(/\r\n/g, '\n');
   const bloco = raw.match(/^---\n([\s\S]*?)\n---/);
   const fm: Record<string, string> = {};
   for (const linha of (bloco?.[1] || '').split('\n')) {
@@ -26,13 +27,24 @@ const slugDe = (f: string) => f.replace(/\.mdx$/, '');
 // Fixtures derivadas do acervo. Antes era um slug fixo que saiu do repo e
 // deixou tres testes vermelhos por semanas (o arquivo nao existia mais, o
 // sitemap nunca teria aquele texto). Slug fixo em fixture de conteudo apodrece.
-const HIDDEN_SLUG = (() => {
-  for (const f of ARQUIVOS) if (frontmatter(f).hidden === 'true') return slugDe(f);
-  return 'post-oculto-inexistente';
+const HIDDEN = (() => {
+  const enArquivos = readdirSync(POSTS_EN_DIR).filter((f: string) => f.endsWith('.mdx'));
+  for (const f of ARQUIVOS) {
+    if (frontmatterDe(POSTS_DIR, f).hidden !== 'true') continue;
+    const slug = slugDe(f);
+    // Se o par EN do mesmo slug for PUBLICO, o slug aparece no sitemap por
+    // /en/post/<slug>/ e um `toContain(slug)` daria falso vermelho — o teste
+    // compara URL, nao substring, e a fixture so aceita oculto sem par publico.
+    const parEn = enArquivos.find((e: string) => e === `${slug}.mdx`);
+    if (parEn && frontmatterDe(POSTS_EN_DIR, parEn).hidden !== 'true') continue;
+    return { slug, url: `/post/${slug}/` };
+  }
+  return { slug: 'post-oculto-inexistente', url: '/post/post-oculto-inexistente/' };
 })();
+const HIDDEN_SLUG = HIDDEN.slug;
 
 const PUBLIC_SLUG = (() => {
-  for (const f of ARQUIVOS) if (frontmatter(f).hidden !== 'true') return slugDe(f);
+  for (const f of ARQUIVOS) if (frontmatterDe(POSTS_DIR, f).hidden !== 'true') return slugDe(f);
   return 'home';
 })();
 
@@ -152,7 +164,7 @@ test.describe('Verificacao de ocultos no frontend', () => {
     expect(response?.status()).toBe(200);
     const xml = await response!.text();
     expect(xml).toContain(PUBLIC_SLUG);
-    expect(xml).not.toContain(HIDDEN_SLUG);
+    expect(xml).not.toContain(HIDDEN.url);
   });
 
   // Regressao 13/11/2026: a lista /ocultos mostrava card SEM capa porque

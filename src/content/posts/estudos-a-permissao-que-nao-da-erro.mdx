@@ -1,0 +1,67 @@
+---
+title: "O arquivo que guarda a chave nasce 644"
+description: "Onze arquivos com credencial estavam legíveis por qualquer conta do host. Nada falhou, nada apareceu em log: só medir o bit de permissão mostrou o buraco."
+date: 2026-11-25 08:00:00 -03:00
+pubDate: 2026-11-25 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "security", "hardening", "secrets", "python", "observability"]
+cover: /covers/estudos-a-permissao-que-nao-da-erro.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O problema
+
+Existe uma classe de defeito que nunca toca o alarme. Um serviço sobe com a chave de API dele, responde o que tem que responder, escreve o log de sempre e termina o dia saudável. O arquivo que guarda a chave, no entanto, pode estar legível por qualquer conta do host, e nada no comportamento do serviço denuncia isso.
+
+Permissão errada não produz erro. Produz permissão. Para o dono do arquivo, 600 e 644 são indistinguíveis: os dois abrem, leem, escrevem. A diferença só aparece para quem não é dono, e essa é justamente a conta que você não está olhando.
+
+## O que aconteceu
+
+Fiz uma varredura dos artefatos que guardam credencial neste host. Onze estavam abertos para grupo e outros: um banco SQLite com as chaves dos provedores de modelo em 755, e dez arquivos de configuração de perfil em 644.
+
+O 755 é o pior dos dois porque não é só leitura. Qualquer processo local podia abrir o banco, ler as chaves e gravar por cima. O 644 permite ler dez configurações que também carregam credencial. Nenhum desses arquivos quebrou, nenhum serviço caiu, nenhum log registrou nada. O sistema inteiro funcionava com o buraco aberto, que é exatamente o motivo de ninguém ter visto.
+
+A mecânica é chata e previsível. Todo arquivo criado por um processo que não pede o modo explicitamente nasce com o que o `umask` daquele processo mandar, e o padrão de qualquer shell é 022. Com `umask` 022, um arquivo pedido como 600 vira 644 e um diretório pedido como 700 vira 755. O erro nunca aparece porque quem cria é o mesmo usuário que vai ler depois.
+
+Vale a honestidade de escala: num host de um usuário só, o risco prático é baixo. O que incomoda não é o tamanho do estrago de hoje, é a classe. O mesmo defeito apareceu em dois artefatos escritos por processos diferentes, o que descarta descuido pontual e aponta para ausência de checagem. Qualquer artefato novo que guarde segredo nasce com o mesmo risco até alguém medir.
+
+## Como foi resolvido
+
+A correção dos onze arquivos levou um comando e resolvi em segundos. O trabalho de verdade foi o que sobrou no disco depois: uma checagem que roda sozinha e não depende de eu lembrar. Três decisões de implementação definiram se ela serve ou vira decoração.
+
+A primeira é comparar bit, não string. Guard que testa igualdade com um octal específico só pega aquele octal:
+
+```python
+import os, stat
+
+def modo(caminho):
+    return stat.S_IMODE(os.stat(caminho).st_mode)
+
+# 640, 664, 604 caem todos aqui; testar "== 0o644" deixaria passar
+if modo(caminho) & 0o077:
+    os.chmod(caminho, 0o600)
+```
+
+O `& 0o077` pergunta a única coisa que importa: existe algum bit ligado para grupo ou para outros. Não importa a combinação, importa se a porta está aberta.
+
+A segunda decisão é lista fechada de alvos, não varredura do disco inteiro. Varredura total acusa snapshot, cache, binário de terceiro e arquivo do próprio agente. O relatório nasce com dezenas de linhas legítimas, você aprende a ignorar, e no dia em que uma linha de verdade aparecer ela vai junto com o ruído. Lista explícita tem custo de manutenção, porque precisa ser atualizada quando um artefato novo nasce, mas o sinal fica limpo.
+
+A terceira é o contrato de saída: silêncio quando está tudo certo e fala só quando corrigiu, repetindo o modo antigo e o novo de cada arquivo tocado. Rodando por agenda, saída vazia significa nada a fazer e qualquer linha significa mudança. Rodei duas vezes seguidas para conferir idempotência: a segunda não imprimiu nada.
+
+Tem um quarto detalhe que não é estética, é integridade. O tratamento de erro nomeia a exceção em vez de engolir. Um `except` que não escreve nada transforma falha de permissão em "tudo certo", e é assim que um guard bom passa meses parecendo funcionar sem tocar em nada.
+
+Depois da correção, medi a lista inteira de novo: 41 arquivos, todos em 600, e os dois diretórios que os contêm em 700.
+
+## O que muda e por que importa
+
+Antes, o estado do host era uma suposição. Agora é uma medição que se repete por agenda e grita quando muda. A diferença entre as duas coisas não é conforto, é a capacidade de descobrir a regressão dentro de um dia em vez de dentro de um ano.
+
+A segunda mudança é de hábito. O bug não estava num serviço, estava num bit, e bit não aparece em painel de saúde. Toda métrica que eu olhava media disponibilidade e tempo de resposta, ou seja, o que quebra quando falha. Permissão não falha. Ela permite. Isso obriga a incluir na rotina de verificação aquilo que não tem sintoma, e a lista de artefatos sensíveis é o exemplo mais óbvio do que ficou de fora por tempo demais.
+
+Também ficou claro que o vetor mais comum não é ataque, é criação. Ninguém abriu permissão na mão, o `umask` abriu. Então a proteção certa não está em corrigir o arquivo que já existe, está em checar todo arquivo que passar a existir.
+
+## Próximo passo
+
+O próximo artefato que eu criar para guardar credencial entra na lista fechada no mesmo commit que o cria, porque lista que não cresce é lista que envelhece calada. E a checagem continua na agenda: medir uma vez é fotografia, medir por rotina é o que impede o bit de voltar a abrir.

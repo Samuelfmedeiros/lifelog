@@ -1,0 +1,67 @@
+---
+title: "The file that holds the key is born 644"
+description: "Eleven credential files were readable by any account on the host. Nothing failed, nothing logged: only the permission bit showed the hole."
+date: 2026-11-25 08:00:00 -03:00
+pubDate: 2026-11-25 08:00:00 -03:00
+project: estudos
+tags: ["estudos", "security", "hardening", "secrets", "python", "observability"]
+cover: /covers/estudos-a-permissao-que-nao-da-erro.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The problem
+
+There is a class of defect that never touches the alarm. A service comes up with its API key, answers what it is supposed to answer, writes its usual log line, and ends the day healthy. The file that holds the key may be readable by any account on the host, and nothing in the service behaviour gives that away.
+
+A wrong permission does not produce an error. It produces permission. For the file owner, 600 and 644 are indistinguishable: both open, read and write. The difference only shows up for whoever is not the owner, and that is exactly the account you are not looking at.
+
+## What happened
+
+I ran a sweep over the artifacts that hold credentials on this host. Eleven of them were open to group and others: a SQLite database holding the model provider keys at 755, and ten profile configuration files at 644.
+
+The 755 is worse because it is not read-only. Any local process could open the database, read the keys and write over them. The 644 allows reading ten configurations that also carry credentials. None of those files broke, no service went down, no log recorded anything. The whole system ran with the hole open, which is precisely why nobody saw it.
+
+The mechanics are boring and predictable. Every file created by a process that does not ask for a mode explicitly is born with whatever `umask` that process carries, and the default in any shell is 022. With `umask` 022, a file requested as 600 becomes 644 and a directory requested as 700 becomes 755. Whoever creates a credential without asking for the mode is asking for 644 without knowing, and the mistake never surfaces because the creator is the same user who will read it later.
+
+Scale honesty matters here: on a single-user host the practical risk is low. What bothers me is not the size of today's damage, it is the class. The same defect showed up in two artifacts written by different processes, which rules out a one-off slip and points to a missing check. Any new artifact that stores a secret is born with the same risk until someone measures it.
+
+## How it was fixed
+
+Fixing the eleven files took one command and a couple of seconds. The real work was what stayed on disk afterwards: a check that runs on its own and does not depend on me remembering. Three implementation decisions decided whether it was useful or decorative.
+
+The first is to compare the bit, not the string. A guard that tests equality against one specific octal only catches that octal:
+
+```python
+import os, stat
+
+def mode(path):
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+# 640, 664, 604 all land here; testing "== 0o644" would let them through
+if mode(path) & 0o077:
+    os.chmod(path, 0o600)
+```
+
+The `& 0o077` asks the only question that matters: is any bit set for group or for others. The combination is irrelevant, whether the door is open is not.
+
+The second is a closed list of targets instead of a whole-disk scan. A full scan flags snapshots, caches, third-party binaries and the agent's own files. The report is born with dozens of legitimate lines, you learn to ignore it, and on the day a real line shows up it arrives buried in noise. An explicit list costs maintenance, because it has to be updated when a new artifact appears, but the signal stays clean.
+
+The third is the output contract: silence when everything is correct, and speech only when it fixed something, repeating the old and the new mode of every file it touched. Running on a schedule, empty output means nothing to do and any line means change. I ran it twice in a row to check idempotency: the second run printed nothing.
+
+There is a fourth detail that is not aesthetics, it is integrity. The error branch names the exception instead of swallowing it. An `except` that writes nothing turns a permission failure into "all good", and that is how a sound guard spends months looking like it works while touching nothing.
+
+After the fix I measured the whole list again: 41 files, all at 600, and the two directories that contain them at 700.
+
+## What changes and why it matters
+
+Before, the state of the host was an assumption. Now it is a measurement that repeats on a schedule and shouts when it changes. The difference between those two things is not comfort, it is the ability to find a regression within a day instead of within a year.
+
+The second change is a matter of habit. The bug was not in a service, it was in a bit, and bits do not appear on a health dashboard. Every metric I looked at measured availability and response time, that is, the things that break when they fail. A permission does not fail. It permits. That forces the verification routine to include what has no symptom at all, and the list of sensitive artifacts is the most obvious example of what had been left out for too long.
+
+It also became clear that the most common vector is not attack, it is creation. Nobody opened the permission by hand, the `umask` did. So the right protection is not fixing the file that already exists, it is checking every file that comes to exist.
+
+## Next step
+
+The next artifact I create to hold a credential goes into the closed list in the same commit that creates it, because a list that does not grow is a list that ages in silence. And the check stays on the schedule: measuring once is a photograph, measuring on a routine is what keeps the bit from opening again.

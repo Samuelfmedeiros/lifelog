@@ -1,0 +1,71 @@
+---
+title: "The secret in 644 that any local account could read"
+description: "A metadata audit found keys in files readable by every user on the host. The content was right. The permission was not."
+date: 2026-11-25 20:30:00 -03:00
+pubDate: 2026-11-26 08:00:00 -03:00
+project: seguranca
+tags: ["seguranca", "security", "hardening", "secrets", "devops"]
+icon: "🔒"
+cover: /covers/seguranca-o-segredo-em-644.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The permission nobody audits
+
+Every security review I have seen starts with content: hunt the key in the source, hunt the password in the commit, hunt the token in the log. Almost none starts with metadata. That is why the most uncomfortable finding of the past few days came from a one line command, the kind that answers before you finish reading the output.
+
+What showed up: ten of the thirteen profile configuration files were in mode 644. The model multiplexer database was in 755, and so was the directory holding it.
+
+Translating the mode: the owner reads and writes, and the rest of the system reads. With the directory at 755, any local user lists the contents. This is not a remote exploit, not a firewall hole, not a CVE. It is a service account, a container with a mounted volume, a third party process running as another user, reading the credential that pays for model calls. The leak does not need an exotic flaw. It needs `cat`.
+
+## Why the default is always the worst option
+
+The cause is not one careless day. It is the file creation mask. On this host, `umask` answers `0022`.
+
+With that mask every file is born 644 and every directory is born 755. That has been the distribution default for decades and it makes sense for public content: source code, documentation, static pages. It makes no sense at all for a file holding a credential. The catch is that the writer does not know what it is writing. Package installers, setup scripts, archive extraction, backup restores, copies between machines: all of them respect the mask and none of them asks whether that YAML contains an API key.
+
+The result is a class of defect that does not show up in a test, does not show up in an error log, and breaks no functionality. The application keeps working perfectly. The file sits exactly where it should, with exactly the right content, readable by people who should not have it.
+
+## Inspect the metadata, not the content
+
+The obvious fix is to open every file and grep for key patterns. Bad for three reasons: it costs a full read, it raises false positives on example values, and it puts the secret in the buffer of a process that never needed to see it. Permission is metadata: a single `stat` call answers without opening the file.
+
+So the guard ended up like this: a closed list of targets, one bitmask test, a fix only when a group or other bit is set.
+
+```python
+import os
+import stat
+
+def exposed(path: str) -> bool:
+    """True when the file is readable outside the owner."""
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    return bool(mode & 0o077)
+```
+
+The `0o077` is the part that matters. The test does not compare against the expected mode: it asks whether any access exists outside the owner. Files at 640, 604, 660, 777 all match. Comparing against an exact 600 would let a 640 through, and 640 is already group readable. Testing the bit is stricter and far easier to explain to whoever arrives later.
+
+Three properties made this guard last more than a day, and none of them is really about security.
+
+Idempotence: running it ten times in a row changes the disk once. Without that you cannot put it on a schedule, because every run becomes noise.
+
+Silence when clean: exit code zero and not a single printed line. When it speaks, it is because it fixed something, and it exits non zero. A guard that prints "checked, all good" every hour trains the operator to ignore the output, and on the day it has something to say nobody reads it.
+
+A closed target list: scanning the whole home directory for "files that look like secrets" is expensive, false positive prone, and breaks with every new layout. The targets are named: profile configurations, environment files, local vault directories. A new kind of sensitive file goes into the list, not into a heuristic.
+
+## What actually changes
+
+Measured today: fourteen configuration files, one at the root and thirteen profiles, all at 600. Twenty six environment files across the three target groups, all owner only. The vault directory at 700. Today's run came out silent, exit zero, nothing to fix: the guard moved from reaction to verification.
+
+The bigger number is not that one. It is that a permission never comes back on its own. Every tool upgrade, every new package, every restore can recreate the file with the mask default. A one time permission fix lasts until the next write; what lasts is the recurring check.
+
+There is also a good side effect of working with metadata: the audit does not depend on recognizing the secret format. A key in YAML, in JSON, in a SQLite database, in an environment file, all of them have a file mode. What changes is the target list, not the test.
+
+## What is still missing
+
+Two things, and neither is polish.
+
+The first is closing the origin, not just the symptom. Services that write these files should start with a restrictive mask, so the file is born 600 instead of being corrected hours later. A guard that fixes is a safety net; the right mask is the cause. While the origin stays on the default, the guard will keep finding work, which is a polite way of saying the problem is still open.
+
+The second is measuring the list itself. Today the audit covers what I already know holds secrets. What it does not cover is the sensitive file I never listed, and historically that is always the one left over. A closed list protects what is on it; everything else depends on someone remembering to add the new target the same day it is created.
