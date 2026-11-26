@@ -1,0 +1,81 @@
+---
+title: "O módulo que virava função: o arquivo de dados que derrubava o painel"
+description: "Um módulo de dados dentro da pasta de API virou function na Vercel e passou a responder 500. A cura foi mudar de diretório e travar a volta com um teste."
+date: 2026-11-25 15:32:00 -03:00
+pubDate: 2026-11-26 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "vercel", "api", "deploy", "testing"]
+cover: /covers/lifelog-o-modulo-que-virava-funcao.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O arquivo que só queria ser lido
+
+Todo projeto que usa deploy na Vercel aprende cedo a regra de ouro da pasta de funções: cada arquivo ali dentro é um endpoint. O que se aprende mais tarde, e geralmente na dor, é que essa regra não é uma convenção de organização. É o runtime.
+
+O painel de posts ocultos funciona assim: durante o build, um script varre o acervo, encontra os posts marcados como ocultos e grava o resultado num arquivo de dados. Simples: um array e nada mais.
+
+O problema é onde esse arquivo morava. Ele ficava na mesma pasta das funções, e o nome terminava em `.mjs`. Para o sistema de arquivos era um módulo inofensivo. Para a plataforma de deploy, era mais um endpoint publicado. E quando alguém chamava esse endpoint, o que acontecia não era leitura. Era execução.
+
+O arquivo exportava um array como valor padrão. A plataforma tentava invocar esse valor como função, recebia algo que não é função e devolvia erro de invocação, HTTP 500. O painel não quebrava por causa de um bug meu de lógica: quebrava porque eu tinha dado à plataforma o direito de executar um arquivo que só queria ser lido.
+
+## O que a Vercel faz com qualquer `.mjs` daquela pasta
+
+A documentação é explícita e eu tinha lido: arquivos dentro da pasta de API viram funções serverless. O detalhe que escapa é a assimetria da regra. Ela não pergunta se o arquivo tem handler. Não olha o conteúdo. A plataforma enumera a pasta no momento do deploy e publica cada arquivo como um endpoint, ponto.
+
+Com um módulo de dados ali dentro, acontecem três coisas, e todas ruins:
+
+O endpoint nasce com uma rota pública que ninguém pediu.
+Ele executa no runtime de função, e isso custa invocação mesmo quando falha.
+O erro que ele devolve é genérico, porque a plataforma não sabe que aquilo não era para ser uma função.
+
+Foi essa última parte que me custou tempo. O erro de invocação não aponta para o arquivo errado nem para a convenção violada. Ele diz que a função falhou. E a função, no caso, era um array.
+
+O diagnóstico veio por eliminação. O painel estava correto, o gerador de dados estava correto, o import estava correto. O que estava errado era o endereço. O arquivo não podia viver na pasta que a plataforma executa, mesmo sendo só dado.
+
+## A mudança de endereço
+
+O conserto foi mover o módulo para uma pasta de dados, fora do diretório de funções, e atualizar quem o importava. O commit que fez isso mexeu em oito arquivos, com dezoito linhas adicionadas e dezoito removidas: o módulo renomeado de pasta, o handler que o consome, o gerador que o escreve, o workflow que o sincroniza, o teste end-to-end e mais dois pontos de apoio.
+
+No handler, a mudança é uma linha:
+
+```javascript
+// antes: o módulo de dados morava dentro da pasta que a plataforma executa
+import OCULTOS from './ocultos-data.mjs';
+
+// depois: dado é dado, e mora fora da pasta de funções
+import OCULTOS from '../data/ocultos-data.mjs';
+```
+
+Vinte e cinco minutos depois, o mesmo padrão apareceu num segundo arquivo de dados que eu tinha deixado para trás. Esse segundo commit mexeu em seis arquivos, com quarenta e nove inserções e treze remoções, porque junto com a mudança veio uma trava.
+
+Mudar de pasta resolve o presente. Não impede que alguém, seis semanas depois, crie outro módulo de dados na pasta errada, porque a pasta é conveniente e o erro só aparece em produção. Foi pensando nisso que a cura virou teste.
+
+## O teste que fecha a porta
+
+O guard estrutural é pequeno e não sabe nada sobre o domínio do blog. Ele lê a pasta de funções e verifica uma coisa em cada arquivo: o valor exportado parece um handler de requisição? Se o arquivo exporta dados em vez de função, o teste falha antes do deploy.
+
+```typescript
+const HANDLER = /export\s+default\s+(async\s+)?function|export\s+default\s+async\s*\(|export\s+default\s+\(?\s*(req|request)/;
+
+describe('estrutura de api/ (Vercel Functions)', () => {
+  const arquivos = readdirSync(API).filter((f) => f.endsWith('.mjs'));
+
+  it.each(arquivos)('%s exporta handler, não dados', (nome) => {
+    const src = readFileSync(join(API, nome), 'utf-8');
+    expect(HANDLER.test(src), `${nome} parece exportar dados e viraria 500`).toBe(true);
+  });
+});
+```
+
+Ele também testa a negativa, que é a parte que fecha o ciclo: o módulo de dados precisa existir na pasta de dados e precisa não existir na pasta de funções. Rodei essa suíte agora: sete testes, todos verdes, em menos de meio segundo.
+
+## Por que isso vale mais do que o conserto
+
+O bug em si é banal. Um arquivo no lugar errado, um 500. O que ele ensina é outra coisa: quando a plataforma trata estrutura de diretório como contrato de execução, escolher pasta deixou de ser preferência de organização e passou a ser mudança de comportamento em produção. A pasta não é decoração. A pasta é configuração.
+
+A segunda lição é sobre onde colocar a trava. Eu poderia ter escrito um aviso no README dizendo que dado não mora na pasta de funções. Ninguém lê aviso. Um teste que roda no build, custa menos de um segundo e falha com a mensagem exata do problema é a única forma de a regra sobreviver a mim mesmo.
+
+O próximo passo é o mesmo movimento aplicado ao resto do painel: qualquer artefato que nasça do build e seja só leitura fica fora da pasta executável, e a suíte de estrutura cresce junto com ele.

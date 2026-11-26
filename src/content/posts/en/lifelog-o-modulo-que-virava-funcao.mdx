@@ -1,0 +1,77 @@
+---
+title: "The module that became a function: the data file that took the panel down"
+description: "A data module inside the API folder became a Vercel function and started returning 500. The fix was moving directories and locking the return with a test."
+date: 2026-11-25 15:32:00 -03:00
+pubDate: 2026-11-26 12:00:00 -03:00
+project: lifelog
+tags: ["lifelog", "vercel", "api", "deploy", "testing"]
+cover: /covers/lifelog-o-modulo-que-virava-funcao.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The file that only wanted to be read
+
+Anyone who deploys to Vercel learns the golden rule of the functions folder early: every file in there is an endpoint. What you learn later, and usually the hard way, is that this rule is not an organizational convention. It is the runtime.
+
+The hidden posts panel works like this: during the build, a script scans the content collection, finds the posts flagged as hidden and writes the result to a data file. Simple: an array and nothing else.
+
+The problem was where that file lived. It sat in the same folder as the functions, and its name ended in `.mjs`. To the filesystem it was a harmless module. To the deploy platform it was one more published endpoint. And when someone called that endpoint, what happened was not a read. It was an execution.
+
+The file exported an array as its default value. The platform tried to invoke that value as a function, got something that is not a function, and returned an invocation error, HTTP 500. The panel did not break because of a logic bug of mine. It broke because I had given the platform the right to execute a file that only wanted to be read.
+
+## What Vercel does with any `.mjs` in that folder
+
+The documentation is explicit and I had read it: files inside the API folder become serverless functions. The detail that slips by is the asymmetry of the rule. It does not ask whether the file has a handler. It does not look at the content. The platform enumerates the folder at deploy time and publishes every file as an endpoint, full stop.
+
+With a data module in there, three things happen, all of them bad. The endpoint is born with a public route nobody asked for. It runs on the function runtime, and that costs an invocation even when it fails. And the error it returns is generic, because the platform has no idea that thing was never meant to be a function.
+
+That last part is what cost me time. The invocation error does not point at the wrong file nor at the violated convention. It says the function failed. And the function, in this case, was an array.
+
+The diagnosis came by elimination. The panel was correct, the data generator was correct, the import was correct. What was wrong was the address. The file could not live in the folder the platform executes, even when it holds nothing but data.
+
+## The change of address
+
+The fix was moving the module into a data folder, outside the functions directory, and updating whoever imported it. The commit touched eight files, with eighteen lines added and eighteen removed: the module renamed to a new folder, the handler that consumes it, the generator that writes it, the workflow that syncs it, the end-to-end test and two more support points.
+
+In the handler, the change is one line:
+
+```javascript
+// before: the data module lived inside the folder the platform executes
+import OCULTOS from './ocultos-data.mjs';
+
+// after: data is data, and it lives outside the functions folder
+import OCULTOS from '../data/ocultos-data.mjs';
+```
+
+Twenty-five minutes later the same pattern showed up in a second data file I had left behind. That second commit touched six files, with forty-nine insertions and thirteen deletions, because along with the move came a lock.
+
+Moving folders fixes the present. It does not stop someone, six weeks later, from creating another data module in the wrong folder, because the folder is convenient and the error only shows up in production. That is why the fix became a test.
+
+## The test that closes the door
+
+The structural guard is small and knows nothing about the blog domain. It reads the functions folder and checks one thing per file: does the exported value look like a request handler? If the file exports data instead of a function, the test fails before the deploy.
+
+```typescript
+const HANDLER = /export\s+default\s+(async\s+)?function|export\s+default\s+async\s*\(|export\s+default\s+\(?\s*(req|request)/;
+
+describe('api/ structure (Vercel Functions)', () => {
+  const files = readdirSync(API).filter((f) => f.endsWith('.mjs'));
+
+  it.each(files)('%s exports a handler, not data', (name) => {
+    const src = readFileSync(join(API, name), 'utf-8');
+    expect(HANDLER.test(src), `${name} looks like data export and would 500`).toBe(true);
+  });
+});
+```
+
+It also tests the negative, which is the part that closes the loop: the data module must exist in the data folder and must not exist in the functions folder. I ran that suite just now: seven tests, all green, in under half a second.
+
+## Why this matters more than the fix
+
+The bug itself is banal. A file in the wrong place, a 500. What it teaches is something else: when the platform treats directory structure as an execution contract, choosing a folder stopped being an organizational preference and became a production behavior change. The folder is not decoration. The folder is configuration.
+
+The second lesson is about where to put the lock. I could have written a note in the README saying that data does not live in the functions folder. Nobody reads notes. A test that runs on the build, costs less than a second and fails with the exact message of the problem is the only way a rule survives me.
+
+The next step is the same move applied to the rest of the panel: anything born from the build and read-only stays outside the executable folder, and the structure suite grows along with it.
