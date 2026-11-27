@@ -1,10 +1,17 @@
 import { test as base } from '@playwright/test';
 
+/** Tipo explícito das fixtures — sem isso o TS 6 não infere o mapa de
+ *  fixtures do playwright e todo `{ goto }` nos specs vira ts(2339). */
+type LifelogFixtures = {
+  goto: (path?: string) => Promise<import('@playwright/test').Response | null>;
+  home: () => Promise<import('@playwright/test').Response | null>;
+};
+
 /**
  * Fixtures do LifeLog — elimina repetição de navegação e espera.
  * Uso: import { test } from './fixtures';
  */
-export const test = base.extend({
+export const test = base.extend<LifelogFixtures>({
   /**
    * goto: navega até uma rota com waitForLoadState('networkidle') padronizado.
    * Retorna a Response (pra testes que leem headers/texto, ex: RSS).

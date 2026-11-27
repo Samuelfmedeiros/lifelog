@@ -16,7 +16,7 @@ for (const width of [390, 360, 320]) {
       const rect = rail?.getBoundingClientRect();
       const centerX = rect ? Math.round(rect.left + rect.width / 2) : -1;
       const centerY = rect ? Math.round(rect.top + rect.height / 2) : -1;
-      const fonts = [];
+      const fonts: string[] = [];
       document.querySelectorAll('.navbar-link').forEach(a => fonts.push(getComputedStyle(a).fontSize));
       return {
         hasScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -46,25 +46,31 @@ test('animação tema: mobile usa clip-path circular (origem = toque)', async ({
   await page.waitForTimeout(1200);
 
   await page.evaluate(() => {
+    type AnimOpts = KeyframeAnimationOptions & { pseudoElement?: string };
     window.__animClips = [];
     const orig = Element.prototype.animate;
-    Element.prototype.animate = function (frames, opts) {
-      const pseudo = opts && opts.pseudoElement;
+    Element.prototype.animate = function (
+      this: Element,
+      frames: Keyframe[] | PropertyIndexedKeyframes | null,
+      opts?: number | AnimOpts,
+    ) {
+      const pseudo = typeof opts === 'object' && opts ? opts.pseudoElement : undefined;
       if (pseudo === '::view-transition-new(root)' || pseudo === '::view-transition-old(root)') {
-        const frame = Array.isArray(frames) ? frames[0] : frames;
-        window.__animClips.push({
+        const frame = Array.isArray(frames) ? frames[0] : (frames as Keyframe | null);
+        window.__animClips?.push({
           from: frame?.clipPath || '',
           opacity: frame?.opacity !== undefined ? String(frame.opacity) : '',
           pseudo,
         });
       }
-      return orig.call(this, frames, opts);
+      return orig.call(this, frames as Parameters<Element['animate']>[0], opts as Parameters<Element['animate']>[1]);
     };
   });
 
   const btn = page.locator('#rail-theme');
   const box = await btn.boundingBox();
   expect(box).toBeTruthy();
+  if (!box) throw new Error('boundingBox nulo para #rail-theme');
 
   await page.touchscreen.tap(Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2));
   await page.waitForTimeout(150);
@@ -76,6 +82,7 @@ test('animação tema: mobile usa clip-path circular (origem = toque)', async ({
   // Circular: o new(root) DEVE ter clip-path circle() partindo do toque
   const newClip = clips.find(c => c.pseudo === '::view-transition-new(root)');
   expect(newClip).toBeTruthy();
+  if (!newClip) throw new Error('nenhum clipe de ::view-transition-new(root) capturado');
   // from pode ser string ("circle(0px at Xpx Ypx)") ou array de keyframes
   const fromVal = Array.isArray(newClip.from) ? newClip.from.join(' ') : String(newClip.from || '');
   expect(fromVal).toContain('circle(');
@@ -89,20 +96,28 @@ test('animação tema: desktop mantém clip-path circular da origem do clique', 
   await page.waitForTimeout(1200);
 
   await page.evaluate(() => {
+    type AnimOpts = KeyframeAnimationOptions & { pseudoElement?: string };
     window.__animClips = [];
     const orig = Element.prototype.animate;
-    Element.prototype.animate = function (frames, opts) {
-      if (opts && opts.pseudoElement === '::view-transition-new(root)') {
-        const fromVal = Array.isArray(frames) ? frames[0]?.clipPath : frames.clipPath?.[0];
-        window.__animClips.push({ from: fromVal || '' });
+    Element.prototype.animate = function (
+      this: Element,
+      frames: Keyframe[] | PropertyIndexedKeyframes | null,
+      opts?: number | AnimOpts,
+    ) {
+      const pseudo = typeof opts === 'object' && opts ? opts.pseudoElement : undefined;
+      if (pseudo === '::view-transition-new(root)') {
+        const frame = Array.isArray(frames) ? frames[0] : (frames as Keyframe | null);
+        const fromVal = Array.isArray(frame?.clipPath) ? frame?.clipPath[0] : frame?.clipPath;
+        window.__animClips?.push({ from: fromVal || '' });
       }
-      return orig.call(this, frames, opts);
+      return orig.call(this, frames as Parameters<Element['animate']>[0], opts as Parameters<Element['animate']>[1]);
     };
   });
 
   const btn = page.locator('#rail-theme');
   const box = await btn.boundingBox();
   expect(box).toBeTruthy();
+  if (!box) throw new Error('boundingBox nulo para #rail-theme');
   const tx = Math.round(box.x + box.width / 2);
   const ty = Math.round(box.y + box.height / 2);
   console.log(`click em (${tx}, ${ty})`);
@@ -119,9 +134,10 @@ test('animação tema: desktop mantém clip-path circular da origem do clique', 
   await page.waitForTimeout(150);
   const clips = await page.evaluate(() => window.__animClips || []);
   console.log('clipPaths desktop capturados:', JSON.stringify(clips));
-  const from = clips[0].from;
+  const from = String(clips[0]?.from ?? '');
   const match = from.match(/circle\(0px at (\d+)px (\d+)px\)/);
   expect(match).toBeTruthy();
+  if (!match) throw new Error(`clip-path sem circle() na origem: ${from}`);
   const cx = parseInt(match[1], 10);
   const cy = parseInt(match[2], 10);
   expect(Math.abs(cx - tx)).toBeLessThanOrEqual(8);
@@ -145,17 +161,24 @@ test('animação tema: limpeza SÓ após a animação completar (regressão t.fi
   const btn = page.locator('#rail-theme');
   const box = await btn.boundingBox();
   expect(box).toBeTruthy();
+  if (!box) throw new Error('boundingBox nulo para #rail-theme');
   const tx = Math.round(box.x + box.width / 2);
   const ty = Math.round(box.y + box.height / 2);
 
   await page.evaluate(() => {
+    type AnimOpts = KeyframeAnimationOptions & { pseudoElement?: string };
     window.__animStartedAt = 0;
     const orig = Element.prototype.animate;
-    Element.prototype.animate = function (frames, opts) {
-      if (opts && opts.pseudoElement === '::view-transition-new(root)') {
+    Element.prototype.animate = function (
+      this: Element,
+      frames: Keyframe[] | PropertyIndexedKeyframes | null,
+      opts?: number | AnimOpts,
+    ) {
+      const pseudo = typeof opts === 'object' && opts ? opts.pseudoElement : undefined;
+      if (pseudo === '::view-transition-new(root)') {
         window.__animStartedAt = performance.now();
       }
-      return orig.call(this, frames, opts);
+      return orig.call(this, frames as Parameters<Element['animate']>[0], opts as Parameters<Element['animate']>[1]);
     };
   });
 

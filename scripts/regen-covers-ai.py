@@ -27,6 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import cover_brief  # noqa: F401  (modulo carregado cedo, ver build_prompt)
 # Repo físico: trocar para \\\\wsl$\\kali-linux\\home\\samuel\\projetos\\lifelog no Windows nativo
 LIFELOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 COVERS_DIR = os.path.join(LIFELOG_DIR, "public/covers")
@@ -82,86 +83,8 @@ def read_meta(slug):
     return "descobertas", slug
 
 
-PROJECT_STYLES = {
-    "arachne": {"prompt_suffix": "Minimal flat illustration, one single large solid circular web emblem in deep violet with thick bold radial spokes and a solid spider silhouette at the center, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no thin hairline strokes, no small marks, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#a78bfa", "#fde68a"]},
-    "dogwalk": {"prompt_suffix": "Minimal flat illustration, one single large solid rounded app-tile shape in strong violet with a bold warm amber accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#f59e0b", "#fde68a"]},
-    "portfolio": {"prompt_suffix": "Minimal flat illustration, one single large solid rocket shape in vivid cyan-blue with a bold deeper blue accent band, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#0ea5e9", "#0369a1", "#bae6fd"]},
-    "capivara": {"prompt_suffix": "Minimal flat illustration, one single large solid rounded monitoring-panel shape in vivid amber-orange with a bold darker accent bar across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#f59e0b", "#fb923c", "#fde68a"]},
-    "tatuengine": {"prompt_suffix": "Minimal flat illustration, one single large solid breaking-wave shape in deep teal with a bold lighter teal accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, clean composition, absolutely no dark areas, solid flat fill, no interior detail, no small marks, no text, 16:9 wallpaper", "colors": ["#0f766e", "#2dd4bf", "#fde68a"]},
-    "seguranca": {"prompt_suffix": "Minimal flat illustration, one single large solid shield shape in vivid red on a plain light cream background, bright and luminous, high key lighting, soft pastel gradient, vast empty space, clean composition, absolutely no dark areas, 16:9 wallpaper", "colors": ["#ef4444", "#fca5a5", "#fde68a"]},
-    "lifelog": {"prompt_suffix": "Minimal flat illustration, one single large solid vertical page-card shape in vivid violet with a bold amber accent band across its lower third, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no lines, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#6d28d9", "#a855f7", "#fde68a"]},
-    "estudos": {"prompt_suffix": "Minimal flat illustration, one single large solid open book shape in deep cobalt blue with a bold azure accent band across it, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
-    "yurumi": {"prompt_suffix": [
-            "Lush tropical rainforest scene with one giant bioluminescent mushroom as the hero element, wide emerald cap, glowing teal gills and a thick pale stem, ferns and moss-covered roots around it, golden light shafts through the canopy",
-            "Tropical rainforest waterfall falling over mossy black rocks into a jade pool, dense ferns and hanging vines framing the scene, mist rising and golden light shafts through the canopy",
-            "One colossal rainforest tree with wide buttress roots covered in moss and lichen, hanging vines and broad ferns at its base, warm sunbeams breaking through the dense canopy",
-            "A calm jade river winding through dense tropical jungle, giant broad leaves and fern fronds on both banks, low mist and warm golden light filtering through the trees",
-            "Floating luminous spores drifting between giant fern fronds and ancient moss-covered trunks in a dense rainforest, soft teal glow and warm golden light shafts",
-            "A rocky jungle clearing covered in moss and giant ferns, clusters of small glowing mushrooms and thick roots crossing the ground, warm golden light through the canopy haze",
-        ], "colors": ["#b98a5e", "#22d3ee", "#0b1424"]},
-    "descobertas": {"prompt_suffix": "Minimal flat illustration, one single large solid curved arrow shape in vivid azure blue bending back on itself, filling most of the frame, on a plain light cream background, bright and luminous, high key lighting, decisive color contrast, flat solid colors only, no interior detail, no small marks, clean composition, absolutely no dark areas, no text, 16:9 wallpaper", "colors": ["#1d4ed8", "#38bdf8", "#fde68a"]},
-}
+from cover_brief import build_prompt, read_brief
 
-PROJECT_MOODS = {
-    "arachne": "mysterious, crawling, interconnected web of data",
-    "dogwalk": "clean, modern, premium SaaS platform, no animals, no pets, abstract service-network aesthetic",
-    "portfolio": "futuristic, polished, luminous interface",
-    "capivara": "warm, tropical, sunset over digital landscape",
-    "tatuengine": "flowing, mathematical, clean, high key",
-    "seguranca": "vigilant, armored, red-alert intensity",
-    "lifelog": "reflective, clear, bright, high key",
-    "estudos": "clear, scholarly, bright, high key",
-    "yurumi": "cerrado, wonder, exploration, pixel art charm, Brazilian adventure",
-    "descobertas": "curious, bright, clear discovery, high key",
-}
-
-COMPOSITIONS = [
-    "Wide cinematic shot, deep depth of field, environmental scale",
-    "Close-up macro composition, shallow depth of field, abstract details",
-    "Diagonal dynamic angle, motion blur, action perspective",
-    "Overhead flat lay, geometric arrangement, top-down view",
-    "Low-angle heroic perspective, dramatic lighting, towering elements",
-    "Dutch angle tilt, asymmetric balance, tension in framing",
-]
-
-
-def _pick_suffix(style, slug):
-    """17/11/2026: estilo pode ter VARIAS cenas (lista). Escolha deterministica
-    por sha1 do slug — mesma capa, mesma cena, mas capas diferentes variam."""
-    s = style["prompt_suffix"]
-    if isinstance(s, str):
-        return s
-    idx = int(hashlib.sha1(slug.encode("utf-8"), usedforsecurity=False).hexdigest()[:6], 16) % len(s)
-    return s[idx]
-
-def build_prompt(slug, project, title):
-    style = PROJECT_STYLES.get(project, PROJECT_STYLES["descobertas"])
-    title_context = ""
-    if title:
-        clean = title.strip('"').strip("'")
-        words = [w for w in clean.lower().split() if len(w) > 3 and w not in
-                 ("com", "que", "dos", "das", "para", "como", "mais", "pelo", "pela",
-                  "and", "the", "for", "with", "from", "that", "this", "was", "were")][:8]
-        if words:
-            title_context = f"Visual metaphor for: {' '.join(words)}. "
-    # hash() do Python e' randomizado por processo (PYTHONHASHSEED aleatorio):
-    # a mesma slug escolhia composicao DIFERENTE a cada execucao, entao regerar
-    # uma capa nunca devolvia a mesma imagem. sha1 e' estavel entre maquinas e
-    # rodadas — determinismo e' requisito do repo (capas versionadas no git).
-    comp_idx = int(hashlib.sha1(slug.encode("utf-8"), usedforsecurity=False).hexdigest()[:8], 16) % len(COMPOSITIONS)
-    composition = COMPOSITIONS[comp_idx]
-    mood = PROJECT_MOODS.get(project, "atmospheric, immersive, cinematic")
-    return (
-        f"Digital artwork. {title_context}"
-        f"{_pick_suffix(style, slug)}. {composition}. "
-        f"Mood: {mood}. "
-        f"Color palette: {', '.join(style['colors'])}. "
-        "Centered composition: keep the subject inside the middle third of the frame, "
-        "with breathing room above and below (the image is cropped to a wide 21:9 banner). "
-        f"No UI elements, no watermark, no raw text overlays. "
-        "No characters, no people, no animals, no mascots, no anthropomorphic figures, "
-        "absolutely no humans, no human silhouettes, no scale figures, no crowds."
-    )
 
 
 def _compose_21x9(path, w=2100, h=900):
@@ -251,7 +174,8 @@ def normalize_to_webp(path):
 
 
 def generate(slug, force=True):
-    project, title = read_meta(slug)
+    brief = read_brief(slug)
+    project = brief["project"]
     api_key = load_api_key()
     if not api_key:
         print(f"[{slug}] SEM LIFELOG_COVER_API_KEY")
@@ -262,7 +186,7 @@ def generate(slug, force=True):
         return False
     os.makedirs(COVERS_DIR, exist_ok=True)
     output_path = os.path.join(COVERS_DIR, f"{slug}.webp")
-    prompt = build_prompt(slug, project, title)
+    prompt = build_prompt(slug, brief=brief)
     print(f"\n=== {slug} ({project}) ===")
     print(f"PROMPT: {prompt[:200]}...")
     data = json.dumps({"prompt": prompt}).encode("utf-8")

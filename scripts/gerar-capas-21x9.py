@@ -23,6 +23,7 @@ import os
 import re
 import sys
 
+import cover_brief  # noqa: F401
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -49,22 +50,8 @@ W, H = 2100, 900  # 21/9 exato, igual ao aspect do hero
 #   - arachne/capivara/dogwalk/yurumi usavam accent divergente do site
 #     (arachne vermelho no cover vs roxo no site; capivara roxo vs ambar...).
 # Depois: 60 capas (23,3%) em roxo — so as que o site realmente pinta de roxo.
-PALETTE = {
-    "lifelog":     dict(base=(19, 9, 30),  accent=(168, 85, 247),  glow=(205, 156, 252), ink=(245, 242, 247)),  # #a855f7
-    "yurumi":      dict(base=(24, 19, 14), accent=(185, 138, 94),  glow=(225, 203, 183), ink=(246, 245, 244)),  # #b98a5e
-    "arachne":     dict(base=(17, 9, 29),  accent=(124, 58, 237),  glow=(192, 159, 249), ink=(244, 242, 247)),  # #7c3aed
-    "tatuengine":  dict(base=(10, 29, 27), accent=(20, 184, 166),  glow=(161, 247, 238), ink=(243, 247, 247)),  # #14b8a6
-    "descobertas": dict(base=(9, 23, 30),  accent=(56, 189, 248),  glow=(156, 223, 252), ink=(242, 246, 247)),  # #38bdf8
-    "dogwalk":     dict(base=(11, 27, 17), accent=(34, 197, 94),   glow=(166, 242, 194), ink=(243, 247, 244)),  # #22c55e
-    "capivara":    dict(base=(30, 22, 9),  accent=(245, 158, 11),  glow=(252, 216, 156), ink=(247, 245, 242)),  # #f59e0b
-    "seguranca":   dict(base=(29, 9, 9),   accent=(239, 68, 68),   glow=(249, 159, 159), ink=(247, 242, 242)),  # #ef4444
-    "portfolio":   dict(base=(9, 26, 30),  accent=(0, 212, 255),   glow=(156, 236, 252), ink=(242, 247, 248)),  # #00d4ff
-    "estudos":     dict(base=(9, 17, 30),  accent=(59, 130, 246),  glow=(156, 192, 252), ink=(242, 244, 247)),  # #3b82f6
-}
-# Projeto sem paleta NAO herda mais o roxo do lifelog: cai em cinza-azulado
-# neutro e avisa. Antes, faltar uma chave aqui pintava 20% do acervo de roxo.
-PAL_FALLBACK = dict(base=(20, 22, 28), accent=(148, 163, 184), glow=(203, 213, 225), ink=(241, 245, 249))
-DEFAULT_PROJECT = "lifelog"
+from cover_brief import (PALETTE, PAL_FALLBACK, DEFAULT_PROJECT, read_brief,
+                         TAG_MOTIF, TAGS_DE_PROJETO, pick_motif, MOTIF_DESC)
 
 
 def rnd(slug):
@@ -264,76 +251,6 @@ COMPOS = [comp_orbita, comp_ondas, comp_orbitais, comp_arco]
 # `arachne`, `capivara` etc. so dizem de qual projeto e' o post (isso ja vira
 # paleta) — usa-las como motivo fazia todo post do projeto sair com a mesma
 # cara, que e' exatamente o defeito relatado por Samuel em 09/11/2026.
-TAG_MOTIF = {
-    # medir / provar / veredito
-    "testing": "alvo", "pytest": "alvo", "quality-gate": "alvo",
-    "e2e": "alvo", "vrt": "alvo", "qa": "alvo", "benchmark": "alvo",
-    "metrics": "alvo", "eval": "alvo", "medicao": "alvo",
-    # buraco, defesa, permissao
-    "security": "escudo", "seguranca": "escudo", "auth": "escudo",
-    "lgpd": "escudo", "secrets": "escudo", "gitleaks": "escudo",
-    # achar a causa
-    "debugging": "ruptura", "bug": "ruptura", "incident": "ruptura",
-    "postmortem": "ruptura", "lessons": "ruptura", "regression": "ruptura",
-    # fluxo que entrega
-    "ci-cd": "fluxo", "deploy": "fluxo", "pipeline": "fluxo",
-    "github-actions": "fluxo", "vercel": "fluxo", "automation": "fluxo",
-    # estado vigiado no tempo
-    "monitoring": "pulso", "observability": "pulso", "watchdog": "pulso",
-    "reliability": "pulso", "performance": "pulso",
-    # conhecimento acumulado / busca
-    "rag": "rede", "memory": "rede", "search": "rede", "embeddings": "rede",
-    "retrieval": "rede", "vector": "rede",
-    # construcao / organizacao de codigo
-    "refactoring": "camadas", "architecture": "camadas", "frontend": "camadas",
-    "react": "camadas", "nextjs": "camadas", "design-system": "camadas",
-    "python": "camadas", "fastapi": "camadas", "typescript": "camadas",
-    # treino / arquitetura de modelo: empilhar pesos e camadas e' construcao
-    "ssm": "camadas", "mamba": "camadas", "bitmamba": "camadas",
-    "pytorch": "camadas", "training": "camadas", "sft": "camadas",
-    "fine-tuning": "camadas", "ternary": "camadas", "model": "camadas",
-    "wave-field": "camadas", "wave-field-theory": "camadas", "fase4": "camadas",
-    # GPU/VRAM: o tema desses posts e' caber no hardware, nao "camadas"
-    "cuda": "alvo", "gpu": "alvo", "vram": "alvo", "quantization": "alvo",
-    "validation": "alvo", "metric": "alvo", "evaluation": "alvo",
-    # a11y e UI entram em camadas (superficie construida)
-    "accessibility": "camadas", "wcag": "camadas", "a11y": "camadas",
-    "axe-core": "camadas", "contrast": "camadas", "ui": "camadas",
-    "ux": "camadas", "astro": "camadas", "css": "camadas", "design": "camadas",
-    # conhecimento acumulado, docs, estudo e coleta
-    "documentation": "rede", "studies": "rede", "study": "rede",
-    "learning": "rede", "knowledge": "rede", "scraping": "rede",
-    "crawl4ai": "rede", "crawler": "rede", "agents": "rede",
-    "ecosystem": "rede", "projects": "rede", "research": "rede",
-    # operacao e infra: fluxo que entrega e sustenta
-    "infrastructure": "fluxo", "docker": "fluxo", "kubernetes": "fluxo",
-    "cloudflare": "fluxo", "checkpoint": "fluxo", "backup": "fluxo",
-    "update": "fluxo", "migration": "fluxo",
-    # inferencia local e estabilidade
-    "ollama": "pulso", "vlm": "pulso", "stability": "pulso",
-    "stability-testing": "pulso", "bench": "pulso", "boot": "pulso",
-    # ferramenta que entrega / operacao do dia a dia
-    "tools": "fluxo", "dev": "fluxo", "productivity": "fluxo", "ops": "fluxo",
-    "configuration": "fluxo", "networking": "fluxo", "wsl": "fluxo",
-    "wslg": "fluxo", "hermes": "fluxo", "computer-use": "fluxo",
-    "cua-driver": "fluxo", "state": "fluxo",
-    # produto, loja e comeco de jornada: construcao de superficie
-    "marketplace": "camadas", "showcase": "camadas", "gamification": "camadas",
-    "games": "camadas", "improvement": "camadas", "beginning": "camadas",
-    "pets": "camadas", "build": "camadas", "repo": "camadas",
-    # git e privacidade de repo: limpeza que protege o que esta exposto
-    "git": "escudo", "privacy": "escudo",
-}
-
-# Tags que identificam PROJETO e nunca devem escolher o motivo.
-TAGS_DE_PROJETO = {
-    "yurumi", "arachne", "capivara", "dogwalk", "patapass", "portfolio",
-    "portifolio", "lifelog", "tatuengine", "estudos", "seguranca",
-    "descobertas", "forgetgate", "ecossistema",
-}
-
-# motivo -> funcao de composicao. As 4 antigas seguem valendo; as 3 novas
-# (alvo, escudo, ruptura, fluxo, pulso, rede, camadas) cobrem os assuntos.
 MOTIF_COMP = {
     "alvo":     "comp_alvo",      # aneis concentricos + marcador central
     "escudo":   "comp_escudo",    # forma fechada protegendo nucleo
@@ -344,67 +261,6 @@ MOTIF_COMP = {
     "camadas":  "comp_camadas",   # camadas empilhadas
     "orbita":   "comp_orbita",    # fallback abstrato
 }
-
-MOTIF_DESC = {
-    "alvo": "medicao/veredito: aneis + marcador no centro",
-    "escudo": "defesa: forma fechada em volta de nucleo",
-    "ruptura": "falha/causa: linha que quebra e retoma",
-    "fluxo": "entrega: etapas encadeadas",
-    "pulso": "vigia/estado: serie no tempo contra limiar",
-    "rede": "conhecimento: nos conectados",
-    "camadas": "construcao: camadas empilhadas",
-    "orbita": "abstrato (sem tag mapeada)",
-}
-
-
-def read_brief(slug):
-    """Le title/description/project/tags do post. PT primeiro, EN fallback.
-
-    Devolve dict com o que a capa precisa saber do assunto. Nunca levanta:
-    post sem frontmatter cai no default e o chamador avisa.
-    """
-    base = re.sub(r"-v\d+$", "", slug)
-    for d in POST_DIRS:
-        p = os.path.join(LIFELOG_DIR, d, base + ".mdx")
-        if not os.path.exists(p):
-            continue
-        t = open(p, encoding="utf-8", errors="ignore").read()
-        m = re.search(r"^---(.*?)^---", t, re.S | re.M)
-        if not m:
-            continue
-        fm = m.group(1)
-
-        def campo(nome):
-            mm = re.search(r"^%s:\s*(.+)$" % nome, fm, re.M)
-            return mm.group(1).strip().strip('"').strip("'") if mm else ""
-
-        tags_raw = campo("tags")
-        tags = [x.strip().strip('"').strip("'").lower()
-                for x in tags_raw.strip("[]").split(",") if x.strip()]
-        return {
-            "slug": base,
-            "title": campo("title"),
-            "description": campo("description"),
-            "project": campo("project") or DEFAULT_PROJECT,
-            "tags": tags,
-        }
-    return {"slug": base, "title": "", "description": "",
-            "project": DEFAULT_PROJECT, "tags": []}
-
-
-def pick_motif(brief):
-    """Primeira tag de ASSUNTO decide o motivo. Tag de projeto nao conta.
-
-    Se so houver tags de projeto (ou nenhuma), cai em `orbita` — abstrato
-    declarado, sem fingir que entendeu o assunto.
-    """
-    for t in brief["tags"]:
-        if t in TAGS_DE_PROJETO:
-            continue
-        if t in TAG_MOTIF:
-            return TAG_MOTIF[t], t
-    return "orbita", ""
-
 
 def _comp_alvo(r, pal, dark):
     """Tres medidores do MESMO objeto, com leituras diferentes: medicao e veredito.
