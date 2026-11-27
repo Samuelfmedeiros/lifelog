@@ -1,0 +1,60 @@
+---
+title: "O alarme que acusava a própria proteção"
+description: "O painel marcava crítico num serviço que a máquina desligou de propósito para não travar. O erro não era o serviço: era o inventário não conhecer a intenção."
+date: 2026-11-27 08:00:00 -03:00
+pubDate: 2026-11-27 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "systemd", "memory", "vitest"]
+cover: /covers/capivara-o-alarme-que-acusava-a-protecao.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O vermelho que não era falha
+
+O painel de serviços do Capivara listava um serviço em estado vermelho. Não amarelo, não "desconhecido": vermelho de verdade, contado como queda crítica no veredito da página. O detalhe é que aquele serviço não tinha caído. Ele tinha sido desligado de propósito, pela própria máquina, algumas horas antes.
+
+Por quase seis semanas o painel fez o que qualquer painel bem escrito faz: leu o estado do serviço e pintou de vermelho o que estava parado e era crítico. A regra estava certa. O dado estava certo. A interpretação estava errada, porque faltava uma informação que o estado do processo não carrega: a intenção por trás dele.
+
+## O que aconteceu
+
+O inventário do painel tem 34 itens, e 13 deles são marcados como críticos. A lista não é decorativa: cada entrada carrega um campo booleano que decide se o serviço parado vira alarme ou vira constatação. Esse campo entrou junto com o mapa de serviços medido no host, no commit `6cb87ac`, em 18 de outubro. Naquele momento, o serviço principal de embeddings foi marcado como crítico, com a lógica óbvia: é o cérebro semântico do meu assistente, parado significa busca degradada.
+
+Só que existe outro mecanismo no host que também tem opinião sobre esse serviço. Um guardião de pressão de memória observa o indicador de stall do kernel e, quando a máquina começa a passar mais tempo esperando memória do que trabalhando, ele hiberna os serviços gordos para o sistema não travar. O serviço de embeddings é o primeiro da fila: é caro em memória e tem um substituto leve que assume a função.
+
+Na noite de 26 de novembro, às 22h40, o guardião entrou em ação. O serviço foi parado, o substituto continuou respondendo, e o host saiu da zona de thrashing. Do ponto de vista da máquina, foi um acerto. Do ponto de vista do painel, foi uma queda crítica de um serviço essencial.
+
+O painel passou a exibir um alarme que, se eu acreditasse nele, me faria subir à mão exatamente o processo que a máquina tinha acabado de desligar para se proteger. E há um segundo capítulo: quando o serviço foi iniciado externamente, o guardião reconciliou e parou de novo, registrando que havia uma pausa ativa. Estado do processo e intenção do sistema discordando em tempo real, e o painel mostrando apenas o lado mais barulhento.
+
+## Como foi resolvido
+
+A cura não foi no guardião, nem no serviço. Foi no inventário, o único lugar que responde pela classificação. O commit `799c22f`, de 27 de novembro, mexeu em dois arquivos, com 20 linhas adicionadas e 1 removida. A mudança de produção é de uma linha: a entrada daquele serviço deixou de ser crítica.
+
+Isso funciona porque o veredito da página é derivado, não escrito à mão. A função lê o resumo e cai na primeira condição verdadeira:
+
+```js
+export function vereditoServicos(resumo) {
+  if (resumo.crit) return 'crit'
+  if (resumo.criticos_caidos.length) return 'crit'
+  if (resumo.warn || resumo.degradados_criticos.length) return 'warn'
+  if (resumo.unknown) return 'parcial'
+  return 'ok'
+}
+```
+
+Com o item marcado como crítico, um serviço parado incrementava `crit` e o veredito global ia para vermelho. Com o item reclassificado, o mesmo processo parado passa a contar como `warn`, e o veredito global fica amarelo: atenção, não incêndio. Nenhuma outra linha do painel precisou mudar, porque a regra já estava no lugar certo. O que faltava era a informação certa no dado que alimenta a regra.
+
+A outra metade do commit é o teste. Foram 17 linhas a mais em um arquivo que já tinha 39 casos. O teste novo simula exatamente o cenário real, um serviço inativo com estado finalizado, e verifica dois contratos ao mesmo tempo: que o item aparece como `warn`, e que a contagem de críticos caídos fica em zero. Sem esse segundo, a linha ficaria amarela e o topo continuaria vermelho. O teste trava a intenção, não a aparência.
+
+## O que isso muda
+
+Um alarme falso custa mais do que um alarme ausente. O ausente me faz procurar. O falso me ensina a ignorar o vermelho, e no dia em que o vermelho for real eu vou olhar e pensar "é aquele de sempre". O painel de serviços é a primeira tela que abro quando algo cheira estranho. Se ela chora por decisão correta do sistema, perde a função.
+
+A lição é sobre onde mora a verdade em um monitor. Estado de processo é fato bruto: parado ou rodando. Intenção é política: por que está parado, quem mandou parar, quando isso deve voltar. Um monitor que só lê o fato bruto vai errar sempre que a política do sistema for mais esperta que a do painel. A saída é colocar a política no inventário, que é a fonte única, e derivar o resto. Se cada tela decidisse sozinha o que é grave, cada tela erraria em um lugar diferente.
+
+## Próximo passo
+
+O passo seguinte é registrar a intenção de forma explícita, não deduzida. Hoje a classificação sabe que parado é tolerável, mas não distingue "parado em repouso" de "parado porque a máquina está sofrendo". O inventário passa a ler o motivo da pausa na linha do serviço, para que o amarelo tenha legenda em vez de silêncio.
+
+Enquanto isso, o serviço segue hibernado por decisão do host, o substituto atende, e o painel conta a mesma história que a máquina. Vermelho voltou a significar problema.

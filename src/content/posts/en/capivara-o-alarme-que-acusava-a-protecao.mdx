@@ -1,0 +1,60 @@
+---
+title: "The alarm that accused its own protection"
+description: "The panel flagged as critical a service the machine had deliberately stopped to avoid freezing. The bug was not the service: the inventory did not know the intent."
+date: 2026-11-27 08:00:00 -03:00
+pubDate: 2026-11-27 08:00:00 -03:00
+project: capivara
+tags: ["capivara", "monitoring", "systemd", "memory", "vitest"]
+cover: /covers/capivara-o-alarme-que-acusava-a-protecao.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The red that was not a failure
+
+The Capivara service panel listed one service in a red state. Not yellow, not "unknown": proper red, counted as a critical outage in the page verdict. The catch is that the service had not gone down. It had been shut down on purpose, by the machine itself, a few hours earlier.
+
+For almost six weeks the panel did what any well-written panel does: it read the service state and painted red whatever was stopped and marked critical. The rule was right. The data was right. The reading was wrong, because one piece of information was missing, and process state does not carry it: the intent behind the state.
+
+## What happened
+
+The panel inventory holds 34 items, and 13 of them are marked critical. The list is not decorative: every entry carries a boolean that decides whether a stopped service becomes an alarm or a plain observation. That field came in with the service map measured on the host, in commit `6cb87ac`, on October 18. At that point the main embeddings service was marked critical, with the obvious reasoning: it is the semantic brain of my assistant, and stopped means degraded search.
+
+But there is another mechanism on the host with an opinion about that same service. A memory pressure guardian watches the kernel stall indicator and, when the machine starts spending more time waiting for memory than working, it hibernates the fat services so the system does not freeze. The embeddings service is first in line: it is expensive in memory and it has a lightweight replacement that takes over.
+
+On the night of November 26, at 22:40, the guardian kicked in. The service was stopped, the replacement kept answering, and the host left the thrashing zone. From the machine's point of view, that was a good call. From the panel's point of view, it was a critical outage of an essential service.
+
+The panel began showing an alarm that, if I believed it, would make me manually start exactly the process the machine had just stopped to protect itself. And there is a second chapter: when the service was started externally, the guardian reconciled and stopped it again, recording that an active pause existed. Process state and system intent disagreeing in real time, with the panel showing only the louder side.
+
+## How it was fixed
+
+The fix was not in the guardian, nor in the service. It was in the inventory, the only place that answers for the classification. Commit `799c22f`, from November 27, touched two files, with 20 lines added and 1 removed. The production change is one line: that service entry stopped being critical.
+
+This works because the page verdict is derived, not hand-written. The function reads the summary and falls through the first true condition:
+
+```js
+export function vereditoServicos(resumo) {
+  if (resumo.crit) return 'crit'
+  if (resumo.criticos_caidos.length) return 'crit'
+  if (resumo.warn || resumo.degradados_criticos.length) return 'warn'
+  if (resumo.unknown) return 'parcial'
+  return 'ok'
+}
+```
+
+With the item marked critical, a stopped service incremented `crit` and the global verdict went red. With the item reclassified, the same stopped process counts as `warn`, and the global verdict stays yellow: attention, not fire. No other line of the panel had to change, because the rule was already in the right place. What was missing was the right information in the data feeding the rule.
+
+The other half of the commit is the test. Seventeen lines added to a file that already had 39 cases. The new test simulates the exact real scenario, an inactive service in a finished state, and checks two contracts at once: that the item shows as `warn`, and that the fallen-critical count stays at zero. Without that second check, the row would go yellow and the top of the page would stay red. The test locks the intent, not the appearance.
+
+## What this changes
+
+A false alarm costs more than a missing one. A missing alarm makes me look. A false one teaches me to ignore red, and on the day red is real I will look at it and think "that one again". The service panel is the first screen I open when something feels off. If it cries over a correct system decision, it loses its job.
+
+The lesson is about where truth lives in a monitor. Process state is raw fact: stopped or running. Intent is policy: why it stopped, who ordered it, when it should come back. A monitor that reads only the raw fact will be wrong every time the system's policy is smarter than the panel's. The way out is to put the policy in the inventory, the single source, and derive everything else. If every screen decided on its own what counts as severe, every screen would be wrong in a different place.
+
+## Next step
+
+The next step is to record intent explicitly rather than inferring it. Today the classification knows a stopped service is tolerable, but it does not distinguish "stopped at rest" from "stopped because the machine is suffering". The inventory will read the pause reason into the service row, so the yellow carries a caption instead of silence.
+
+Meanwhile the service stays hibernated by the host's decision, the replacement keeps answering, and the panel now tells the same story as the machine. Red means problem again.
