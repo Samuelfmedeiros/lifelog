@@ -1,0 +1,69 @@
+---
+title: "O contador de visitas que estourou a cota e desligou o freio"
+description: "Quatro commits de observabilidade no mesmo dia levaram o contador a 880 escritas contra um teto de 1.000. O freio que parou junto não era o dele."
+date: 2026-11-26 20:49:00 -03:00
+pubDate: 2026-11-26 21:15:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "cloudflare", "observability", "rate-limit", "metrics"]
+icon: "🐶"
+cover: /covers/dogwalk-o-contador-que-desligou-o-freio.webp
+featured: false
+hidden: true
+lang: pt
+---
+
+## Quatro melhorias pequenas, todas certas
+
+O Dogwalk roda em Cloudflare Pages Functions e sempre me incomodou não saber quem visita o site. No dia 26 de novembro eu empilhei quatro mudanças no classificador de tráfego. Todas pequenas, todas com teste, todas defensáveis isoladamente.
+
+Às 02:37, commit 883e140b: o 4xx ganha chave por rota. O agregado dizia que houve erro, nunca onde. Às 06:07, commit 9701a415: pageview separado de robô em `page_bot`, porque 1.153 pageviews em sete dias com zero cadastros não é demanda, é varredura. Às 07:54, commit 89b18c73: pageview ganha rota normalizada, para saber em que página a pessoa caiu. Às 10:44, commit b2467c14: 3xx vira bucket `redirect` e deixa de inflar pageview.
+
+Cada uma fazia sentido sozinha. Juntas, mudaram o custo do contador sem que ninguém olhasse o custo. Ele escrevia no KV a cada request, e a partir da segunda mudança passou a gravar até três chaves por pageview ou erro.
+
+## O que aconteceu no fim do dia
+
+Chegou o aviso de cota. Cerca de 880 escritas no KV naquele dia: 170 em `page`, 39 em `page_bot`, 77 em `api`, 192 em `err4xx`, 39 em `redirect`, mais o detalhe por rota. O teto do plano gratuito é 1.000 escritas por dia. Aos 50% e aos 90% vieram os avisos; depois, a conta inteira parou de aceitar escrita.
+
+Aqui está o problema que nenhum teste unitário pegaria: o contador de tráfego e o rate limit dividem o mesmo namespace de KV, e a cota é da conta. Quando ela estoura, não falha a chave que estourou. Falha toda escrita. O contador de visitas levou junto o freio que protege login e cadastro. A ferramenta de medir derrubou o mecanismo de defesa que ela deveria apenas observar.
+
+## A causa raiz: leitura e escrita por request
+
+O código antigo fazia get seguido de put dentro do `waitUntil`, uma vez por request:
+
+```js
+const atual = parseInt((await kv.get(chave)) || '0', 10) || 0
+await kv.put(chave, String(atual + 1), { expirationTtl: TRAF_TTL })
+```
+
+São dois defeitos no mesmo par de linhas. O primeiro é de custo: cada request paga duas operações, e um pageview classificado como robô pagava mais três. O segundo é de correção: get seguido de put é read-modify-write sem atomicidade. Dois requests simultâneos leem o mesmo valor, cada um grava `atual + 1`, e uma das contagens desaparece. O contador era caro e, ainda por cima, perdia contagem sob concorrência.
+
+## O fix: delta em memória, flush raro, amostragem
+
+A correção, commit 7899a1d7 às 20:49, tem três peças.
+
+Primeira: o delta fica em memória, num Map do isolate. Nenhum request toca o KV. Segunda: o flush acontece no máximo uma vez a cada seis horas, ou antes se houver 24 chaves pendentes; no flush, cada chave é lida uma vez e somada ao delta acumulado. Terceira: amostragem determinística de 1 em 4 requests com peso 4, e erro 5xx nunca amostrado, com peso 1, porque incidente não pode sumir da série.
+
+```js
+const n = trafContador++
+const amostrado = classe === 'err5xx' || n % TRAF_AMOSTRA === 0
+if (!amostrado) return
+const peso = classe === 'err5xx' ? 1 : TRAF_AMOSTRA
+```
+
+O contrato de chaves não mudou: mesmo prefixo `traf:`, mesmo TTL de 40 dias, mesmo formato. Quem lê a série não precisou de alteração nenhuma, porque a mudança ficou inteira do lado de quem escreve.
+
+O resultado aparece no teste novo: 120 requests geram 2 escritas no flush inicial, contra 240 antes, e as 30 amostras com peso 4 continuam estimando os 120 requests. A suíte de tráfego foi de 14 para 15 casos, todos verdes.
+
+## O que isso muda
+
+Aceitei três tradeoffs explícitos. A contagem pode atrasar até seis horas. É amostrada, então serve para série diária, não para painel em tempo real. E um isolate que morre antes do flush perde o próprio delta.
+
+Em troca, medição nunca derruba request e nunca consome a cota que o resto do sistema precisa para funcionar. Para série diária de tráfego, é troca boa.
+
+A lição que vale além do Dogwalk: cardinalidade é custo, não detalhe. Cada chave nova que você inventa para entender melhor sai do mesmo orçamento de escrita que o produto usa para atender gente. E cota é por conta, não por chave, então o que compartilha namespace fica acoplado exatamente no pior momento: quando uma das partes abusa.
+
+Se eu tivesse olhado o custo por request antes de somar quatro chaves no mesmo dia, a conta apareceria na hora. Não apareceu porque cada commit, olhado sozinho, parecia barato.
+
+## Próximo passo
+
+O rate limit não deveria dividir orçamento de escrita com telemetria. A separação é o próximo trabalho: o freio em namespace próprio ou em Durable Object, para que nenhuma série de métricas consiga desligar proteção de novo. E os avisos de 50% e 90% da cota passam a ser sinal operacional, não rodapé de e-mail.

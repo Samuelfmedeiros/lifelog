@@ -1,0 +1,69 @@
+---
+title: "The visitor counter that blew the quota and took the brake with it"
+description: "Four observability commits in one day pushed the counter to 880 writes against a cap of 1,000. The brake that stopped along with it was not its own."
+date: 2026-11-26 20:49:00 -03:00
+pubDate: 2026-11-26 21:15:00 -03:00
+project: dogwalk
+tags: ["dogwalk", "cloudflare", "observability", "rate-limit", "metrics"]
+icon: "🐶"
+cover: /covers/dogwalk-o-contador-que-desligou-o-freio.webp
+featured: false
+hidden: true
+lang: en
+---
+
+## Four small improvements, all correct
+
+Dogwalk runs on Cloudflare Pages Functions, and not knowing who visits the site always bothered me. On November 26 I stacked four changes onto the traffic classifier. All of them small, all of them tested, all of them defensible on their own.
+
+At 02:37, commit 883e140b: 4xx gets a key per route. The aggregate said that errors happened, never where. At 06:07, commit 9701a415: pageviews separated from bots into `page_bot`, because 1,153 pageviews in seven days with zero signups is not demand, it is scanning. At 07:54, commit 89b18c73: pageviews get a normalized route, so I know which page the person landed on. At 10:44, commit b2467c14: 3xx becomes a `redirect` bucket and stops inflating pageviews.
+
+Each one made sense alone. Together, they changed the cost of the counter without anyone looking at the cost. It wrote to KV on every request, and from the second change onward it wrote up to three keys per pageview or error.
+
+## What happened at the end of the day
+
+The quota notice arrived. About 880 writes to KV that day: 170 in `page`, 39 in `page_bot`, 77 in `api`, 192 in `err4xx`, 39 in `redirect`, plus the per-route detail. The free plan cap is 1,000 writes per day. At 50% and again at 90% came the warnings; after that, the whole account stopped accepting writes.
+
+Here is the problem no unit test would catch: the traffic counter and the rate limiter share the same KV namespace, and the quota belongs to the account. When it is exhausted, the key that went over is not the one that fails. Every write fails. The visitor counter dragged down the brake that protects login and signup. The measuring tool knocked out the defense mechanism it was only supposed to observe.
+
+## The root cause: one read and one write per request
+
+The old code did a get followed by a put inside `waitUntil`, once per request:
+
+```js
+const atual = parseInt((await kv.get(chave)) || '0', 10) || 0
+await kv.put(chave, String(atual + 1), { expirationTtl: TRAF_TTL })
+```
+
+Two defects in the same pair of lines. The first is cost: every request pays two operations, and a pageview classified as a bot paid three more. The second is correctness: get followed by put is read-modify-write without atomicity. Two concurrent requests read the same value, each writes `atual + 1`, and one of the increments disappears. The counter was expensive and, on top of that, lost counts under concurrency.
+
+## The fix: in-memory delta, rare flush, sampling
+
+The fix, commit 7899a1d7 at 20:49, has three parts.
+
+First: the delta lives in memory, in a Map on the isolate. No request touches KV. Second: the flush happens at most once every six hours, or earlier if 24 keys are pending; on flush, each key is read once and the accumulated delta is added to it. Third: deterministic sampling of 1 in 4 requests with weight 4, and 5xx errors never sampled, entered with weight 1, because an incident cannot vanish from the series.
+
+```js
+const n = trafContador++
+const amostrado = classe === 'err5xx' || n % TRAF_AMOSTRA === 0
+if (!amostrado) return
+const peso = classe === 'err5xx' ? 1 : TRAF_AMOSTRA
+```
+
+The key contract did not change: same `traf:` prefix, same 40-day TTL, same format. Whoever reads the series needed no change at all, because the entire change stayed on the writing side.
+
+The result shows up in the new test: 120 requests produce 2 writes on the initial flush, against 240 before, and the 30 samples with weight 4 still estimate the 120 requests. The traffic suite went from 14 to 15 cases, all green.
+
+## What this changes
+
+I accepted three explicit tradeoffs. Counting can lag up to six hours. It is sampled, so it serves a daily series, not a real-time dashboard. And an isolate that dies before the flush loses its own delta.
+
+In exchange, measurement never takes down a request and never consumes the quota the rest of the system needs in order to work. For a daily traffic series, that is a good trade.
+
+The lesson that travels beyond Dogwalk: cardinality is cost, not detail. Every new key you invent to understand things better comes out of the same write budget the product uses to serve people. And quota is per account, not per key, so whatever shares a namespace ends up coupled exactly at the worst moment: when one of the parts overdoes it.
+
+Had I looked at the cost per request before adding four keys on the same day, the bill would have shown up immediately. It did not, because each commit, viewed alone, looked cheap.
+
+## Next step
+
+The rate limiter should not share a write budget with telemetry. Splitting them is the next piece of work: the brake in its own namespace or in a Durable Object, so that no metrics series can disable protection again. And the 50% and 90% quota warnings become an operational signal, not an email footnote.
