@@ -13,12 +13,13 @@ export interface Props {
   type?: string;
   locale?: string;
   noindex?: boolean;
+  robots?: string;
   alternatePath?: string | null;
   schema?: Record<string, unknown> | null;
   schemaExtra?: Record<string, unknown> | null;
 }
 
-const { title, description, theme, image, type, locale, noindex, alternatePath, schema, schemaExtra } = Astro.props;
+const { title, description, theme, image, type, locale, noindex, robots, alternatePath, schema, schemaExtra } = Astro.props;
 const lang = locale === 'en' ? 'en' : 'pt-BR';
 const dataLocale = locale || 'pt';
 const t = getTranslations(dataLocale);
@@ -200,7 +201,7 @@ const footerText = dataLocale === 'en'
     </script>
     <meta name="description" content={pageDesc} />
     <title>{pageTitle}</title>
-    {noindex === true && <meta name="robots" content="noindex, nofollow" />}
+    {noindex === true && <meta name="robots" content={robots ?? 'noindex, nofollow'} />}
     {import.meta.env.PUBLIC_GOOGLE_SITE_VERIFICATION && <meta name="google-site-verification" content={import.meta.env.PUBLIC_GOOGLE_SITE_VERIFICATION} />}
     {import.meta.env.PUBLIC_BING_SITE_VERIFICATION && <meta name="msvalidate.01" content={import.meta.env.PUBLIC_BING_SITE_VERIFICATION} />}
     <link rel="canonical" href={SITE_URL + canonPath} />

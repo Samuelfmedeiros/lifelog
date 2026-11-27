@@ -44,7 +44,7 @@ const cloudTags = [...cloud.entries()].map(([name, count]) => ({ name, count }))
 // homeHref removido — breadcrumb usa / direto (lint no-unused-vars)
 ---
 
-<BaseLayout title={`${label} — ${t.home.title}`} description={`Posts com a tag ${label}`} locale={locale}>
+<BaseLayout title={`${label} — ${t.home.title}`} description={`Posts com a tag ${label}`} locale={locale} noindex={true} robots="noindex, follow">
   <section class="container">
     <nav class="crumb"><a href="/">← {t.home.title}</a></nav>
     <header class="tag-header">

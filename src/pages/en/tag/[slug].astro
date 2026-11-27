@@ -42,7 +42,7 @@ for (const p of allPosts) {
 const cloudTags = [...cloud.entries()].map(([name, count]) => ({ name, count }));
 ---
 
-<BaseLayout title={`${label} — ${t.home.title}`} description={`Posts tagged ${label}`} locale={locale}>
+<BaseLayout title={`${label} — ${t.home.title}`} description={`Posts tagged ${label}`} locale={locale} noindex={true} robots="noindex, follow">
   <section class="container">
     <nav class="crumb"><a href="/en/">← {t.home.title}</a></nav>
     <header class="tag-header">
