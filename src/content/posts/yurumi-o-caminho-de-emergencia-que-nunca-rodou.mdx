@@ -1,0 +1,73 @@
+---
+title: "O caminho de emergência que nunca rodou: a busca do Yurumi voltando vazia"
+description: "Com os dois embedders fora, a busca devolvia zero. O fallback textual existia, mas um except mudo engolia o erro: o caminho sem embedder nunca executava."
+date: 2026-11-26 21:30:00 -03:00
+pubDate: 2026-11-27 16:55:00 -03:00
+project: yurumi
+tags: ["yurumi", "qdrant", "rag", "fallback", "debugging", "reliability"]
+cover: /covers/yurumi-o-caminho-de-emergencia-que-nunca-rodou.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O silêncio de uma busca que devolve nada
+
+O Yurumi é a memória do ecossistema: tudo que os agentes decidem, medem e aprendem vai parar numa base vetorial. A busca é o instrumento que faz essa memória servir para alguma coisa. Quando ela devolve zero resultado, não existe erro na tela, não existe stack trace, não existe alerta: existe apenas um agente concluindo que não há nada registrado sobre o assunto e seguindo em frente.
+
+Na noite de 26 de novembro, às 21h30, foi exatamente isso que aconteceu no grupo Yurumi. A busca voltou vazia pela API e pela ferramenta, para consultas que eu sabia estarem registradas. A investigação de duas linhas de comando mostrou que os dois servidores de embedding estavam fora do ar. Até aí, nada de anormal: era o cenário que o projeto já tinha desenhado para suportar.
+
+O problema é o que o desenho supunha e o código não fazia.
+
+## O fallback que só existia no comentário
+
+O projeto tem três rotas de recuperação: dois embedders densos e uma rota textual baseada em BM25, que não depende de modelo nenhum. Quando os embedders caem, é a rota textual que mantém a busca viva. Ela estava no código, com o comentário explicando que era a degradação extrema, o último caminho de pé.
+
+Só que nunca executou. A chamada ao Qdrant para a rota textual passava o vetor esparso como dicionário simples:
+
+```python
+# o formato que o cliente aceita é objeto, não dicionário
+pontos = cliente.query_points(
+    collection_name=colecao,
+    query={"indices": indices, "values": values},
+    using="bm25",
+    limit=limite,
+)
+```
+
+O cliente do Qdrant rejeita esse tipo com `ValueError: Unsupported query type: <class 'dict'>`. E o bloco em volta tinha um `except` amplo que engolia a exceção e seguia adiante, devolvendo lista vazia. Duas falhas somadas: a conversão que faltava e o tratador que escondia a falta dela. A rota de emergência não estava quebrada por acidente; ela estava protegida de qualquer diagnóstico.
+
+O conserto foi uma função de conversão, idempotente por construção: objeto esparso passa intacto, `None` passa intacto, dicionário sem índices ou sem valores volta como veio para que o Qdrant erre alto em vez de errar em silêncio.
+
+```python
+def to_sparse(sparse):
+    if not isinstance(sparse, dict):
+        return sparse
+    indices = list(sparse.get("indices") or [])
+    values = list(sparse.get("values") or [])
+    if not indices or not values:
+        return sparse
+    return SparseVector(indices=indices, values=values)
+```
+
+Com a conversão no lugar, a prova veio com os dois embedders ainda desligados: uma consulta sobre o backup horário do Qdrant devolveu três resultados com escores 74,55, 73,5 e 65,1, onde minutos antes vinha lista vazia. Zero para três, sem religar nada: era só a rota que já existia começar a ser executada.
+
+## O mesmo defeito, doze horas depois
+
+O que me fez escrever sobre isso não foi o bug em si, foi a reincidência. Na tarde seguinte, às 13h13, um registro com o identificador de canal truncado criou uma coleção fantasma com nome derivado desse número. Todo upsert para ela respondia 404 permanente, e a mensagem ficava em retentativa até o limite de descarte.
+
+O padrão é o mesmo dos dois lados: um caminho alternativo que ninguém exercita, um erro que não sobe, um sistema que responde "vazio" em vez de responder "não consegui". A correção foi restringir a regra de identificação de grupo a identificadores negativos com seis dígitos ou mais e mandar o resto para a coleção global, com teste de regressão cobrindo o caso truncado.
+
+Fechando o mesmo dia, o processamento em lote do reconciliador passou a embutir e gravar em blocos em vez de item por item, e drenou 1500 pendências em minutos. Três correções em um dia, todas na mesma direção: fazer o caminho de degradação existir de verdade, não apenas no comentário.
+
+## O que muda
+
+A lição transferível não é sobre Qdrant. É sobre a diferença entre ter um plano de contingência e ter um plano de contingência executável. Um fallback que nunca foi exercitado não é fallback, é documentação. E o tratador de exceção amplo é o que transforma essa diferença numa falha invisível: ele garante que ninguém descubra que o plano não funciona.
+
+A partir daí adotei uma regra simples para esse tipo de código: sempre que houver um caminho alternativo, ele precisa de um teste que o force a rodar sem o caminho principal. Não um teste que simule a falha, um teste que remova a dependência e verifique que a resposta continua saindo.
+
+Também mudou o diagnóstico. "Busca vazia" deixou de ser resposta aceitável. Ou o sistema devolve resultado, ou devolve o motivo pelo qual não conseguiu chegar aos resultados. Vazio é um estado legítimo; vazio por erro engolido não é.
+
+## Próximo passo
+
+Vou instrumentar o caminho de busca para reportar qual rota respondeu cada consulta: densa primária, densa secundária ou textual. Hoje a busca funciona nos três modos, mas o consumidor não sabe em qual deles está, e essa informação é o que permite detectar degradação antes de alguém perguntar por que a memória está vazia.

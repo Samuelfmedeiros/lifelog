@@ -1,0 +1,73 @@
+---
+title: "The emergency path that never ran: Yurumi's search coming back empty"
+description: "With both embedders down, search returned zero. The textual fallback existed, but a silent except swallowed the error: the only path without an embedder never executed."
+date: 2026-11-26 21:30:00 -03:00
+pubDate: 2026-11-27 16:55:00 -03:00
+project: yurumi
+tags: ["yurumi", "qdrant", "rag", "fallback", "debugging", "reliability"]
+cover: /covers/yurumi-o-caminho-de-emergencia-que-nunca-rodou.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The silence of a search that returns nothing
+
+Yurumi is the memory of the ecosystem: everything the agents decide, measure and learn ends up in a vector store. Search is the instrument that makes that memory useful. When it returns zero results, there is no error on the screen, no stack trace, no alert: there is only an agent concluding that nothing has ever been recorded on the subject and moving on.
+
+On the night of November 26, at 9:30 pm, that is exactly what happened in the Yurumi group. Search came back empty through the API and through the tool, for queries I knew were stored. Two minutes of investigation showed that both embedding servers were down. So far, nothing unusual: it was the scenario the project had already been designed to survive.
+
+The problem is what the design assumed and the code did not do.
+
+## The fallback that only existed in the comment
+
+The project has three retrieval routes: two dense embedders and a textual route based on BM25, which depends on no model at all. When the embedders fall over, the textual route is what keeps search alive. It was in the code, with a comment explaining that it was the extreme degradation path, the last one standing.
+
+Except it never ran. The call to Qdrant for the textual route passed the sparse vector as a plain dictionary:
+
+```python
+# the client accepts an object, not a dictionary
+points = client.query_points(
+    collection_name=collection,
+    query={"indices": indices, "values": values},
+    using="bm25",
+    limit=limit,
+)
+```
+
+The Qdrant client rejects that type with `ValueError: Unsupported query type: <class 'dict'>`. And the block around it had a broad `except` that swallowed the exception and moved on, returning an empty list. Two faults added together: the missing conversion and the handler that hid the absence of it. The emergency route was not broken by accident; it was shielded from any diagnosis.
+
+The fix was a conversion helper, idempotent by construction: a sparse object passes through untouched, `None` passes through untouched, and a dictionary without indices or without values comes back as it was so that Qdrant fails loudly instead of failing silently.
+
+```python
+def to_sparse(sparse):
+    if not isinstance(sparse, dict):
+        return sparse
+    indices = list(sparse.get("indices") or [])
+    values = list(sparse.get("values") or [])
+    if not indices or not values:
+        return sparse
+    return SparseVector(indices=indices, values=values)
+```
+
+With the conversion in place, the proof arrived while both embedders were still switched off: a query about the hourly Qdrant backup returned three hits scoring 74.55, 73.5 and 65.1, where minutes earlier the list was empty. Zero to three, without turning anything back on: the route that already existed simply started being executed.
+
+## The same defect, twelve hours later
+
+What made me write about this was not the bug itself, it was the repeat. The following afternoon, at 1:13 pm, a record with a truncated channel identifier created a ghost collection named after that number. Every upsert into it answered a permanent 404, and the message stayed in retry until the discard limit.
+
+The pattern is the same on both sides: an alternative path nobody exercises, an error that never surfaces, a system that answers "empty" instead of answering "I could not get there". The fix was to restrict the group identification rule to negative identifiers with six digits or more and route everything else to the global collection, with a regression test covering the truncated case.
+
+Closing the same day, the reconciler moved from embedding and writing item by item to doing it in batches, and drained 1500 pending records in minutes. Three fixes in one day, all in the same direction: make the degradation path actually exist, not just in the comment.
+
+## What changes
+
+The transferable lesson is not about Qdrant. It is about the difference between having a contingency plan and having an executable contingency plan. A fallback that has never been exercised is not a fallback, it is documentation. And the broad exception handler is what turns that difference into an invisible failure: it guarantees nobody finds out the plan does not work.
+
+From then on I adopted a simple rule for this kind of code: whenever there is an alternative path, it needs a test that forces it to run without the main path. Not a test that simulates the failure, a test that removes the dependency and checks that the answer still comes out.
+
+Diagnosis changed too. "Empty search" stopped being an acceptable answer. Either the system returns results, or it returns the reason it could not reach them. Empty is a legitimate state; empty because of a swallowed error is not.
+
+## Next step
+
+I am going to instrument the search path to report which route answered each query: primary dense, secondary dense or textual. Search works in all three modes today, but the consumer does not know which one it is in, and that information is what allows degradation to be detected before someone asks why memory is empty.
