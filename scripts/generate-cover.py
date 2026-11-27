@@ -46,7 +46,9 @@ if not API_KEY:
                         API_KEY = v
                         break
 if not API_KEY:
-    API_KEY = "dev-capa-key"
+    # Nunca inventar credencial: uma chave falsa so' troca "sem chave" por um
+    # 401 indistinguível no Worker. Falhar com causa clara (medido 27/11/2026).
+    API_KEY = None
 
 from cover_brief import build_prompt, read_brief
 
@@ -103,6 +105,9 @@ def _extract_title_from_mdx(slug):
 
 def generate_cover(slug, project="descobertas", title=None, force=False):
     """Gera capa AI via Worker, com prompt contextual do post."""
+    if not API_KEY:
+        log("SEM LIFELOG_COVER_API_KEY — defina no .env do repo ou no ambiente")
+        return False
     os.makedirs(COVERS_DIR, exist_ok=True)
     output_path = os.path.join(COVERS_DIR, f"{slug}.webp")
 

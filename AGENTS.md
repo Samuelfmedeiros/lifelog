@@ -1,5 +1,13 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-27 (continuação) — gate de pixels no pipeline + falha rápida sem chave
+
+- **`scripts/cover_gate.py`** (novo): gate determinístico de capa — 2100×900, brightness ≥80%, branco ≤1%, bordas ≥120. `medir`/`passa`/`score`/`motivo_reprovacao`. `LIFELOG_COVER_TRIES` (default 3) controla tentativas.
+- **`regen-covers-ai.py`**: antes aceitava a primeira imagem do Worker; agora tenta até `TRIES` variantes (o Worker é não-determinístico), compõe 21:9, mede e **só salva se passar no gate**. Se nenhuma passar: `REPROVADA <slug>` e `return False` — nenhuma capa ruim é gravada nem commitada.
+- **`generate-cover.py`**: `API_KEY = "dev-capa-key"` removido; sem `LIFELOG_COVER_API_KEY` a função falha com causa clara em vez de gerar 401 indistinguível.
+- **Testes**: `scripts/test_cover_gate.py` (6 casos sintéticos) + `test_cover_brief.py` (7) = 13 verdes.
+- **Pendências registradas no ledger**: #1854 (mesclar memórias do Yurumi 16:9→21:9 — embedder em circuit breaker), #1855 (BLOQUEIO-DONO: posts novos e `.bak` untracked).
+
 ## Sessão 2026-11-27 — prompts de capa contextuais (motivo + tese); 10 capas de exemplo aprovadas; commit cirúrgico em `main`
 
 - **Causa raiz**: `regen-covers-ai.py` e `generate-cover.py` tinham `PROJECT_STYLES` duplicado (valores divergentes) e geravam **uma cena fixa por projeto**; `description`/`tags` nunca entravam no prompt. `gerar-capas-21x9.py:248-392` já tinha `TAG_MOTIF`/`read_brief`/`pick_motif` validados, mas só no fallback vetorial.
