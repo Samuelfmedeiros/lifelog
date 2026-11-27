@@ -1,5 +1,14 @@
 # 📖 LifeLog — Session Hub
 
+## Sessão 2026-11-27 — prompts de capa contextuais (motivo + tese); 10 capas de exemplo aprovadas; commit cirúrgico em `main`
+
+- **Causa raiz**: `regen-covers-ai.py` e `generate-cover.py` tinham `PROJECT_STYLES` duplicado (valores divergentes) e geravam **uma cena fixa por projeto**; `description`/`tags` nunca entravam no prompt. `gerar-capas-21x9.py:248-392` já tinha `TAG_MOTIF`/`read_brief`/`pick_motif` validados, mas só no fallback vetorial.
+- **Fix**: novo `scripts/cover_brief.py` = fonte única (8 motivos semânticos, tese do post, cor do projeto como âncora, variação determinística por `sha1(slug)` dentro do motivo). Os 3 geradores importam o módulo; `PROJECT_STYLES`/`COMPOSITIONS`/`_pick_suffix` locais removidos. Paleta do `yurumi` trocada de `#0b1424` para `#fde68a` (conflito com `no dark areas`).
+- **Gate**: `python3 scripts/test_cover_brief.py` (7 testes, todos verdes). Dry-run: 10 prompts distintos, um por projeto.
+- **Prova visual**: 10 capas 2100x900 geradas em `/tmp/opencode/capas-exemplo-20261127/` + `montage.webp`. Validação de pixels: 7/10 passam (brightness ≥80%, branco ≤1%, sem borda escura); `portfolio`/`seguranca`/`yurumi` ficaram escuras — Worker FLUX não é determinístico, variantes não garantiram o gate. Samuel aprovou a montage.
+- **Escopo**: só posts novos. Nenhuma capa do acervo regenerada. Nenhum commit de arquivo alheio: `e2e/fixtures.ts`, `e2e/navbar-theme-fix.spec.ts` e `e2e/types.d.ts` preservados.
+- **Docs**: skill `ai-cover-pipeline` atualizada com o contrato do prompt e com o padrão 21:9 vigente; ledger #1813 fechado com tag de patch rastreável.
+
 ## Sessão 2026-11-11 (fim de dia) — 12 commits em 4 branches (LGPD, release de post, capas); `main` local 2 à frente / 5 atrás do `origin` → doc em `fdfd/2026-11-11`; push da lateral ok
 
 - 12 commits hoje, espalhados: `7cc77fb` fix(lgpd): liga o banner ao layout e mergeia as chaves i18n (`feat/lgpd-consent`, o checkout), `9d11175` release(post): arachne-os-arquivos-que-nunca-entraram-no-repo (PT+EN + ocultos-data, topo de `origin/main`), `9a4438e`/`005808a` fix(covers): reencode JPEG aceito + recorte 21:9 automático, `cb4de6f`/`acd647e` post(arachne) hidden, `5ae1f10` chore(ocultos): sync ocultos-data, `12cada7` verify: consent.ts com DECLINE_CLICKS=6, `de6e3b3` refazer: troca de capa, `eb1c3dd`/`f2d6016` WIP/index on `roger/lifelog-entrega-20261110-224327` e `cefcaae` docs(expediente) — stub do expediente substituído por esta seção.

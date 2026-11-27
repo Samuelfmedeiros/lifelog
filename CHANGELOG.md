@@ -1,5 +1,12 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-27] - prompts de capa contextuais (motivo + tese); 10 capas de exemplo aprovadas
+
+- `feat(covers)`: novo `scripts/cover_brief.py` — fonte única com `TAG_MOTIF` (8 motivos semânticos), `read_brief` (title/description/tags), tese do post e paleta do projeto como âncora; fim da cena fixa por projeto e do `PROJECT_STYLES` duplicado.
+- `refactor(covers)`: `regen-covers-ai.py`, `generate-cover.py` e `gerar-capas-21x9.py` importam o módulo; variação determinística por `sha1(slug)` dentro do motivo; paleta do yurumi corrigida (`#0b1424` → `#fde68a`).
+- `test(covers)`: `scripts/test_cover_brief.py` — 7 testes (prompts distintos, três camadas, tag de projeto não decide motivo, mesma cena com variação, determinismo, paleta clara).
+- Prova: 10 capas 2100x900 em `/tmp/opencode/capas-exemplo-20261127/` + montage aprovada; gate de pixels 7/10. Só posts novos; nenhuma capa do acervo tocada.
+
 ## [2026-11-11] - 12 commits em 4 branches (LGPD, release de post PT+EN, capas); doc em fdfd/2026-11-11; push da lateral ok
 
 - `7cc77fb` banner de consentimento ligado ao layout + chaves i18n mergeadas (`feat/lgpd-consent`).
