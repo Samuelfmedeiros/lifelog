@@ -4,6 +4,7 @@
 // Guard de regressão: scripts/check-consent-gate.mjs
 // ═══════════════════════════════════════════════
 import { CONSENT_EVENT, CONSENT_KEY, readConsent } from './consent'
+import { initEngagement } from './engagement'
 
 /** clientId público do OpenPanel (self-host). Público por design — não é segredo. */
 const CLIENT_ID = 'a3c3b6a8-a751-461a-88f9-8317f6760360'
@@ -42,6 +43,8 @@ function queueStub(): void {
 }
 
 /** Injeta o script de analytics. Idempotente — chamar 2x não duplica. */
+let stopEngagement: (() => void) | null = null
+
 function loadAnalytics(): void {
   if (window.__lifelogAnalyticsLoaded) return
   window.__lifelogAnalyticsLoaded = true
@@ -55,6 +58,10 @@ function loadAnalytics(): void {
     trackAttributes: true,
   })
 
+  // Engajamento (scroll/secao/clique/tempo/vital/erro) so existe sob consentimento.
+  // O cleanup e chamado em unloadAnalytics() quando o titular revoga.
+  stopEngagement = initEngagement({ site: 'lifelog', keyPrefix: 'll' })
+
   const s = document.createElement('script')
   s.src = SCRIPT_SRC
   s.defer = true
@@ -65,6 +72,8 @@ function loadAnalytics(): void {
 
 /** Remove o rastro do OpenPanel quando o titular revoga o consentimento. */
 function unloadAnalytics(): void {
+  stopEngagement?.()
+  stopEngagement = null
   document.querySelectorAll('script[data-lifelog-analytics]').forEach((el) => el.remove())
   delete window.op
   window.__lifelogAnalyticsLoaded = false
