@@ -1,0 +1,82 @@
+---
+title: "Arachne — 23 violations that were a single decision"
+description: "Arachne has been able to draw its own dependency graph since July. It just never used that map to block anything. On November 27 it became a CI gate: 99 files scanned, three exit codes, and an exception that has to justify itself in writing."
+date: 2026-11-27 12:00:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+lang: "en"
+project: "arachne"
+tags: [arachne, ci, architecture, github-actions, python, quality]
+cover: "/covers/arachne-23-violacoes-uma-decisao.webp"
+featured: false
+hidden: true
+---
+
+## The map existed; the sign did not
+
+Arachne resolves imports across files, builds a dependency graph, and detects cycles and layer violations. That has shipped inside the product since July, when dependency analysis became a browsable screen in the Knowledge Graph. The analyzer is good: it finds the cycle, points at file and line, and draws a graph that looks great in a screenshot.
+
+The problem is that analysis nobody consults does not change behavior. Coupling enters the code anyway, the graph draws the mess, and nothing blocks. The diagnostic became a feature; it never became a gate.
+
+On November 27 the category changed. Commit `f43a62ae` — "gate de modularizacao API x implementacao" — brought three files and 159 lines: a 120-line guard, a 20-line policy, and a 19-line workflow. One small rule, declared in a file, running on every push and every pull request.
+
+## The rule in force today
+
+Just one, written as a pair of regular expressions: **a route module may not import another route module**. No function, class, or constant from a sibling in the same layer.
+
+That sounds like bureaucracy until the first cycle happens. In Python, a cross-import inside the same layer does not fail when you write it: it fails when someone loads the app. And it depends on order. The real symptom is not "architecture error" — it is a server that boots halfway, or does not boot, plus an endpoint that existed yesterday vanishing from the route list because the module registering it was imported too late. I have paid that bill, with symptoms that mislead.
+
+Running the guard over the project's API tree: **99 files scanned, 0 violations, exit 0**. The file count is what gives the green its meaning: a gate that scans three files and passes has proven nothing.
+
+## The exception has to justify itself
+
+There is exactly one allowlist entry: the route aggregator, which imports its siblings on purpose, because composing and registering all of them is its job. Banning composition would be the fastest way to teach everyone to hate the gate.
+
+Rather than trust my memory, I measured the other side: with the allowlist emptied, the guard returns **23 violations, all in the same file, all from the same line of reasoning**. Those 23 violations were one design decision. A gate with no allowlist would be useless here — and the right move was not to loosen the rule, it was to record the exception in writing.
+
+That is why the policy carries a textual reason field, with a date and an explanation. An anonymous exception is invisible debt; an exception with a reason is an auditable decision. Whoever opens that file in February knows why the line is there and whether it still makes sense.
+
+```json
+{
+  "name": "my-project",
+  "roots": ["src", "backend"],
+  "exts": [".py", ".ts"],
+  "rules": [
+    { "id": "api-does-not-import-implementation",
+      "from": "^src/api/", "forbid": "^src/crud/" }
+  ],
+  "allowlist": ["src/api/__init__.py"],
+  "allowlist_motivo": "route aggregator: composition, not implementation"
+}
+```
+
+The whole policy is that object. It is versioned next to the code it governs, and the guard has no built-in rules — the JSON declares what is forbidden. Moving to another project means swapping the file, not editing the Python.
+
+## Three exit codes, and the middle one is what matters
+
+The guard returns 0 when clean, 1 when it finds a violation, and 2 when the configuration is invalid or unreadable. The 2 is what separates a gate from decoration.
+
+A guard that crashes reading its own policy and returns 0 is worse than no guard: it paints the CI green and everyone stays happy until the cycle blows up in production. Reading the policy and measuring sit in the same handler that, on any exception, prints the error type and message and returns 2. Fail-closed: no valid policy, no "passed".
+
+```python
+try:
+    cfg = carregar(args.config)
+    rel = medir(cfg)
+except Exception as exc:
+    print(f"FAIL-CLOSED: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 2
+return 0 if rel["ok"] else 1
+```
+
+The same logic applies to the workflow: actions are pinned by immutable SHA, not by a moving tag. A moving tag inside a gate is the same family of hole — the gate keeps "working" while its contents change with no commit.
+
+## Eighth workflow, and what it looks at that the others do not
+
+The project already had seven workflows: backend, frontend, e2e, lighthouse, security audit, publishing. This is the eighth, and it is the only one that looks at the **shape** of the code instead of its **results**. A green suite does not prove the layer boundary held; a green build does not prove the next import will not create a cycle.
+
+Before, the boundary was human review by memory: more than thirty route modules, nobody remembers who imports whom, and the wrong import lands inside a six-line commit nobody questions. Now the pattern is measured on every push. It cost a small guard and a JSON file; the payoff is not having to trust discipline.
+
+## Next step
+
+Today the guard implements one kind of rule: a source-and-forbidden pair. Its documentation promises more than the code delivers — "no cycles" is written in the header, but real cycle detection still does not run in CI; a cycle only fails if it matches a declared rule.
+
+The next step is closing that gap: move cycle detection into the gate with the same fail-closed behavior, and write policy for the rest of the tree — outside the API layer, where coupling runs heavier.

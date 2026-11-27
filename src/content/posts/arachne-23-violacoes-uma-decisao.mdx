@@ -1,0 +1,82 @@
+---
+title: "Arachne — 23 violações que eram uma decisão só"
+description: "O Arachne sabe desenhar o próprio grafo de dependências desde julho. Só não usava esse mapa para impedir nada. No dia 27 de novembro isso virou gate de CI: 99 arquivos varridos, três códigos de saída e uma exceção que precisa se justificar por escrito."
+date: 2026-11-27 12:00:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+lang: "pt"
+project: "arachne"
+tags: [arachne, ci, architecture, github-actions, python, quality]
+cover: "/covers/arachne-23-violacoes-uma-decisao.webp"
+featured: false
+hidden: true
+---
+
+## O mapa existia; a placa, não
+
+O Arachne resolve import entre arquivos, monta grafo de dependência e detecta ciclo e violação de camada — isso está no produto desde julho, quando a análise de dependência virou uma tela navegável do Knowledge Graph. O analisador é bom: acha o ciclo, aponta arquivo e linha, e desenha o grafo bonito.
+
+Só que análise que ninguém consulta não muda comportamento. O acoplamento entra no código do mesmo jeito, o grafo desenha a bagunça e nada bloqueia. Diagnóstico virou funcionalidade; nunca virou trava.
+
+No dia 27 de novembro isso mudou de categoria. O commit `f43a62ae` — "gate de modularizacao API x implementacao" — trouxe três arquivos e 159 linhas: um guard de 120 linhas, uma política de 20 e um workflow de 19. Uma regra pequena, declarada em arquivo, que roda em todo push e todo pull request.
+
+## A regra que vale hoje
+
+Uma só, escrita como par de expressões regulares: **módulo de rota não importa outro módulo de rota**. Nada de função, classe ou constante vinda de um irmão da mesma camada.
+
+Parece burocracia até acontecer o primeiro ciclo. Em Python, import cruzado dentro de uma mesma camada não falha quando você escreve: falha quando alguém carrega o app. E depende da ordem. O sintoma real não é "erro de arquitetura": é servidor subindo pela metade — ou não subindo — e um endpoint que existia ontem sumindo da lista de rotas porque o módulo que o registrava foi importado tarde demais. Já paguei essa conta, com sintomas que enganam.
+
+Rodando o guard na árvore de API do projeto: **99 arquivos varridos, 0 violações, saída 0**. O número de arquivos é o que dá sentido ao verde: gate que varre 3 arquivos e passa não provou nada.
+
+## A exceção que precisa se justificar
+
+Existe exatamente uma entrada na allowlist: o agregador de rotas, que importa os irmãos de propósito, porque compor e registrar todos é o trabalho dele. Proibir composição seria o jeito mais rápido de ensinar todo mundo a odiar o gate.
+
+Para não confiar na minha própria memória, medi o outro lado: com a allowlist esvaziada, o guard devolve **23 violações, todas no mesmo arquivo, todas na mesma linha de raciocínio**. As 23 violações eram uma decisão de projeto só. Um gate sem allowlist seria inútil aqui — e a escolha certa não foi afrouxar a regra, foi registrar a exceção por escrito.
+
+Por isso a política carrega um campo de motivo textual, com data e explicação. Exceção anônima é dívida invisível; exceção com motivo é decisão auditável. Quem abrir o arquivo em fevereiro sabe por que aquela linha está lá e se ainda faz sentido.
+
+```json
+{
+  "name": "meu-projeto",
+  "roots": ["src", "backend"],
+  "exts": [".py", ".ts"],
+  "rules": [
+    { "id": "api-nao-importa-implementacao",
+      "from": "^src/api/", "forbid": "^src/crud/" }
+  ],
+  "allowlist": ["src/api/__init__.py"],
+  "allowlist_motivo": "agregador de rotas: composicao, nao implementacao"
+}
+```
+
+A política inteira é esse objeto. Fica versionada no repositório, versionada junto com o código que ela governa, e o guard não tem nenhuma regra embutida — quem declara o que é proibido é o JSON. Trocar de projeto é trocar o arquivo, não abrir o Python.
+
+## Três códigos de saída, e o do meio é o que importa
+
+O guard devolve 0 quando está limpo, 1 quando acha violação e 2 quando a configuração é inválida ou ilegível. O 2 é a parte que separa gate de enfeite.
+
+Guard que quebra ao ler a própria política e devolve 0 é pior que guard nenhum: pinta verde no CI e todo mundo segue feliz até o ciclo estourar em produção. A leitura da política e a medição estão no mesmo tratador que, em qualquer exceção, imprime o tipo e a mensagem do erro e retorna 2. Fail-closed: sem política válida, não existe "passou".
+
+```python
+try:
+    cfg = carregar(args.config)
+    rel = medir(cfg)
+except Exception as exc:
+    print(f"FAIL-CLOSED: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 2
+return 0 if rel["ok"] else 1
+```
+
+A mesma lógica vale para o workflow: as actions estão presas por SHA imutável, não por tag móvel. Tag móvel num gate é o furo da mesma família — o gate continua "funcionando" e o conteúdo dele muda sem commit nenhum.
+
+## Oitavo workflow, e o que ele olha que os outros não
+
+O projeto já tinha sete workflows: backend, frontend, e2e, lighthouse, auditoria de segurança, publicação. Este é o oitavo e é o único que olha a **forma** do código em vez do **resultado** dele. Teste verde não prova que a camada não vazou; build verde não prova que o próximo import não vai criar ciclo.
+
+Antes, a fronteira era revisão humana por memória: mais de trinta módulos de rota, ninguém lembra quem importa quem, e o import errado entra num commit de seis linhas que ninguém questiona. Depois, o padrão é medido em cada push. O custo foi um guard pequeno e um JSON; o ganho é não precisar mais confiar em disciplina.
+
+## Próximo passo
+
+O guard hoje implementa um tipo de regra: par de origem e proibição. A documentação dele promete mais do que o código entrega — "sem ciclos" está escrito no cabeçalho, mas detecção real de ciclo ainda não roda no CI; ciclo só reprova se cair numa regra declarada.
+
+O próximo passo é fechar essa distância: levar a detecção de ciclo para o gate, com o mesmo fail-closed, e escrever política para o resto da árvore — fora da API, onde o acoplamento é maior.
