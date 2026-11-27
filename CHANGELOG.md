@@ -1,5 +1,11 @@
 # 📋 CHANGELOG — LifeLog
 
+## [2026-11-27] (continuação) - gate de pixels no pipeline + falha rápida sem chave
+
+- `feat(covers)`: `scripts/cover_gate.py` mede dimensão/brightness/branco/bordas; `regen-covers-ai.py` tenta até `LIFELOG_COVER_TRIES` (3) variantes e só salva a que passa — antes, 3 de 10 capas reprovadas entrariam no ar.
+- `fix(covers)`: `generate-cover.py` não inventa mais `dev-capa-key`; sem chave, falha com `SEM LIFELOG_COVER_API_KEY`.
+- `test(covers)`: 6 testes sintéticos do gate (boa, branca, escura, borda, fora de 21:9, score) — total 13 testes verdes com `test_cover_brief.py`.
+
 ## [2026-11-27] - prompts de capa contextuais (motivo + tese); 10 capas de exemplo aprovadas
 
 - `feat(covers)`: novo `scripts/cover_brief.py` — fonte única com `TAG_MOTIF` (8 motivos semânticos), `read_brief` (title/description/tags), tese do post e paleta do projeto como âncora; fim da cena fixa por projeto e do `PROJECT_STYLES` duplicado.

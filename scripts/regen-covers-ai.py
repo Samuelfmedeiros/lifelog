@@ -84,6 +84,7 @@ def read_meta(slug):
 
 
 from cover_brief import build_prompt, read_brief
+import cover_gate
 
 
 
@@ -190,39 +191,66 @@ def generate(slug, force=True):
     print(f"\n=== {slug} ({project}) ===")
     print(f"PROMPT: {prompt[:200]}...")
     data = json.dumps({"prompt": prompt}).encode("utf-8")
-    req = urllib.request.Request(
-            worker_url, data=data,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}",
-                 "User-Agent": "LifeLog-Cover-Generator/1.0"},
-    )
     # Guarda de esquema (B310): so http/https entram no urlopen.
     if urllib.parse.urlparse(worker_url).scheme not in ("http", "https"):
         print(f"[{slug}] ESQUEMA NAO PERMITIDO em worker_url: {worker_url!r}")
         return False
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:  # nosec B310 - esquema validado acima
-
-                img = resp.read()
-                with open(output_path, "wb") as f:
-                    f.write(img)
-                normalize_to_webp(output_path)
-                # Padrao do acervo e 21:9 (2100x900); o Worker entrega quadrado.
-                # Sem isto a capa nova vai quadrada e o gate de aspect do build
-                # a registra no baseline de "legado fora de 21/9" (aconteceu
-                # 11/11/2026: capa AI virou excecao permanente do baseline).
-                _compose_21x9(output_path)
-                print(f"OK {slug} ({len(img)} bytes)")
-                return True
-        except urllib.error.HTTPError as e:
-            print(f"HTTP {e.code}: {e.reason}")
-            if e.code == 429:
+    # Worker FLUX nao e' determinístico (seed ignorado). Tentar ate TRIES
+    # variantes e so' salvar a que passar no gate de pixels. Nunca salvar
+    # "a melhor das ruins" — isso era o que deixava capa branca/escura no ar.
+    melhor = None
+    for tentativa in range(cover_gate.TRIES):
+        img = None
+        for attempt in range(3):
+            req = urllib.request.Request(
+                worker_url, data=data,
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {api_key}",
+                         "User-Agent": "LifeLog-Cover-Generator/1.0"})
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:  # nosec B310 - esquema validado acima
+                    img = resp.read()
+                break
+            except urllib.error.HTTPError as e:
+                print(f"HTTP {e.code}: {e.reason}")
+                if e.code == 429:
+                    time.sleep(5)
+                    continue
+                break
+            except Exception as e:
+                print(f"ERRO: {e}")
                 time.sleep(5)
-                continue
-            return False
+        if not img:
+            continue
+        tmp = output_path + f".try{tentativa}.tmp"
+        try:
+            with open(tmp, "wb") as f:
+                f.write(img)
+            normalize_to_webp(tmp)
+            # Padrao do acervo e 21:9 (2100x900); o Worker entrega quadrado.
+            # Sem isto a capa nova vai quadrada e o gate de aspect do build
+            # a registra no baseline de "legado fora de 21/9" (aconteceu
+            # 11/11/2026: capa AI virou excecao permanente do baseline).
+            _compose_21x9(tmp)
+            m = cover_gate.medir(tmp)
+            print(f"  variante {tentativa+1}/{cover_gate.TRIES}: "
+                  f"{cover_gate.motivo_reprovacao(m)}")
+            if cover_gate.passa(m):
+                os.replace(tmp, output_path)
+                print(f"OK {slug} ({os.path.getsize(output_path)} bytes)")
+                return True
+            if melhor is None or cover_gate.score(m) < cover_gate.score(melhor[1]):
+                melhor = (tmp, m)
         except Exception as e:
-            print(f"ERRO: {e}")
-            time.sleep(5)
+            print(f"  AVISO: falha ao processar variante ({type(e).__name__}: {e})")
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    if melhor:
+        tmp, m = melhor
+        print(f"REPROVADA {slug}: nenhuma das {cover_gate.TRIES} variantes passou "
+              f"no gate ({cover_gate.motivo_reprovacao(m)}); capa NAO salva")
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return False
 
 
