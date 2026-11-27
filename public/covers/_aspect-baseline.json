@@ -1,9 +1,11 @@
 {
   "nota": "acervo legado fora de 21/9, por caminho. Capa NOVA fora de 21/9 falha o build; o que esta aqui nao falha. Regerar com --record-baseline.",
-  "atualizado": "2026-11-25",
-  "total": 2,
+  "atualizado": "2026-11-27",
+  "total": 4,
   "legacy": [
     "public/covers/1290-paginas-indexadas-6-cliques-90-dias.webp",
-    "public/covers/arachne-o-backend-que-nao-existia.webp"
+    "public/covers/arachne-o-backend-que-nao-existia.webp",
+    "public/covers/tatuengine-o-ganho-que-nao-atravessou-o-estagio.webp",
+    "public/covers/yurumi-o-caminho-de-emergencia-que-nunca-rodou.webp"
   ]
 }

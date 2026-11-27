@@ -213,7 +213,9 @@ def generate(slug, force=True):
                 break
             except urllib.error.HTTPError as e:
                 print(f"HTTP {e.code}: {e.reason}")
-                if e.code == 429:
+                # 500 do Worker e' transiente (medido 02/09 e 27/11); so'
+                # 429 e 5xx merecem retry — 401/403/404 sao definitivos.
+                if e.code == 429 or 500 <= e.code < 600:
                     time.sleep(5)
                     continue
                 break

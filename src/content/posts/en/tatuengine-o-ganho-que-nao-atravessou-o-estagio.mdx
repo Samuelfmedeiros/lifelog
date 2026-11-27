@@ -1,0 +1,74 @@
+---
+title: "TatuEngine: the gain that stopped halfway"
+description: "The semantic bridge hit 23 of 24 frames and generation did not move at all. The problem was not in the stage I had improved."
+date: 2026-11-27 12:00:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+lang: 'en'
+project: tatuengine
+tags: ["tatuengine", "ml", "testing", "quality", "debugging"]
+cover: /covers/tatuengine-o-ganho-que-nao-atravessou-o-estagio.webp
+featured: false
+hidden: true
+---
+
+## A good score in the wrong place
+
+TatuEngine runs two stages in series. The first one picks the content ids that go into the engine. The second one generates text from them. On the morning of November 27 I had a result from the first stage that seemed to close the question: a learned projection built on image embeddings hit the right id in 23 of 24 frames of a held-out set, against 7 of 24 from a simple heuristic rule used as reference.
+
+Almost six times the hit rate. The obvious conclusion would be to call the task solved on my side and move to the next front.
+
+It was not solved. On the next stage the score was zero on the left and zero on the right.
+
+## How the experiment was designed
+
+The evaluation set was 24 video frames, arranged in 4 color and shape pairs that never appeared in training. For each frame, two arms picked the ids: the semantic one, taking the argmax of the projection cosine, and the heuristic one, applying a fixed rule over the first component of the vector.
+
+Both id sets went into the real engine, after a fixed prompt, and the engine produced 6 autoregressive tokens. The stage two metric was easy to check without interpretation: the word for the color or the shape of the known label appeared in the generated answer. Whole-word match, no similarity, no human judge.
+
+That separation is what makes the result useful. Stage one has a verifiable right answer. Stage two has another. And the fact that stage one improved 3x says nothing about stage two, however much the two share the same input file.
+
+## The score that never crossed
+
+In free mode, the engine hit none of the 24 frames in either arm. Zero to zero. The output degenerated into a sequence of punctuation and one function word, with no content term at all.
+
+So I did what anyone would do: I tightened the search space. I restricted the logits to the nine possible content words, which turns generation into a forced choice. The score rose to 6 of 24 in both arms. The same in both.
+
+When the number rises equally in both arms, it does not measure what you changed. I went to read the answers: the engine returned the same color for every frame, and the 6 hits were exactly the frames whose label was that color. It was not a hit, it was repetition that happened to coincide.
+
+## The probe that separates the two stages
+
+Before blaming the projection, I needed a sharper question: does the generation channel actually read the id it receives? If the answer is no, no improvement in the id picker can show up in the output.
+
+The probe does not look at scores, it looks at intervention. Swap the id in the prefix one at a time and check whether the top of the content logits moves. If it does not move, the id is decorative.
+
+```python
+def intervention_probe(generate, base_ids, alternatives):
+    """If swapping the input does not move the output, the channel is deaf."""
+    base = generate(base_ids)
+    for alt in alternatives:
+        if generate(with_swap(base_ids, alt)) == base:
+            return "channel deaf to the id"
+    return "channel reads the id"
+```
+
+The result was the first branch. Swapping the color in the prefix did not change the top of the content logits: the same word stayed ahead, by a wide margin. The 120M engine could not echo the injected id. The semantic bridge was correct and irrelevant.
+
+## The second attempt, and why it also failed
+
+If the problem is that training did not match the real decoding, the natural fix is to match them: train the head on the exact inference format, prompt plus ids plus the last id. That is what I did on the second round of the day.
+
+The score repeated the first one: zero to zero in free mode, 6 of 24 in constrained mode, zero gain. The difference between the two arms stayed exactly zero. The measured cause was another one: the last layer collapses the color information, with cosines practically identical across representations of different colors. It is not missing data, it is not missing epochs. It is the capacity of the small model in that channel.
+
+## What was left in the repository
+
+The negative result became a document, with the numbers, the Wilson interval and the round artifact, instead of a note that gets lost. The semantic bridge stayed in the code behind an environment flag, off by default and fail-closed: without an explicit opt-in it picks nothing and the old path runs unchanged. No core file imports the bridge.
+
+And the most important part for whoever reads the repository later: the regression stayed green with the feature off, 35 of 35 suites, and the release gate kept the same verdict. An experiment that does not ship cannot, by itself, take down what was already standing.
+
+## What this changes
+
+Measuring the stage you touched is the most comfortable way to fool yourself. The score rises, the chart looks good, and the product stays the same. The question that pays is where the effect has to appear, and the proof is intervention, not correlation.
+
+It also changes the order of attack. Before, the bottleneck looked like the quality of the id choice. Now it is clear that id choice is already good and what is missing is the channel that turns an id into a word. Attacking the projection again would spend the day confirming the same zero.
+
+The next step is that: the output layer of the small engine, measured by id echo, not by sentence plausibility. And while it does not pass, the bridge stays off, because a gain that does not cross the next stage is not a gain.

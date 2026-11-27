@@ -1,0 +1,74 @@
+---
+title: "TatuEngine: o ganho que parou no meio do caminho"
+description: "A ponte semântica acertou 23 de 24 quadros e a geração não mudou nada. O problema não estava no estágio que eu tinha melhorado."
+date: 2026-11-27 12:00:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+lang: 'pt'
+project: tatuengine
+tags: ["tatuengine", "ml", "testing", "quality", "debugging"]
+cover: /covers/tatuengine-o-ganho-que-nao-atravessou-o-estagio.webp
+featured: false
+hidden: true
+---
+
+## Um placar bom no lugar errado
+
+O TatuEngine trabalha com dois estágios em série. O primeiro escolhe os ids de conteúdo que vão entrar no motor. O segundo gera texto a partir deles. Na manhã de 27 de novembro eu tinha um resultado do primeiro estágio que parecia fechar a questão: uma projeção aprendida a partir de embeddings de imagem acertava o id certo em 23 dos 24 quadros de um conjunto held-out, contra 7 de 24 de uma regra heurística simples que servia de referência.
+
+Quase seis vezes mais acerto. A conclusão óbvia seria dizer que a tarefa estava resolvida no que dependia de mim, e seguir para outra frente.
+
+Não estava. No estágio seguinte, o placar ficou em zero à esquerda e zero à direita.
+
+## O desenho do experimento
+
+O conjunto de avaliação eram 24 quadros de vídeo, organizados em 4 pares de cor e forma que nunca apareceram no treino. Para cada quadro, dois braços escolhiam os ids: o semântico, que pega o argmax do cosseno da projeção, e o heurístico, que aplica uma regra fixa sobre o primeiro componente do vetor.
+
+Os dois conjuntos de ids foram alimentados no motor real, depois de um prompt fixo, e o motor gerou 6 tokens autoregressivos. A métrica do estágio dois era simples de conferir sem interpretação: a palavra da cor ou da forma do rótulo conhecido aparecia na resposta gerada. Casamento por palavra inteira, nada de similaridade, nada de juiz humano.
+
+É essa separação que torna o resultado útil. O primeiro estágio tem uma resposta certa verificável. O segundo tem outra. E o fato de o primeiro ter melhorado 3x não implica nada sobre o segundo, por mais que os dois compartilhem o mesmo arquivo de entrada.
+
+## O placar que não atravessou
+
+No modo livre, o motor não acertou nenhum dos 24 quadros em nenhum dos dois braços. Zero a zero. A saída degenerou numa sequência de pontuação e de uma palavra funcional, sem nenhum termo de conteúdo.
+
+Aí fiz o que qualquer um faria: apertei o espaço de busca. Restringi os logits às nove palavras de conteúdo possíveis, o que transforma a tarefa de geração em escolha forçada. O placar subiu para 6 de 24 nos dois braços. Igual nos dois.
+
+Quando o número sobe igual nos dois braços, ele não mede o que você mudou. Fui olhar as respostas: o motor devolvia a mesma cor para todos os quadros, e os 6 acertos eram exatamente os quadros cujo rótulo era aquela cor. Não era acerto, era repetição com sorte de coincidir.
+
+## A sonda que separa os dois estágios
+
+Antes de acusar a projeção, precisei de uma pergunta mais afiada: o canal de geração lê o id que recebe? Se a resposta for não, nenhuma melhoria no escolhedor de ids pode aparecer na saída.
+
+A sonda não olha placar, olha intervenção. Troque o id no prefixo por outro, um de cada vez, e veja se o topo dos logits de conteúdo muda. Se não muda, o id é decorativo.
+
+```python
+def sonda_de_intervencao(gerar, ids_base, alternativas):
+    """Se trocar a entrada nao move a saida, o canal nao le a entrada."""
+    base = gerar(ids_base)
+    for alt in alternativas:
+        if gerar(com_troca(ids_base, alt)) == base:
+            return "canal surdo ao id"
+    return "canal le o id"
+```
+
+O resultado foi o primeiro ramo. Trocar a cor no prefixo não alterava o topo dos logits de conteúdo: a mesma palavra continuava na frente, com margem larga. O motor 120M não conseguia ecoar o id injetado. A ponte semântica estava correta e irrelevante.
+
+## A segunda tentativa, e por que ela também deu não
+
+Se o problema é que o treino não casava com a decodificação real, a correção natural é casar: treinar o head com o formato exato de inferência, prompt mais ids mais o último id. Foi o que fiz na segunda rodada do dia.
+
+O placar repetiu o da primeira: zero a zero no modo livre, 6 de 24 no constrito, ganho zero. A diferença entre os dois braços continuou exatamente zero. A causa medida foi outra: a última camada colapsa a informação de cor, com cossenos praticamente idênticos entre representações de cores diferentes. Não é falta de dado, não é falta de época. É capacidade do modelo pequeno naquele canal.
+
+## O que ficou no repositório
+
+O resultado negativo virou documento, com os números, o IC de Wilson e o artefato da rodada, em vez de virar uma anotação que se perde. A ponte semântica ficou no código atrás de uma flag de ambiente, desligada por padrão e fail-closed: sem opt-in explícito, ela não escolhe nada e o caminho antigo roda igual. Nenhum arquivo do core importa a ponte.
+
+E o mais importante para quem lê o repositório depois: a regressão ficou verde com a feature desligada, 35 de 35 suítes, e o gate de release continuou com o mesmo veredito. Um experimento que não entra em produção não pode, ele mesmo, derrubar o que já estava de pé.
+
+## O que isso muda
+
+Medir o estágio que você mexeu é a forma mais confortável de se enganar. O placar sobe, o gráfico fica bonito, e o produto continua igual. A pergunta que vale é onde o efeito precisa aparecer, e a prova é a intervenção, não a correlação.
+
+Também muda a ordem de ataque. Antes, o gargalo parecia ser a qualidade da escolha de ids. Agora está claro que a escolha de ids já é boa e o que falta é o canal que transforma id em palavra. Atacar a projeção de novo seria gastar o dia confirmando o mesmo zero.
+
+O próximo passo é esse: a camada de saída do motor pequeno, medida por eco de id, não por plausibilidade de frase. E enquanto ela não passar, a ponte fica desligada, porque um ganho que não atravessa o estágio seguinte não é ganho.
