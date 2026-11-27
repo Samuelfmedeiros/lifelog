@@ -1,0 +1,67 @@
+---
+title: "Os eventos que o painel nunca recebeu"
+description: "A instrumentação do Portifólio estava pronta, compilava e passava no lint. E o painel continuava vazio, porque três eventos morriam antes de sair do navegador."
+date: 2026-11-26 23:40:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "analytics", "frontend", "react", "performance"]
+cover: /covers/portfolio-os-eventos-que-o-painel-nunca-recebeu.webp
+featured: false
+hidden: true
+lang: 'pt'
+---
+
+## O silêncio que parecia normal
+
+Todo site novo nasce com a mesma ilusão: se o código compila e o painel abre, a coleta está funcionando. No Portifólio não era diferente. O módulo de engajamento estava escrito, tipado, coberto por teste, e o `emit()` era chamado nos lugares certos. Mesmo assim, quando abri o OpenPanel depois de um fim de semana de visitas, a maior parte das abas mostrava o mesmo número redondo: zero.
+
+O painel não estava quebrado: o navegador mandava eventos, só não aqueles. Três defeitos independentes, nenhuma mensagem de erro, nenhum alerta. Só ausência.
+
+## O clique que nunca aconteceu
+
+O primeiro a cair foi o `ui_click`. O evento era emitido por um listener global, e para saber qual botão foi clicado ele lia um atributo do elemento: `data-analytics-id`. O problema é que nenhum componente da página tinha esse atributo. O listener disparava, lia `null`, e o evento saía sem identificação — ou simplesmente não saía.
+
+O código estava correto e o contrato também. Faltava a ponte entre os dois — evento que depende de um atributo que ninguém escreve é decoração.
+
+O conserto veio no commit `aba9b40`, de 26/11, e foi o tipo de commit que ninguém comemora: oito componentes ganharam o atributo — Navbar, GlassCard, ContactForm, LanguageToggle, PalettePicker, ProfileSection, ProjectHangar, ThemeToggle — e junto vieram 61 linhas de teste de taxonomia para garantir que o vocabulário de ids não divergisse do que o painel espera. No mesmo dia, o commit `c1ed0dd` corrigiu os toggles que só têm ícone, que não tinham rótulo legível para o painel.
+
+Foi a parte fácil. As duas seguintes não apareciam no código: apareciam na geometria da página.
+
+## A seção que nunca ficava em foco
+
+O `section_time` mede quanto tempo o visitante passa em cada bloco da página. A implementação usava `IntersectionObserver` com `threshold: 0.5` — o elemento só conta como visível quando metade dele está na tela. É o valor que qualquer tutorial sugere, e é o valor errado para uma seção alta.
+
+A seção de projetos tem 3043 px de altura no desktop, com viewport de 800. No celular, 5092 px com viewport de 844. Faça a conta: o máximo de razão de interseção possível é 800/3043, ou seja, 0,26 no desktop e 0,17 no mobile. O `threshold` de 0,5 nunca seria atingido, e o `section_time` da seção mais importante do site nunca era emitido. As seções curtas, como contato e blog, funcionavam — e era exatamente isso que escondia o problema. Uma olhada rápida confirmava que "o evento existe". Só não existia para a seção que importa.
+
+A correção foi trocar o critério de "metade visível" por "metade cabe na tela ou a seção é maior que a viewport":
+
+```javascript
+export function secaoEmFoco(ratio, alturaAlvo, alturaViewport) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return false;
+  if (!Number.isFinite(alturaAlvo) || !Number.isFinite(alturaViewport)) return false;
+  if (alturaAlvo > alturaViewport) return true;
+  return ratio >= 0.5;
+}
+```
+
+Três linhas de decisão.
+
+## O vital que chegava sem nome
+
+O terceiro era o mais silencioso dos três. O `web_vital` escutava `PerformanceObserver` e identificava a métrica pelo `entry.name` — comparando com `"LCP"` e `"CLS"`. Só que o Chromium entrega essas entradas com `name` vazio. Não há nome. O que identifica a entrada é o `entryType`: `largest-contentful-paint` e `layout-shift`.
+
+Resultado: a condição nunca era verdadeira e nenhum web vital foi registrado, em nenhuma visita. O código parecia razoável lendo de cima; só a especificação do navegador mostra por que nunca poderia funcionar.
+
+Havia ainda um quarto problema, de ordem: o SDK carrega depois do bundle e eventos emitidos antes do init se perdiam. A solução foi bufferizar até 50 eventos e despejar depois da inicialização, sem quebrar a página se o SDK nunca chegar.
+
+## O que isso muda
+
+Nada aqui era novo, e é isso que faz o caso valer a pena: atributo ausente, limiar copiado de tutorial, propriedade errada de API. Nenhum estoura exceção. Todos entregam um painel que parece funcionar, com o pior sintoma possível: silêncio confundido com desinteresse.
+
+O critério de validação que passou a valer é o que deveria ter sido desde o começo: não basta o evento existir no código, ele precisa aparecer no painel depois de uma visita real. A verificação de 26/11 fechou com scroll de 25/50/75/100, `section_time` de 1899 ms no desktop e 2915 ms no mobile, `engagement_time` de 12443 ms e web vitals uma vez por página — sem empurrar um POST por layout-shift.
+
+A rede de segurança ficou em 702 testes em 84 arquivos, todos verdes, mais build limpo. Teste não pegaria nenhum dos três — mas garante que a correção não volta atrás.
+
+## Próximo passo
+
+O próximo alvo é o funil inteiro: medir quantas visitas chegam na seção de projetos, quantas abrem o modal de download do CV e quantas preenchem o formulário. Hoje cada evento é contado isolado, o que responde "o que aconteceu" mas não "onde a pessoa desistiu". O método é o mesmo desta rodada: instrumentar, abrir o painel e conferir que o número saiu de zero.

@@ -1,0 +1,67 @@
+---
+title: "The events the dashboard never received"
+description: "The Portifolio instrumentation was there, compiled and linted. The dashboard stayed empty because three events died before leaving the browser."
+date: 2026-11-26 23:40:00 -03:00
+pubDate: 2026-11-27 12:00:00 -03:00
+project: portfolio
+tags: ["portfolio", "analytics", "frontend", "react", "performance"]
+cover: /covers/portfolio-os-eventos-que-o-painel-nunca-recebeu.webp
+featured: false
+hidden: true
+lang: 'en'
+---
+
+## The silence that looked normal
+
+Every new site is born with the same illusion: if the code compiles and the dashboard opens, the collection is working. The Portifolio was no different. The engagement module was written, typed, covered by tests, and `emit()` was called in the right places. Still, when I opened OpenPanel after a weekend of visits, most tabs showed the same round number: zero.
+
+The dashboard was not broken: the browser was sending events, just not those ones. Three independent defects, no error message, no alert. Only absence.
+
+## The click that never happened
+
+The first one to fall was `ui_click`. The event was emitted by a global listener, and to know which button was clicked it read an attribute from the element: `data-analytics-id`. The problem was that no component on the page had that attribute. The listener fired, read `null`, and the event went out unidentified, or simply did not go out.
+
+The code was correct and so was the contract. What was missing was the bridge between them. An event that depends on an attribute nobody writes is decoration.
+
+The fix came in commit `aba9b40`, on 11/26, and it was the kind of commit nobody celebrates: eight components received the attribute, Navbar, GlassCard, ContactForm, LanguageToggle, PalettePicker, ProfileSection, ProjectHangar and ThemeToggle, and with them came 61 lines of taxonomy tests to guarantee that the id vocabulary would not drift from what the dashboard expects. The same day, commit `c1ed0dd` fixed the icon-only toggles, which had no readable label for the dashboard.
+
+That was the easy part. The next two did not show up in the code: they showed up in page geometry.
+
+## The section that was never in focus
+
+`section_time` measures how long a visitor spends on each block of the page. The implementation used `IntersectionObserver` with `threshold: 0.5`, meaning the element only counts as visible when half of it is on screen. It is the value every tutorial suggests, and it is the wrong value for a tall section.
+
+The projects section is 3043 px tall on desktop, with an 800 px viewport. On mobile, 5092 px with an 844 px viewport. Do the math: the highest possible intersection ratio is 800/3043, which is 0.26 on desktop and 0.17 on mobile. The 0.5 threshold would never be reached, and `section_time` for the most important section of the site was never emitted. Short sections such as contact and blog worked, and that is exactly what hid the problem. A quick look confirmed that "the event exists". It just did not exist for the section that matters.
+
+The fix was to replace "half visible" with "half fits on screen or the section is taller than the viewport":
+
+```javascript
+export function secaoEmFoco(ratio, alturaAlvo, alturaViewport) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return false;
+  if (!Number.isFinite(alturaAlvo) || !Number.isFinite(alturaViewport)) return false;
+  if (alturaAlvo > alturaViewport) return true;
+  return ratio >= 0.5;
+}
+```
+
+Three lines of decision.
+
+## The vital that arrived without a name
+
+The third one was the quietest of the three. `web_vital` listened to `PerformanceObserver` and identified the metric by `entry.name`, comparing against `"LCP"` and `"CLS"`. But Chromium delivers those entries with an empty `name`. There is no name. What identifies the entry is `entryType`: `largest-contentful-paint` and `layout-shift`.
+
+As a result, the condition was never true and no web vital was ever recorded, on any visit. The code looked reasonable from above; only the browser specification shows why it could never work.
+
+There was also a fourth problem of ordering: the SDK loads after the bundle, so events emitted before init were lost. The solution was to buffer up to 50 events and flush them after initialization, without breaking the page if the SDK never shows up.
+
+## What this changes
+
+Nothing here was new, and that is what makes the case worth writing down: missing attribute, threshold copied from a tutorial, wrong API property. None of them throws. All of them deliver a dashboard that seems to work, with the worst possible symptom: silence mistaken for lack of interest.
+
+The validation criterion that took effect is what should have been there from the start: an event existing in the code is not enough, it has to show up in the dashboard after a real visit. The 11/26 check closed with scroll at 25/50/75/100, `section_time` at 1899 ms on desktop and 2915 ms on mobile, `engagement_time` at 12443 ms, and web vitals once per page, without pushing a POST for every layout shift.
+
+The safety net stayed at 702 tests across 84 files, all green, plus a clean build. Tests would not have caught any of the three, but they guarantee the fix does not come back.
+
+## Next step
+
+The next target is the whole funnel: how many visits reach the projects section, how many open the CV download modal, and how many actually fill in the form. Today each event is counted in isolation, which answers "what happened" but not "where the person gave up". The method is the same as this round: instrument it, open the dashboard, and confirm the number left zero.
